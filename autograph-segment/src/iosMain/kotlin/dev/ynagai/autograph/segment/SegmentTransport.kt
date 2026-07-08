@@ -19,7 +19,7 @@ import kotlinx.serialization.json.JsonObject
 public interface SegmentBridge {
     public fun track(name: String, propertiesJson: String, messageId: String, instrumentationJson: String)
     public fun screen(name: String, propertiesJson: String, messageId: String, instrumentationJson: String)
-    public fun identify(userId: String, traitsJson: String)
+    public fun identify(userId: String, traitsJson: String, messageId: String, instrumentationJson: String)
     public fun flush()
     public fun reset()
 }
@@ -42,7 +42,10 @@ public class SegmentTransport(
     }
 
     override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
-        bridge.identify(userId, traits.toString())
+        // Forward the stamped envelope like track/screen: the core advanced the sequence
+        // counter for this identify (stampsInPipeline=false), so dropping the envelope would
+        // leave a phantom gap and strip the event_id. Matches the Android in-pipeline path.
+        bridge.identify(userId, traits.toString(), envelope?.eventId.orEmpty(), envelope?.toJson()?.toString().orEmpty())
     }
 
     override fun flush() {
