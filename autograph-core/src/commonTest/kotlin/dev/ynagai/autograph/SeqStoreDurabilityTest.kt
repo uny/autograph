@@ -95,4 +95,28 @@ class SeqStoreDurabilityTest {
         s.stamp() // seq 5 — chunk boundary
         assertTrue(store.putLongCount > afterInit, "the chunk-boundary event must persist the high-water mark")
     }
+
+    @Test
+    fun noneChunkedPersistsSessionActivityWithinChunkBound() {
+        // SequenceMode.None advances no counter, so the seq-boundary durability checks never fire.
+        // Session activity must still be persisted on the chunk event cadence; otherwise it stays
+        // frozen at session start and a hard crash wrongly rotates a session whose real last
+        // activity was well within the timeout. Sessions stay alive here (20min gaps < 30min default
+        // timeout), so the only reason to rotate on restart is a stale persisted activity time.
+        val store = NonDurableSeqStore()
+        val s = stamper(store, SeqPersistence.Chunked(2), mode = SequenceMode.None)
+        val first = s.stamp()                  // t0, session S
+        now += 20 * 60 * 1000L; s.stamp()      // t0+20min — chunk boundary: persist+flush activity
+        now += 20 * 60 * 1000L; s.stamp()      // t0+40min
+        now += 20 * 60 * 1000L; s.stamp()      // t0+60min — chunk boundary: persist+flush activity
+
+        store.crash()                          // hard kill: only flushed activity survives
+
+        now += 10 * 60 * 1000L                 // restart at t0+70min; real activity was 10min ago
+        val resumed = stamper(store, SeqPersistence.Chunked(2), mode = SequenceMode.None).stamp()
+        assertEquals(
+            first.session.id, resumed.session.id,
+            "None+Chunked must persist recent activity so a within-timeout restart resumes the session",
+        )
+    }
 }

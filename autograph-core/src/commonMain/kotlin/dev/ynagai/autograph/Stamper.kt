@@ -39,6 +39,7 @@ internal class Stamper(
     private var lastActivity: Long = 0
     private var sessionSeq: Long = 0
     private var globalSeq: Long = 0
+    private var eventsSincePersist: Long = 0
 
     init {
         val now = clock()
@@ -125,6 +126,7 @@ internal class Stamper(
         sessionStart = now
         lastActivity = now
         sessionSeq = 0
+        eventsSincePersist = 0
         store.putString(KEY_SESSION_ID, sessionId)
         store.putLong(KEY_SESSION_START, sessionStart)
         store.putLong(KEY_LAST_ACTIVITY, lastActivity)
@@ -138,18 +140,26 @@ internal class Stamper(
     /**
      * Persists the counter high-water marks when a durability point is reached, returning
      * whether it wrote (the caller then [SeqStore.flush]es). Under EveryEvent (chunk == 1) that
-     * is every event; under Chunked it is only when an *active* counter crosses a chunk boundary.
-     * Testing an inactive counter (which stays 0, so `0 % chunk == 0` is always true) would fire
-     * on every event and silently defeat Chunked's write batching for single-counter modes.
+     * is every event; under Chunked it is when an *active* counter crosses a chunk boundary, or
+     * every [chunk] events when no counter is active. Testing an inactive counter (which stays 0,
+     * so `0 % chunk == 0` is always true) would fire on every event and silently defeat Chunked's
+     * write batching for single-counter modes — hence the [tracksSession]/[tracksGlobal] guards.
+     *
+     * [eventsSincePersist] keeps session activity on the documented "stale by at most one chunk"
+     * cadence in [SequenceMode.None], where no counter advances so the seq-boundary checks never
+     * fire and the persisted activity time would otherwise stay stuck at session start.
      */
     private fun persistCounters(): Boolean {
+        eventsSincePersist++
         val atDurabilityPoint = chunk == 1L ||
             (tracksSession && sessionSeq % chunk == 0L) ||
-            (tracksGlobal && globalSeq % chunk == 0L)
+            (tracksGlobal && globalSeq % chunk == 0L) ||
+            eventsSincePersist >= chunk
         if (atDurabilityPoint) {
             store.putLong(KEY_SEQ_SESSION, sessionSeq)
             store.putLong(KEY_SEQ_GLOBAL, globalSeq)
             store.putLong(KEY_LAST_ACTIVITY, lastActivity)
+            eventsSincePersist = 0
         }
         return atDurabilityPoint
     }
