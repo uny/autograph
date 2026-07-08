@@ -35,6 +35,13 @@ public sealed interface SeqPersistence {
      * to the next chunk boundary: duplicates are impossible, but a crash can introduce
      * an artificial gap of at most [chunk]. Prefer [EveryEvent] unless events are
      * extremely frequent.
+     *
+     * Session activity is persisted at each chunk boundary and whenever the app is
+     * backgrounded, so a session that ends with a graceful background always restores
+     * correctly. A hard crash between boundaries can leave the persisted activity time up
+     * to one chunk's worth of events stale — negligible against the session timeout at the
+     * high event rates this mode is meant for. Use [EveryEvent] if precise session timing
+     * must survive a hard crash mid-session.
      */
     public data class Chunked(val chunk: Long) : SeqPersistence {
         init {
