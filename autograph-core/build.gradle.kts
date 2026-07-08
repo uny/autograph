@@ -23,9 +23,11 @@ kotlin {
         commonMain.dependencies {
             api(libs.kotlinx.serialization.json)
             implementation(libs.kotlinx.atomicfu)
+            implementation(libs.kotlinx.io.core)
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            implementation(libs.kotlinx.io.core)
         }
         androidMain.dependencies {
             implementation(libs.androidx.startup)

@@ -1,9 +1,8 @@
 package dev.ynagai.autograph
 
 import android.content.Context
-import android.content.SharedPreferences
 
-public actual fun platformSeqStore(): SeqStore {
+internal actual fun platformSeqStoreDir(): String? {
     val context = AutographAndroidContext.applicationContext
     if (context == null) {
         println(
@@ -11,43 +10,12 @@ public actual fun platformSeqStore(): SeqStore {
                 "Falling back to in-memory storage; sequence counters will not survive restarts. " +
                 "Provide a SeqStore explicitly via AutographConfig.store to fix this.",
         )
-        return InMemorySeqStore()
+        return null
     }
-    return SharedPreferencesSeqStore(
-        context.getSharedPreferences("dev.ynagai.autograph", Context.MODE_PRIVATE),
-    )
+    return "${context.filesDir.absolutePath}/autograph"
 }
 
 internal object AutographAndroidContext {
     @Volatile
     var applicationContext: Context? = null
-}
-
-internal class SharedPreferencesSeqStore(
-    private val prefs: SharedPreferences,
-) : SeqStore {
-
-    override fun getLong(key: String): Long? =
-        if (prefs.contains(key)) prefs.getLong(key, 0) else null
-
-    override fun putLong(key: String, value: Long) {
-        prefs.edit().putLong(key, value).apply()
-    }
-
-    override fun getString(key: String): String? = prefs.getString(key, null)
-
-    override fun putString(key: String, value: String) {
-        prefs.edit().putString(key, value).apply()
-    }
-
-    override fun remove(key: String) {
-        prefs.edit().remove(key).apply()
-    }
-
-    override fun flush() {
-        // Counter writes above use apply() (async, non-durable on a hard crash). commit()
-        // rewrites the full in-memory state — including those pending apply()s — to disk
-        // synchronously, so the persisted high-water mark survives a crash.
-        prefs.edit().commit()
-    }
 }
