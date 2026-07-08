@@ -5,8 +5,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import dev.ynagai.autograph.EmptyJsonObject
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Automatically records a `Screen Viewed` event for every destination change of this
@@ -34,13 +32,7 @@ public fun NavController.TrackScreenViews(
                 arguments: androidx.savedstate.SavedState?,
             ) {
                 val name = screenName(destination) ?: return
-                val previous = ScreenLog.lastScreen
-                val properties: JsonObject = if (previous != null) {
-                    JsonObject(mapOf("previous_screen" to JsonPrimitive(previous)))
-                } else {
-                    EmptyJsonObject
-                }
-                tracker.screen(name, properties)
+                tracker.screen(name, withPreviousScreen(EmptyJsonObject, ScreenLog.lastScreen))
                 ScreenLog.lastScreen = name
             }
         }

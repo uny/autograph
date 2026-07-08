@@ -34,16 +34,22 @@ public fun TrackScreenView(
 ) {
     val tracker = LocalTracker.current
     LaunchedEffect(name) {
-        val previous = ScreenLog.lastScreen
-        val enriched = if (previous != null && !properties.containsKey("previous_screen")) {
-            JsonObject(properties + ("previous_screen" to JsonPrimitive(previous)))
-        } else {
-            properties
-        }
-        tracker.screen(name, enriched)
+        tracker.screen(name, withPreviousScreen(properties, ScreenLog.lastScreen))
         ScreenLog.lastScreen = name
     }
 }
+
+/**
+ * Returns [properties] with a `previous_screen` entry for [previousScreen], unless [previousScreen]
+ * is null or the caller already provided a `previous_screen`. Shared by [TrackScreenView] and
+ * [NavController.TrackScreenViews].
+ */
+internal fun withPreviousScreen(properties: JsonObject, previousScreen: String?): JsonObject =
+    if (previousScreen != null && !properties.containsKey("previous_screen")) {
+        JsonObject(properties + ("previous_screen" to JsonPrimitive(previousScreen)))
+    } else {
+        properties
+    }
 
 /**
  * [TrackScreenView] plus ambient [ScreenContext] for the content — nested
