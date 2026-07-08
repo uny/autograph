@@ -25,4 +25,12 @@ internal class UserDefaultsSeqStore(
     override fun remove(key: String) {
         defaults.removeObjectForKey(key)
     }
+
+    @Suppress("DEPRECATION")
+    override fun flush() {
+        // synchronize() is the only primitive that forces NSUserDefaults' in-memory changes
+        // to disk. Apple deprecated it because defaults auto-persist, but auto-persist is not
+        // synchronous, so it is still the best available bound on the crash-loss window.
+        defaults.synchronize()
+    }
 }

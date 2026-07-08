@@ -13,6 +13,17 @@ public interface SeqStore {
     public fun getString(key: String): String?
     public fun putString(key: String, value: String)
     public fun remove(key: String)
+
+    /**
+     * Blocks until all prior writes are durably persisted (survive a process crash).
+     *
+     * The default platform stores buffer writes for latency; Autograph calls [flush] at the
+     * points where a lost write would let a sequence number be reused after a crash — every
+     * event under [SeqPersistence.EveryEvent], and at each chunk boundary/reservation under
+     * [SeqPersistence.Chunked]. The default is a no-op, correct for already-synchronous stores
+     * such as [InMemorySeqStore].
+     */
+    public fun flush() {}
 }
 
 /** Returns the platform-default [SeqStore]. */

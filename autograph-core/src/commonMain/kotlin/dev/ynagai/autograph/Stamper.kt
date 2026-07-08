@@ -31,6 +31,8 @@ internal class Stamper(
         is SeqPersistence.EveryEvent -> 1
         is SeqPersistence.Chunked -> persistence.chunk
     }
+    private val tracksSession: Boolean = mode == SequenceMode.PerSession || mode == SequenceMode.Both
+    private val tracksGlobal: Boolean = mode == SequenceMode.PerDevice || mode == SequenceMode.Both
 
     private var sessionId: String = ""
     private var sessionStart: Long = 0
@@ -62,10 +64,13 @@ internal class Stamper(
 
         // With chunked persistence, reserve the current block right away: if we crash
         // before the first boundary write, the next restore still skips past any
-        // sequence numbers this run may have handed out.
+        // sequence numbers this run may have handed out. The reservation must be durable —
+        // a lost async write would recompute the *same* boundary on restart and re-hand-out
+        // numbers, breaking the "duplicates impossible" guarantee.
         if (chunk > 1) {
             store.putLong(KEY_SEQ_GLOBAL, globalSeq)
             store.putLong(KEY_SEQ_SESSION, sessionSeq)
+            store.flush()
         }
     }
 
@@ -82,7 +87,9 @@ internal class Stamper(
             SequenceMode.PerDevice, SequenceMode.Both -> ++globalSeq
             else -> null
         }
-        persistCounters()
+        // Make the high-water mark durable before the envelope (and its sequence number)
+        // escapes this call, so a crash cannot leave a persisted mark behind the emitted seq.
+        if (persistCounters()) store.flush()
 
         Envelope(
             eventId = idGen.next(),
@@ -118,25 +125,40 @@ internal class Stamper(
         sessionStart = now
         lastActivity = now
         sessionSeq = 0
-        persistSession()
+        store.putString(KEY_SESSION_ID, sessionId)
+        store.putLong(KEY_SESSION_START, sessionStart)
+        store.putLong(KEY_LAST_ACTIVITY, lastActivity)
         store.putLong(KEY_SEQ_SESSION, 0)
+        store.flush()
     }
 
     private fun nextBoundary(persisted: Long): Long =
         if (chunk == 1L) persisted else (persisted / chunk + 1) * chunk
 
-    private fun persistCounters() {
-        if (chunk == 1L || sessionSeq % chunk == 0L || globalSeq % chunk == 0L) {
+    /**
+     * Persists the counter high-water marks when a durability point is reached, returning
+     * whether it wrote (the caller then [SeqStore.flush]es). Under EveryEvent (chunk == 1) that
+     * is every event; under Chunked it is only when an *active* counter crosses a chunk boundary.
+     * Testing an inactive counter (which stays 0, so `0 % chunk == 0` is always true) would fire
+     * on every event and silently defeat Chunked's write batching for single-counter modes.
+     */
+    private fun persistCounters(): Boolean {
+        val atDurabilityPoint = chunk == 1L ||
+            (tracksSession && sessionSeq % chunk == 0L) ||
+            (tracksGlobal && globalSeq % chunk == 0L)
+        if (atDurabilityPoint) {
             store.putLong(KEY_SEQ_SESSION, sessionSeq)
             store.putLong(KEY_SEQ_GLOBAL, globalSeq)
             store.putLong(KEY_LAST_ACTIVITY, lastActivity)
         }
+        return atDurabilityPoint
     }
 
     private fun persistSession() {
         store.putString(KEY_SESSION_ID, sessionId)
         store.putLong(KEY_SESSION_START, sessionStart)
         store.putLong(KEY_LAST_ACTIVITY, lastActivity)
+        store.flush()
     }
 }
 

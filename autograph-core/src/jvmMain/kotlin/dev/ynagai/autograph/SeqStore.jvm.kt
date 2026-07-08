@@ -27,4 +27,9 @@ internal class PreferencesSeqStore(
     override fun remove(key: String) {
         prefs.remove(key)
     }
+
+    override fun flush() {
+        // Forces any changes buffered in memory out to the backing store.
+        prefs.flush()
+    }
 }

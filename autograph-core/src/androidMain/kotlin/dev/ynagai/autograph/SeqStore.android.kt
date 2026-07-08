@@ -43,4 +43,11 @@ internal class SharedPreferencesSeqStore(
     override fun remove(key: String) {
         prefs.edit().remove(key).apply()
     }
+
+    override fun flush() {
+        // Counter writes above use apply() (async, non-durable on a hard crash). commit()
+        // rewrites the full in-memory state — including those pending apply()s — to disk
+        // synchronously, so the persisted high-water mark survives a crash.
+        prefs.edit().commit()
+    }
 }
