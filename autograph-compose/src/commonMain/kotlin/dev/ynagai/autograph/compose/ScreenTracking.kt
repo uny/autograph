@@ -7,6 +7,7 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import dev.ynagai.autograph.EmptyJsonObject
+import kotlin.concurrent.Volatile
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -70,6 +71,9 @@ public fun TrackedScreen(
 
 /** The most recent screen name, used to enrich the next event with `previous_screen`. */
 internal class ScreenHistory {
+    // Written from a LaunchedEffect coroutine and from the NavController listener callback; @Volatile
+    // makes writes visible across those contexts even if they are ever not on the same thread.
+    @Volatile
     var lastScreen: String? = null
 }
 
