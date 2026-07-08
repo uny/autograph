@@ -24,6 +24,7 @@ public fun NavController.TrackScreenViews(
     screenName: (NavDestination) -> String? = { it.route },
 ) {
     val tracker = LocalTracker.current
+    val history = LocalScreenHistory.current
     DisposableEffect(this, tracker) {
         val listener = object : NavController.OnDestinationChangedListener {
             override fun onDestinationChanged(
@@ -32,8 +33,8 @@ public fun NavController.TrackScreenViews(
                 arguments: androidx.savedstate.SavedState?,
             ) {
                 val name = screenName(destination) ?: return
-                tracker.screen(name, withPreviousScreen(EmptyJsonObject, ScreenLog.lastScreen))
-                ScreenLog.lastScreen = name
+                tracker.screen(name, withPreviousScreen(EmptyJsonObject, history.lastScreen))
+                history.lastScreen = name
             }
         }
         addOnDestinationChangedListener(listener)

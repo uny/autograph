@@ -3,6 +3,7 @@ package dev.ynagai.autograph.compose
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -38,7 +39,14 @@ public fun AutographProvider(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    CompositionLocalProvider(LocalTracker provides tracker, content = content)
+    // Scope screen history to this tracker so previous_screen never leaks across trackers and
+    // resets when the tracker is replaced (e.g. after logout).
+    val screenHistory = remember(tracker) { ScreenHistory() }
+    CompositionLocalProvider(
+        LocalTracker provides tracker,
+        LocalScreenHistory provides screenHistory,
+        content = content,
+    )
 }
 
 private object MissingTracker : Tracker {

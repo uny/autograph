@@ -3,7 +3,9 @@ package dev.ynagai.autograph.compose
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.staticCompositionLocalOf
 import dev.ynagai.autograph.EmptyJsonObject
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -33,9 +35,10 @@ public fun TrackScreenView(
     properties: JsonObject = EmptyJsonObject,
 ) {
     val tracker = LocalTracker.current
+    val history = LocalScreenHistory.current
     LaunchedEffect(name) {
-        tracker.screen(name, withPreviousScreen(properties, ScreenLog.lastScreen))
-        ScreenLog.lastScreen = name
+        tracker.screen(name, withPreviousScreen(properties, history.lastScreen))
+        history.lastScreen = name
     }
 }
 
@@ -65,6 +68,18 @@ public fun TrackedScreen(
     CompositionLocalProvider(LocalScreenContext provides ScreenContext(name), content = content)
 }
 
-internal object ScreenLog {
+/** The most recent screen name, used to enrich the next event with `previous_screen`. */
+internal class ScreenHistory {
     var lastScreen: String? = null
 }
+
+private val fallbackScreenHistory = ScreenHistory()
+
+/**
+ * Per-[AutographProvider] screen history. Scoping it to the provider (keyed on the tracker)
+ * keeps `previous_screen` from leaking between independent trackers and resets it when the
+ * tracker is replaced (e.g. after logout). Outside a provider — where events are dropped
+ * anyway — reads fall back to a shared instance.
+ */
+internal val LocalScreenHistory: ProvidableCompositionLocal<ScreenHistory> =
+    staticCompositionLocalOf { fallbackScreenHistory }
