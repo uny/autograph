@@ -27,7 +27,7 @@ SPI is vendor-neutral.
 | Module | What it does |
 |:--|:--|
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
-| `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by a companion Swift package. |
+| `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by an app-injected Swift adapter (companion SPM package planned). |
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, and automatic screen tracking for navigation-compose. |
 
 ## Quick start
@@ -74,9 +74,9 @@ Every event now carries:
 
 ## Requirements
 
-- Kotlin **2.3+** (UUIDv7 generation comes from the standard library)
-- Compose Multiplatform **1.9+** (for the upcoming visibility-based impression tracking)
-- Targets: Android, iOS, Desktop (JVM). Web (Wasm) is planned.
+- Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)
+- Compose Multiplatform **1.11.1** (for the upcoming visibility-based impression tracking)
+- Targets: Android, iOS, JVM. Web (Wasm) is planned.
 
 ## Roadmap
 
@@ -88,7 +88,7 @@ Every event now carries:
 
 ## License
 
-```
+```text
 Copyright 2026 Yuki Nagai
 
 Licensed under the Apache License, Version 2.0 (the "License");
