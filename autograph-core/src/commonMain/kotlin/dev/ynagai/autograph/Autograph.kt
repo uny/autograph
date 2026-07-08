@@ -1,6 +1,7 @@
 package dev.ynagai.autograph
 
 import kotlinx.serialization.json.JsonObject
+import kotlin.time.Clock
 
 /** Configuration for the [Autograph] builder. */
 public class AutographConfig internal constructor() {
@@ -21,7 +22,7 @@ public class AutographConfig internal constructor() {
     public var store: SeqStore? = null
 
     internal var transport: Transport? = null
-    internal var clock: () -> Long = ::epochMillis
+    internal var clock: () -> Long = { Clock.System.now().toEpochMilliseconds() }
 
     /** Sets the transport that delivers events, e.g. `SegmentTransport` from `autograph-segment`. */
     public fun transport(transport: Transport) {

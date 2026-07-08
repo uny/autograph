@@ -165,5 +165,3 @@ internal class Stamper(
         store.flush()
     }
 }
-
-internal expect fun epochMillis(): Long
