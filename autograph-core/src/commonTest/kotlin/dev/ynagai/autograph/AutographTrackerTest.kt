@@ -1,5 +1,9 @@
 package dev.ynagai.autograph
 
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,6 +39,10 @@ class AutographTrackerTest {
     private fun tracker(transport: Transport): Tracker = Autograph {
         transport(transport)
         store = InMemorySeqStore()
+        // Run the off-main stamping dispatch synchronously so assertions can read the result
+        // right after the call. Unconfined executes each launch to completion inline (the worker
+        // body never suspends), preserving call order.
+        dispatcher = Dispatchers.Unconfined
     }
 
     @Test
@@ -52,6 +60,28 @@ class AutographTrackerTest {
         assertNotNull(second)
         assertEquals(1L, first.seq)
         assertEquals(2L, second.seq)
+    }
+
+    @Test
+    fun coreStampsOffTheCallerThreadInCallOrder() = runTest {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = StandardTestDispatcher(testScheduler)
+        }
+
+        tracker.track("A")
+        tracker.screen("B")
+        tracker.identify("u")
+        // Fire-and-forget: nothing is stamped/delivered on the calling thread.
+        assertEquals(0, transport.calls.size, "delivery must be deferred to the dispatcher")
+
+        advanceUntilIdle()
+
+        // All delivered, and stamped in call order despite the async hand-off.
+        assertEquals(listOf("track", "screen", "identify"), transport.calls.map { it.first })
+        assertEquals(listOf(1L, 2L, 3L), transport.calls.map { it.third?.seq })
     }
 
     @Test

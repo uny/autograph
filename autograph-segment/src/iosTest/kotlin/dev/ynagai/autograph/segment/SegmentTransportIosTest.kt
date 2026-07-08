@@ -3,6 +3,7 @@ package dev.ynagai.autograph.segment
 import dev.ynagai.autograph.Autograph
 import dev.ynagai.autograph.InMemorySeqStore
 import dev.ynagai.autograph.SequenceMode
+import kotlinx.coroutines.Dispatchers
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
@@ -36,6 +37,7 @@ class SegmentTransportIosTest {
             transport(SegmentTransport(bridge))
             store = InMemorySeqStore()
             sequence = SequenceMode.PerSession
+            dispatcher = Dispatchers.Unconfined // stamp synchronously so assertions can read results
         }
 
         tracker.track("A")

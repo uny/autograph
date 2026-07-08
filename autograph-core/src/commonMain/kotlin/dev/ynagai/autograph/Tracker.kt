@@ -7,6 +7,10 @@ import kotlinx.serialization.json.JsonObject
  *
  * Obtain an instance via the [Autograph] builder function and provide it to your UI
  * (e.g. through `AutographProvider` from the `autograph-compose` module).
+ *
+ * [track], [screen], and [identify] are fire-and-forget and safe to call from any thread,
+ * including the main thread: stamping and its disk persistence run on an internal serial
+ * dispatcher, so they never block the caller. Events are still stamped in call order.
  */
 public interface Tracker {
 
