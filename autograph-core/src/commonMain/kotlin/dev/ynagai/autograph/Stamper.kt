@@ -80,14 +80,8 @@ internal class Stamper(
         rotateIfExpired(now)
         lastActivity = now
 
-        val seq = when (mode) {
-            SequenceMode.PerSession, SequenceMode.Both -> ++sessionSeq
-            else -> null
-        }
-        val global = when (mode) {
-            SequenceMode.PerDevice, SequenceMode.Both -> ++globalSeq
-            else -> null
-        }
+        val seq = if (tracksSession) ++sessionSeq else null
+        val global = if (tracksGlobal) ++globalSeq else null
         // Make the high-water mark durable before the envelope (and its sequence number)
         // escapes this call, so a crash cannot leave a persisted mark behind the emitted seq.
         if (persistCounters()) store.flush()
