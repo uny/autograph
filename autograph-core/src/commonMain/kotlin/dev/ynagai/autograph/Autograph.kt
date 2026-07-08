@@ -127,12 +127,29 @@ internal class AutographTracker(
         stamper.notifyBackground()
     }
 
+    // flush and reset must observe the same ordering as delivery: when the core stamps off the
+    // caller thread, an event enqueued just before flush()/reset() has not been stamped yet, so
+    // running these synchronously would flush before it is delivered, or reset the session out from
+    // under it (mis-attributing a pre-reset event to the new session). Route them through the same
+    // serial [scope] so they run after any already-enqueued events. When the transport stamps in
+    // its own pipeline, delivery is already synchronous, so these stay synchronous too.
     override fun flush() {
-        transport.flush()
+        if (transport.stampsInPipeline) {
+            transport.flush()
+        } else {
+            scope.launch { transport.flush() }
+        }
     }
 
     override fun reset() {
-        stamper.reset()
-        transport.reset()
+        if (transport.stampsInPipeline) {
+            stamper.reset()
+            transport.reset()
+        } else {
+            scope.launch {
+                stamper.reset()
+                transport.reset()
+            }
+        }
     }
 }

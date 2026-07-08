@@ -85,6 +85,31 @@ class AutographTrackerTest {
     }
 
     @Test
+    fun eventEnqueuedBeforeResetKeepsPreResetSessionAndSequence() = runTest {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = StandardTestDispatcher(testScheduler)
+        }
+
+        tracker.track("first")
+        advanceUntilIdle()
+        val session1 = transport.calls[0].third!!.session.id
+
+        // Enqueue A (deferred to the dispatcher), then reset synchronously on the caller thread.
+        tracker.track("A")
+        tracker.reset()
+        advanceUntilIdle()
+
+        // A was enqueued before reset, so it must still belong to the pre-reset session and take
+        // the next sequence number (2), not be mis-attributed to the new post-reset session (seq 1).
+        val a = transport.calls[1].third!!
+        assertEquals(session1, a.session.id, "pre-reset event was mis-attributed to the new session")
+        assertEquals(2L, a.seq, "pre-reset event got a post-reset sequence number")
+    }
+
+    @Test
     fun coreDoesNotStampWhenTransportStampsInPipeline() {
         val transport = RecordingTransport(stampsInPipeline = true)
         val tracker = tracker(transport)
