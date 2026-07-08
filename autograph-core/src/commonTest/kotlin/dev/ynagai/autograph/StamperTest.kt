@@ -42,6 +42,20 @@ class StamperTest {
     }
 
     @Test
+    fun perSessionModeStampsSessionSeqOnly() {
+        val envelope = stamper(mode = SequenceMode.PerSession).stamp()
+        assertEquals(1L, envelope.seq)
+        assertNull(envelope.globalSeq, "PerSession must not stamp a device-lifetime counter")
+    }
+
+    @Test
+    fun perDeviceModeStampsGlobalSeqOnly() {
+        val envelope = stamper(mode = SequenceMode.PerDevice).stamp()
+        assertNull(envelope.seq, "PerDevice must not stamp a per-session counter")
+        assertEquals(1L, envelope.globalSeq)
+    }
+
+    @Test
     fun sessionRotatesAfterTimeoutAndResetsSessionSeq() {
         val s = stamper()
         val first = s.stamp()
