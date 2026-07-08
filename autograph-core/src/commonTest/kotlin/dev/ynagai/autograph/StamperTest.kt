@@ -120,4 +120,34 @@ class StamperTest {
         assertTrue(json.containsKey("session_start"))
         assertTrue(json.containsKey("sdk"))
     }
+
+    @Test
+    fun notifyBackgroundPersistsSessionForRestartWithinTimeout() {
+        val s = stamper()
+        val first = s.stamp()
+
+        now += 5.minutes.inWholeMilliseconds
+        s.notifyBackground()
+
+        // Restart 10 minutes later — still within the 30-minute timeout of the
+        // last activity persisted by notifyBackground: the session must resume.
+        now += 10.minutes.inWholeMilliseconds
+        val resumed = stamper().stamp()
+
+        assertEquals(first.session.id, resumed.session.id, "backgrounded session must resume after restart within timeout")
+        assertEquals(2L, resumed.seq, "per-session seq continues after a resumed restart")
+    }
+
+    @Test
+    fun notifyForegroundRotatesExpiredSession() {
+        val s = stamper()
+        val first = s.stamp()
+
+        now += 31.minutes.inWholeMilliseconds
+        s.notifyForeground()
+        val after = s.stamp()
+
+        assertNotEquals(first.session.id, after.session.id, "foreground after timeout must start a new session")
+        assertEquals(1L, after.seq, "new session restarts the per-session seq")
+    }
 }
