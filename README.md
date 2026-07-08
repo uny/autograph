@@ -1,5 +1,7 @@
 # Autograph
 
+[![CI](https://github.com/uny/autograph/actions/workflows/ci.yml/badge.svg)](https://github.com/uny/autograph/actions/workflows/ci.yml)
+
 > Your app signs its own story.
 
 **Autograph** is an analytics *instrumentation* layer for Kotlin Multiplatform and
