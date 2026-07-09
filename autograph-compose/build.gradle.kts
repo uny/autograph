@@ -26,6 +26,12 @@ kotlin {
         }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
+            @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+            implementation(compose.uiTest)
+        }
+        jvmTest.dependencies {
+            // Desktop runtime backing runComposeUiTest on the JVM target (skiko + the test rule).
+            implementation(compose.desktop.currentOs)
         }
     }
 }
