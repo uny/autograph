@@ -1,6 +1,8 @@
 package dev.ynagai.autograph
 
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -31,6 +33,39 @@ private class RecordingTransport(
 
     override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
         calls += Triple("identify", userId, envelope)
+    }
+}
+
+/**
+ * A transport that stamps inside its own asynchronous, serial pipeline — like Segment on Android,
+ * where `analytics.track()` enqueues an event and the envelope is stamped later, on the pipeline's
+ * single dispatcher. Events (and resets) are stamped/applied in the order they were enqueued.
+ */
+private class FakePipelineTransport(
+    private val scope: CoroutineScope,
+) : Transport {
+    override val stampsInPipeline: Boolean = true
+    private lateinit var envelopes: EnvelopeSource
+
+    /** Envelopes stamped inside the pipeline, in stamping order. */
+    val stamped = mutableListOf<Pair<String, Envelope>>()
+
+    override fun connect(envelopes: EnvelopeSource) {
+        this.envelopes = envelopes
+    }
+
+    // The core passes envelope = null (stampsInPipeline); stamping is deferred into the pipeline.
+    override fun track(name: String, properties: JsonObject, envelope: Envelope?) = enqueueStamp(name)
+    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) = enqueueStamp(name)
+    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) = enqueueStamp(userId)
+
+    private fun enqueueStamp(name: String) {
+        scope.launch { stamped += name to envelopes.stamp() }
+    }
+
+    override fun reset() {
+        // Order the rotation within the pipeline, after any already-enqueued events.
+        scope.launch { envelopes.reset() }
     }
 }
 
@@ -107,6 +142,42 @@ class AutographTrackerTest {
         val a = transport.calls[1].third!!
         assertEquals(session1, a.session.id, "pre-reset event was mis-attributed to the new session")
         assertEquals(2L, a.seq, "pre-reset event got a post-reset sequence number")
+    }
+
+    @Test
+    fun pipelineEventEnqueuedBeforeResetKeepsPreResetSession() = runTest {
+        // Pipeline transports stamp asynchronously on their own dispatcher; drive that dispatcher
+        // off the test scheduler so stamping order is observable and deterministic.
+        val transport = FakePipelineTransport(CoroutineScope(StandardTestDispatcher(testScheduler)))
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = StandardTestDispatcher(testScheduler)
+        }
+
+        tracker.track("first")
+        advanceUntilIdle()
+        val session1 = transport.stamped[0].second.session.id
+
+        // Enqueue A onto the pipeline (not yet stamped), then reset. The core must NOT rotate the
+        // session synchronously here: it must hand the reset to the transport, which orders it after
+        // A within the pipeline.
+        tracker.track("A")
+        tracker.reset()
+        advanceUntilIdle()
+
+        // A was enqueued before the reset, so it keeps the pre-reset session and the next sequence
+        // number (2) — it must not be re-attributed to the post-reset session (which would give seq 1).
+        val a = transport.stamped[1].second
+        assertEquals(session1, a.session.id, "pre-reset event was mis-attributed to the new session")
+        assertEquals(2L, a.seq, "pre-reset event got a post-reset sequence number")
+
+        // An event enqueued after the reset belongs to the new session, with its sequence restarted.
+        tracker.track("B")
+        advanceUntilIdle()
+        val b = transport.stamped[2].second
+        assertTrue(b.session.id != session1, "post-reset event must belong to a new session")
+        assertEquals(1L, b.seq, "new session must restart the per-session sequence")
     }
 
     @Test

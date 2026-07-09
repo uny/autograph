@@ -11,6 +11,18 @@ import kotlinx.serialization.json.JsonObject
 public interface EnvelopeSource {
     /** Returns a new envelope. Thread-safe; each call advances the sequence counters. */
     public fun stamp(): Envelope
+
+    /**
+     * Rotates the session (e.g. on logout): starts a fresh session id and per-session sequence.
+     * Device-lifetime counters are preserved. Thread-safe.
+     *
+     * A transport that stamps in its own pipeline ([Transport.stampsInPipeline]) is responsible
+     * for calling this **from inside that pipeline**, ordered after any events already enqueued,
+     * so a reset and the events preceding it keep their relative order — an event enqueued before
+     * the reset must keep the pre-reset session, not be re-attributed to the new one. Transports
+     * that let the core stamp never call this; the core drives their reset itself.
+     */
+    public fun reset()
 }
 
 /**

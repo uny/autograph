@@ -23,6 +23,7 @@ class AutographPluginTest {
 
     private val source = object : EnvelopeSource {
         override fun stamp(): Envelope = envelope
+        override fun reset() {}
     }
 
     @Test
