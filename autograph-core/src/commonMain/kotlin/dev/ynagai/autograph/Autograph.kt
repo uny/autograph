@@ -131,10 +131,7 @@ internal class AutographTracker(
     // caller thread, an event enqueued just before flush()/reset() has not been stamped yet, so
     // running these synchronously would flush before it is delivered, or reset the session out from
     // under it (mis-attributing a pre-reset event to the new session). Route them through the same
-    // serial [scope] so they run after any already-enqueued events. When the transport stamps in
-    // its own pipeline the core cannot order these within that pipeline anyway, so they stay
-    // synchronous (a reset racing an event still in the transport's own queue is that transport's
-    // concern, out of the core's reach).
+    // serial [scope] so they run after any already-enqueued events.
     override fun flush() {
         if (transport.stampsInPipeline) {
             transport.flush()
@@ -145,7 +142,11 @@ internal class AutographTracker(
 
     override fun reset() {
         if (transport.stampsInPipeline) {
-            stamper.reset()
+            // The core cannot stamp within the transport's own pipeline, so it cannot order a reset
+            // there either. Hand the reset to the transport, which sequences the session rotation
+            // (EnvelopeSource.reset) inside its pipeline after any already-enqueued events — see
+            // EnvelopeSource.reset. Resetting the stamper synchronously here would instead rotate
+            // the session out from under events still queued in the pipeline, mis-attributing them.
             transport.reset()
         } else {
             scope.launch {

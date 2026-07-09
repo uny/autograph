@@ -105,7 +105,7 @@ internal class Stamper(
     }
 
     /** Starts a fresh session, e.g. on logout. Device-lifetime counters are preserved. */
-    fun reset(): Unit = synchronized(lock) {
+    override fun reset(): Unit = synchronized(lock) {
         startNewSession(clock())
     }
 

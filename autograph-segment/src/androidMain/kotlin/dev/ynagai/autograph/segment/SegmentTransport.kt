@@ -6,6 +6,7 @@ import com.segment.analytics.kotlin.core.platform.Plugin
 import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.EnvelopeSource
 import dev.ynagai.autograph.Transport
+import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -20,9 +21,12 @@ public class SegmentTransport(
     private val analytics: Analytics,
 ) : Transport {
 
+    private lateinit var envelopes: EnvelopeSource
+
     override val stampsInPipeline: Boolean get() = true
 
     override fun connect(envelopes: EnvelopeSource) {
+        this.envelopes = envelopes
         analytics.add(AutographPlugin(envelopes))
     }
 
@@ -43,6 +47,13 @@ public class SegmentTransport(
     }
 
     override fun reset() {
+        // reset() must be ordered *within* Segment's pipeline. analytics.track() enqueues each event
+        // onto the serial analyticsDispatcher and AutographPlugin stamps it there, later; rotating
+        // the session synchronously here would let an event enqueued just before logout stamp against
+        // the new session. Post the rotation onto that same dispatcher so it runs after the events
+        // already enqueued. analytics.reset() (which clears the Segment-side user) likewise posts onto
+        // the dispatcher, after this rotation.
+        analytics.analyticsScope.launch(analytics.analyticsDispatcher) { envelopes.reset() }
         analytics.reset()
     }
 }
