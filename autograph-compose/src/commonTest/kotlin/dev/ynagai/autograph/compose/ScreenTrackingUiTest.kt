@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.compose
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -19,6 +20,7 @@ import kotlin.test.assertNull
 
 private class RecordingTracker : Tracker {
     val screens = mutableListOf<Pair<String, JsonObject>>()
+    val names: List<String> get() = screens.map { it.first }
     override fun track(name: String, properties: JsonObject) {}
     override fun screen(name: String, properties: JsonObject) {
         screens += name to properties
@@ -28,6 +30,20 @@ private class RecordingTracker : Tracker {
 
 private fun JsonObject.previousScreen(): String? = this["previous_screen"]?.jsonPrimitive?.content
 
+/**
+ * Provides [tracker] plus a fresh [ScreenHistory] to [content] — the ambient wiring the
+ * screen-tracking composables read. Kept independent of [AutographProvider] (whose own tests
+ * exercise that path) so these cases stay decoupled from its lifecycle side effects.
+ */
+@Composable
+private fun WithTracker(tracker: Tracker, content: @Composable () -> Unit) {
+    CompositionLocalProvider(
+        LocalTracker provides tracker,
+        LocalScreenHistory provides ScreenHistory(),
+        content = content,
+    )
+}
+
 @OptIn(ExperimentalTestApi::class)
 class ScreenTrackingUiTest {
 
@@ -35,16 +51,13 @@ class ScreenTrackingUiTest {
     fun trackScreenViewFiresOnceOnEntry() = runComposeUiTest {
         val tracker = RecordingTracker()
         setContent {
-            CompositionLocalProvider(
-                LocalTracker provides tracker,
-                LocalScreenHistory provides ScreenHistory(),
-            ) {
+            WithTracker(tracker) {
                 TrackScreenView("Home")
             }
         }
         waitForIdle()
 
-        assertEquals(listOf("Home"), tracker.screens.map { it.first })
+        assertEquals(listOf("Home"), tracker.names)
         assertNull(tracker.screens[0].second.previousScreen(), "the first screen has no previous")
     }
 
@@ -53,10 +66,7 @@ class ScreenTrackingUiTest {
         val tracker = RecordingTracker()
         var name by mutableStateOf("Home")
         setContent {
-            CompositionLocalProvider(
-                LocalTracker provides tracker,
-                LocalScreenHistory provides ScreenHistory(),
-            ) {
+            WithTracker(tracker) {
                 TrackScreenView(name)
             }
         }
@@ -67,7 +77,7 @@ class ScreenTrackingUiTest {
 
         // The screen re-fires when its name changes, and the second view carries the first as
         // previous_screen — the propagation the pure withPreviousScreen test could not exercise.
-        assertEquals(listOf("Home", "Detail"), tracker.screens.map { it.first })
+        assertEquals(listOf("Home", "Detail"), tracker.names)
         assertNull(tracker.screens[0].second.previousScreen())
         assertEquals("Home", tracker.screens[1].second.previousScreen())
     }
@@ -77,10 +87,7 @@ class ScreenTrackingUiTest {
         val tracker = RecordingTracker()
         var captured: ScreenContext? = null
         setContent {
-            CompositionLocalProvider(
-                LocalTracker provides tracker,
-                LocalScreenHistory provides ScreenHistory(),
-            ) {
+            WithTracker(tracker) {
                 TrackedScreen("Cart") {
                     captured = LocalScreenContext.current
                 }
@@ -89,7 +96,7 @@ class ScreenTrackingUiTest {
         waitForIdle()
 
         assertEquals(ScreenContext("Cart"), captured, "nested content sees the ambient screen")
-        assertEquals(listOf("Cart"), tracker.screens.map { it.first })
+        assertEquals(listOf("Cart"), tracker.names)
     }
 
     @Test
@@ -98,10 +105,7 @@ class ScreenTrackingUiTest {
         lateinit var navController: NavHostController
         setContent {
             navController = rememberNavController()
-            CompositionLocalProvider(
-                LocalTracker provides tracker,
-                LocalScreenHistory provides ScreenHistory(),
-            ) {
+            WithTracker(tracker) {
                 navController.TrackScreenViews()
                 NavHost(navController, startDestination = "home") {
                     composable("home") {}
@@ -116,7 +120,7 @@ class ScreenTrackingUiTest {
 
         // Both the start destination and the navigated-to destination are tracked, and the second
         // carries the first as previous_screen — automatic screen-to-screen propagation over nav.
-        assertEquals(listOf("home", "detail"), tracker.screens.map { it.first })
+        assertEquals(listOf("home", "detail"), tracker.names)
         assertNull(tracker.screens[0].second.previousScreen())
         assertEquals("home", tracker.screens[1].second.previousScreen())
     }
@@ -131,7 +135,7 @@ class ScreenTrackingUiTest {
         }
         waitForIdle()
 
-        assertEquals(listOf("Home"), tracker.screens.map { it.first })
+        assertEquals(listOf("Home"), tracker.names)
     }
 
     @Test
@@ -158,12 +162,12 @@ class ScreenTrackingUiTest {
         waitForIdle()
 
         // Within one tracker, previous_screen propagates (Detail follows Home).
-        assertEquals(listOf("Home", "Detail"), before.screens.map { it.first })
+        assertEquals(listOf("Home", "Detail"), before.names)
         assertEquals("Home", before.screens[1].second.previousScreen())
 
         // Replacing the tracker (e.g. after logout) gives a fresh history, so the first screen on
         // the new tracker must NOT inherit "Detail" as its previous_screen.
-        assertEquals(listOf("Login"), after.screens.map { it.first })
+        assertEquals(listOf("Login"), after.names)
         assertNull(after.screens[0].second.previousScreen(), "previous_screen leaked across trackers")
     }
 }
