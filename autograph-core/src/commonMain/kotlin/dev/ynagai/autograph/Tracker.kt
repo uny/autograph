@@ -14,8 +14,17 @@ import kotlinx.serialization.json.JsonObject
  */
 public interface Tracker {
 
-    /** Records a custom event with the given [name] and [properties]. */
-    public fun track(name: String, properties: JsonObject = EmptyJsonObject)
+    /**
+     * Records a custom event with the given [name] and [properties].
+     *
+     * [target] identifies which UI element or entry point triggered the event (e.g. the same
+     * "select_item" fired from a map pin vs. a list row vs. history), as a stable, library-
+     * managed field rather than an ad-hoc `properties` key that every adopter names differently.
+     * When set, it is merged into [properties] under the reserved key `"target"` — an explicit
+     * `"target"` entry already in [properties] is overwritten. Omit for events with no
+     * meaningful originating element (e.g. lifecycle events).
+     */
+    public fun track(name: String, properties: JsonObject = EmptyJsonObject, target: String? = null)
 
     /** Records a screen view. */
     public fun screen(name: String, properties: JsonObject = EmptyJsonObject)

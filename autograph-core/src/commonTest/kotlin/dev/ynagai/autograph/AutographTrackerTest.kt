@@ -7,6 +7,8 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
@@ -18,6 +20,7 @@ private class RecordingTransport(
 ) : Transport {
     var envelopes: EnvelopeSource? = null
     val calls = mutableListOf<Triple<String, String, Envelope?>>()
+    val trackedProperties = mutableListOf<JsonObject>()
 
     override fun connect(envelopes: EnvelopeSource) {
         this.envelopes = envelopes
@@ -25,6 +28,7 @@ private class RecordingTransport(
 
     override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
         calls += Triple("track", name, envelope)
+        trackedProperties += properties
     }
 
     override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
@@ -178,6 +182,42 @@ class AutographTrackerTest {
         val b = transport.stamped[2].second
         assertTrue(b.session.id != session1, "post-reset event must belong to a new session")
         assertEquals(1L, b.seq, "new session must restart the per-session sequence")
+    }
+
+    @Test
+    fun targetIsMergedIntoPropertiesUnderTheReservedKey() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = tracker(transport)
+
+        tracker.track("Recipe Saved", target = "share_button")
+
+        val properties = transport.trackedProperties.single()
+        assertEquals("share_button", properties["target"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun targetIsOmittedFromPropertiesWhenNull() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = tracker(transport)
+
+        tracker.track("App Opened")
+
+        assertTrue(!transport.trackedProperties.single().containsKey("target"))
+    }
+
+    @Test
+    fun targetOverwritesAnExplicitTargetKeyAlreadyInProperties() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = tracker(transport)
+
+        tracker.track(
+            "Recipe Saved",
+            properties = JsonObject(mapOf("target" to JsonPrimitive("caller-supplied"))),
+            target = "share_button",
+        )
+
+        val properties = transport.trackedProperties.single()
+        assertEquals("share_button", properties["target"]?.jsonPrimitive?.content)
     }
 
     @Test

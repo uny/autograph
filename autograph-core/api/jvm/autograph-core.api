@@ -153,8 +153,8 @@ public abstract interface class dev/ynagai/autograph/Tracker {
 	public fun reset ()V
 	public abstract fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
 	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
-	public abstract fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
-	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public abstract fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)V
+	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class dev/ynagai/autograph/Tracker$DefaultImpls {
@@ -165,7 +165,7 @@ public final class dev/ynagai/autograph/Tracker$DefaultImpls {
 	public static fun notifyForeground (Ldev/ynagai/autograph/Tracker;)V
 	public static fun reset (Ldev/ynagai/autograph/Tracker;)V
 	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
-	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class dev/ynagai/autograph/TrackerKt {

@@ -21,7 +21,7 @@ import kotlin.test.assertNull
 private class RecordingTracker : Tracker {
     val screens = mutableListOf<Pair<String, JsonObject>>()
     val names: List<String> get() = screens.map { it.first }
-    override fun track(name: String, properties: JsonObject) {}
+    override fun track(name: String, properties: JsonObject, target: String?) {}
     override fun screen(name: String, properties: JsonObject) {
         screens += name to properties
     }

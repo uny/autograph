@@ -8,6 +8,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlin.time.Clock
 
 /** Configuration for the [Autograph] builder. */
@@ -118,8 +119,8 @@ internal class AutographTracker(
         }
     }
 
-    override fun track(name: String, properties: JsonObject): Unit =
-        deliver { transport.track(name, properties, it) }
+    override fun track(name: String, properties: JsonObject, target: String?): Unit =
+        deliver { transport.track(name, withTarget(properties, target), it) }
 
     override fun screen(name: String, properties: JsonObject): Unit =
         deliver { transport.screen(name, properties, it) }
@@ -171,3 +172,7 @@ internal class AutographTracker(
         scope.cancel()
     }
 }
+
+/** Merges [target] into [properties] under the reserved `"target"` key, or returns [properties] unchanged when null. */
+private fun withTarget(properties: JsonObject, target: String?): JsonObject =
+    if (target == null) properties else JsonObject(properties + ("target" to JsonPrimitive(target)))
