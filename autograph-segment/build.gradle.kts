@@ -6,6 +6,9 @@ plugins {
 kotlin {
     explicitApi()
 
+    @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class)
+    abiValidation()
+
     androidLibrary {
         namespace = "dev.ynagai.autograph.segment"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
