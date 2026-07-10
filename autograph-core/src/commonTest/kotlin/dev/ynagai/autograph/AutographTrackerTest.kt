@@ -181,6 +181,39 @@ class AutographTrackerTest {
     }
 
     @Test
+    fun closeCancelsScopeSoLaterEventsAreDropped() = runTest {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = StandardTestDispatcher(testScheduler)
+        }
+
+        tracker.track("before close")
+        advanceUntilIdle()
+        assertEquals(1, transport.calls.size)
+
+        tracker.close()
+        tracker.track("after close")
+        advanceUntilIdle()
+
+        assertEquals(1, transport.calls.size, "an event enqueued after close() must never reach the transport")
+    }
+
+    @Test
+    fun closeDoesNotAffectAPipelineTransportsOwnDelivery() {
+        // stampsInPipeline transports are handed events synchronously, bypassing this tracker's
+        // scope entirely, so close() (which only cancels that scope) must not stop them.
+        val transport = RecordingTransport(stampsInPipeline = true)
+        val tracker = tracker(transport)
+
+        tracker.close()
+        tracker.track("still delivered")
+
+        assertEquals(1, transport.calls.size)
+    }
+
+    @Test
     fun coreDoesNotStampWhenTransportStampsInPipeline() {
         val transport = RecordingTransport(stampsInPipeline = true)
         val tracker = tracker(transport)
