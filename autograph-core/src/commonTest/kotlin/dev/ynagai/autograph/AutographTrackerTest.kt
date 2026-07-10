@@ -11,6 +11,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -218,6 +219,63 @@ class AutographTrackerTest {
 
         val properties = transport.trackedProperties.single()
         assertEquals("share_button", properties["target"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun invalidEventIsDroppedNotThrownWhenNotStrict() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            validator = EventValidator { name, _ -> if (name == "bad") "unknown event name" else null }
+            strictValidation = false
+        }
+
+        tracker.track("bad")
+        tracker.track("Recipe Saved")
+
+        assertEquals(listOf("Recipe Saved"), transport.calls.map { it.second }, "the invalid event must be dropped, not delivered")
+    }
+
+    @Test
+    fun invalidEventThrowsWhenStrict() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            validator = EventValidator { name, _ -> if (name == "bad") "unknown event name" else null }
+            strictValidation = true
+        }
+
+        assertFailsWith<IllegalArgumentException> { tracker.track("bad") }
+        assertEquals(0, transport.calls.size, "the invalid event must never reach the transport")
+    }
+
+    @Test
+    fun validatorAlsoAppliesToScreen() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            validator = EventValidator { _, properties -> if (!properties.containsKey("required")) "missing required property" else null }
+        }
+
+        tracker.screen("Home")
+
+        assertEquals(0, transport.calls.size, "a screen event missing a required property must be dropped")
+    }
+
+    @Test
+    fun noValidatorMeansEveryEventIsDelivered() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = tracker(transport)
+
+        tracker.track("anything")
+
+        assertEquals(1, transport.calls.size)
     }
 
     @Test
