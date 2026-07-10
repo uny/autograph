@@ -1,0 +1,28 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <autograph:autograph-segment>
+abstract interface dev.ynagai.autograph.segment/SegmentBridge { // dev.ynagai.autograph.segment/SegmentBridge|null[0]
+    abstract fun flush() // dev.ynagai.autograph.segment/SegmentBridge.flush|flush(){}[0]
+    abstract fun identify(kotlin/String, kotlin/String, kotlin/String, kotlin/String) // dev.ynagai.autograph.segment/SegmentBridge.identify|identify(kotlin.String;kotlin.String;kotlin.String;kotlin.String){}[0]
+    abstract fun reset() // dev.ynagai.autograph.segment/SegmentBridge.reset|reset(){}[0]
+    abstract fun screen(kotlin/String, kotlin/String, kotlin/String, kotlin/String) // dev.ynagai.autograph.segment/SegmentBridge.screen|screen(kotlin.String;kotlin.String;kotlin.String;kotlin.String){}[0]
+    abstract fun track(kotlin/String, kotlin/String, kotlin/String, kotlin/String) // dev.ynagai.autograph.segment/SegmentBridge.track|track(kotlin.String;kotlin.String;kotlin.String;kotlin.String){}[0]
+}
+
+final class dev.ynagai.autograph.segment/SegmentTransport : dev.ynagai.autograph/Transport { // dev.ynagai.autograph.segment/SegmentTransport|null[0]
+    constructor <init>(dev.ynagai.autograph.segment/SegmentBridge) // dev.ynagai.autograph.segment/SegmentTransport.<init>|<init>(dev.ynagai.autograph.segment.SegmentBridge){}[0]
+
+    final val stampsInPipeline // dev.ynagai.autograph.segment/SegmentTransport.stampsInPipeline|{}stampsInPipeline[0]
+        final fun <get-stampsInPipeline>(): kotlin/Boolean // dev.ynagai.autograph.segment/SegmentTransport.stampsInPipeline.<get-stampsInPipeline>|<get-stampsInPipeline>(){}[0]
+
+    final fun flush() // dev.ynagai.autograph.segment/SegmentTransport.flush|flush(){}[0]
+    final fun identify(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.segment/SegmentTransport.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun reset() // dev.ynagai.autograph.segment/SegmentTransport.reset|reset(){}[0]
+    final fun screen(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.segment/SegmentTransport.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun track(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.segment/SegmentTransport.track|track(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+}

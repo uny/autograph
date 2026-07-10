@@ -1,0 +1,182 @@
+public final class dev/ynagai/autograph/AutographConfig {
+	public final fun getDispatcher ()Lkotlinx/coroutines/CoroutineDispatcher;
+	public final fun getEventId ()Ldev/ynagai/autograph/EventIdGenerator;
+	public final fun getPersistence ()Ldev/ynagai/autograph/SeqPersistence;
+	public final fun getSequence ()Ldev/ynagai/autograph/SequenceMode;
+	public final fun getSession ()Ldev/ynagai/autograph/SessionConfig;
+	public final fun getStore ()Ldev/ynagai/autograph/SeqStore;
+	public final fun setDispatcher (Lkotlinx/coroutines/CoroutineDispatcher;)V
+	public final fun setEventId (Ldev/ynagai/autograph/EventIdGenerator;)V
+	public final fun setPersistence (Ldev/ynagai/autograph/SeqPersistence;)V
+	public final fun setSequence (Ldev/ynagai/autograph/SequenceMode;)V
+	public final fun setSession (Ldev/ynagai/autograph/SessionConfig;)V
+	public final fun setStore (Ldev/ynagai/autograph/SeqStore;)V
+	public final fun transport (Ldev/ynagai/autograph/Transport;)V
+}
+
+public final class dev/ynagai/autograph/AutographKt {
+	public static final fun Autograph (Lkotlin/jvm/functions/Function1;)Ldev/ynagai/autograph/Tracker;
+}
+
+public final class dev/ynagai/autograph/Envelope {
+	public fun <init> (Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ldev/ynagai/autograph/SessionInfo;
+	public final fun component3 ()Ljava/lang/Long;
+	public final fun component4 ()Ljava/lang/Long;
+	public final fun component5 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;)Ldev/ynagai/autograph/Envelope;
+	public static synthetic fun copy$default (Ldev/ynagai/autograph/Envelope;Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEventId ()Ljava/lang/String;
+	public final fun getGlobalSeq ()Ljava/lang/Long;
+	public final fun getSdk ()Ljava/lang/String;
+	public final fun getSeq ()Ljava/lang/Long;
+	public final fun getSession ()Ldev/ynagai/autograph/SessionInfo;
+	public fun hashCode ()I
+	public final fun toJson ()Lkotlinx/serialization/json/JsonObject;
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/ynagai/autograph/EnvelopeSource {
+	public abstract fun reset ()V
+	public abstract fun stamp ()Ldev/ynagai/autograph/Envelope;
+}
+
+public final class dev/ynagai/autograph/EventId {
+	public static final field INSTANCE Ldev/ynagai/autograph/EventId;
+	public final fun getUuidV4 ()Ldev/ynagai/autograph/EventIdGenerator;
+	public final fun getUuidV7 ()Ldev/ynagai/autograph/EventIdGenerator;
+}
+
+public abstract interface class dev/ynagai/autograph/EventIdGenerator {
+	public abstract fun next ()Ljava/lang/String;
+}
+
+public final class dev/ynagai/autograph/InMemorySeqStore : dev/ynagai/autograph/SeqStore {
+	public fun <init> ()V
+	public fun flush ()V
+	public fun getLong (Ljava/lang/String;)Ljava/lang/Long;
+	public fun getString (Ljava/lang/String;)Ljava/lang/String;
+	public fun putLong (Ljava/lang/String;J)V
+	public fun putString (Ljava/lang/String;Ljava/lang/String;)V
+	public fun remove (Ljava/lang/String;)V
+}
+
+public abstract interface class dev/ynagai/autograph/SeqPersistence {
+}
+
+public final class dev/ynagai/autograph/SeqPersistence$Chunked : dev/ynagai/autograph/SeqPersistence {
+	public fun <init> (J)V
+	public final fun component1 ()J
+	public final fun copy (J)Ldev/ynagai/autograph/SeqPersistence$Chunked;
+	public static synthetic fun copy$default (Ldev/ynagai/autograph/SeqPersistence$Chunked;JILjava/lang/Object;)Ldev/ynagai/autograph/SeqPersistence$Chunked;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChunk ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/ynagai/autograph/SeqPersistence$EveryEvent : dev/ynagai/autograph/SeqPersistence {
+	public static final field INSTANCE Ldev/ynagai/autograph/SeqPersistence$EveryEvent;
+	public fun equals (Ljava/lang/Object;)Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/ynagai/autograph/SeqStore {
+	public fun flush ()V
+	public abstract fun getLong (Ljava/lang/String;)Ljava/lang/Long;
+	public abstract fun getString (Ljava/lang/String;)Ljava/lang/String;
+	public abstract fun putLong (Ljava/lang/String;J)V
+	public abstract fun putString (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun remove (Ljava/lang/String;)V
+}
+
+public final class dev/ynagai/autograph/SeqStore$DefaultImpls {
+	public static fun flush (Ldev/ynagai/autograph/SeqStore;)V
+}
+
+public final class dev/ynagai/autograph/SeqStoreKt {
+	public static final fun platformSeqStore ()Ldev/ynagai/autograph/SeqStore;
+}
+
+public final class dev/ynagai/autograph/SequenceMode : java/lang/Enum {
+	public static final field Both Ldev/ynagai/autograph/SequenceMode;
+	public static final field None Ldev/ynagai/autograph/SequenceMode;
+	public static final field PerDevice Ldev/ynagai/autograph/SequenceMode;
+	public static final field PerSession Ldev/ynagai/autograph/SequenceMode;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/ynagai/autograph/SequenceMode;
+	public static fun values ()[Ldev/ynagai/autograph/SequenceMode;
+}
+
+public final class dev/ynagai/autograph/SessionConfig {
+	public synthetic fun <init> (JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public synthetic fun <init> (JLkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1-UwyO8pc ()J
+	public final fun copy-LRDsOJo (J)Ldev/ynagai/autograph/SessionConfig;
+	public static synthetic fun copy-LRDsOJo$default (Ldev/ynagai/autograph/SessionConfig;JILjava/lang/Object;)Ldev/ynagai/autograph/SessionConfig;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBackgroundTimeout-UwyO8pc ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/ynagai/autograph/SessionInfo {
+	public fun <init> (Ljava/lang/String;J)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()J
+	public final fun copy (Ljava/lang/String;J)Ldev/ynagai/autograph/SessionInfo;
+	public static synthetic fun copy$default (Ldev/ynagai/autograph/SessionInfo;Ljava/lang/String;JILjava/lang/Object;)Ldev/ynagai/autograph/SessionInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getId ()Ljava/lang/String;
+	public final fun getStartEpochMillis ()J
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public abstract interface class dev/ynagai/autograph/Tracker {
+	public fun flush ()V
+	public abstract fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public static synthetic fun identify$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public fun notifyBackground ()V
+	public fun notifyForeground ()V
+	public fun reset ()V
+	public abstract fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public abstract fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
+	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+}
+
+public final class dev/ynagai/autograph/Tracker$DefaultImpls {
+	public static fun flush (Ldev/ynagai/autograph/Tracker;)V
+	public static synthetic fun identify$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public static fun notifyBackground (Ldev/ynagai/autograph/Tracker;)V
+	public static fun notifyForeground (Ldev/ynagai/autograph/Tracker;)V
+	public static fun reset (Ldev/ynagai/autograph/Tracker;)V
+	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+}
+
+public final class dev/ynagai/autograph/TrackerKt {
+	public static final fun getEmptyJsonObject ()Lkotlinx/serialization/json/JsonObject;
+}
+
+public abstract interface class dev/ynagai/autograph/Transport {
+	public fun connect (Ldev/ynagai/autograph/EnvelopeSource;)V
+	public fun flush ()V
+	public fun getStampsInPipeline ()Z
+	public abstract fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun reset ()V
+	public abstract fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public abstract fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+}
+
+public final class dev/ynagai/autograph/Transport$DefaultImpls {
+	public static fun connect (Ldev/ynagai/autograph/Transport;Ldev/ynagai/autograph/EnvelopeSource;)V
+	public static fun flush (Ldev/ynagai/autograph/Transport;)V
+	public static fun getStampsInPipeline (Ldev/ynagai/autograph/Transport;)Z
+	public static fun reset (Ldev/ynagai/autograph/Transport;)V
+}
+
