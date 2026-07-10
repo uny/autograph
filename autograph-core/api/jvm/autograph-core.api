@@ -24,6 +24,18 @@ public final class dev/ynagai/autograph/AutographKt {
 	public static final fun Autograph (Lkotlin/jvm/functions/Function1;)Ldev/ynagai/autograph/Tracker;
 }
 
+public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Transport {
+	public fun <init> (Ldev/ynagai/autograph/Transport;Lkotlin/jvm/functions/Function1;)V
+	public synthetic fun <init> (Ldev/ynagai/autograph/Transport;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun connect (Ldev/ynagai/autograph/EnvelopeSource;)V
+	public fun flush ()V
+	public fun getStampsInPipeline ()Z
+	public fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun reset ()V
+	public fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+}
+
 public final class dev/ynagai/autograph/Envelope {
 	public fun <init> (Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
 	public synthetic fun <init> (Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
