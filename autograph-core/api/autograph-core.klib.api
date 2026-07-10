@@ -117,6 +117,20 @@ final class dev.ynagai.autograph/AutographConfig { // dev.ynagai.autograph/Autog
     final fun transport(dev.ynagai.autograph/Transport) // dev.ynagai.autograph/AutographConfig.transport|transport(dev.ynagai.autograph.Transport){}[0]
 }
 
+final class dev.ynagai.autograph/DebugTransport : dev.ynagai.autograph/Transport { // dev.ynagai.autograph/DebugTransport|null[0]
+    constructor <init>(dev.ynagai.autograph/Transport, kotlin/Function1<kotlin/String, kotlin/Unit> = ...) // dev.ynagai.autograph/DebugTransport.<init>|<init>(dev.ynagai.autograph.Transport;kotlin.Function1<kotlin.String,kotlin.Unit>){}[0]
+
+    final val stampsInPipeline // dev.ynagai.autograph/DebugTransport.stampsInPipeline|{}stampsInPipeline[0]
+        final fun <get-stampsInPipeline>(): kotlin/Boolean // dev.ynagai.autograph/DebugTransport.stampsInPipeline.<get-stampsInPipeline>|<get-stampsInPipeline>(){}[0]
+
+    final fun connect(dev.ynagai.autograph/EnvelopeSource) // dev.ynagai.autograph/DebugTransport.connect|connect(dev.ynagai.autograph.EnvelopeSource){}[0]
+    final fun flush() // dev.ynagai.autograph/DebugTransport.flush|flush(){}[0]
+    final fun identify(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun reset() // dev.ynagai.autograph/DebugTransport.reset|reset(){}[0]
+    final fun screen(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun track(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.track|track(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+}
+
 final class dev.ynagai.autograph/Envelope { // dev.ynagai.autograph/Envelope|null[0]
     constructor <init>(kotlin/String, dev.ynagai.autograph/SessionInfo, kotlin/Long?, kotlin/Long?, kotlin/String, kotlin/String, kotlin/String? = ...) // dev.ynagai.autograph/Envelope.<init>|<init>(kotlin.String;dev.ynagai.autograph.SessionInfo;kotlin.Long?;kotlin.Long?;kotlin.String;kotlin.String;kotlin.String?){}[0]
 

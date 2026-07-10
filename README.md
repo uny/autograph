@@ -114,6 +114,21 @@ happens next: `true` throws immediately (fail fast during development), `false` 
 and logs the reason (never crash in production) — the same validator works in both modes. Applies
 to `track`/`screen`; `identify` is unaffected, since it carries no event name to validate.
 
+## Debugging
+
+`DebugTransport` wraps another transport and logs every outgoing event before delivering it — for
+eyeballing events on a real device/build during manual QA, separate from the app's production
+transport (and separate from the planned `autograph-test` module's unit-test assertions):
+
+```kotlin
+val tracker = Autograph {
+    transport(DebugTransport(SegmentTransport(analytics)))
+}
+```
+
+The default logger dumps full event properties — don't wrap a production transport with this in a
+release build (gate it behind a debug-build check, or supply a logger that redacts what it prints).
+
 ## Requirements
 
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)

@@ -159,7 +159,6 @@ internal class AutographTracker(
         } catch (e: Exception) {
             "validator threw: ${e.message}"
         }
-        if (reason == null) return true
         if (strictValidation) {
             throw IllegalArgumentException("Autograph: invalid event \"$name\": $reason")
         }
