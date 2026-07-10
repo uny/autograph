@@ -62,7 +62,7 @@ private object MissingTracker : Tracker {
         }
     }
 
-    override fun track(name: String, properties: JsonObject): Unit = warn()
+    override fun track(name: String, properties: JsonObject, target: String?): Unit = warn()
     override fun screen(name: String, properties: JsonObject): Unit = warn()
     override fun identify(userId: String, traits: JsonObject): Unit = warn()
 }

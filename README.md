@@ -66,6 +66,10 @@ TrackedScreen("RecipeDetail") { RecipeDetailContent() }
 
 // Custom events, anywhere in the composition
 LocalTracker.current.track("Recipe Saved")
+
+// target identifies which element triggered the event — a stable, library-managed
+// properties["target"] key rather than an ad-hoc one every app names differently
+LocalTracker.current.track("Recipe Saved", target = "share_button")
 ```
 
 Every event now carries:
