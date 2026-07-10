@@ -24,6 +24,7 @@ kotlin {
         commonMain.dependencies {
             api(projects.autographCore)
             implementation(compose.runtime)
+            implementation(compose.foundation)
             implementation(libs.jetbrains.lifecycle.runtime.compose)
             implementation(libs.jetbrains.navigation.compose)
         }
