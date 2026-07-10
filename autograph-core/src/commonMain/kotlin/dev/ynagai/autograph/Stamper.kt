@@ -2,6 +2,7 @@ package dev.ynagai.autograph
 
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
+import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
 internal const val SDK_ID: String = "autograph/0.1.0"
@@ -93,6 +94,7 @@ internal class Stamper(
             seq = seq,
             globalSeq = global,
             sdk = SDK_ID,
+            eventTimestamp = Instant.fromEpochMilliseconds(now).toString(),
             schemaVersion = schemaVersion,
         )
     }

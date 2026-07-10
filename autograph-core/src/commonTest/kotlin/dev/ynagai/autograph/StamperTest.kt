@@ -135,6 +135,18 @@ class StamperTest {
         assertTrue(json.containsKey("session_id"))
         assertTrue(json.containsKey("session_start"))
         assertTrue(json.containsKey("sdk"))
+        assertTrue(json.containsKey("event_timestamp"))
+    }
+
+    @Test
+    fun eventTimestampReflectsTheClockAtStampTime() {
+        val s = stamper()
+        val first = s.stamp()
+        assertEquals("1970-01-01T00:16:40Z", first.eventTimestamp, "must render the clock's epoch millis as an ISO-8601 UTC instant")
+
+        now += 5.minutes.inWholeMilliseconds
+        val second = s.stamp()
+        assertNotEquals(first.eventTimestamp, second.eventTimestamp, "each stamp captures the clock at its own call time")
     }
 
     @Test

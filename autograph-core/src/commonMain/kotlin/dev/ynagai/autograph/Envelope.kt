@@ -22,6 +22,14 @@ public data class Envelope(
     /** Name and version of this library, e.g. `autograph/0.1.0`. */
     val sdk: String,
     /**
+     * When [Stamper.stamp] captured this event, as an ISO-8601 UTC instant — independent of
+     * whatever event-time field the transport ends up stamping, which can lag behind by however
+     * long the transport batches/enqueues before sending. Precision matches the platform clock
+     * backing [kotlin.time.Clock.System] (millisecond resolution on the JVM and Android; may be
+     * finer on other targets), not a guaranteed nanosecond timestamp.
+     */
+    val eventTimestamp: String,
+    /**
      * The consumer's own event-schema version, from [AutographConfig.schemaVersion], or null
      * when unset. Distinct from [sdk]: this versions the adopter's tracking plan/contract, not
      * the library.
@@ -36,6 +44,7 @@ public data class Envelope(
         seq?.let { put("seq", it) }
         globalSeq?.let { put("global_seq", it) }
         put("sdk", sdk)
+        put("event_timestamp", eventTimestamp)
         schemaVersion?.let { put("schema_version", it) }
     }
 }

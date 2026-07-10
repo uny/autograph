@@ -15,6 +15,9 @@ stamped onto every event:
   loss; the sequence restores in-session ordering without trusting client timestamps.
 - **`session_id` / `session_start`** — timeout-based sessions that survive process
   restarts.
+- **`event_timestamp`** — captured the moment `track`/`screen`/`identify` is called,
+  independent of the transport's own event-time field (which can lag behind by however
+  long it batches/enqueues before sending).
 
 The on-disk sequence/session store is written via a write-tmp-then-atomic-rename, so a
 process crash mid-write can never leave a corrupt or partially-written file. It does not
@@ -75,6 +78,7 @@ Every event now carries:
     "session_start": 1783585920000,
     "seq": 42,                   // gap ⇒ an event was lost
     "sdk": "autograph/0.1.0",
+    "event_timestamp": "2026-07-11T09:12:03.456Z", // captured at call time, not the transport's own
     "schema_version": "2024-01" // your own tracking-plan version, if set — omitted otherwise
   }
 }

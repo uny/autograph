@@ -19,6 +19,7 @@ class AutographPluginTest {
         seq = 7L,
         globalSeq = null,
         sdk = "autograph/test",
+        eventTimestamp = "2024-01-01T00:00:00Z",
     )
 
     private val source = object : EnvelopeSource {
