@@ -239,6 +239,22 @@ class AutographTrackerTest {
     }
 
     @Test
+    fun aThrowingValidatorCannotCrashANonStrictBuild() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            validator = EventValidator { _, _ -> throw IllegalStateException("bug in the app's own validator") }
+            strictValidation = false
+        }
+
+        tracker.track("anything")
+
+        assertEquals(0, transport.calls.size, "a validator bug must drop the event, not deliver it")
+    }
+
+    @Test
     fun invalidEventThrowsWhenStrict() {
         val transport = RecordingTransport(stampsInPipeline = false)
         val tracker = Autograph {

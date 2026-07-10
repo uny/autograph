@@ -149,10 +149,17 @@ internal class AutographTracker(
     /**
      * Runs [validator] synchronously on the caller's thread, before any dispatch — so
      * [strictValidation] throws with a stack trace pointing at the actual `track`/`screen` call
-     * site, not at whatever later picks the event off [scope].
+     * site, not at whatever later picks the event off [scope]. A [validator] that itself throws
+     * is treated the same as one that returns a rejection reason — even in non-strict mode, so a
+     * buggy validator can't crash a production build merely by running.
      */
     private fun isValid(name: String, properties: JsonObject): Boolean {
-        val reason = validator?.validate(name, properties) ?: return true
+        val reason = try {
+            validator?.validate(name, properties) ?: return true
+        } catch (e: Exception) {
+            "validator threw: ${e.message}"
+        }
+        if (reason == null) return true
         if (strictValidation) {
             throw IllegalArgumentException("Autograph: invalid event \"$name\": $reason")
         }
