@@ -16,6 +16,7 @@ class StamperTest {
         mode: SequenceMode = SequenceMode.Both,
         persistence: SeqPersistence = SeqPersistence.EveryEvent,
         timeout: kotlin.time.Duration = 30.minutes,
+        schemaVersion: String? = null,
     ) = Stamper(
         idGen = EventId.UuidV7,
         mode = mode,
@@ -23,6 +24,7 @@ class StamperTest {
         sessionConfig = SessionConfig(backgroundTimeout = timeout),
         store = store,
         clock = { now },
+        schemaVersion = schemaVersion,
     )
 
     @Test
@@ -133,6 +135,20 @@ class StamperTest {
         assertTrue(json.containsKey("session_id"))
         assertTrue(json.containsKey("session_start"))
         assertTrue(json.containsKey("sdk"))
+    }
+
+    @Test
+    fun schemaVersionIsOmittedWhenUnset() {
+        val envelope = stamper().stamp()
+        assertNull(envelope.schemaVersion)
+        assertTrue(!envelope.toJson().containsKey("schema_version"))
+    }
+
+    @Test
+    fun schemaVersionIsStampedAndSerializedWhenSet() {
+        val envelope = stamper(schemaVersion = "2024-01").stamp()
+        assertEquals("2024-01", envelope.schemaVersion)
+        assertEquals("2024-01", envelope.toJson()["schema_version"]?.toString()?.trim('"'))
     }
 
     @Test

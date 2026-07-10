@@ -74,7 +74,8 @@ Every event now carries:
     "session_id": "0197c99f-…",
     "session_start": 1783585920000,
     "seq": 42,                   // gap ⇒ an event was lost
-    "sdk": "autograph/0.1.0"
+    "sdk": "autograph/0.1.0",
+    "schema_version": "2024-01" // your own tracking-plan version, if set — omitted otherwise
   }
 }
 ```

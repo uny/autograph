@@ -24,6 +24,7 @@ internal class Stamper(
     private val sessionConfig: SessionConfig,
     private val store: SeqStore,
     private val clock: () -> Long,
+    private val schemaVersion: String? = null,
 ) : EnvelopeSource {
 
     private val lock = SynchronizedObject()
@@ -92,6 +93,7 @@ internal class Stamper(
             seq = seq,
             globalSeq = global,
             sdk = SDK_ID,
+            schemaVersion = schemaVersion,
         )
     }
 
