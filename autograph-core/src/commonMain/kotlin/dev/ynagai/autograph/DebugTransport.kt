@@ -8,6 +8,10 @@ import kotlinx.serialization.json.JsonObject
  * connected to a warehouse or any assertion tooling (see the planned `autograph-test` module for
  * unit-test assertions instead).
  *
+ * The default [log] (`println`) dumps every event's full `properties`/`traits` — do not wrap a
+ * production transport with this in a release build, since that can leak PII into device/console
+ * logs. Gate its use behind a debug-build check, or supply a [log] that redacts what it prints.
+ *
  * ```kotlin
  * val tracker = Autograph {
  *     transport(DebugTransport(SegmentTransport(analytics)))

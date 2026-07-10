@@ -126,6 +126,9 @@ val tracker = Autograph {
 }
 ```
 
+The default logger dumps full event properties — don't wrap a production transport with this in a
+release build (gate it behind a debug-build check, or supply a logger that redacts what it prints).
+
 ## Requirements
 
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)
