@@ -16,6 +16,11 @@ stamped onto every event:
 - **`session_id` / `session_start`** — timeout-based sessions that survive process
   restarts.
 
+The on-disk sequence/session store is written via a write-tmp-then-atomic-rename, so a
+process crash mid-write can never leave a corrupt or partially-written file. It does not
+`fsync`, though, so on a hard power loss the last write may not have reached the disk
+platter yet — that's a gap in the guarantee, not in the atomicity.
+
 Autograph deliberately owns **no transport**: queueing, batching, and retries stay in
 the battle-tested SDK underneath. The first adapter targets
 [Segment](https://segment.com) (`analytics-kotlin` / `analytics-swift`); the transport
