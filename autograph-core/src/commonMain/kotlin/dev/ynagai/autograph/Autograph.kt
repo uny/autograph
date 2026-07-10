@@ -29,6 +29,15 @@ public class AutographConfig internal constructor() {
     public var store: SeqStore? = null
 
     /**
+     * Your own event-schema/tracking-plan version, stamped onto every envelope as
+     * `schema_version` — distinct from the library's own [Envelope.sdk] version. Null (the
+     * default) omits the field. Evolve it only for changes that alter how downstream consumers
+     * must interpret an event (e.g. a renamed or repurposed property); purely additive changes
+     * don't need a bump, since existing readers already ignore unknown fields.
+     */
+    public var schemaVersion: String? = null
+
+    /**
      * The dispatcher on which events are stamped and persisted when the transport does not stamp
      * in its own pipeline (e.g. the iOS Segment bridge, or a custom transport). It must be
      * **single-threaded / serial** so sequence numbers keep their call order; the default is a
@@ -70,6 +79,7 @@ public fun Autograph(configure: AutographConfig.() -> Unit): Tracker {
         sessionConfig = config.session,
         store = config.store ?: platformSeqStore(),
         clock = config.clock,
+        schemaVersion = config.schemaVersion,
     )
     return AutographTracker(transport, stamper, config.dispatcher)
 }

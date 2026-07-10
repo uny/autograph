@@ -21,6 +21,12 @@ public data class Envelope(
     val globalSeq: Long?,
     /** Name and version of this library, e.g. `autograph/0.1.0`. */
     val sdk: String,
+    /**
+     * The consumer's own event-schema version, from [AutographConfig.schemaVersion], or null
+     * when unset. Distinct from [sdk]: this versions the adopter's tracking plan/contract, not
+     * the library.
+     */
+    val schemaVersion: String? = null,
 ) {
     /** Serializes this envelope as a JSON object for embedding into event context. */
     public fun toJson(): JsonObject = buildJsonObject {
@@ -30,5 +36,6 @@ public data class Envelope(
         seq?.let { put("seq", it) }
         globalSeq?.let { put("global_seq", it) }
         put("sdk", sdk)
+        schemaVersion?.let { put("schema_version", it) }
     }
 }
