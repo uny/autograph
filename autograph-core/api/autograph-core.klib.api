@@ -41,6 +41,7 @@ abstract interface dev.ynagai.autograph/Tracker { // dev.ynagai.autograph/Tracke
     abstract fun identify(kotlin/String, kotlinx.serialization.json/JsonObject = ...) // dev.ynagai.autograph/Tracker.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
     abstract fun screen(kotlin/String, kotlinx.serialization.json/JsonObject = ...) // dev.ynagai.autograph/Tracker.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
     abstract fun track(kotlin/String, kotlinx.serialization.json/JsonObject = ...) // dev.ynagai.autograph/Tracker.track|track(kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
+    open fun close() // dev.ynagai.autograph/Tracker.close|close(){}[0]
     open fun flush() // dev.ynagai.autograph/Tracker.flush|flush(){}[0]
     open fun notifyBackground() // dev.ynagai.autograph/Tracker.notifyBackground|notifyBackground(){}[0]
     open fun notifyForeground() // dev.ynagai.autograph/Tracker.notifyForeground|notifyForeground(){}[0]

@@ -37,6 +37,18 @@ public interface Tracker {
 
     /** Clears user identity and session state, e.g. on logout. */
     public fun reset() {}
+
+    /**
+     * Releases resources held by this tracker (its internal stamping/delivery coroutine scope).
+     * Call when a tracker is being discarded and replaced, such as recreating it on logout — not
+     * needed for a tracker that lives for the app's lifetime. [track]/[screen]/[identify]/[flush]/
+     * [reset] calls made after [close] are dropped, except when the transport stamps in its own
+     * pipeline, in which case they still reach the transport directly (this tracker never
+     * scheduled them onto the closed scope in the first place). [notifyForeground] and
+     * [notifyBackground] are unaffected either way: they update session state synchronously and
+     * never went through the scope, so they keep working on a closed tracker.
+     */
+    public fun close() {}
 }
 
 /** An empty [JsonObject], useful as a default for event properties. */
