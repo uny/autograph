@@ -47,4 +47,35 @@ class AutographPluginTest {
         assertTrue(json.contains("\"event_id\":\"evt-123\""), json)
         assertTrue(json.contains("\"seq\":7"), json)
     }
+
+    /**
+     * `event_id`/`messageId` stability across a Segment retry rests on stamping happening
+     * once, before the event reaches Segment's retry queue (see [AutographPlugin]'s KDoc) —
+     * this repo can't drive a real network retry through analytics-kotlin's internals, but it
+     * can pin down the concrete guarantee it does control: running the *same* [BaseEvent]
+     * through the plugin more than once must never reassign it a different `messageId`.
+     */
+    @Test
+    fun executeIsIdempotentSoMessageIdNeverChangesOnReprocessing() {
+        var stampCount = 0
+        val countingSource = object : EnvelopeSource {
+            override fun stamp(): Envelope {
+                stampCount++
+                return envelope
+            }
+            override fun reset() {}
+        }
+        val plugin = AutographPlugin(countingSource)
+        val event = TrackEvent(properties = JsonObject(emptyMap()), event = "Recipe Saved").apply {
+            messageId = "original-message-id"
+            context = buildJsonObject { }
+        }
+
+        val first = plugin.execute(event)
+        val second = plugin.execute(first)
+
+        assertEquals(1, stampCount, "an already-stamped event must not be stamped again")
+        assertEquals("evt-123", second.messageId, "messageId must not change on reprocessing")
+        assertEquals(first.context, second.context)
+    }
 }
