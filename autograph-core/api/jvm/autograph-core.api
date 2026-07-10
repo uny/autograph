@@ -6,6 +6,8 @@ public final class dev/ynagai/autograph/AutographConfig {
 	public final fun getSequence ()Ldev/ynagai/autograph/SequenceMode;
 	public final fun getSession ()Ldev/ynagai/autograph/SessionConfig;
 	public final fun getStore ()Ldev/ynagai/autograph/SeqStore;
+	public final fun getStrictValidation ()Z
+	public final fun getValidator ()Ldev/ynagai/autograph/EventValidator;
 	public final fun setDispatcher (Lkotlinx/coroutines/CoroutineDispatcher;)V
 	public final fun setEventId (Ldev/ynagai/autograph/EventIdGenerator;)V
 	public final fun setPersistence (Ldev/ynagai/autograph/SeqPersistence;)V
@@ -13,6 +15,8 @@ public final class dev/ynagai/autograph/AutographConfig {
 	public final fun setSequence (Ldev/ynagai/autograph/SequenceMode;)V
 	public final fun setSession (Ldev/ynagai/autograph/SessionConfig;)V
 	public final fun setStore (Ldev/ynagai/autograph/SeqStore;)V
+	public final fun setStrictValidation (Z)V
+	public final fun setValidator (Ldev/ynagai/autograph/EventValidator;)V
 	public final fun transport (Ldev/ynagai/autograph/Transport;)V
 }
 
@@ -58,6 +62,10 @@ public final class dev/ynagai/autograph/EventId {
 
 public abstract interface class dev/ynagai/autograph/EventIdGenerator {
 	public abstract fun next ()Ljava/lang/String;
+}
+
+public abstract interface class dev/ynagai/autograph/EventValidator {
+	public abstract fun validate (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Ljava/lang/String;
 }
 
 public final class dev/ynagai/autograph/InMemorySeqStore : dev/ynagai/autograph/SeqStore {

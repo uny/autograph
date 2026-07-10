@@ -23,6 +23,10 @@ abstract fun interface dev.ynagai.autograph/EventIdGenerator { // dev.ynagai.aut
     abstract fun next(): kotlin/String // dev.ynagai.autograph/EventIdGenerator.next|next(){}[0]
 }
 
+abstract fun interface dev.ynagai.autograph/EventValidator { // dev.ynagai.autograph/EventValidator|null[0]
+    abstract fun validate(kotlin/String, kotlinx.serialization.json/JsonObject): kotlin/String? // dev.ynagai.autograph/EventValidator.validate|validate(kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
+}
+
 abstract interface dev.ynagai.autograph/EnvelopeSource { // dev.ynagai.autograph/EnvelopeSource|null[0]
     abstract fun reset() // dev.ynagai.autograph/EnvelopeSource.reset|reset(){}[0]
     abstract fun stamp(): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/EnvelopeSource.stamp|stamp(){}[0]
@@ -103,6 +107,12 @@ final class dev.ynagai.autograph/AutographConfig { // dev.ynagai.autograph/Autog
     final var store // dev.ynagai.autograph/AutographConfig.store|{}store[0]
         final fun <get-store>(): dev.ynagai.autograph/SeqStore? // dev.ynagai.autograph/AutographConfig.store.<get-store>|<get-store>(){}[0]
         final fun <set-store>(dev.ynagai.autograph/SeqStore?) // dev.ynagai.autograph/AutographConfig.store.<set-store>|<set-store>(dev.ynagai.autograph.SeqStore?){}[0]
+    final var strictValidation // dev.ynagai.autograph/AutographConfig.strictValidation|{}strictValidation[0]
+        final fun <get-strictValidation>(): kotlin/Boolean // dev.ynagai.autograph/AutographConfig.strictValidation.<get-strictValidation>|<get-strictValidation>(){}[0]
+        final fun <set-strictValidation>(kotlin/Boolean) // dev.ynagai.autograph/AutographConfig.strictValidation.<set-strictValidation>|<set-strictValidation>(kotlin.Boolean){}[0]
+    final var validator // dev.ynagai.autograph/AutographConfig.validator|{}validator[0]
+        final fun <get-validator>(): dev.ynagai.autograph/EventValidator? // dev.ynagai.autograph/AutographConfig.validator.<get-validator>|<get-validator>(){}[0]
+        final fun <set-validator>(dev.ynagai.autograph/EventValidator?) // dev.ynagai.autograph/AutographConfig.validator.<set-validator>|<set-validator>(dev.ynagai.autograph.EventValidator?){}[0]
 
     final fun transport(dev.ynagai.autograph/Transport) // dev.ynagai.autograph/AutographConfig.transport|transport(dev.ynagai.autograph.Transport){}[0]
 }

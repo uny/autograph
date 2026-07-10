@@ -39,6 +39,21 @@ public class AutographConfig internal constructor() {
     public var schemaVersion: String? = null
 
     /**
+     * Checks every `track`/`screen` event against an app-defined tracking-plan contract before
+     * it reaches the transport. Null (the default) skips validation entirely. See
+     * [strictValidation] for what happens to an event [EventValidator] rejects.
+     */
+    public var validator: EventValidator? = null
+
+    /**
+     * What happens to a `track`/`screen` event [validator] rejects. `false` (the default, meant
+     * for release builds) drops the event and logs the reason — a tracking-plan violation should
+     * never crash the app. `true` (meant for debug builds) throws immediately instead, so
+     * mistakes are caught during development rather than silently dropped in production.
+     */
+    public var strictValidation: Boolean = false
+
+    /**
      * The dispatcher on which events are stamped and persisted when the transport does not stamp
      * in its own pipeline (e.g. the iOS Segment bridge, or a custom transport). It must be
      * **single-threaded / serial** so sequence numbers keep their call order; the default is a
@@ -82,13 +97,15 @@ public fun Autograph(configure: AutographConfig.() -> Unit): Tracker {
         clock = config.clock,
         schemaVersion = config.schemaVersion,
     )
-    return AutographTracker(transport, stamper, config.dispatcher)
+    return AutographTracker(transport, stamper, config.dispatcher, config.validator, config.strictValidation)
 }
 
 internal class AutographTracker(
     private val transport: Transport,
     private val stamper: Stamper,
     dispatcher: CoroutineDispatcher,
+    private val validator: EventValidator?,
+    private val strictValidation: Boolean,
 ) : Tracker {
 
     // A failed analytics delivery must never crash the app, and one failure must not tear down the
@@ -119,11 +136,36 @@ internal class AutographTracker(
         }
     }
 
-    override fun track(name: String, properties: JsonObject, target: String?): Unit =
+    override fun track(name: String, properties: JsonObject, target: String?) {
+        if (!isValid(name, properties)) return
         deliver { transport.track(name, withTarget(properties, target), it) }
+    }
 
-    override fun screen(name: String, properties: JsonObject): Unit =
+    override fun screen(name: String, properties: JsonObject) {
+        if (!isValid(name, properties)) return
         deliver { transport.screen(name, properties, it) }
+    }
+
+    /**
+     * Runs [validator] synchronously on the caller's thread, before any dispatch — so
+     * [strictValidation] throws with a stack trace pointing at the actual `track`/`screen` call
+     * site, not at whatever later picks the event off [scope]. A [validator] that itself throws
+     * is treated the same as one that returns a rejection reason — even in non-strict mode, so a
+     * buggy validator can't crash a production build merely by running.
+     */
+    private fun isValid(name: String, properties: JsonObject): Boolean {
+        val reason = try {
+            validator?.validate(name, properties) ?: return true
+        } catch (e: Exception) {
+            "validator threw: ${e.message}"
+        }
+        if (reason == null) return true
+        if (strictValidation) {
+            throw IllegalArgumentException("Autograph: invalid event \"$name\": $reason")
+        }
+        println("Autograph: dropping invalid event \"$name\": $reason")
+        return false
+    }
 
     override fun identify(userId: String, traits: JsonObject): Unit =
         deliver { transport.identify(userId, traits, it) }

@@ -88,6 +88,27 @@ Every event now carries:
 }
 ```
 
+## Validation
+
+Enforce your own tracking-plan contract — required properties, allowed event names, naming
+conventions — by plugging an `EventValidator` into `Autograph { }`. Autograph ships no rules of
+its own; you write the check, Autograph enforces where it applies:
+
+```kotlin
+val tracker = Autograph {
+    transport(SegmentTransport(analytics))
+    validator = EventValidator { name, properties ->
+        if (name !in knownEventNames) "unknown event name" else null
+    }
+    strictValidation = !BuildConfig.RELEASE // throw in debug, drop + log in release
+}
+```
+
+`validate` returns null for a valid event, or a reason otherwise. `strictValidation` decides what
+happens next: `true` throws immediately (fail fast during development), `false` drops the event
+and logs the reason (never crash in production) — the same validator works in both modes. Applies
+to `track`/`screen`; `identify` is unaffected, since it carries no event name to validate.
+
 ## Requirements
 
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)
