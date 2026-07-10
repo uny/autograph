@@ -6,7 +6,7 @@
 
 **Autograph** is an analytics *instrumentation* layer for Kotlin Multiplatform and
 Compose Multiplatform. It makes your app write its own analytics — automatically
-tracked screens (impressions and clicks coming next), with a verifiable envelope
+tracked screens, impressions, and clicks, with a verifiable envelope
 stamped onto every event:
 
 - **`event_id`** — time-ordered [UUIDv7](https://www.rfc-editor.org/rfc/rfc9562) by
@@ -38,7 +38,7 @@ SPI is vendor-neutral.
 |:--|:--|
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by an app-injected Swift adapter (companion SPM package planned). |
-| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, and automatic screen tracking for navigation-compose. |
+| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, and `Modifier.trackImpression` / `Modifier.trackClick`. |
 
 ## Quick start
 
@@ -70,6 +70,11 @@ LocalTracker.current.track("Recipe Saved")
 // target identifies which element triggered the event — a stable, library-managed
 // properties["target"] key rather than an ad-hoc one every app names differently
 LocalTracker.current.track("Recipe Saved", target = "share_button")
+
+// Impressions and clicks — screen/section from the ambient ScreenContext (TrackedScreen)
+// are attached automatically
+Text("Save", Modifier.trackClick("Recipe Saved") { save() })
+Card(Modifier.trackImpression("Recipe Viewed", target = "recipe_card")) { RecipeCard() }
 ```
 
 Every event now carries:
@@ -112,12 +117,13 @@ to `track`/`screen`; `identify` is unaffected, since it carries no event name to
 ## Requirements
 
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)
-- Compose Multiplatform **1.11.1** (for the upcoming visibility-based impression tracking)
+- Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
+  `Modifier.onVisibilityChanged`)
 - Targets: Android, iOS, JVM. Web (Wasm) is planned.
 
 ## Roadmap
 
-- [ ] `Modifier.trackImpression` / `Modifier.trackClick` built on Compose visibility APIs
+- [x] `Modifier.trackImpression` / `Modifier.trackClick` built on Compose visibility APIs
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
 - [ ] `autograph-test`: in-memory transport with assertion helpers
 - [ ] `autograph-segment-swift` companion package (SPM)
