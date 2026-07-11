@@ -39,22 +39,34 @@ jobs:
       - name: Build AutographSegment.xcframework
         run: ./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework --stacktrace
 
-      # Package.swift's `releaseChecksum`/`releaseVersion` must already have been bumped (in a
-      # commit prior to this tag) to match what this step produces — SwiftPM resolves Package.swift
-      # at the tagged commit, so the checksum can't be updated after the fact. Fail loudly here
-      # rather than publish a release whose checksum external consumers can't actually resolve.
-      - name: Publish AutographSegment.xcframework to the GitHub Release
-        working-directory: autograph-segment/build/XCFrameworks/release
+      # Kotlin/Native's build output isn't reproducible across separate builds — confirmed by
+      # rebuilding the same source on the same machine and observing a different xcframework zip
+      # checksum each time. So the checksum can only be known from *this exact* build, not
+      # pre-computed and committed ahead of the tag. Self-correct: update Package.swift with the
+      # checksum this build actually produced, commit it, and move the tag to point at that
+      # commit — the same zip built above is what gets uploaded, so they can never disagree.
+      - name: Publish AutographSegmentSwift's binary target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
-          zip -ry AutographSegment.xcframework.zip AutographSegment.xcframework
-          actual=$(swift package compute-checksum AutographSegment.xcframework.zip)
-          expected=$(grep 'private let releaseChecksum' "$GITHUB_WORKSPACE/Package.swift" | sed -E 's/.*"([0-9a-f]+)".*/\1/')
-          if [ "$actual" != "$expected" ]; then
-            echo "::error::AutographSegment.xcframework.zip checksum ($actual) doesn't match Package.swift's releaseChecksum ($expected). Update Package.swift's releaseVersion/releaseChecksum and re-tag before releasing."
-            exit 1
+          version="${tag#v}"
+          zip_path="autograph-segment/build/XCFrameworks/release/AutographSegment.xcframework.zip"
+
+          (cd autograph-segment/build/XCFrameworks/release && zip -ry AutographSegment.xcframework.zip AutographSegment.xcframework)
+          checksum=$(swift package compute-checksum "$zip_path")
+
+          sed -i '' -E "s/private let releaseVersion = \"[^\"]*\"/private let releaseVersion = \"$version\"/" Package.swift
+          sed -i '' -E "s/private let releaseChecksum = \"[^\"]*\"/private let releaseChecksum = \"$checksum\"/" Package.swift
+
+          if ! git diff --quiet -- Package.swift; then
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            git add Package.swift
+            git commit -m "chore: sync AutographSegmentSwift's binary target checksum for $tag"
+            git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+            git push origin "HEAD:refs/tags/$tag" --force
           fi
+
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --generate-notes
-          gh release upload "$tag" AutographSegment.xcframework.zip --clobber
+          gh release upload "$tag" "$zip_path" --clobber

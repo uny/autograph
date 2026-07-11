@@ -183,20 +183,15 @@ release. This requires the `release` GitHub Environment to have `MAVEN_CENTRAL_U
 `MAVEN_CENTRAL_PASSWORD`, `GPG_KEY_ID`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE` secrets configured
 — a one-time, manual setup outside of what this repo's automation should do on its own.
 
-`AutographSegmentSwift`'s binary target checksum can't be updated after tagging (SwiftPM resolves
-`Package.swift` at the exact tagged commit), so **before** pushing a release tag:
-
-```sh
-./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework
-cd autograph-segment/build/XCFrameworks/release
-zip -ry AutographSegment.xcframework.zip AutographSegment.xcframework
-swift package compute-checksum AutographSegment.xcframework.zip
-```
-
-Update `Package.swift`'s `releaseVersion`/`releaseChecksum` to match, commit, then tag that commit
-`vX.Y.Z`. The CD workflow re-derives the checksum from the zip it builds and fails the release if
-it doesn't match what's already committed — a safety net against forgetting this step, not a
-replacement for it.
+`AutographSegmentSwift`'s binary target checksum can't be known ahead of time: Kotlin/Native's
+build output isn't reproducible across separate builds (confirmed — rebuilding the same source on
+the same machine changes the xcframework zip's checksum), so there's no value to pre-compute and
+commit before tagging. Instead, `cd.yml` builds the xcframework once, computes its checksum, and
+self-corrects: it updates `Package.swift`'s `releaseVersion`/`releaseChecksum` to match, commits
+that fix, and moves the release tag to point at the new commit before uploading that same zip to
+the GitHub Release — so the committed checksum and the uploaded artifact can never disagree. This
+means pushing a `vX.Y.Z` tag almost always results in that tag pointing one commit further than
+where it was originally pushed; that's expected, not a sign anything went wrong.
 
 ## License
 
