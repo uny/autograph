@@ -37,7 +37,7 @@ SPI is vendor-neutral.
 | Module | What it does |
 |:--|:--|
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
-| `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by an app-injected Swift adapter (companion SPM package planned). |
+| `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, and `Modifier.trackImpression` / `Modifier.trackClick`. |
 
 ## Quick start
@@ -50,6 +50,14 @@ val tracker = Autograph {
     eventId = EventId.UuidV7            // or UuidV4, or your own generator
     sequence = SequenceMode.PerSession  // or PerDevice / Both / None
 }
+```
+
+```swift
+// iOS — add both `autograph-segment-swift` (path: "autograph-segment-swift") and
+// https://github.com/segmentio/analytics-swift as SwiftPM dependencies, then:
+let analytics = Analytics(configuration: Configuration(writeKey: "WRITE_KEY"))
+let bridge = AutographSegmentBridge(analytics: analytics)
+// Pass `bridge` to Kotlin's SegmentTransport(bridge) when constructing your Autograph tracker.
 ```
 
 ```kotlin
@@ -129,6 +137,22 @@ val tracker = Autograph {
 The default logger dumps full event properties — don't wrap a production transport with this in a
 release build (gate it behind a debug-build check, or supply a logger that redacts what it prints).
 
+## iOS: `autograph-segment-swift`
+
+`SegmentBridge` (the interface `SegmentTransport` calls on iOS) is exported from Kotlin as an
+Objective-C protocol via `AutographSegment.xcframework`. `autograph-segment-swift` (in this repo,
+under `autograph-segment-swift/`) is the reference adapter implementing it against
+`analytics-swift` — `analytics-swift`'s event model is pure-Swift structs/generics with no
+Objective-C-visible surface for the stamping this library needs, so this adapter exists as plain
+Swift rather than something Kotlin/Native could call into directly.
+
+The package consumes the xcframework as a local `binaryTarget`, so build it before `swift build`/
+`swift test`/opening the package in Xcode:
+
+```sh
+./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework
+```
+
 ## Requirements
 
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)
@@ -141,7 +165,7 @@ release build (gate it behind a debug-build check, or supply a logger that redac
 - [x] `Modifier.trackImpression` / `Modifier.trackClick` built on Compose visibility APIs
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
 - [ ] `autograph-test`: in-memory transport with assertion helpers
-- [ ] `autograph-segment-swift` companion package (SPM)
+- [x] `autograph-segment-swift` companion package (SPM)
 - [ ] More transport adapters (PostHog, Amplitude, Firebase)
 
 ## License
