@@ -1,7 +1,11 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
@@ -9,6 +13,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
@@ -110,6 +115,37 @@ class ElementTrackingUiTest {
         mainClock.advanceTimeBy(1_000L)
         waitForIdle()
         assertEquals(listOf("Item Viewed"), tracker.names, "an impression must fire at most once")
+    }
+
+    @Test
+    fun trackImpressionFiresWhenElementScrollsIntoView() = runComposeUiTest {
+        val tracker = ElementRecordingTracker()
+        setContent {
+            WithElementTracker(tracker) {
+                Column(Modifier.testTag("scrollContainer").fillMaxSize().verticalScroll(rememberScrollState())) {
+                    // Pushes the tracked element below the fold — taller than any plausible test
+                    // window, so it starts outside the visible viewport rather than merely
+                    // clipped by the scroll container.
+                    Box(Modifier.size(5_000.dp))
+                    // minDurationMs is deliberately far longer than performScrollTo's own scroll
+                    // animation so the dwell timer can't be satisfied merely by the mainClock time
+                    // that auto-advances while that animation settles.
+                    Box(Modifier.testTag("target").size(10.dp).trackImpression("Item Viewed", minDurationMs = 5_000L))
+                }
+            }
+        }
+        waitForIdle()
+
+        // Off-screen below the fold: must not have fired from initial composition alone.
+        assertEquals(emptyList(), tracker.names, "must not fire while scrolled out of view")
+
+        onNodeWithTag("target").performScrollTo()
+        waitForIdle()
+        assertEquals(emptyList(), tracker.names, "must not fire immediately upon scrolling into view, before minDurationMs elapses")
+
+        mainClock.advanceTimeBy(5_000L)
+        waitForIdle()
+        assertEquals(listOf("Item Viewed"), tracker.names, "must fire once minDurationMs elapses after scrolling into view")
     }
 
     @Test
