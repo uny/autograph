@@ -55,3 +55,13 @@ jobs:
         run: |
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -scheme AutographSegmentSwift -destination "platform=iOS Simulator,name=$device"
+
+      # Diagnostic: prints the checksum this exact runner would produce for the release
+      # xcframework zip, so it can be cross-checked against Package.swift's releaseChecksum before
+      # tagging — cd.yml rebuilds on the same macos-latest image, but Kotlin/Native output isn't
+      # guaranteed byte-identical across a local dev machine's Xcode/SDK version (see issue #23).
+      - name: Log AutographSegment.xcframework.zip checksum
+        working-directory: autograph-segment/build/XCFrameworks/release
+        run: |
+          zip -ry AutographSegment.xcframework.zip AutographSegment.xcframework
+          swift package compute-checksum AutographSegment.xcframework.zip
