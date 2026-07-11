@@ -1,6 +1,7 @@
 # Autograph
 
 [![CI](https://github.com/uny/autograph/actions/workflows/ci.yml/badge.svg)](https://github.com/uny/autograph/actions/workflows/ci.yml)
+[![Maven Central](https://img.shields.io/maven-central/v/dev.ynagai.autograph/autograph-core)](https://central.sonatype.com/namespace/dev.ynagai.autograph)
 
 > Your app signs its own story.
 
@@ -29,8 +30,8 @@ the battle-tested SDK underneath. The first adapter targets
 [Segment](https://segment.com) (`analytics-kotlin` / `analytics-swift`); the transport
 SPI is vendor-neutral.
 
-> **Status: early development.** APIs are unstable and artifacts are not yet published
-> to Maven Central.
+> **Status: early development.** APIs are unstable. Artifacts are published to Maven
+> Central (group `dev.ynagai.autograph`) starting with `v0.1.0`.
 
 ## Modules
 
