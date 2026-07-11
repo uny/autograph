@@ -21,7 +21,12 @@ enum EnvelopeStamp {
             if let instrumentation = decode(instrumentationJson) {
                 var context = workingEvent.context?.dictionaryValue ?? [:]
                 context["instrumentation"] = instrumentation
-                workingEvent.context = try? JSON(context)
+                // Only overwrite context on a successful re-encode — falling back to `try?`
+                // directly would wipe the event's *entire* existing context (not just skip
+                // adding instrumentation) on the rare re-encode failure.
+                if let merged = try? JSON(context) {
+                    workingEvent.context = merged
+                }
             }
             return workingEvent
         }
