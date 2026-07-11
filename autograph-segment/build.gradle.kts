@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.plugin.mpp.apple.XCFramework
+
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidKmpLibrary)
@@ -15,8 +17,18 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
     }
-    iosArm64()
-    iosSimulatorArm64()
+
+    // Exports SegmentBridge (and the rest of this module's public API) as an Objective-C/Swift
+    // framework so the autograph-segment-swift package can implement it. Kotlin/Native's
+    // framework export auto-generates the @protocol from SegmentBridge — no @objc annotations
+    // needed on the Kotlin side.
+    val xcf = XCFramework("AutographSegment")
+    listOf(iosArm64(), iosSimulatorArm64()).forEach {
+        it.binaries.framework {
+            baseName = "AutographSegment"
+            xcf.add(this)
+        }
+    }
 
     sourceSets {
         commonMain.dependencies {
