@@ -32,5 +32,15 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
+      # Diagnostic only (see issue #23): linkDebugTestIosSimulatorArm64 intermittently fails
+      # with "framework 'UIUtilities' not found" / undefined symbols, which looks like it
+      # depends on which Xcode/SDK the runner resolves via `xcode-select` at build time. This
+      # records that state on every run so the next failure can be correlated against it.
+      - name: Log active Xcode/SDK
+        run: |
+          xcode-select -p
+          xcodebuild -version
+          ls /Applications | grep -i '^Xcode'
+
       - name: Build and test all targets
         run: ./gradlew build --stacktrace
