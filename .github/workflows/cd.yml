@@ -9,6 +9,8 @@ jobs:
   publish:
     runs-on: macos-latest
     environment: release
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
@@ -33,3 +35,26 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.GPG_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
+
+      - name: Build AutographSegment.xcframework
+        run: ./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework --stacktrace
+
+      # Package.swift's `releaseChecksum`/`releaseVersion` must already have been bumped (in a
+      # commit prior to this tag) to match what this step produces — SwiftPM resolves Package.swift
+      # at the tagged commit, so the checksum can't be updated after the fact. Fail loudly here
+      # rather than publish a release whose checksum external consumers can't actually resolve.
+      - name: Publish AutographSegment.xcframework to the GitHub Release
+        working-directory: autograph-segment/build/XCFrameworks/release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          zip -ry AutographSegment.xcframework.zip AutographSegment.xcframework
+          actual=$(swift package compute-checksum AutographSegment.xcframework.zip)
+          expected=$(grep 'private let releaseChecksum' "$GITHUB_WORKSPACE/Package.swift" | sed -E 's/.*"([0-9a-f]+)".*/\1/')
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::AutographSegment.xcframework.zip checksum ($actual) doesn't match Package.swift's releaseChecksum ($expected). Update Package.swift's releaseVersion/releaseChecksum and re-tag before releasing."
+            exit 1
+          fi
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --generate-notes
+          gh release upload "$tag" AutographSegment.xcframework.zip --clobber
