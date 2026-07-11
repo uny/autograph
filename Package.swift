@@ -15,8 +15,8 @@ private let localXCFrameworkPath = "autograph-segment/build/XCFrameworks/release
 
 // Bump both together before tagging a release: the CD workflow re-derives the checksum from the
 // zip it builds and fails the release if it doesn't match this value, so the two can't drift.
-private let releaseVersion = "0.0.0"
-private let releaseChecksum = "0000000000000000000000000000000000000000000000000000000000000000"
+private let releaseVersion = "0.1.0"
+private let releaseChecksum = "f74e3c2590ce254288e6da1321c806527479137b1489304f8d20175ccf8e8fee"
 
 private let autographSegmentTarget: Target = FileManager.default.fileExists(atPath: localXCFrameworkPath)
     ? .binaryTarget(name: "AutographSegment", path: localXCFrameworkPath)
