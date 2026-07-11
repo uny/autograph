@@ -33,4 +33,11 @@ jobs:
       - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
       - name: Build and test all targets
-        run: ./gradlew build --stacktrace
+        # --no-build-cache: the Gradle build cache persisted across CI runs (via
+        # setup-gradle's actions-cache restore) keys Kotlin/Native compile tasks
+        # on source/config hashes only, not the runner's Xcode/iOS-SDK version.
+        # macos-latest's Xcode version drifts over time, so a cached compile
+        # output from an older Xcode can get relinked against a newer/older SDK
+        # and fail with "symbol(s) not found" (see issue #23). Forcing a clean
+        # compile+link every run trades some CI time for reproducibility.
+        run: ./gradlew build --stacktrace --no-build-cache
