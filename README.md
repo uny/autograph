@@ -53,8 +53,8 @@ val tracker = Autograph {
 ```
 
 ```swift
-// iOS — add both `autograph-segment-swift` (path: "autograph-segment-swift") and
-// https://github.com/segmentio/analytics-swift as SwiftPM dependencies, then:
+// iOS — add `.package(url: "https://github.com/uny/autograph.git", from: "0.1.0")` as a SwiftPM
+// dependency (AutographSegmentSwift product), then:
 let analytics = Analytics(configuration: Configuration(writeKey: "WRITE_KEY"))
 let bridge = AutographSegmentBridge(analytics: analytics)
 // Pass `bridge` to Kotlin's SegmentTransport(bridge) when constructing your Autograph tracker.
@@ -137,21 +137,26 @@ val tracker = Autograph {
 The default logger dumps full event properties — don't wrap a production transport with this in a
 release build (gate it behind a debug-build check, or supply a logger that redacts what it prints).
 
-## iOS: `autograph-segment-swift`
+## iOS: `AutographSegmentSwift`
 
 `SegmentBridge` (the interface `SegmentTransport` calls on iOS) is exported from Kotlin as an
-Objective-C protocol via `AutographSegment.xcframework`. `autograph-segment-swift` (in this repo,
-under `autograph-segment-swift/`) is the reference adapter implementing it against
-`analytics-swift` — `analytics-swift`'s event model is pure-Swift structs/generics with no
-Objective-C-visible surface for the stamping this library needs, so this adapter exists as plain
-Swift rather than something Kotlin/Native could call into directly.
+Objective-C protocol via `AutographSegment.xcframework`. The `AutographSegmentSwift` product (this
+repo's root `Package.swift`) is the reference adapter implementing it against `analytics-swift` —
+`analytics-swift`'s event model is pure-Swift structs/generics with no Objective-C-visible surface
+for the stamping this library needs, so this adapter exists as plain Swift rather than something
+Kotlin/Native could call into directly.
 
-The package consumes the xcframework as a local `binaryTarget`, so build it before `swift build`/
-`swift test`/opening the package in Xcode:
+`Package.swift` lives at the repository root (not a subdirectory) specifically so external apps
+can add it the normal way, `.package(url: "https://github.com/uny/autograph.git", from: "…")` —
+SwiftPM only resolves a URL-based dependency's manifest from the repo root.
 
-```sh
-./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework
-```
+Its `AutographSegment` binary target picks one of two sources depending on what's on disk:
+- **Monorepo/local dev**: if `autograph-segment/build/XCFrameworks/release/AutographSegment.xcframework`
+  exists (built via `./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework`), it's
+  used directly — so this always reflects whatever the Kotlin side currently builds, uncommitted
+  changes included.
+- **External consumers**: otherwise, falls back to a checksummed download from that version's
+  GitHub Release asset (`AutographSegment.xcframework.zip`).
 
 ## Requirements
 
@@ -177,6 +182,21 @@ mirroring [`firebase-kotlin-sdk`](https://github.com/uny/firebase-kotlin-sdk)'s 
 release. This requires the `release` GitHub Environment to have `MAVEN_CENTRAL_USERNAME`,
 `MAVEN_CENTRAL_PASSWORD`, `GPG_KEY_ID`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE` secrets configured
 — a one-time, manual setup outside of what this repo's automation should do on its own.
+
+`AutographSegmentSwift`'s binary target checksum can't be updated after tagging (SwiftPM resolves
+`Package.swift` at the exact tagged commit), so **before** pushing a release tag:
+
+```sh
+./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework
+cd autograph-segment/build/XCFrameworks/release
+zip -ry AutographSegment.xcframework.zip AutographSegment.xcframework
+swift package compute-checksum AutographSegment.xcframework.zip
+```
+
+Update `Package.swift`'s `releaseVersion`/`releaseChecksum` to match, commit, then tag that commit
+`vX.Y.Z`. The CD workflow re-derives the checksum from the zip it builds and fails the release if
+it doesn't match what's already committed — a safety net against forgetting this step, not a
+replacement for it.
 
 ## License
 

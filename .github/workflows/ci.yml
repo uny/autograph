@@ -45,13 +45,13 @@ jobs:
       - name: Build and test all targets
         run: ./gradlew build --stacktrace
 
-      # autograph-segment-swift consumes AutographSegment.xcframework as a local binaryTarget
-      # (see its Package.swift), so it must be built before `xcodebuild test` can link it.
+      # AutographSegmentSwift (root Package.swift) consumes AutographSegment.xcframework as a
+      # local binaryTarget when present (see Package.swift), so it must be built before
+      # `xcodebuild test` can link it.
       - name: Build AutographSegment.xcframework
         run: ./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework --stacktrace
 
-      - name: Test autograph-segment-swift
-        working-directory: autograph-segment-swift
+      - name: Test AutographSegmentSwift
         run: |
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -scheme AutographSegmentSwift -destination "platform=iOS Simulator,name=$device"
