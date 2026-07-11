@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
     alias(libs.plugins.androidKmpLibrary)
+    alias(libs.plugins.publish)
 }
 
 kotlin {
@@ -8,6 +9,8 @@ kotlin {
 
     @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class)
     abiValidation()
+
+    withSourcesJar(publish = true)
 
     androidLibrary {
         namespace = "dev.ynagai.autograph"

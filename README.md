@@ -168,6 +168,16 @@ The package consumes the xcframework as a local `binaryTarget`, so build it befo
 - [x] `autograph-segment-swift` companion package (SPM)
 - [ ] More transport adapters (PostHog, Amplitude, Firebase)
 
+## Releasing
+
+Publishing to Maven Central (group `dev.ynagai.autograph`) is configured via the
+[vanniktech maven-publish plugin](https://github.com/vanniktech/gradle-maven-publish-plugin),
+mirroring [`firebase-kotlin-sdk`](https://github.com/uny/firebase-kotlin-sdk)'s setup. Pushing a
+`vX.Y.Z` tag triggers `.github/workflows/cd.yml`, which runs `publishToMavenCentral` with automatic
+release. This requires the `release` GitHub Environment to have `MAVEN_CENTRAL_USERNAME`,
+`MAVEN_CENTRAL_PASSWORD`, `GPG_KEY_ID`, `GPG_PRIVATE_KEY`, and `GPG_PASSPHRASE` secrets configured
+— a one-time, manual setup outside of what this repo's automation should do on its own.
+
 ## License
 
 ```text

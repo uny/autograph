@@ -5,7 +5,7 @@
 // - Show manifest properties: true
 // - Show declarations: true
 
-// Library unique name: <autograph:autograph-segment>
+// Library unique name: <dev.ynagai.autograph:autograph-segment>
 abstract interface dev.ynagai.autograph.segment/SegmentBridge { // dev.ynagai.autograph.segment/SegmentBridge|null[0]
     abstract fun flush() // dev.ynagai.autograph.segment/SegmentBridge.flush|flush(){}[0]
     abstract fun identify(kotlin/String, kotlin/String, kotlin/String, kotlin/String) // dev.ynagai.autograph.segment/SegmentBridge.identify|identify(kotlin.String;kotlin.String;kotlin.String;kotlin.String){}[0]
