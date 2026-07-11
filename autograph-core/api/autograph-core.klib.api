@@ -5,7 +5,7 @@
 // - Show manifest properties: true
 // - Show declarations: true
 
-// Library unique name: <autograph:autograph-core>
+// Library unique name: <dev.ynagai.autograph:autograph-core>
 final enum class dev.ynagai.autograph/SequenceMode : kotlin/Enum<dev.ynagai.autograph/SequenceMode> { // dev.ynagai.autograph/SequenceMode|null[0]
     enum entry Both // dev.ynagai.autograph/SequenceMode.Both|null[0]
     enum entry None // dev.ynagai.autograph/SequenceMode.None|null[0]

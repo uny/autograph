@@ -5,7 +5,7 @@
 // - Show manifest properties: true
 // - Show declarations: true
 
-// Library unique name: <autograph:autograph-compose>
+// Library unique name: <dev.ynagai.autograph:autograph-compose>
 final class dev.ynagai.autograph.compose/ScreenContext { // dev.ynagai.autograph.compose/ScreenContext|null[0]
     constructor <init>(kotlin/String, kotlin/String? = ...) // dev.ynagai.autograph.compose/ScreenContext.<init>|<init>(kotlin.String;kotlin.String?){}[0]
 
