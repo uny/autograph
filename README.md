@@ -93,6 +93,14 @@ AutographProvider(tracker, autocapture = AutocaptureConfig()) {
 }
 ```
 
+## Samples
+
+`sample-android` is a runnable Android app exercising every snippet above for real —
+`AutographProvider`, `Modifier.trackClick`/`trackImpression`, and opt-in `AutocaptureConfig`
+autocapture — against a `LoggingTracker` that prints each event so you can watch them fire as you
+tap. Run `./gradlew :sample-android:installDebug` and launch it, or open the project in Android
+Studio. (An iOS sample is planned — see the Roadmap.)
+
 ### Autocapture
 
 `AutocaptureConfig` passed to `AutographProvider` observes taps app-wide and reports the tapped
@@ -191,6 +199,8 @@ Its `AutographSegment` binary target picks one of two sources depending on what'
 - [x] `Modifier.trackImpression` / `Modifier.trackClick` built on Compose visibility APIs
 - [x] Autocapture on Android (opt-in `AutocaptureConfig` on `AutographProvider`)
 - [ ] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
+- [x] `sample-android` runnable sample app
+- [ ] iOS sample app
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
 - [ ] `autograph-test`: in-memory transport with assertion helpers
 - [x] `autograph-segment-swift` companion package (SPM)
