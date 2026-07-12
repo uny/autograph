@@ -8,8 +8,8 @@ import androidx.compose.ui.layout.LayoutCoordinates
  * Resolves a tap at [position] (in [root]'s local coordinate space) to an autocapture target
  * identifier, or null if the tap didn't land on a clickable, non-ignored element.
  *
- * Implemented per-platform: Android hit-tests the semantics tree via `RootForTest`; iOS walks the
- * native accessibility tree Compose Multiplatform bridges its semantics tree into.
+ * Implemented per-platform: Android hit-tests the semantics tree via `RootForTest`; iOS and JVM
+ * currently provide no-op stubs (taps are silently not captured on those targets).
  */
 internal fun interface ElementResolver {
     fun resolve(root: LayoutCoordinates, position: Offset): String?
