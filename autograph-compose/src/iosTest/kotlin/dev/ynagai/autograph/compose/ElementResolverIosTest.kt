@@ -189,14 +189,42 @@ class ElementResolverIosTest {
     }
 
     @Test
-    fun resolveIosElementReturnsNullWhenThePositionIsInsideAnInstrumentedClaim() {
+    fun resolveIosElementReturnsNullWhenTheButtonItselfIsTheInstrumentedClaim() {
+        // Mirrors self-registration (trackClick/trackImpression register their OWN boundsInRoot()),
+        // which resolveIosElement must still suppress to avoid double-reporting an explicitly
+        // instrumented element via the ambient autocapture observer too.
+        val scale = UIScreen.mainScreen.scale
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, androidx.compose.ui.geometry.Rect(0f, 0f, 100f, 100f))
+        val buttonBounds = androidx.compose.ui.geometry.Rect(
+            (10.0 * scale).toFloat(),
+            (10.0 * scale).toFloat(),
+            (30.0 * scale).toFloat(),
+            (30.0 * scale).toFloat(),
+        )
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, buttonBounds)
 
         val result = resolveIosElement(root, claims, position)
 
         assertNull(result)
+    }
+
+    @Test
+    fun resolveIosElementDoesNotSuppressAButtonInsideAnInstrumentedAncestorContainer() {
+        // Android's resolveAutocaptureTarget only checks the resolved nearestClickable's OWN
+        // `instrumented` flag — an instrumented ANCESTOR (e.g. a trackImpression container wrapping
+        // an unrelated Button) never suppresses it. iOS has no ancestor chain to consult, so this
+        // must be approximated by NOT treating a claim broader than nearestClickable's own bounds
+        // (i.e. a container, not a self-registration) as a suppression match.
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        // A container claim covering the whole root — much larger than the button's own (10,10)-(30,30)
+        // point bounds — simulating a trackImpression ancestor, not the button self-registering.
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, androidx.compose.ui.geometry.Rect(0f, 0f, 100f, 100f))
+
+        val result = resolveIosElement(root, claims, position)
+
+        assertEquals("share_button", result)
     }
 
     @Test

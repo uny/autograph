@@ -71,9 +71,33 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
     if (claims != null && claims.ignored.values.any { it.contains(position) }) return null
     val path = deepestAccessibilityHitPath(view, view, position) ?: return null
     val nearestClickable = path.asReversed().firstOrNull { it.isAccessibilityButton() } ?: return null
-    if (claims != null && claims.instrumented.values.any { it.contains(position) }) return null
+    // Unlike `ignored` (deliberately ancestor-wide, matching Android's resolveAutocaptureTarget,
+    // which suppresses on ANY ancestor's ignored flag), `instrumented` on Android suppresses only
+    // when the resolved nearestClickable ITSELF is instrumented — an instrumented ANCESTOR (e.g. a
+    // trackImpression container wrapping an unrelated Button) must not suppress it. iOS has no
+    // ancestor-chain to consult, so approximate "is nearestClickable itself the instrumented
+    // element" by comparing an instrumented claim's rect against nearestClickable's own bounds
+    // (self-registration via trackClick/trackImpression puts a claim keyed at the exact element's
+    // own boundsInRoot()) rather than the raw tap position, which would also match any larger
+    // ancestor container overlapping the tap.
+    if (claims != null) {
+        val nearestClickableBounds = nearestClickable.accessibilityLocalBounds(view)
+        if (nearestClickableBounds != null && claims.instrumented.values.any { it.approximatelyEquals(nearestClickableBounds) }) return null
+    }
     return identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = nearestClickable.accessibilityLabelOrNull())
 }
+
+/**
+ * Bounds equality with tolerance: [nearestClickable]'s own bounds come from two different
+ * measurement paths for the same physical element — Compose's `boundsInRoot()` (claim
+ * registration) vs UIKit's `accessibilityFrame` + `convertRect` + scale (this resolver) — so exact
+ * equality is too strict, but a real ancestor container's bounds differ by more than float noise.
+ */
+private fun Rect.approximatelyEquals(other: Rect, tolerance: Float = 1f): Boolean =
+    (left - other.left).let { it > -tolerance && it < tolerance } &&
+        (top - other.top).let { it > -tolerance && it < tolerance } &&
+        (right - other.right).let { it > -tolerance && it < tolerance } &&
+        (bottom - other.bottom).let { it > -tolerance && it < tolerance }
 
 /**
  * Depth-first search mirroring [findDeepestHit]/[AutocaptureNode]'s Android counterpart, but over
