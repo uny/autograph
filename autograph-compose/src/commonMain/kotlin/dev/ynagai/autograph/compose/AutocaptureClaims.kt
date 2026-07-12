@@ -10,7 +10,6 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 
-/** Which kind of on-screen bounds [AutocaptureClaims] is tracking. */
 internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED }
 
 /**
