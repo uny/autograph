@@ -39,11 +39,14 @@ class AutocaptureClaimsTest {
     fun removeClearsOnlyTheMatchingKindsEntry() {
         val claims = AutocaptureClaims()
         val key = Any()
+        val ignoredBounds = Rect(0f, 0f, 10f, 10f)
+        claims.put(key, AutocaptureClaimKind.IGNORED, ignoredBounds)
         claims.put(key, AutocaptureClaimKind.INSTRUMENTED, Rect(0f, 0f, 10f, 10f))
 
         claims.remove(key, AutocaptureClaimKind.INSTRUMENTED)
 
         assertTrue(claims.instrumented.isEmpty())
+        assertEquals(ignoredBounds, claims.ignored[key], "IGNORED entry for the same key should survive INSTRUMENTED removal")
     }
 
     @Test
