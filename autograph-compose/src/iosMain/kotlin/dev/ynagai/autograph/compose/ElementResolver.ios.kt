@@ -13,7 +13,6 @@ import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import platform.UIKit.accessibilityElements
 import platform.UIKit.accessibilityFrame
-import platform.UIKit.accessibilityLabel
 import platform.UIKit.accessibilityTraits
 import platform.darwin.NSObject
 
@@ -84,7 +83,12 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
         val nearestClickableBounds = nearestClickable.accessibilityLocalBounds(view)
         if (nearestClickableBounds != null && claims.instrumented.values.any { it.approximatelyEquals(nearestClickableBounds) }) return null
     }
-    return identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = nearestClickable.accessibilityLabelOrNull())
+    // No `label` argument: UIKit exposes no way to tell an explicit `contentDescription`-derived
+    // accessibilityLabel apart from one Compose Multiplatform's UIKit bridge synthesizes from
+    // SemanticsProperties.Text (the on-screen text) when no contentDescription is set — falling back
+    // to it here would silently defeat the "never read displayed text" guarantee documented above
+    // and honored by Android's resolveAutocaptureTarget, which only ever reads ContentDescription.
+    return identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = null)
 }
 
 /**
@@ -152,5 +156,3 @@ internal fun Any.isAccessibilityButton(): Boolean =
 
 private fun Any.accessibilityIdentifierOrNull(): String? =
     (this as? UIAccessibilityIdentificationProtocol)?.accessibilityIdentifier
-
-private fun Any.accessibilityLabelOrNull(): String? = (this as? NSObject)?.accessibilityLabel()

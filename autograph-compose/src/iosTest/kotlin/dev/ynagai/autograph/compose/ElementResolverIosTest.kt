@@ -2,7 +2,10 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.readValue
 import platform.CoreGraphics.CGRectMake
+import platform.CoreGraphics.CGRectZero
+import platform.UIKit.UIAccessibilityIdentificationProtocol
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
@@ -31,6 +34,17 @@ import kotlin.test.assertTrue
  */
 @OptIn(ExperimentalForeignApi::class)
 class ElementResolverIosTest {
+
+    // A bare UIView() doesn't statically conform to UIAccessibilityIdentificationProtocol in this
+    // Kotlin/Native binding (unlike a real UIKit-driven accessibility element), so tests that need a
+    // testTag/`accessibilityIdentifier` use this explicit-conformance subclass instead.
+    private class IdentifiableButtonView : UIView(CGRectZero.readValue()), UIAccessibilityIdentificationProtocol {
+        private var identifier: String? = null
+        override fun accessibilityIdentifier(): String? = identifier
+        override fun setAccessibilityIdentifier(accessibilityIdentifier: String?) {
+            identifier = accessibilityIdentifier
+        }
+    }
 
     private fun UIView.setPointFrame(x: Double, y: Double, width: Double, height: Double) {
         setAccessibilityFrame(CGRectMake(x, y, width, height))
@@ -156,14 +170,17 @@ class ElementResolverIosTest {
         assertEquals(((3.0 + 5.0) * scale).toFloat(), bounds.bottom, 0.5f)
     }
 
+    // testTag drives identification (`accessibilityIdentifier`); accessibilityLabel is also set to
+    // confirm resolveIosElement never falls back to it (see resolveIosElementNeverFallsBackToTheAccessibilityLabel).
     private fun buildRootWithButton(): Pair<UIView, Offset> {
         val scale = UIScreen.mainScreen.scale
         val root = UIView()
         root.setPointFrame(0.0, 0.0, 100.0, 100.0)
-        val button = UIView()
+        val button = IdentifiableButtonView()
         button.setPointFrame(10.0, 10.0, 20.0, 20.0)
         button.setAccessibilityTraits(UIAccessibilityTraitButton)
-        button.setAccessibilityLabel("share_button")
+        button.accessibilityIdentifier = "share_button"
+        button.setAccessibilityLabel("share_button_label")
         root.addSubview(button)
         return root to Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
     }
@@ -175,6 +192,28 @@ class ElementResolverIosTest {
         val result = resolveIosElement(root, claims = null, position)
 
         assertEquals("share_button", result)
+    }
+
+    @Test
+    fun resolveIosElementNeverFallsBackToTheAccessibilityLabel() {
+        // UIKit gives no way to tell an explicit contentDescription-derived label apart from one
+        // Compose Multiplatform synthesizes from the element's displayed text, so falling back to
+        // accessibilityLabel here would silently defeat autocapture's "never displayed text"
+        // guarantee — unlike Android's resolveAutocaptureTarget, which only ever reads the explicit
+        // SemanticsProperties.ContentDescription.
+        val scale = UIScreen.mainScreen.scale
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val button = IdentifiableButtonView() // no testTag set — only the label below
+        button.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        button.setAccessibilityLabel("share_button_label")
+        root.addSubview(button)
+        val position = Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertNull(result)
     }
 
     @Test
