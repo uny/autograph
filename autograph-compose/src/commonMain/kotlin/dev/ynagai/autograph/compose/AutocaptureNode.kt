@@ -40,11 +40,8 @@ internal data class AutocaptureNode(
 internal fun resolveAutocaptureTarget(chain: Sequence<AutocaptureNode>): String? {
     val nodes = chain.toList()
     if (nodes.any { it.ignored }) return null
-    for (node in nodes) {
-        if (node.instrumented) return null
-        if (node.clickable) return node.identifier
-    }
-    return null
+    val nearestClickable = nodes.firstOrNull { it.clickable } ?: return null
+    return if (nearestClickable.instrumented) null else nearestClickable.identifier
 }
 
 /** Identifier priority: [testTag] first (explicit, stable), then [role], then [label] (a11y text). */

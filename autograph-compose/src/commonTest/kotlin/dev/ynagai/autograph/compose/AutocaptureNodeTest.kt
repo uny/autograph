@@ -105,6 +105,19 @@ class AutocaptureNodeTest {
     }
 
     @Test
+    fun resolveAutocaptureTargetIgnoresAnInstrumentedDescendantThatIsNotTheReturnedClickable() {
+        // trackImpression() sets `instrumented` on a non-clickable descendant (e.g. an inner
+        // Image). It must NOT veto an outer plain Modifier.clickable that was never itself
+        // instrumented -- only the node actually being returned should be checked.
+        val chain = sequenceOf(
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = true),
+            AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false),
+        )
+        assertEquals("card", resolveAutocaptureTarget(chain))
+    }
+
+    @Test
     fun identifierFromPrefersTestTagOverRoleOverLabel() {
         assertEquals("tag", identifierFrom(testTag = "tag", role = "Button", label = "Share"))
         assertEquals("Button", identifierFrom(testTag = null, role = "Button", label = "Share"))
