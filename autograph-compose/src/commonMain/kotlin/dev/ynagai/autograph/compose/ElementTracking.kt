@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.layout.onVisibilityChanged
+import androidx.compose.ui.semantics.semantics
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import kotlinx.serialization.json.JsonObject
@@ -38,7 +39,7 @@ public fun Modifier.trackImpression(
             fired = true
             tracker.track(name, withScreenContext(properties, screenContext), target)
         }
-    }
+    }.semantics { this[AutographInstrumentedKey] = true }
 }
 
 /**
@@ -57,7 +58,7 @@ public fun Modifier.trackClick(
     clickable {
         tracker.track(name, withScreenContext(properties, screenContext), target)
         onClick()
-    }
+    }.semantics { this[AutographInstrumentedKey] = true }
 }
 
 /**
