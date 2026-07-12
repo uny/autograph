@@ -15,6 +15,7 @@ import platform.UIKit.accessibilityElements
 import platform.UIKit.accessibilityFrame
 import platform.UIKit.accessibilityTraits
 import platform.darwin.NSObject
+import kotlin.math.abs
 
 /**
  * Hit-tests the UIKit accessibility tree Compose Multiplatform builds from its semantics tree —
@@ -104,10 +105,10 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
  * equality is too strict, but a real ancestor container's bounds differ by more than float noise.
  */
 private fun Rect.approximatelyEquals(other: Rect, tolerance: Float = 1f): Boolean =
-    (left - other.left).let { it > -tolerance && it < tolerance } &&
-        (top - other.top).let { it > -tolerance && it < tolerance } &&
-        (right - other.right).let { it > -tolerance && it < tolerance } &&
-        (bottom - other.bottom).let { it > -tolerance && it < tolerance }
+    abs(left - other.left) < tolerance &&
+        abs(top - other.top) < tolerance &&
+        abs(right - other.right) < tolerance &&
+        abs(bottom - other.bottom) < tolerance
 
 /**
  * Depth-first search mirroring [findDeepestHit]/[AutocaptureNode]'s Android counterpart, but over

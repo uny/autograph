@@ -1,6 +1,7 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
 import platform.CoreGraphics.CGRectMake
@@ -238,7 +239,7 @@ class ElementResolverIosTest {
     fun resolveIosElementReturnsNullWhenThePositionIsInsideAnIgnoredClaim() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.IGNORED, androidx.compose.ui.geometry.Rect(0f, 0f, 100f, 100f))
+        claims.put(Any(), AutocaptureClaimKind.IGNORED, Rect(0f, 0f, 100f, 100f))
 
         val result = resolveIosElement(root, claims, position)
 
@@ -253,7 +254,7 @@ class ElementResolverIosTest {
         val scale = UIScreen.mainScreen.scale
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        val buttonBounds = androidx.compose.ui.geometry.Rect(
+        val buttonBounds = Rect(
             (10.0 * scale).toFloat(),
             (10.0 * scale).toFloat(),
             (30.0 * scale).toFloat(),
@@ -275,7 +276,7 @@ class ElementResolverIosTest {
         val scale = UIScreen.mainScreen.scale
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        val driftedButtonBounds = androidx.compose.ui.geometry.Rect(
+        val driftedButtonBounds = Rect(
             (10.0 * scale).toFloat() + 0.5f,
             (10.0 * scale).toFloat() + 0.5f,
             (30.0 * scale).toFloat() + 0.5f,
@@ -293,7 +294,7 @@ class ElementResolverIosTest {
         val scale = UIScreen.mainScreen.scale
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        val farDriftedButtonBounds = androidx.compose.ui.geometry.Rect(
+        val farDriftedButtonBounds = Rect(
             (10.0 * scale).toFloat() + 1.5f,
             (10.0 * scale).toFloat() + 1.5f,
             (30.0 * scale).toFloat() + 1.5f,
@@ -317,7 +318,7 @@ class ElementResolverIosTest {
         val claims = AutocaptureClaims()
         // A container claim covering the whole root — much larger than the button's own (10,10)-(30,30)
         // point bounds — simulating a trackImpression ancestor, not the button self-registering.
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, androidx.compose.ui.geometry.Rect(0f, 0f, 100f, 100f))
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, Rect(0f, 0f, 100f, 100f))
 
         val result = resolveIosElement(root, claims, position)
 
@@ -328,7 +329,7 @@ class ElementResolverIosTest {
     fun resolveIosElementIgnoresClaimsOutsideTheTapPosition() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.IGNORED, androidx.compose.ui.geometry.Rect(500f, 500f, 600f, 600f))
+        claims.put(Any(), AutocaptureClaimKind.IGNORED, Rect(500f, 500f, 600f, 600f))
 
         val result = resolveIosElement(root, claims, position)
 
