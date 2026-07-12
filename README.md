@@ -39,7 +39,7 @@ SPI is vendor-neutral.
 |:--|:--|
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
-| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, and opt-in autocapture of taps (Android only for now). |
+| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, and opt-in autocapture of taps (Android and iOS). |
 
 ## Quick start
 
@@ -102,9 +102,11 @@ meaningfully different privacy posture than explicit instrumentation, so it's of
 for it. Elements already instrumented with `trackClick` / `trackImpression` are never
 double-reported, and `Modifier.autographIgnore()` excludes a subtree entirely.
 
-Currently implemented on Android only (hit-testing the semantics tree via the same opt-in
-`RootForTest` entry point other autocapture SDKs use); taps are silently not captured on iOS/JVM
-yet.
+Implemented on Android (hit-testing the semantics tree via the same opt-in `RootForTest` entry
+point other autocapture SDKs use) and iOS (walking the native accessibility tree Compose
+Multiplatform bridges its semantics into — see `ElementResolver.ios.kt`; identification there is
+`testTag`-only, since UIKit gives no way to tell an explicit label apart from Compose's own
+text-synthesized one). Taps are silently not captured on JVM/desktop.
 
 Every event now carries:
 
@@ -190,7 +192,7 @@ Its `AutographSegment` binary target picks one of two sources depending on what'
 
 - [x] `Modifier.trackImpression` / `Modifier.trackClick` built on Compose visibility APIs
 - [x] Autocapture on Android (opt-in `AutocaptureConfig` on `AutographProvider`)
-- [ ] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
+- [x] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
 - [ ] `autograph-test`: in-memory transport with assertion helpers
 - [x] `autograph-segment-swift` companion package (SPM)
