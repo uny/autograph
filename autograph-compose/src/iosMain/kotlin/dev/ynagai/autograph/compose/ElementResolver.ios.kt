@@ -58,15 +58,21 @@ import platform.darwin.NSObject
 internal actual fun rememberElementResolver(): ElementResolver {
     val view = LocalUIView.current
     val claims = LocalAutocaptureClaims.current
-    return remember(view, claims) {
-        ElementResolver { _, position ->
-            if (claims != null && claims.ignored.values.any { it.contains(position) }) return@ElementResolver null
-            val path = deepestAccessibilityHitPath(view, view, position) ?: return@ElementResolver null
-            val nearestClickable = path.asReversed().firstOrNull { it.isAccessibilityButton() } ?: return@ElementResolver null
-            if (claims != null && claims.instrumented.values.any { it.contains(position) }) return@ElementResolver null
-            identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = nearestClickable.accessibilityLabelOrNull())
-        }
-    }
+    return remember(view, claims) { ElementResolver { _, position -> resolveIosElement(view, claims, position) } }
+}
+
+/**
+ * The non-Composable core of [rememberElementResolver]'s resolve callback, pulled out so it's
+ * directly testable against a hand-built [UIView] tree and [AutocaptureClaims] fixture —
+ * `compose.uiTest`'s iOS scene can't otherwise exercise this (see [PlatformAutocaptureTestHost.ios.kt]).
+ */
+@OptIn(ExperimentalForeignApi::class)
+internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, position: Offset): String? {
+    if (claims != null && claims.ignored.values.any { it.contains(position) }) return null
+    val path = deepestAccessibilityHitPath(view, view, position) ?: return null
+    val nearestClickable = path.asReversed().firstOrNull { it.isAccessibilityButton() } ?: return null
+    if (claims != null && claims.instrumented.values.any { it.contains(position) }) return null
+    return identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = nearestClickable.accessibilityLabelOrNull())
 }
 
 /**
