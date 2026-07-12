@@ -50,5 +50,6 @@ private fun SemanticsNode.toAutocaptureNode(): AutocaptureNode = AutocaptureNode
         label = config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull(),
     ),
     clickable = config.getOrNull(SemanticsActions.OnClick) != null,
-    skipped = config.isAutocaptureSkipped(),
+    ignored = config.isAutocaptureIgnored(),
+    instrumented = config.isAutocaptureInstrumented(),
 )

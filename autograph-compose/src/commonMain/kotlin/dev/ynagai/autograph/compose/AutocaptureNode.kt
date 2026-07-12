@@ -25,19 +25,23 @@ internal fun <T> findDeepestHit(root: T, point: Offset, bounds: (T) -> Rect, chi
 internal data class AutocaptureNode(
     val identifier: String?,
     val clickable: Boolean,
-    val skipped: Boolean,
+    val ignored: Boolean,
+    val instrumented: Boolean,
 )
 
 /**
  * Walks [chain] — the hit node, then its ancestors, innermost first — to find the identifier
  * autocapture should attribute a tap to: the nearest clickable node's [AutocaptureNode.identifier].
- * Returns null (skip entirely) if any node from the hit node up to that clickable is [skipped] —
- * either explicitly via [autographIgnore] or because it's already instrumented via [trackClick] /
- * [trackImpression] and would otherwise be double-reported.
+ * [ignored] is subtree-wide ([autographIgnore] on ANY node from the hit node up to the composition
+ * root excludes the whole tap, even above the clickable that would otherwise be picked), whereas
+ * [instrumented] only vetoes the walk when it reaches the node it would otherwise return — already
+ * instrumented via [trackClick] / [trackImpression] and would otherwise be double-reported.
  */
 internal fun resolveAutocaptureTarget(chain: Sequence<AutocaptureNode>): String? {
-    for (node in chain) {
-        if (node.skipped) return null
+    val nodes = chain.toList()
+    if (nodes.any { it.ignored }) return null
+    for (node in nodes) {
+        if (node.instrumented) return null
         if (node.clickable) return node.identifier
     }
     return null

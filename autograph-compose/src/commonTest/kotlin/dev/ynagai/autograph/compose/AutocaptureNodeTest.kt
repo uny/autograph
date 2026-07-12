@@ -55,9 +55,9 @@ class AutocaptureNodeTest {
     fun resolveAutocaptureTargetReturnsTheNearestClickableAncestorsIdentifier() {
         // Hit node itself isn't clickable (e.g. an inner Text/Icon); its clickable ancestor is.
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, skipped = false),
-            AutocaptureNode(identifier = "share_button", clickable = true, skipped = false),
-            AutocaptureNode(identifier = "card", clickable = true, skipped = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = "share_button", clickable = true, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false),
         )
         assertEquals("share_button", resolveAutocaptureTarget(chain))
     }
@@ -65,28 +65,41 @@ class AutocaptureNodeTest {
     @Test
     fun resolveAutocaptureTargetReturnsNullWhenNothingInTheChainIsClickable() {
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, skipped = false),
-            AutocaptureNode(identifier = "card", clickable = false, skipped = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = "card", clickable = false, ignored = false, instrumented = false),
         )
         assertNull(resolveAutocaptureTarget(chain))
     }
 
     @Test
-    fun resolveAutocaptureTargetReturnsNullWhenTheHitNodeItselfIsSkipped() {
+    fun resolveAutocaptureTargetReturnsNullWhenTheHitNodeItselfIsInstrumented() {
         val chain = sequenceOf(
-            AutocaptureNode(identifier = "inner", clickable = true, skipped = true),
+            AutocaptureNode(identifier = "inner", clickable = true, ignored = false, instrumented = true),
         )
         assertNull(resolveAutocaptureTarget(chain))
     }
 
     @Test
-    fun resolveAutocaptureTargetReturnsNullWhenAnAncestorBetweenTheHitNodeAndTheClickableIsSkipped() {
-        // autographIgnore()/trackClick's own marker on an intermediate node must veto the tap
-        // even though a clickable ancestor exists further up.
+    fun resolveAutocaptureTargetReturnsNullWhenAnAncestorBetweenTheHitNodeAndTheClickableIsIgnored() {
+        // autographIgnore()'s own marker on an intermediate node must veto the tap even though a
+        // clickable ancestor exists further up.
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, skipped = false),
-            AutocaptureNode(identifier = null, clickable = false, skipped = true),
-            AutocaptureNode(identifier = "share_button", clickable = true, skipped = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = true, instrumented = false),
+            AutocaptureNode(identifier = "share_button", clickable = true, ignored = false, instrumented = false),
+        )
+        assertNull(resolveAutocaptureTarget(chain))
+    }
+
+    @Test
+    fun resolveAutocaptureTargetReturnsNullWhenAnAncestorAboveTheClickableIsIgnored() {
+        // autographIgnore() is subtree-wide: a container ABOVE an already-clickable descendant
+        // (e.g. Box(Modifier.autographIgnore()) { Button(...) }) must still suppress the tap, even
+        // though the walk would otherwise return the clickable's identifier before reaching it.
+        val chain = sequenceOf(
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = "button", clickable = true, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = true, instrumented = false),
         )
         assertNull(resolveAutocaptureTarget(chain))
     }

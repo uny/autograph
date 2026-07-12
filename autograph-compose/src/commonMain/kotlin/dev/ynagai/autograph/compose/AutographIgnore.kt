@@ -20,6 +20,10 @@ public fun Modifier.autographIgnore(): Modifier = semantics { this[AutographIgno
  * tap observer doesn't double-report it. Internal — set automatically by those modifiers. */
 internal val AutographInstrumentedKey: SemanticsPropertyKey<Boolean> = SemanticsPropertyKey("AutographInstrumented")
 
-/** Android hit-testing convenience: true if [this] carries either skip marker directly. */
-internal fun SemanticsConfiguration.isAutocaptureSkipped(): Boolean =
-    getOrNull(AutographIgnoredKey) == true || getOrNull(AutographInstrumentedKey) == true
+/** Android hit-testing convenience: true if [this] carries the subtree-wide ignore marker directly. */
+internal fun SemanticsConfiguration.isAutocaptureIgnored(): Boolean =
+    getOrNull(AutographIgnoredKey) == true
+
+/** Android hit-testing convenience: true if [this] carries the already-instrumented marker directly. */
+internal fun SemanticsConfiguration.isAutocaptureInstrumented(): Boolean =
+    getOrNull(AutographInstrumentedKey) == true
