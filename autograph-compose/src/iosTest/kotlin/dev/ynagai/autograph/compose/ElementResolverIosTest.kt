@@ -249,6 +249,46 @@ class ElementResolverIosTest {
     }
 
     @Test
+    fun resolveIosElementSuppressesTheInstrumentedButtonEvenWhenBoundsDriftWithinTolerance() {
+        // approximatelyEquals' 1f tolerance exists because nearestClickable's bounds come from two
+        // independent measurement paths (Compose boundsInRoot() vs UIKit accessibilityFrame +
+        // convertRect + scale) for the same physical element — a sub-pixel drift between them must
+        // still count as a match.
+        val scale = UIScreen.mainScreen.scale
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        val driftedButtonBounds = androidx.compose.ui.geometry.Rect(
+            (10.0 * scale).toFloat() + 0.5f,
+            (10.0 * scale).toFloat() + 0.5f,
+            (30.0 * scale).toFloat() + 0.5f,
+            (30.0 * scale).toFloat() + 0.5f,
+        )
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, driftedButtonBounds)
+
+        val result = resolveIosElement(root, claims, position)
+
+        assertNull(result)
+    }
+
+    @Test
+    fun resolveIosElementDoesNotSuppressWhenBoundsDriftBeyondTolerance() {
+        val scale = UIScreen.mainScreen.scale
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        val farDriftedButtonBounds = androidx.compose.ui.geometry.Rect(
+            (10.0 * scale).toFloat() + 1.5f,
+            (10.0 * scale).toFloat() + 1.5f,
+            (30.0 * scale).toFloat() + 1.5f,
+            (30.0 * scale).toFloat() + 1.5f,
+        )
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, farDriftedButtonBounds)
+
+        val result = resolveIosElement(root, claims, position)
+
+        assertEquals("share_button", result)
+    }
+
+    @Test
     fun resolveIosElementDoesNotSuppressAButtonInsideAnInstrumentedAncestorContainer() {
         // Android's resolveAutocaptureTarget only checks the resolved nearestClickable's OWN
         // `instrumented` flag — an instrumented ANCESTOR (e.g. a trackImpression container wrapping

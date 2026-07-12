@@ -49,15 +49,21 @@ import platform.darwin.NSObject
  * `accessibilityFrame` is documented by Apple as screen coordinates; converted back to the root
  * view's local space via `UIView.convertRect(_:fromCoordinateSpace:)` (confirmed on-device to
  * exactly match the element's declared local size/position, once scaled — see
- * [accessibilityLocalBounds]) to compare against [Offset]s from the pointer-input tree, which are
- * already local to that same root.
+ * [accessibilityLocalBounds]) to compare against [Offset]s from the pointer-input tree — those
+ * arrive local to the tapped node, not to [view], so [rememberElementResolver] converts via
+ * `root.localToWindow(position)` first (mirroring Android's `resolveAutocaptureTarget`, which
+ * converts the same way via `root.localToWindow(position)` against `boundsInWindow`); skipping
+ * that conversion would misattribute or miss every tap whenever the `Modifier.autocaptureTaps`
+ * node isn't flush with [view]'s own origin.
  */
 @OptIn(ExperimentalForeignApi::class)
 @Composable
 internal actual fun rememberElementResolver(): ElementResolver {
     val view = LocalUIView.current
     val claims = LocalAutocaptureClaims.current
-    return remember(view, claims) { ElementResolver { _, position -> resolveIosElement(view, claims, position) } }
+    return remember(view, claims) {
+        ElementResolver { root, position -> resolveIosElement(view, claims, root.localToWindow(position)) }
+    }
 }
 
 /**
