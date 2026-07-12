@@ -63,9 +63,11 @@ class ReportTapIfResolvableTest {
 }
 
 /**
- * The platform resolver only has a real implementation on Android (see [ElementResolver.android.kt]);
- * on the JVM target these tests exercise the AutographProvider(autocapture=) wiring itself —
- * composition, layout, and that clicks still reach child composables — not target resolution.
+ * The platform resolver has a real implementation on Android and iOS (see [ElementResolver.android.kt]
+ * / [ElementResolver.ios.kt]); on the JVM target — and wherever [PlatformAutocaptureTestHost] can't
+ * supply what the platform resolver needs — these tests exercise the AutographProvider(autocapture=)
+ * wiring itself — composition, layout, and that clicks still reach child composables — not target
+ * resolution.
  */
 @OptIn(ExperimentalTestApi::class)
 class AutocaptureObserverTest {
@@ -75,13 +77,15 @@ class AutocaptureObserverTest {
         val tracker = AutocaptureRecordingTracker()
         var clicked = false
         setContent {
-            AutographProvider(tracker, autocapture = AutocaptureConfig()) {
-                Box(
-                    Modifier
-                        .testTag("target")
-                        .size(10.dp)
-                        .clickable { clicked = true },
-                )
+            PlatformAutocaptureTestHost {
+                AutographProvider(tracker, autocapture = AutocaptureConfig()) {
+                    Box(
+                        Modifier
+                            .testTag("target")
+                            .size(10.dp)
+                            .clickable { clicked = true },
+                    )
+                }
             }
         }
         waitForIdle()
@@ -96,8 +100,10 @@ class AutocaptureObserverTest {
     fun autographProviderWithAutocaptureStillFiresExplicitTrackClick() = runComposeUiTest {
         val tracker = AutocaptureRecordingTracker()
         setContent {
-            AutographProvider(tracker, autocapture = AutocaptureConfig()) {
-                Box(Modifier.testTag("target").size(10.dp).trackClick("Item Clicked", target = "share_button") {})
+            PlatformAutocaptureTestHost {
+                AutographProvider(tracker, autocapture = AutocaptureConfig()) {
+                    Box(Modifier.testTag("target").size(10.dp).trackClick("Item Clicked", target = "share_button") {})
+                }
             }
         }
         waitForIdle()

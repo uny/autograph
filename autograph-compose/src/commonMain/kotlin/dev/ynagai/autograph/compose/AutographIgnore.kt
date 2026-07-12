@@ -1,6 +1,7 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.getOrNull
@@ -14,7 +15,9 @@ internal val AutographIgnoredKey: SemanticsPropertyKey<Boolean> = SemanticsPrope
  * Explicit instrumentation ([trackClick]/[trackImpression]) inside the subtree is unaffected —
  * this only stops the ambient tap observer from reporting taps here on its own.
  */
-public fun Modifier.autographIgnore(): Modifier = semantics { this[AutographIgnoredKey] = true }
+public fun Modifier.autographIgnore(): Modifier = composed {
+    semantics { this[AutographIgnoredKey] = true }.registerAutocaptureClaim(AutocaptureClaimKind.IGNORED)
+}
 
 /** Marks an element as already instrumented via [trackClick]/[trackImpression], so the ambient
  * tap observer doesn't double-report it. Internal — set automatically by those modifiers. */
