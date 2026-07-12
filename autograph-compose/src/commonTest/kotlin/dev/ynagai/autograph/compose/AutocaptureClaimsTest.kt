@@ -139,4 +139,28 @@ class AutocaptureClaimDisposalTest {
 
         assertTrue(claims?.instrumented?.isEmpty() == true, "expected the instrumented claim to be removed once trackClick left the composition")
     }
+
+    /** [trackImpression]'s own `registerAutocaptureClaim` call site, distinct from [trackClick]'s. */
+    @Test
+    fun trackImpressionRegistersAnInstrumentedClaimWhileComposed() = runComposeUiTest {
+        var visible by mutableStateOf(true)
+        var claims: AutocaptureClaims? = null
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    claims = LocalAutocaptureClaims.current
+                    if (visible) {
+                        Box(Modifier.testTag("tracked").size(10.dp).trackImpression("Card Viewed"))
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertTrue(claims?.instrumented?.isNotEmpty() == true, "expected trackImpression to register an instrumented claim while composed")
+
+        visible = false
+        waitForIdle()
+
+        assertTrue(claims?.instrumented?.isEmpty() == true, "expected the instrumented claim to be removed once trackImpression left the composition")
+    }
 }
