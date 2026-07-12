@@ -13,8 +13,11 @@ package dev.ynagai.autograph.compose
  * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer
  * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing doesn't account
  * for `Modifier.clip`/`Modifier.zIndex`, so an element that's visually clipped or reordered can be
- * misattributed. Currently implemented on Android only; taps are silently not captured on other
- * targets.
+ * misattributed. Implemented on Android (via the semantics tree) and iOS (via the UIKit
+ * accessibility bridge — see `ElementResolver.ios.kt`; role isn't available there, so identification
+ * falls back straight from `testTag` to the accessibility label, and only elements exposing
+ * `UIAccessibilityTraitButton` are treated as clickable). Taps are silently not captured on other
+ * targets (JVM/desktop).
  */
 public data class AutocaptureConfig(
     val eventName: String = "Element Clicked",

@@ -55,8 +55,13 @@ public fun AutographProvider(
         LocalScreenHistory provides screenHistory,
     ) {
         if (autocapture != null) {
-            Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, autocapture)) {
-                content()
+            // Only provided when autocapture is on: registerAutocaptureClaim no-ops without it, so
+            // autographIgnore()/trackClick()/trackImpression() don't pay for position tracking otherwise.
+            val claims = remember { AutocaptureClaims() }
+            CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
+                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, autocapture)) {
+                    content()
+                }
             }
         } else {
             content()

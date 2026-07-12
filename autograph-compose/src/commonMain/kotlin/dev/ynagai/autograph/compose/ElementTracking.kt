@@ -40,6 +40,7 @@ public fun Modifier.trackImpression(
             tracker.track(name, withScreenContext(properties, screenContext), target)
         }
     }.semantics { this[AutographInstrumentedKey] = true }
+        .registerAutocaptureClaim(AutocaptureClaimKind.INSTRUMENTED)
 }
 
 /**
@@ -59,6 +60,7 @@ public fun Modifier.trackClick(
         tracker.track(name, withScreenContext(properties, screenContext), target)
         onClick()
     }.semantics { this[AutographInstrumentedKey] = true }
+        .registerAutocaptureClaim(AutocaptureClaimKind.INSTRUMENTED)
 }
 
 /**
