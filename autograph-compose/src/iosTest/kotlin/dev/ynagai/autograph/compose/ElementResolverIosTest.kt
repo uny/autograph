@@ -170,6 +170,24 @@ class ElementResolverIosTest {
         assertEquals(((3.0 + 5.0) * scale).toFloat(), bounds.bottom, 0.5f)
     }
 
+    @Test
+    fun resolveIosElementReturnsNullWhenTheTapHitsNoClickable() {
+        // Every other resolveIosElement test taps a button-trait view via buildRootWithButton() —
+        // this covers the (arguably most common at runtime) opposite branch: the tap hits an
+        // element, but nothing in its ancestry exposes UIAccessibilityTraitButton.
+        val scale = UIScreen.mainScreen.scale
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val nonClickableChild = UIView()
+        nonClickableChild.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        root.addSubview(nonClickableChild)
+        val position = Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertNull(result)
+    }
+
     // testTag drives identification (`accessibilityIdentifier`); accessibilityLabel is also set to
     // confirm resolveIosElement never falls back to it (see resolveIosElementNeverFallsBackToTheAccessibilityLabel).
     private fun buildRootWithButton(): Pair<UIView, Offset> {
