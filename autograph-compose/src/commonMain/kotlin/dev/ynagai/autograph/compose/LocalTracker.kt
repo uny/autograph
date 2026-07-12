@@ -1,10 +1,13 @@
 package dev.ynagai.autograph.compose
 
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -21,10 +24,15 @@ public val LocalTracker: androidx.compose.runtime.ProvidableCompositionLocal<Tra
 /**
  * Provides [tracker] to the composition via [LocalTracker] and wires application
  * lifecycle events (foreground/background) into the tracker's session bookkeeping.
+ *
+ * Pass [autocapture] to also report taps app-wide without instrumenting every element with
+ * [trackClick] — opt-in, since observing every tap is a meaningfully different privacy posture
+ * than explicit instrumentation. See [AutocaptureConfig].
  */
 @Composable
 public fun AutographProvider(
     tracker: Tracker,
+    autocapture: AutocaptureConfig? = null,
     content: @Composable () -> Unit,
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -45,8 +53,15 @@ public fun AutographProvider(
     CompositionLocalProvider(
         LocalTracker provides tracker,
         LocalScreenHistory provides screenHistory,
-        content = content,
-    )
+    ) {
+        if (autocapture != null) {
+            Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, autocapture)) {
+                content()
+            }
+        } else {
+            content()
+        }
+    }
 }
 
 private object MissingTracker : Tracker {

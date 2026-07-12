@@ -6,6 +6,19 @@
 // - Show declarations: true
 
 // Library unique name: <dev.ynagai.autograph:autograph-compose>
+final class dev.ynagai.autograph.compose/AutocaptureConfig { // dev.ynagai.autograph.compose/AutocaptureConfig|null[0]
+    constructor <init>(kotlin/String = ...) // dev.ynagai.autograph.compose/AutocaptureConfig.<init>|<init>(kotlin.String){}[0]
+
+    final val eventName // dev.ynagai.autograph.compose/AutocaptureConfig.eventName|{}eventName[0]
+        final fun <get-eventName>(): kotlin/String // dev.ynagai.autograph.compose/AutocaptureConfig.eventName.<get-eventName>|<get-eventName>(){}[0]
+
+    final fun component1(): kotlin/String // dev.ynagai.autograph.compose/AutocaptureConfig.component1|component1(){}[0]
+    final fun copy(kotlin/String = ...): dev.ynagai.autograph.compose/AutocaptureConfig // dev.ynagai.autograph.compose/AutocaptureConfig.copy|copy(kotlin.String){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.ynagai.autograph.compose/AutocaptureConfig.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.ynagai.autograph.compose/AutocaptureConfig.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.ynagai.autograph.compose/AutocaptureConfig.toString|toString(){}[0]
+}
+
 final class dev.ynagai.autograph.compose/ScreenContext { // dev.ynagai.autograph.compose/ScreenContext|null[0]
     constructor <init>(kotlin/String, kotlin/String? = ...) // dev.ynagai.autograph.compose/ScreenContext.<init>|<init>(kotlin.String;kotlin.String?){}[0]
 
@@ -26,12 +39,15 @@ final val dev.ynagai.autograph.compose/LocalScreenContext // dev.ynagai.autograp
     final fun <get-LocalScreenContext>(): androidx.compose.runtime/ProvidableCompositionLocal<dev.ynagai.autograph.compose/ScreenContext?> // dev.ynagai.autograph.compose/LocalScreenContext.<get-LocalScreenContext>|<get-LocalScreenContext>(){}[0]
 final val dev.ynagai.autograph.compose/LocalTracker // dev.ynagai.autograph.compose/LocalTracker|{}LocalTracker[0]
     final fun <get-LocalTracker>(): androidx.compose.runtime/ProvidableCompositionLocal<dev.ynagai.autograph/Tracker> // dev.ynagai.autograph.compose/LocalTracker.<get-LocalTracker>|<get-LocalTracker>(){}[0]
+final val dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_AutocaptureConfig$stableprop // dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_AutocaptureConfig$stableprop|#static{}dev_ynagai_autograph_compose_AutocaptureConfig$stableprop[0]
 final val dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_ScreenContext$stableprop // dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_ScreenContext$stableprop|#static{}dev_ynagai_autograph_compose_ScreenContext$stableprop[0]
 
+final fun (androidx.compose.ui/Modifier).dev.ynagai.autograph.compose/autographIgnore(): androidx.compose.ui/Modifier // dev.ynagai.autograph.compose/autographIgnore|autographIgnore@androidx.compose.ui.Modifier(){}[0]
 final fun (androidx.compose.ui/Modifier).dev.ynagai.autograph.compose/trackClick(kotlin/String, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/Function0<kotlin/Unit>): androidx.compose.ui/Modifier // dev.ynagai.autograph.compose/trackClick|trackClick@androidx.compose.ui.Modifier(kotlin.String;kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.Function0<kotlin.Unit>){}[0]
 final fun (androidx.compose.ui/Modifier).dev.ynagai.autograph.compose/trackImpression(kotlin/String, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/Long = ..., kotlin/Float = ...): androidx.compose.ui/Modifier // dev.ynagai.autograph.compose/trackImpression|trackImpression@androidx.compose.ui.Modifier(kotlin.String;kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.Long;kotlin.Float){}[0]
 final fun (androidx.navigation/NavController).dev.ynagai.autograph.compose/TrackScreenViews(kotlin/Function1<androidx.navigation/NavDestination, kotlin/String?>?, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // dev.ynagai.autograph.compose/TrackScreenViews|TrackScreenViews@androidx.navigation.NavController(kotlin.Function1<androidx.navigation.NavDestination,kotlin.String?>?;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]
-final fun dev.ynagai.autograph.compose/AutographProvider(dev.ynagai.autograph/Tracker, kotlin/Function2<androidx.compose.runtime/Composer, kotlin/Int, kotlin/Unit>, androidx.compose.runtime/Composer?, kotlin/Int) // dev.ynagai.autograph.compose/AutographProvider|AutographProvider(dev.ynagai.autograph.Tracker;kotlin.Function2<androidx.compose.runtime.Composer,kotlin.Int,kotlin.Unit>;androidx.compose.runtime.Composer?;kotlin.Int){}[0]
+final fun dev.ynagai.autograph.compose/AutographProvider(dev.ynagai.autograph/Tracker, dev.ynagai.autograph.compose/AutocaptureConfig?, kotlin/Function2<androidx.compose.runtime/Composer, kotlin/Int, kotlin/Unit>, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // dev.ynagai.autograph.compose/AutographProvider|AutographProvider(dev.ynagai.autograph.Tracker;dev.ynagai.autograph.compose.AutocaptureConfig?;kotlin.Function2<androidx.compose.runtime.Composer,kotlin.Int,kotlin.Unit>;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]
 final fun dev.ynagai.autograph.compose/TrackScreenView(kotlin/String, kotlinx.serialization.json/JsonObject?, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // dev.ynagai.autograph.compose/TrackScreenView|TrackScreenView(kotlin.String;kotlinx.serialization.json.JsonObject?;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]
 final fun dev.ynagai.autograph.compose/TrackedScreen(kotlin/String, kotlinx.serialization.json/JsonObject?, kotlin/Function2<androidx.compose.runtime/Composer, kotlin/Int, kotlin/Unit>, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // dev.ynagai.autograph.compose/TrackedScreen|TrackedScreen(kotlin.String;kotlinx.serialization.json.JsonObject?;kotlin.Function2<androidx.compose.runtime.Composer,kotlin.Int,kotlin.Unit>;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]
+final fun dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_AutocaptureConfig$stableprop_getter(): kotlin/Int // dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_AutocaptureConfig$stableprop_getter|dev_ynagai_autograph_compose_AutocaptureConfig$stableprop_getter(){}[0]
 final fun dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_ScreenContext$stableprop_getter(): kotlin/Int // dev.ynagai.autograph.compose/dev_ynagai_autograph_compose_ScreenContext$stableprop_getter|dev_ynagai_autograph_compose_ScreenContext$stableprop_getter(){}[0]

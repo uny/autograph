@@ -1,0 +1,21 @@
+package dev.ynagai.autograph.compose
+
+/**
+ * Enables automatic click capture when passed to `AutographProvider` — taps anywhere in the
+ * composition are observed and reported via [dev.ynagai.autograph.Tracker.track] without needing
+ * [trackClick] on every element. Opt-in: omit it (the default) to only report explicitly
+ * instrumented elements.
+ *
+ * Identification prefers `Modifier.testTag`, then the element's semantics role, then its
+ * accessibility label — never its displayed text, to avoid capturing PII by default. Exclude a
+ * subtree entirely with [autographIgnore].
+ *
+ * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer
+ * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing doesn't account
+ * for `Modifier.clip`/`Modifier.zIndex`, so an element that's visually clipped or reordered can be
+ * misattributed. Currently implemented on Android only; taps are silently not captured on other
+ * targets.
+ */
+public data class AutocaptureConfig(
+    val eventName: String = "Element Clicked",
+)

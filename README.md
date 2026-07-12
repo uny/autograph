@@ -39,7 +39,7 @@ SPI is vendor-neutral.
 |:--|:--|
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
-| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, and `Modifier.trackImpression` / `Modifier.trackClick`. |
+| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, and opt-in autocapture of taps (Android only for now). |
 
 ## Quick start
 
@@ -84,7 +84,27 @@ LocalTracker.current.track("Recipe Saved", target = "share_button")
 // are attached automatically
 Text("Save", Modifier.trackClick("Recipe Saved") { save() })
 Card(Modifier.trackImpression("Recipe Viewed", target = "recipe_card")) { RecipeCard() }
+
+// Opt-in: report every tap without instrumenting each element — pass AutocaptureConfig to
+// AutographProvider. Identification prefers testTag, then role, then the accessibility label;
+// displayed text is never collected. Exclude a subtree with Modifier.autographIgnore().
+AutographProvider(tracker, autocapture = AutocaptureConfig()) {
+    App()
+}
 ```
+
+### Autocapture
+
+`AutocaptureConfig` passed to `AutographProvider` observes taps app-wide and reports the tapped
+element's identifier as `target` on a configurable event name (`"Element Clicked"` by default) —
+without needing `Modifier.trackClick` on every element. It's opt-in: observing every tap is a
+meaningfully different privacy posture than explicit instrumentation, so it's off unless you ask
+for it. Elements already instrumented with `trackClick` / `trackImpression` are never
+double-reported, and `Modifier.autographIgnore()` excludes a subtree entirely.
+
+Currently implemented on Android only (hit-testing the semantics tree via the same opt-in
+`RootForTest` entry point other autocapture SDKs use); taps are silently not captured on iOS/JVM
+yet.
 
 Every event now carries:
 
@@ -169,6 +189,8 @@ Its `AutographSegment` binary target picks one of two sources depending on what'
 ## Roadmap
 
 - [x] `Modifier.trackImpression` / `Modifier.trackClick` built on Compose visibility APIs
+- [x] Autocapture on Android (opt-in `AutocaptureConfig` on `AutographProvider`)
+- [ ] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
 - [ ] `autograph-test`: in-memory transport with assertion helpers
 - [x] `autograph-segment-swift` companion package (SPM)
