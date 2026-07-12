@@ -83,7 +83,7 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
     // ancestor-chain to consult, so approximate "is nearestClickable itself the instrumented
     // element" by comparing an instrumented claim's rect against nearestClickable's own bounds
     // (self-registration via trackClick/trackImpression puts a claim keyed at the exact element's
-    // own boundsInRoot()) rather than the raw tap position, which would also match any larger
+    // own boundsInWindow()) rather than the raw tap position, which would also match any larger
     // ancestor container overlapping the tap.
     if (claims != null) {
         val nearestClickableBounds = nearestClickable.accessibilityLocalBounds(view)
@@ -99,7 +99,7 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
 
 /**
  * Bounds equality with tolerance: [nearestClickable]'s own bounds come from two different
- * measurement paths for the same physical element — Compose's `boundsInRoot()` (claim
+ * measurement paths for the same physical element — Compose's `boundsInWindow()` (claim
  * registration) vs UIKit's `accessibilityFrame` + `convertRect` + scale (this resolver) — so exact
  * equality is too strict, but a real ancestor container's bounds differ by more than float noise.
  */

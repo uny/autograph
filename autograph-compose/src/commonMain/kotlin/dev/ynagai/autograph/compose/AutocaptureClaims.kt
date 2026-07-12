@@ -7,7 +7,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 
 /** Which kind of on-screen bounds [AutocaptureClaims] is tracking. */
@@ -22,7 +22,11 @@ internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED }
  * way to read a custom semantics key back off a tapped element (see ElementResolver.ios.kt: the UIKit
  * accessibility bridge only carries the fixed UIAccessibility properties — label, traits, identifier,
  * frame — not arbitrary Compose semantics keys), so its resolver consults this instead: is the tap
- * position inside any ignored/instrumented element's last-known bounds.
+ * position inside any ignored/instrumented element's last-known bounds. Bounds are captured in
+ * WINDOW space ([boundsInWindow], not `boundsInRoot`) to match [ElementResolver.ios.kt]'s resolver,
+ * which converts the tap position via `root.localToWindow(position)` before comparing against these —
+ * the two must share a coordinate space regardless of where [autocaptureTaps] sits relative to the
+ * window (safe-area insets, nested embedding, etc.).
  */
 internal class AutocaptureClaims {
     val ignored = mutableStateMapOf<Any, Rect>()
@@ -57,5 +61,5 @@ internal fun Modifier.registerAutocaptureClaim(kind: AutocaptureClaimKind): Modi
     val claims = LocalAutocaptureClaims.current ?: return this
     val key = remember { Any() }
     DisposableEffect(claims, key, kind) { onDispose { claims.remove(key, kind) } }
-    return onGloballyPositioned { claims.put(key, kind, it.boundsInRoot()) }
+    return onGloballyPositioned { claims.put(key, kind, it.boundsInWindow()) }
 }

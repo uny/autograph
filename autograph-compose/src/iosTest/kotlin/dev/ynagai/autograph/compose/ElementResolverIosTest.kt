@@ -229,7 +229,7 @@ class ElementResolverIosTest {
 
     @Test
     fun resolveIosElementReturnsNullWhenTheButtonItselfIsTheInstrumentedClaim() {
-        // Mirrors self-registration (trackClick/trackImpression register their OWN boundsInRoot()),
+        // Mirrors self-registration (trackClick/trackImpression register their OWN boundsInWindow()),
         // which resolveIosElement must still suppress to avoid double-reporting an explicitly
         // instrumented element via the ambient autocapture observer too.
         val scale = UIScreen.mainScreen.scale
@@ -251,7 +251,7 @@ class ElementResolverIosTest {
     @Test
     fun resolveIosElementSuppressesTheInstrumentedButtonEvenWhenBoundsDriftWithinTolerance() {
         // approximatelyEquals' 1f tolerance exists because nearestClickable's bounds come from two
-        // independent measurement paths (Compose boundsInRoot() vs UIKit accessibilityFrame +
+        // independent measurement paths (Compose boundsInWindow() vs UIKit accessibilityFrame +
         // convertRect + scale) for the same physical element — a sub-pixel drift between them must
         // still count as a match.
         val scale = UIScreen.mainScreen.scale
