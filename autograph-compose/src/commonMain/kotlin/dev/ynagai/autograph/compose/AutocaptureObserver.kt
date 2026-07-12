@@ -45,13 +45,32 @@ internal fun Modifier.autocaptureTaps(
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Final)
                     if (event.type != PointerEventType.Release) continue
-                    val change = event.changes.firstOrNull() ?: continue
-                    if (!change.isConsumed) continue
+                    // Filter directly by isConsumed: on a multi-touch Release the consumed pointer
+                    // isn't necessarily changes[0].
+                    val change = event.changes.firstOrNull { it.isConsumed } ?: continue
                     val root = rootCoordinates ?: continue
-                    val target = resolver.resolve(root, change.position) ?: continue
-                    val screenContext = screenHistory.lastScreen?.let { ScreenContext(it) }
-                    tracker.track(config.eventName, withScreenContext(EmptyJsonObject, screenContext), target)
+                    reportTapIfResolvable(tracker, screenHistory, config) { resolver.resolve(root, change.position) }
                 }
             }
         }
+}
+
+/**
+ * Calls [resolve] and, if it returns a non-null target, reports it via [tracker]. Any exception
+ * from [resolve] or [tracker] is swallowed — a single bad resolve/track must not permanently kill
+ * the caller's `while(true)` tap-observation loop for the rest of the composition's lifetime.
+ */
+internal fun reportTapIfResolvable(
+    tracker: Tracker,
+    screenHistory: ScreenHistory,
+    config: AutocaptureConfig,
+    resolve: () -> String?,
+) {
+    try {
+        val target = resolve() ?: return
+        val screenContext = screenHistory.lastScreen?.let { ScreenContext(it) }
+        tracker.track(config.eventName, withScreenContext(EmptyJsonObject, screenContext), target)
+    } catch (e: Exception) {
+        // Swallowed: see kdoc above.
+    }
 }

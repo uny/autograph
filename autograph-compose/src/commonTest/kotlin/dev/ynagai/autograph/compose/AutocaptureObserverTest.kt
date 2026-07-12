@@ -25,6 +25,43 @@ private class AutocaptureRecordingTracker : Tracker {
     override fun identify(userId: String, traits: JsonObject) {}
 }
 
+private class ThrowingTracker : Tracker {
+    override fun track(name: String, properties: JsonObject, target: String?): Unit = throw RuntimeException("boom")
+    override fun screen(name: String, properties: JsonObject) {}
+    override fun identify(userId: String, traits: JsonObject) {}
+}
+
+class ReportTapIfResolvableTest {
+
+    @Test
+    fun reportsTheResolvedTarget() {
+        val tracker = AutocaptureRecordingTracker()
+        reportTapIfResolvable(tracker, ScreenHistory(), AutocaptureConfig(eventName = "Element Clicked")) { "share_button" }
+        assertEquals(listOf<Pair<String, String?>>("Element Clicked" to "share_button"), tracker.tracked)
+    }
+
+    @Test
+    fun doesNothingWhenResolveReturnsNull() {
+        val tracker = AutocaptureRecordingTracker()
+        reportTapIfResolvable(tracker, ScreenHistory(), AutocaptureConfig()) { null }
+        assertTrue(tracker.tracked.isEmpty())
+    }
+
+    @Test
+    fun swallowsAnExceptionFromResolveInsteadOfPropagatingIt() {
+        val tracker = AutocaptureRecordingTracker()
+        // Must not throw — a throwing resolve() must not kill the caller's while(true) loop.
+        reportTapIfResolvable(tracker, ScreenHistory(), AutocaptureConfig()) { throw RuntimeException("boom") }
+        assertTrue(tracker.tracked.isEmpty())
+    }
+
+    @Test
+    fun swallowsAnExceptionFromTrackInsteadOfPropagatingIt() {
+        // Must not throw — a throwing track() must not kill the caller's while(true) loop.
+        reportTapIfResolvable(ThrowingTracker(), ScreenHistory(), AutocaptureConfig()) { "share_button" }
+    }
+}
+
 /**
  * The platform resolver only has a real implementation on Android (see [ElementResolver.android.kt]);
  * on the JVM target these tests exercise the AutographProvider(autocapture=) wiring itself —
