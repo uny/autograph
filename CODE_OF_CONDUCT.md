@@ -50,9 +50,10 @@ an individual is officially representing the community in public spaces.
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be
 reported to the maintainers by opening a
-[GitHub issue](https://github.com/uny/autograph/issues/new) or, for sensitive
-reports, by contacting the maintainer directly. All complaints will be
-reviewed and investigated promptly and fairly.
+[GitHub issue](https://github.com/uny/autograph/issues/new). For sensitive
+reports that shouldn't be public, email
+[1780156+uny@users.noreply.github.com](mailto:1780156+uny@users.noreply.github.com)
+instead. All complaints will be reviewed and investigated promptly and fairly.
 
 ## Attribution
 
