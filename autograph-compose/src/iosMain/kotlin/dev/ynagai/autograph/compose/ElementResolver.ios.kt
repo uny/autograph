@@ -76,7 +76,7 @@ internal actual fun rememberElementResolver(): ElementResolver {
  * later (visually on top) children when bounds overlap, same as Android.
  */
 @OptIn(ExperimentalForeignApi::class)
-private fun deepestAccessibilityHitPath(node: Any, view: UIView, position: Offset): List<Any>? {
+internal fun deepestAccessibilityHitPath(node: Any, view: UIView, position: Offset): List<Any>? {
     val bounds = node.accessibilityLocalBounds(view) ?: return null
     if (!bounds.contains(position)) return null
     val children = node.accessibilityChildren()
@@ -87,7 +87,7 @@ private fun deepestAccessibilityHitPath(node: Any, view: UIView, position: Offse
 }
 
 @OptIn(ExperimentalForeignApi::class)
-private fun Any.accessibilityLocalBounds(view: UIView): Rect? {
+internal fun Any.accessibilityLocalBounds(view: UIView): Rect? {
     val screenFrame = (this as? NSObject)?.accessibilityFrame() ?: return null
     val localFrame = view.convertRect(screenFrame, fromCoordinateSpace = UIScreen.mainScreen.coordinateSpace)
     // UIKit's convertRect returns points; Compose's Offset/LayoutCoordinates (what [position] and
@@ -111,13 +111,13 @@ private fun Any.accessibilityLocalBounds(view: UIView): Rect? {
  * `accessibilityElements()` (how the tree actually links together once inside it) and `subviews`
  * (how to reach into it from an arbitrary starting [UIView]).
  */
-private fun Any.accessibilityChildren(): List<Any> {
+internal fun Any.accessibilityChildren(): List<Any> {
     val axChildren = (this as? NSObject)?.accessibilityElements()?.filterNotNull() ?: emptyList()
     val subviewChildren = (this as? UIView)?.subviews?.filterNotNull() ?: emptyList()
     return axChildren + subviewChildren
 }
 
-private fun Any.isAccessibilityButton(): Boolean =
+internal fun Any.isAccessibilityButton(): Boolean =
     (((this as? NSObject)?.accessibilityTraits() ?: 0uL) and UIAccessibilityTraitButton) != 0uL
 
 private fun Any.accessibilityIdentifierOrNull(): String? =
