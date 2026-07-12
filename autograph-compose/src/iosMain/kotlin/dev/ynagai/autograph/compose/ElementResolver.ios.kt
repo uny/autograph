@@ -40,6 +40,13 @@ import platform.darwin.NSObject
  * node's ancestry — [autocaptureTaps] instead consults [AutocaptureClaims], which
  * [autographIgnore]/[trackClick]/[trackImpression] populate positionally.
  *
+ * Because that check is purely "is the tap position inside some registered rect" rather than "is a
+ * registered rect an ancestor of the hit node" (which is what Android's [resolveAutocaptureTarget]
+ * does), it's blind to ancestry: a tap can be suppressed by an [autographIgnore]'d/instrumented
+ * element that isn't actually on the hit path, merely overlapping it at that position (e.g. during a
+ * scroll/transition, or a stale entry for a composable that's still composed but visually covered).
+ * Android can't have this failure mode since it only ever looks at the hit node's own ancestor chain.
+ *
  * `accessibilityFrame` is documented by Apple as screen coordinates; converted back to the root
  * view's local space via `UIView.convertRect(_:fromCoordinateSpace:)` (confirmed on-device to
  * exactly match the element's declared local size/position, once scaled — see
