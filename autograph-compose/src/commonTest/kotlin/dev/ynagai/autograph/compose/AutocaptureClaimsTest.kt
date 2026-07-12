@@ -109,4 +109,34 @@ class AutocaptureClaimDisposalTest {
 
         assertTrue(claims?.ignored?.isEmpty() == true, "expected the claim to be removed once its composable left the composition")
     }
+
+    /**
+     * [autographIgnore]'s IGNORED-kind registration is covered above; [trackClick]/[trackImpression]'s
+     * INSTRUMENTED-kind registration is otherwise only ever exercised via directly-constructed
+     * [AutocaptureClaims] fixtures in resolver tests, never through the real composable wiring — a
+     * regression in [registerAutocaptureClaim]'s call site inside [Modifier.trackClick] specifically
+     * wouldn't be caught by either.
+     */
+    @Test
+    fun trackClickRegistersAnInstrumentedClaimWhileComposed() = runComposeUiTest {
+        var visible by mutableStateOf(true)
+        var claims: AutocaptureClaims? = null
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    claims = LocalAutocaptureClaims.current
+                    if (visible) {
+                        Box(Modifier.testTag("tracked").size(10.dp).trackClick("Item Clicked") {})
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertTrue(claims?.instrumented?.isNotEmpty() == true, "expected trackClick to register an instrumented claim while composed")
+
+        visible = false
+        waitForIdle()
+
+        assertTrue(claims?.instrumented?.isEmpty() == true, "expected the instrumented claim to be removed once trackClick left the composition")
+    }
 }
