@@ -3,7 +3,6 @@ package dev.ynagai.autograph.compose
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.InternalComposeUiApi
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.SemanticsActions
