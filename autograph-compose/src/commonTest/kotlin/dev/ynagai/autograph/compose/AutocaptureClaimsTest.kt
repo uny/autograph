@@ -1,12 +1,15 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -162,5 +165,68 @@ class AutocaptureClaimDisposalTest {
         waitForIdle()
 
         assertTrue(claims?.instrumented?.isEmpty() == true, "expected the instrumented claim to be removed once trackImpression left the composition")
+    }
+
+    /**
+     * Regression coverage for registerAutocaptureClaim storing `boundsInWindow()` rather than
+     * `boundsInRoot()` (the two only coincide when the ignored/tracked element sits flush with the
+     * composition root) — the other tests in this class only assert presence/absence of a claim, so
+     * this would still pass if the coordinate space silently reverted to `boundsInRoot()`.
+     */
+    @Test
+    fun registerAutocaptureClaimStoresBoundsInWindowSpaceNotRootSpace() = runComposeUiTest {
+        var claims: AutocaptureClaims? = null
+        var actualBoundsInWindow: Rect? = null
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    claims = LocalAutocaptureClaims.current
+                    // Padding offsets this element from the composition root, so boundsInWindow()
+                    // and boundsInRoot() diverge — only the former should match the stored claim.
+                    Box(Modifier.padding(start = 40.dp, top = 60.dp)) {
+                        Box(
+                            Modifier.testTag("ignored")
+                                .size(10.dp)
+                                .onGloballyPositioned { actualBoundsInWindow = it.boundsInWindow() }
+                                .autographIgnore(),
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals(actualBoundsInWindow, claims?.ignored?.values?.singleOrNull())
+    }
+
+    /**
+     * A still-composed element that moves/resizes must overwrite its existing claim entry, not
+     * accumulate a second one — [registerAutocaptureClaim] keys by a stable per-call-site identity
+     * specifically so relayout re-puts under the same key.
+     */
+    @Test
+    fun registerAutocaptureClaimOverwritesBoundsOnRepositionRatherThanAccumulating() = runComposeUiTest {
+        var offset by mutableStateOf(0.dp)
+        var claims: AutocaptureClaims? = null
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    claims = LocalAutocaptureClaims.current
+                    Box(Modifier.padding(start = offset)) {
+                        Box(Modifier.testTag("ignored").size(10.dp).autographIgnore())
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        val boundsBeforeMove = claims?.ignored?.values?.singleOrNull()
+        assertTrue(boundsBeforeMove != null, "expected exactly one ignored claim before moving")
+
+        offset = 40.dp
+        waitForIdle()
+
+        assertEquals(1, claims?.ignored?.size, "expected the claim to be overwritten in place, not accumulated")
+        val boundsAfterMove = claims?.ignored?.values?.singleOrNull()
+        assertTrue(boundsAfterMove != boundsBeforeMove, "expected the stored bounds to reflect the new position")
     }
 }
