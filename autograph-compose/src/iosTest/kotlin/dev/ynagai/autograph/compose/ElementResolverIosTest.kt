@@ -7,6 +7,7 @@ import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import platform.UIKit.UIWindow
+import platform.UIKit.setAccessibilityElements
 import platform.UIKit.setAccessibilityFrame
 import platform.UIKit.setAccessibilityLabel
 import platform.UIKit.setAccessibilityTraits
@@ -110,10 +111,16 @@ class ElementResolverIosTest {
         val root = UIView()
         val subview = UIView()
         root.addSubview(subview)
+        val axOnlyElement = UIView()
+        root.setAccessibilityElements(listOf(axOnlyElement))
 
         val children = root.accessibilityChildren()
 
         assertTrue(children.contains(subview))
+        assertTrue(
+            children.contains(axOnlyElement),
+            "expected accessibilityChildren to include accessibilityElements()-only descendants — this is the entire reason it exists (Compose's AX root can be reachable only via accessibilityElements(), not subviews, per this file's KDoc)",
+        )
     }
 
     /**
