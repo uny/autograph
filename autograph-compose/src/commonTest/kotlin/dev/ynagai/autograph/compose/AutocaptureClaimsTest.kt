@@ -12,6 +12,7 @@ import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
@@ -111,6 +112,28 @@ class AutocaptureClaimDisposalTest {
         waitForIdle()
 
         assertTrue(claims?.ignored?.isEmpty() == true, "expected the claim to be removed once its composable left the composition")
+    }
+
+    /**
+     * [autographIgnore] was refactored into `composed { semantics{...}.registerAutocaptureClaim(...) }`
+     * — the tests above only check the [AutocaptureClaims] map (iOS's path), never that
+     * [AutographIgnoredKey] still reaches the [androidx.compose.ui.semantics.SemanticsConfiguration]
+     * through the real modifier (Android's path, via `config.isAutocaptureIgnored()`) after that
+     * wrapping.
+     */
+    @Test
+    fun autographIgnoreStillSetsTheSemanticsKey() = runComposeUiTest {
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    Box(Modifier.testTag("ignored").size(10.dp).autographIgnore())
+                }
+            }
+        }
+        waitForIdle()
+
+        val config = onNodeWithTag("ignored").fetchSemanticsNode().config
+        assertTrue(config.isAutocaptureIgnored(), "expected AutographIgnoredKey to still reach the SemanticsConfiguration")
     }
 
     /**
