@@ -168,21 +168,25 @@ class AutocaptureClaimDisposalTest {
     }
 
     /**
-     * Regression coverage for registerAutocaptureClaim storing `boundsInWindow()` rather than
-     * `boundsInRoot()` (the two only coincide when the ignored/tracked element sits flush with the
-     * composition root) — the other tests in this class only assert presence/absence of a claim, so
-     * this would still pass if the coordinate space silently reverted to `boundsInRoot()`.
+     * Asserts registerAutocaptureClaim stores the element's actual `boundsInWindow()` value.
+     * **Known harness limitation** (confirmed empirically): `runComposeUiTest`'s root composition IS
+     * its own window, so `boundsInRoot()` and `boundsInWindow()` are numerically identical here even
+     * with this test's padding offset — this assertion alone can't discriminate the two coordinate
+     * spaces, and would pass unchanged if `registerAutocaptureClaim` reverted to `boundsInRoot()`.
+     * Real regression protection for that would need an on-device/instrumented harness where the
+     * composition root is offset from the platform window (safe-area insets, nested embedding) —
+     * same class of limitation as this file's other iOS on-device-only findings. Kept as coverage
+     * that the stored bounds are real, positioned geometry (not a stale/zero rect), not as a
+     * discriminating regression guard.
      */
     @Test
-    fun registerAutocaptureClaimStoresBoundsInWindowSpaceNotRootSpace() = runComposeUiTest {
+    fun registerAutocaptureClaimStoresTheElementsActualBoundsInWindow() = runComposeUiTest {
         var claims: AutocaptureClaims? = null
         var actualBoundsInWindow: Rect? = null
         setContent {
             PlatformAutocaptureTestHost {
                 AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
                     claims = LocalAutocaptureClaims.current
-                    // Padding offsets this element from the composition root, so boundsInWindow()
-                    // and boundsInRoot() diverge — only the former should match the stored claim.
                     Box(Modifier.padding(start = 40.dp, top = 60.dp)) {
                         Box(
                             Modifier.testTag("ignored")
