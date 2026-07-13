@@ -70,6 +70,21 @@ class TrackerCodegenTest {
     }
 
     @Test
+    fun escapesALiteralBackslashInEventAndPropertyNames() {
+        val events = listOf(
+            EventSchema(
+                """path\to\thing""",
+                listOf(PropertySchema("""a\b""", PropertyType.STRING, required = true)),
+            ),
+        )
+
+        val source = generateTrackerExtensions(events, "p")
+
+        assertTrue(source.contains(""""path\\to\\thing""""), source)
+        assertTrue(source.contains("""put("a\\b", """), source)
+    }
+
+    @Test
     fun escapesDollarSignsInEventAndPropertyNamesSoTheyAreNotTemplateInterpolation() {
         val events = listOf(
             EventSchema(

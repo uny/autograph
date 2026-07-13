@@ -166,6 +166,40 @@ class TrackingPlanParserTest {
     }
 
     @Test
+    fun throwsWhenRequiredReferencesAPropertyNotDeclaredInProperties() {
+        val json = """
+            {
+              "events": [
+                {
+                  "name": "E",
+                  "properties": {
+                    "type": "object",
+                    "properties": { "target": { "type": "string" } },
+                    "required": ["Target"]
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        val exception = assertFailsWith<TrackingPlanParseException> { parseTrackingPlan(json) }
+        assertTrue(exception.message!!.contains("Target"))
+    }
+
+    @Test
+    fun throwsTrackingPlanParseExceptionWhenNestedPropertiesIsNotAnObject() {
+        val json = """{ "events": [ { "name": "E", "properties": { "type": "object", "properties": "not-an-object" } } ] }"""
+
+        assertFailsWith<TrackingPlanParseException> { parseTrackingPlan(json) }
+    }
+
+    @Test
+    fun throwsTrackingPlanParseExceptionWhenTheRootIsNotAJsonObject() {
+        assertFailsWith<TrackingPlanParseException> { parseTrackingPlan("[]") }
+        assertFailsWith<TrackingPlanParseException> { parseTrackingPlan("42") }
+    }
+
+    @Test
     fun throwsOnMissingEventsArray() {
         assertFailsWith<TrackingPlanParseException> {
             parseTrackingPlan("""{ "notEvents": [] }""")

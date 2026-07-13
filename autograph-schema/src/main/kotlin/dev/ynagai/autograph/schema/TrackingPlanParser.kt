@@ -109,6 +109,14 @@ private fun parseProperties(eventName: String, schema: JsonObject): List<Propert
                 "the same parameter name \"$paramName\" — rename one of them",
         )
     }
+
+    val undeclaredRequired = required - properties.map { it.name }.toSet()
+    if (undeclaredRequired.isNotEmpty()) {
+        throw TrackingPlanParseException(
+            "event \"$eventName\": \"required\" references propert${if (undeclaredRequired.size == 1) "y" else "ies"} " +
+                "not declared in \"properties\": ${undeclaredRequired.joinToString { "\"$it\"" }}",
+        )
+    }
     return properties
 }
 
