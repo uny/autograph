@@ -34,12 +34,13 @@ SPI is vendor-neutral.
 > Central (group `dev.ynagai.autograph`) starting with `v0.1.0`.
 >
 > **Exception — the envelope is stable now.** The fields stamped under
-> `context.instrumentation` (`event_id`, `seq`, `session_id`, `session_start`,
-> `event_timestamp`, `schema_version`) and that object's top-level shape follow semver: no
-> renames or type changes without a major version bump. This is the part of Autograph that
-> gets persisted into a downstream analytics pipeline, so it's safe to build dashboards,
-> data-quality checks, and schema migrations on top of today — everything else (Compose
-> APIs, autocapture config, validator shape, transport adapters) remains unstable under the
+> `context.instrumentation` (or wherever a given transport places it) — `event_id`, `seq`,
+> `global_seq`, `session_id`, `session_start`, `sdk`, `event_timestamp`, `schema_version` —
+> and that object's top-level shape follow semver: no renames or type changes without a
+> major version bump. This is the part of Autograph that gets persisted into a downstream
+> analytics pipeline, so it's safe to build dashboards, data-quality checks, and schema
+> migrations on top of today — everything else (Compose APIs, autocapture config, validator
+> shape, transport adapters) remains unstable under the
 > banner above.
 
 ## Modules
