@@ -12,6 +12,17 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
     }
 
+    // Regular (non-XCFramework) framework export: sample-ios/ embeds this directly from the local
+    // build output via the standard KMP "embedAndSignAppleFrameworkForXcode" Gradle task, run from
+    // an Xcode "Run Script" build phase — unlike autograph-segment's XCFramework export, this
+    // isn't published for external consumption, so there's no need to bundle both device/simulator
+    // slices into one distributable artifact.
+    listOf(iosArm64(), iosSimulatorArm64()).forEach {
+        it.binaries.framework {
+            baseName = "sample_shared"
+        }
+    }
+
     sourceSets {
         commonMain.dependencies {
             implementation(projects.autographCore)

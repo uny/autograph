@@ -95,11 +95,17 @@ AutographProvider(tracker, autocapture = AutocaptureConfig()) {
 
 ## Samples
 
-`sample-android` is a runnable Android app exercising every snippet above for real —
-`AutographProvider`, `Modifier.trackClick`/`trackImpression`, and opt-in `AutocaptureConfig`
-autocapture — against a `LoggingTracker` that prints each event so you can watch them fire as you
-tap. Run `./gradlew :sample-android:installDebug` and launch it, or open the project in Android
-Studio. (An iOS sample is planned — see the Roadmap.)
+`sample-shared`'s demo composables exercise every snippet above for real — `AutographProvider`,
+`Modifier.trackClick`/`trackImpression`, and opt-in `AutocaptureConfig` autocapture — against a
+`LoggingTracker` that prints each event so you can watch them fire as you tap:
+
+- **Android**: `sample-android`. Run `./gradlew :sample-android:installDebug` and launch it, or
+  open the project in Android Studio.
+- **iOS**: `sample-ios/iosApp.xcodeproj` — a thin SwiftUI shell hosting `sample-shared`'s
+  `ComposeUIViewController`. Open it in Xcode and run, or
+  `xcodebuild build -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=<device>"`.
+  Its Run Script build phase calls `./gradlew :sample-shared:embedAndSignAppleFrameworkForXcode`
+  automatically, so no separate Gradle step is needed first.
 
 ### Autocapture
 
@@ -202,7 +208,7 @@ Its `AutographSegment` binary target picks one of two sources depending on what'
 - [x] Autocapture on Android (opt-in `AutocaptureConfig` on `AutographProvider`)
 - [x] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
 - [x] `sample-android` runnable sample app
-- [ ] iOS sample app
+- [x] iOS sample app
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
 - [ ] `autograph-test`: in-memory transport with assertion helpers
 - [x] `autograph-segment-swift` companion package (SPM)
