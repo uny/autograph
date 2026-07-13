@@ -29,8 +29,8 @@ import dev.ynagai.autograph.compose.trackImpression
 
 /**
  * Runs every README Quick Start / Autocapture snippet for real, against a [LoggingTracker] that
- * prints each event (`Log.d` on Android, `NSLog` on iOS — see [sampleLog]). Check the platform
- * log to see events as you tap.
+ * prints each event (`Log.d` on Android — see [sampleLog]). Check the platform log to see events
+ * as you tap.
  */
 @Composable
 public fun App() {
@@ -92,9 +92,9 @@ private fun DemoScreen() {
         // Modifier.trackClick is explicit instrumentation — autocapture never double-reports it.
         // A plain clickable Box, not a Button: Button applies its own internal onClick-driven
         // clickable, and stacking a second .trackClick()-owned clickable via `modifier` on top of
-        // it means only one of the two ever sees the tap — confirmed on-device this session, the
-        // outer (trackClick's) one silently never fired. Mirrors the README's own
-        // `Text("Save", Modifier.trackClick(...) { save() })` snippet.
+        // it means only one of the two ever sees the tap — the outer (trackClick's) one silently
+        // never fires. Mirrors the README's own `Text("Save", Modifier.trackClick(...) { save() })`
+        // snippet.
         Box(
             modifier = Modifier
                 .testTag("explicit_tracked_button")
