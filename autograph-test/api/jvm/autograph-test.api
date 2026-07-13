@@ -1,0 +1,58 @@
+public final class dev/ynagai/autograph/test/AssertionsKt {
+	public static final fun assertEventFired (Ldev/ynagai/autograph/test/InMemoryTestTransport;Ljava/lang/String;Ljava/util/Map;Z)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public static synthetic fun assertEventFired$default (Ldev/ynagai/autograph/test/InMemoryTestTransport;Ljava/lang/String;Ljava/util/Map;ZILjava/lang/Object;)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public static final fun assertEventNotFired (Ldev/ynagai/autograph/test/InMemoryTestTransport;Ljava/lang/String;)V
+	public static final fun assertIdentifyFired (Ldev/ynagai/autograph/test/InMemoryTestTransport;Ljava/lang/String;Ljava/util/Map;Z)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public static synthetic fun assertIdentifyFired$default (Ldev/ynagai/autograph/test/InMemoryTestTransport;Ljava/lang/String;Ljava/util/Map;ZILjava/lang/Object;)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public static final fun assertNoSeqGaps (Ldev/ynagai/autograph/test/InMemoryTestTransport;)V
+	public static final fun assertOrder (Ldev/ynagai/autograph/test/InMemoryTestTransport;[Ljava/lang/String;)V
+	public static final fun assertScreenFired (Ldev/ynagai/autograph/test/InMemoryTestTransport;Ljava/lang/String;Ljava/util/Map;Z)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public static synthetic fun assertScreenFired$default (Ldev/ynagai/autograph/test/InMemoryTestTransport;Ljava/lang/String;Ljava/util/Map;ZILjava/lang/Object;)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public static final fun assertSingleSession (Ldev/ynagai/autograph/test/InMemoryTestTransport;)Ljava/lang/String;
+}
+
+public final class dev/ynagai/autograph/test/EventAssertionError : java/lang/AssertionError {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class dev/ynagai/autograph/test/InMemoryTestTransport : dev/ynagai/autograph/Transport {
+	public fun <init> ()V
+	public final fun clear ()V
+	public fun connect (Ldev/ynagai/autograph/EnvelopeSource;)V
+	public fun flush ()V
+	public final fun getEvents ()Ljava/util/List;
+	public final fun getFlushCount ()I
+	public final fun getResetCount ()I
+	public fun getStampsInPipeline ()Z
+	public fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun reset ()V
+	public fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+}
+
+public final class dev/ynagai/autograph/test/InMemoryTestTransport$Kind : java/lang/Enum {
+	public static final field IDENTIFY Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;
+	public static final field SCREEN Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;
+	public static final field TRACK Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;
+	public static fun values ()[Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;
+}
+
+public final class dev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent {
+	public fun <init> (Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public final fun component1 ()Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lkotlinx/serialization/json/JsonObject;
+	public final fun component4 ()Ldev/ynagai/autograph/Envelope;
+	public final fun copy (Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public static synthetic fun copy$default (Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;ILjava/lang/Object;)Ldev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEnvelope ()Ldev/ynagai/autograph/Envelope;
+	public final fun getKind ()Ldev/ynagai/autograph/test/InMemoryTestTransport$Kind;
+	public final fun getName ()Ljava/lang/String;
+	public final fun getProperties ()Lkotlinx/serialization/json/JsonObject;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+

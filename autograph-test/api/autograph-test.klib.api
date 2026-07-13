@@ -1,0 +1,73 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.ynagai.autograph:autograph-test>
+final class dev.ynagai.autograph.test/EventAssertionError : kotlin/AssertionError { // dev.ynagai.autograph.test/EventAssertionError|null[0]
+    constructor <init>(kotlin/String) // dev.ynagai.autograph.test/EventAssertionError.<init>|<init>(kotlin.String){}[0]
+}
+
+final class dev.ynagai.autograph.test/InMemoryTestTransport : dev.ynagai.autograph/Transport { // dev.ynagai.autograph.test/InMemoryTestTransport|null[0]
+    constructor <init>() // dev.ynagai.autograph.test/InMemoryTestTransport.<init>|<init>(){}[0]
+
+    final val events // dev.ynagai.autograph.test/InMemoryTestTransport.events|{}events[0]
+        final fun <get-events>(): kotlin.collections/List<dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent> // dev.ynagai.autograph.test/InMemoryTestTransport.events.<get-events>|<get-events>(){}[0]
+
+    final var flushCount // dev.ynagai.autograph.test/InMemoryTestTransport.flushCount|{}flushCount[0]
+        final fun <get-flushCount>(): kotlin/Int // dev.ynagai.autograph.test/InMemoryTestTransport.flushCount.<get-flushCount>|<get-flushCount>(){}[0]
+    final var resetCount // dev.ynagai.autograph.test/InMemoryTestTransport.resetCount|{}resetCount[0]
+        final fun <get-resetCount>(): kotlin/Int // dev.ynagai.autograph.test/InMemoryTestTransport.resetCount.<get-resetCount>|<get-resetCount>(){}[0]
+
+    final fun clear() // dev.ynagai.autograph.test/InMemoryTestTransport.clear|clear(){}[0]
+    final fun connect(dev.ynagai.autograph/EnvelopeSource) // dev.ynagai.autograph.test/InMemoryTestTransport.connect|connect(dev.ynagai.autograph.EnvelopeSource){}[0]
+    final fun flush() // dev.ynagai.autograph.test/InMemoryTestTransport.flush|flush(){}[0]
+    final fun identify(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun reset() // dev.ynagai.autograph.test/InMemoryTestTransport.reset|reset(){}[0]
+    final fun screen(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun track(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.track|track(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+
+    final enum class Kind : kotlin/Enum<dev.ynagai.autograph.test/InMemoryTestTransport.Kind> { // dev.ynagai.autograph.test/InMemoryTestTransport.Kind|null[0]
+        enum entry IDENTIFY // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.IDENTIFY|null[0]
+        enum entry SCREEN // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.SCREEN|null[0]
+        enum entry TRACK // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.TRACK|null[0]
+
+        final val entries // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.entries|#static{}entries[0]
+            final fun <get-entries>(): kotlin.enums/EnumEntries<dev.ynagai.autograph.test/InMemoryTestTransport.Kind> // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.entries.<get-entries>|<get-entries>#static(){}[0]
+
+        final fun valueOf(kotlin/String): dev.ynagai.autograph.test/InMemoryTestTransport.Kind // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.valueOf|valueOf#static(kotlin.String){}[0]
+        final fun values(): kotlin/Array<dev.ynagai.autograph.test/InMemoryTestTransport.Kind> // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.values|values#static(){}[0]
+    }
+
+    final class RecordedEvent { // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent|null[0]
+        constructor <init>(dev.ynagai.autograph.test/InMemoryTestTransport.Kind, kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.<init>|<init>(dev.ynagai.autograph.test.InMemoryTestTransport.Kind;kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+
+        final val envelope // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.envelope|{}envelope[0]
+            final fun <get-envelope>(): dev.ynagai.autograph/Envelope? // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.envelope.<get-envelope>|<get-envelope>(){}[0]
+        final val kind // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.kind|{}kind[0]
+            final fun <get-kind>(): dev.ynagai.autograph.test/InMemoryTestTransport.Kind // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.kind.<get-kind>|<get-kind>(){}[0]
+        final val name // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.name|{}name[0]
+            final fun <get-name>(): kotlin/String // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.name.<get-name>|<get-name>(){}[0]
+        final val properties // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.properties|{}properties[0]
+            final fun <get-properties>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.properties.<get-properties>|<get-properties>(){}[0]
+
+        final fun component1(): dev.ynagai.autograph.test/InMemoryTestTransport.Kind // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.component1|component1(){}[0]
+        final fun component2(): kotlin/String // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.component2|component2(){}[0]
+        final fun component3(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.component3|component3(){}[0]
+        final fun component4(): dev.ynagai.autograph/Envelope? // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.component4|component4(){}[0]
+        final fun copy(dev.ynagai.autograph.test/InMemoryTestTransport.Kind = ..., kotlin/String = ..., kotlinx.serialization.json/JsonObject = ..., dev.ynagai.autograph/Envelope? = ...): dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.copy|copy(dev.ynagai.autograph.test.InMemoryTestTransport.Kind;kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+        final fun equals(kotlin/Any?): kotlin/Boolean // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.equals|equals(kotlin.Any?){}[0]
+        final fun hashCode(): kotlin/Int // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.hashCode|hashCode(){}[0]
+        final fun toString(): kotlin/String // dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent.toString|toString(){}[0]
+    }
+}
+
+final fun (dev.ynagai.autograph.test/InMemoryTestTransport).dev.ynagai.autograph.test/assertEventFired(kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/Any?>? = ..., kotlin/Boolean = ...): dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent // dev.ynagai.autograph.test/assertEventFired|assertEventFired@dev.ynagai.autograph.test.InMemoryTestTransport(kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.Any?>?;kotlin.Boolean){}[0]
+final fun (dev.ynagai.autograph.test/InMemoryTestTransport).dev.ynagai.autograph.test/assertEventNotFired(kotlin/String) // dev.ynagai.autograph.test/assertEventNotFired|assertEventNotFired@dev.ynagai.autograph.test.InMemoryTestTransport(kotlin.String){}[0]
+final fun (dev.ynagai.autograph.test/InMemoryTestTransport).dev.ynagai.autograph.test/assertIdentifyFired(kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/Any?>? = ..., kotlin/Boolean = ...): dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent // dev.ynagai.autograph.test/assertIdentifyFired|assertIdentifyFired@dev.ynagai.autograph.test.InMemoryTestTransport(kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.Any?>?;kotlin.Boolean){}[0]
+final fun (dev.ynagai.autograph.test/InMemoryTestTransport).dev.ynagai.autograph.test/assertNoSeqGaps() // dev.ynagai.autograph.test/assertNoSeqGaps|assertNoSeqGaps@dev.ynagai.autograph.test.InMemoryTestTransport(){}[0]
+final fun (dev.ynagai.autograph.test/InMemoryTestTransport).dev.ynagai.autograph.test/assertOrder(kotlin/Array<out kotlin/String>...) // dev.ynagai.autograph.test/assertOrder|assertOrder@dev.ynagai.autograph.test.InMemoryTestTransport(kotlin.Array<out|kotlin.String>...){}[0]
+final fun (dev.ynagai.autograph.test/InMemoryTestTransport).dev.ynagai.autograph.test/assertScreenFired(kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/Any?>? = ..., kotlin/Boolean = ...): dev.ynagai.autograph.test/InMemoryTestTransport.RecordedEvent // dev.ynagai.autograph.test/assertScreenFired|assertScreenFired@dev.ynagai.autograph.test.InMemoryTestTransport(kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.Any?>?;kotlin.Boolean){}[0]
+final fun (dev.ynagai.autograph.test/InMemoryTestTransport).dev.ynagai.autograph.test/assertSingleSession(): kotlin/String // dev.ynagai.autograph.test/assertSingleSession|assertSingleSession@dev.ynagai.autograph.test.InMemoryTestTransport(){}[0]
