@@ -15,6 +15,7 @@ import kotlinx.serialization.json.JsonObject
  * val transport = InMemoryTestTransport()
  * val tracker = Autograph {
  *     transport(transport)
+ *     store = InMemorySeqStore() // don't let seq/session state leak onto disk between test runs
  *     dispatcher = kotlinx.coroutines.Dispatchers.Unconfined // stamp synchronously in tests
  * }
  *

@@ -12,11 +12,12 @@ public class EventAssertionError(message: String) : AssertionError(message)
 /**
  * Asserts that a `track` event named [name] was recorded, and returns it.
  *
- * [properties], when given, are matched by **containment** by default: every key/value pair in
- * [properties] must be present in the recorded event's properties, and extra recorded properties
- * are ignored. Pass `exact = true` to require the recorded properties to match [properties]
- * exactly, with no extras. Values may be plain Kotlin types (`String`, `Number`, `Boolean`, `null`,
- * `Map`, `List`) or [JsonElement] directly.
+ * [properties], when given, are matched by **containment** by default: every top-level key/value
+ * pair in [properties] must be present in the recorded event's properties, and extra top-level
+ * recorded properties are ignored — but a `Map`/`List` value itself is compared as a whole (by
+ * structural equality), so extra entries *inside* a nested map/list are not ignored even under
+ * containment. Pass `exact = true` to also reject extra top-level properties. Values may be plain
+ * Kotlin types (`String`, `Number`, `Boolean`, `null`, `Map`, `List`) or [JsonElement] directly.
  */
 public fun InMemoryTestTransport.assertEventFired(
     name: String,
