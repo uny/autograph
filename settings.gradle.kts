@@ -32,5 +32,6 @@ rootProject.name = "autograph"
 include(":autograph-core")
 include(":autograph-segment")
 include(":autograph-compose")
+include(":autograph-test")
 include(":sample-shared")
 include(":sample-android")

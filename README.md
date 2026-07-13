@@ -40,6 +40,7 @@ SPI is vendor-neutral.
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, and opt-in autocapture of taps (Android and iOS). |
+| `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
 
 ## Quick start
 
@@ -159,11 +160,36 @@ happens next: `true` throws immediately (fail fast during development), `false` 
 and logs the reason (never crash in production) — the same validator works in both modes. Applies
 to `track`/`screen`; `identify` is unaffected, since it carries no event name to validate.
 
+## Testing
+
+`autograph-test`'s `InMemoryTestTransport` records every event in memory instead of sending it
+anywhere, so your own instrumentation code can be asserted against in a fast unit test — no real
+backend, network, or device needed, and unlike `DebugTransport` below (log-only, for eyeballing on
+a real build) it's actually assertable:
+
+```kotlin
+val transport = InMemoryTestTransport()
+val tracker = Autograph {
+    transport(transport)
+    dispatcher = Dispatchers.Unconfined // stamp synchronously, so assertions run right after the call
+}
+
+tracker.track("Recipe Saved", target = "share_button")
+
+transport.assertEventFired("Recipe Saved", properties = mapOf("target" to "share_button"))
+```
+
+Also included: `assertScreenFired` / `assertIdentifyFired`, `assertEventNotFired`, `assertOrder`
+(delivery ordering), and envelope-aware checks — `assertNoSeqGaps` (a gap means a lost event) and
+`assertSingleSession` (no session rotation occurred). `properties`/`traits` match by containment by
+default (`exact = true` for an exact match), and accept plain Kotlin values or `JsonElement`
+directly.
+
 ## Debugging
 
 `DebugTransport` wraps another transport and logs every outgoing event before delivering it — for
 eyeballing events on a real device/build during manual QA, separate from the app's production
-transport (and separate from the planned `autograph-test` module's unit-test assertions):
+transport and from `autograph-test`'s unit-test assertions above:
 
 ```kotlin
 val tracker = Autograph {
@@ -210,7 +236,7 @@ Its `AutographSegment` binary target picks one of two sources depending on what'
 - [x] `sample-android` runnable sample app
 - [x] iOS sample app
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
-- [ ] `autograph-test`: in-memory transport with assertion helpers
+- [x] `autograph-test`: in-memory transport with assertion helpers
 - [x] `autograph-segment-swift` companion package (SPM)
 - [ ] More transport adapters (PostHog, Amplitude, Firebase)
 
