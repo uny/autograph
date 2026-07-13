@@ -47,15 +47,19 @@ import kotlin.math.abs
  * scroll/transition, or a stale entry for a composable that's still composed but visually covered).
  * Android can't have this failure mode since it only ever looks at the hit node's own ancestor chain.
  *
- * `accessibilityFrame` is documented by Apple as screen coordinates; converted back to the root
- * view's local space via `UIView.convertRect(_:fromCoordinateSpace:)` (confirmed on-device to
- * exactly match the element's declared local size/position, once scaled — see
- * [accessibilityLocalBounds]) to compare against [Offset]s from the pointer-input tree — those
- * arrive local to the tapped node, not to [view], so [rememberElementResolver] converts via
- * `root.localToWindow(position)` first (mirroring Android's `resolveAutocaptureTarget`, which
- * converts the same way via `root.localToWindow(position)` against `boundsInWindow`); skipping
- * that conversion would misattribute or miss every tap whenever the `Modifier.autocaptureTaps`
- * node isn't flush with [view]'s own origin.
+ * `accessibilityFrame` is documented by Apple as screen coordinates; converted to the hosting
+ * *window's* coordinate space — not [view]'s own local space — via
+ * `UIView.convertRect(_:fromCoordinateSpace:)` (see [accessibilityLocalBounds]) to compare against
+ * [Offset]s from the pointer-input tree — those arrive local to the tapped node, not to [view], so
+ * [rememberElementResolver] converts via `root.localToWindow(position)` first (mirroring Android's
+ * `resolveAutocaptureTarget`, which converts the same way via `root.localToWindow(position)`
+ * against `boundsInWindow`). Converting to *window*, not [view]-local, space matters whenever
+ * [view] doesn't fill its window — confirmed on-device (`sample-ios`) that `root.localToWindow`
+ * returns a position relative to the window regardless of where [view] itself sits within it, so
+ * comparing against [view]-local bounds silently misattributed every tap by [view]'s own offset
+ * the moment it stopped being flush with the window's origin (e.g. `ComposeUIViewController`
+ * embedded in a safe-area-respecting SwiftUI container, which shrinks/repositions [view] to fit
+ * the safe content area). See [accessibilityLocalBounds]'s kdoc for the full account.
  */
 @OptIn(ExperimentalForeignApi::class)
 @Composable
@@ -130,13 +134,28 @@ internal fun deepestAccessibilityHitPath(node: Any, view: UIView, position: Offs
 @OptIn(ExperimentalForeignApi::class)
 internal fun Any.accessibilityLocalBounds(view: UIView): Rect? {
     val screenFrame = (this as? NSObject)?.accessibilityFrame() ?: return null
-    val localFrame = view.convertRect(screenFrame, fromCoordinateSpace = UIScreen.mainScreen.coordinateSpace)
+    // Converted into [view]'s window's coordinate space, NOT [view]'s own — confirmed on-device
+    // (`sample-ios`) that Compose's own `position` (from `root.localToWindow`, see
+    // `rememberElementResolver`) is expressed relative to the window, unaffected by wherever
+    // [view] itself sits within it. That distinction is invisible whenever [view] fills its
+    // window (the common case, and every prior on-device verification of this resolver — see
+    // this file's class kdoc), since window-relative and [view]-relative then coincide. It stops
+    // coinciding the moment [view] is embedded inside a safe-area-respecting SwiftUI container
+    // (`UIViewControllerRepresentable` without `.ignoresSafeArea()`): SwiftUI shrinks/repositions
+    // [view] to fit the safe content area, [view]'s own top-left moves away from the window's,
+    // and converting to [view]-local space (as this used to) silently subtracted an offset
+    // Compose's `position` was never adjusted for in the first place — misattributing every tap
+    // by roughly the safe-area inset. Falling back to [view] itself when it has no window yet
+    // (e.g. this file's own unit tests, which never attach one) preserves the exact prior
+    // behavior for that case, where window-relative and view-relative are the same thing anyway.
+    val coordinateSpace = view.window ?: view
+    val windowFrame = coordinateSpace.convertRect(screenFrame, fromCoordinateSpace = UIScreen.mainScreen.coordinateSpace)
     // UIKit's convertRect returns points; Compose's Offset/LayoutCoordinates (what [position] and
     // AutocaptureClaims bounds are expressed in) are in raw pixels — scale by the screen's point-to-pixel
     // ratio or every containment check here silently fails on any non-1x screen (confirmed on-device: a
     // 3x simulator reported a 48pt leaf frame against a 72px tap position, so `contains` was never true).
     val scale = UIScreen.mainScreen.scale.toFloat()
-    return localFrame.useContents {
+    return windowFrame.useContents {
         Rect(
             origin.x.toFloat() * scale,
             origin.y.toFloat() * scale,

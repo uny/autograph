@@ -140,35 +140,89 @@ class ElementResolverIosTest {
 
     /**
      * The above [accessibilityLocalBoundsScalesPointsToPixels] never attaches [UIView.window] a
-     * window, so `convertRect(_:fromCoordinateSpace:)` has no non-trivial screen→local offset to
-     * apply and that test alone can't distinguish a correct offset subtraction from none at all.
-     * This attaches `root` to a real [UIWindow] at a non-origin position so the conversion actually
-     * exercises a screen→local translation, not just the scale multiply.
+     * window, so `convertRect(_:fromCoordinateSpace:)` has no non-trivial screen→window offset to
+     * apply and that test alone can't distinguish a correct window-relative conversion from a
+     * (wrong) root-local one. This attaches `root` to a real [UIWindow] at a non-origin position so
+     * the conversion actually exercises a screen→window translation, not just the scale multiply —
+     * and, critically, so the result does NOT depend on root's own offset within the window
+     * (verifying the fix for the bug below), only on the window's.
+     *
+     * On-device (`sample-ios`'s `ElementResolver.ios.kt` kdoc has the full account): converting to
+     * *root*-local space here used to silently subtract root's own offset within its window — an
+     * offset Compose's own `position` (from `root.localToWindow`, in [rememberElementResolver]) was
+     * never adjusted for, since it's already window-relative. That mismatch is invisible whenever
+     * root fills its window (root's offset is zero), which is why it went undetected until
+     * `ComposeUIViewController` was embedded in a safe-area-respecting SwiftUI container (which
+     * shrinks/repositions the Compose root to fit the safe content area) — every tap then
+     * misattributed by roughly the safe-area inset.
      */
     @Test
-    fun accessibilityLocalBoundsSubtractsTheRootsScreenOffsetWhenWindowAttached() {
+    fun accessibilityLocalBoundsConvertsToTheWindowsSpaceNotTheRootsOwnOffsetSpace() {
         val scale = UIScreen.mainScreen.scale
         val window = UIWindow()
         window.setFrame(CGRectMake(0.0, 0.0, 400.0, 800.0))
 
         val root = UIView()
+        // Root does NOT fill its window — mirrors ComposeUIViewController's view being
+        // shrunk/repositioned by a safe-area-respecting SwiftUI container.
         root.setFrame(CGRectMake(50.0, 60.0, 100.0, 100.0))
         window.addSubview(root)
 
         val node = UIView()
-        // accessibilityFrame is screen-absolute; root sits at (50, 60) in the window (which is at
-        // the screen origin), so a node meant to read as root-local (2, 3, 4, 5) must be set at
-        // screen-absolute (52, 63, 4, 5).
+        // accessibilityFrame is screen-absolute; the window sits at the screen origin, so
+        // screen-absolute and window-relative coincide here.
         node.setPointFrame(52.0, 63.0, 4.0, 5.0)
         root.addSubview(node)
 
         val bounds = node.accessibilityLocalBounds(root)
 
         assertTrue(bounds != null)
-        assertEquals((2.0 * scale).toFloat(), bounds.left, 0.5f)
-        assertEquals((3.0 * scale).toFloat(), bounds.top, 0.5f)
-        assertEquals(((2.0 + 4.0) * scale).toFloat(), bounds.right, 0.5f)
-        assertEquals(((3.0 + 5.0) * scale).toFloat(), bounds.bottom, 0.5f)
+        // Window-relative (52, 63, 4, 5) — NOT root-local (2, 3, 4, 5), i.e. NOT adjusted for
+        // root's (50, 60) offset within the window.
+        assertEquals((52.0 * scale).toFloat(), bounds.left, 0.5f)
+        assertEquals((63.0 * scale).toFloat(), bounds.top, 0.5f)
+        assertEquals(((52.0 + 4.0) * scale).toFloat(), bounds.right, 0.5f)
+        assertEquals(((63.0 + 5.0) * scale).toFloat(), bounds.bottom, 0.5f)
+    }
+
+    /**
+     * End-to-end version of the above at the [resolveIosElement] level, with a tap position
+     * expressed the way [rememberElementResolver] actually produces one: window-relative, via
+     * `root.localToWindow`, wholly unaware of root's own offset within the window. This is the
+     * exact scenario `sample-iosUITests` caught on a real device (root shrunk/repositioned by a
+     * safe-area-respecting SwiftUI container) — reproduced here without needing a live app.
+     */
+    @Test
+    fun resolveIosElementAttributesCorrectlyWhenTheRootDoesNotFillItsWindow() {
+        val scale = UIScreen.mainScreen.scale
+        val window = UIWindow()
+        window.setFrame(CGRectMake(0.0, 0.0, 400.0, 800.0))
+
+        val root = UIView()
+        root.setFrame(CGRectMake(50.0, 60.0, 100.0, 100.0))
+        // accessibilityFrame isn't derived from .frame automatically in this headless test
+        // environment (every other test in this file sets it explicitly on its root, too) — set
+        // it to root's actual screen-absolute position so deepestAccessibilityHitPath's own
+        // top-level containment check (root against root) behaves like a real one would.
+        root.setPointFrame(50.0, 60.0, 100.0, 100.0)
+        window.addSubview(root)
+
+        val button = IdentifiableButtonView()
+        // Root-local (10, 10, 20, 20) → screen-absolute (60, 70, 20, 20), since root sits at
+        // (50, 60) and the window is at the screen origin.
+        button.setPointFrame(60.0, 70.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        button.accessibilityIdentifier = "share_button"
+        root.addSubview(button)
+
+        // Window-relative tap at (65, 75) points — inside the button's window-relative bounds
+        // (60, 70)-(80, 90) — is what `root.localToWindow` would actually produce for a tap on
+        // this button, root offset included.
+        val position = Offset((65.0 * scale).toFloat(), (75.0 * scale).toFloat())
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals("share_button", result)
     }
 
     @Test
