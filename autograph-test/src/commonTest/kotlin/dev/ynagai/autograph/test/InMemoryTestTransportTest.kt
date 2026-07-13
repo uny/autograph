@@ -228,6 +228,26 @@ class InMemoryTestTransportTest {
     }
 
     @Test
+    fun assertEventFiredMatchesNullBooleanAndRawJsonElementProperties() {
+        val (transport, tracker) = transportAndTracker()
+        val properties = JsonObject(
+            mapOf(
+                "note" to kotlinx.serialization.json.JsonNull,
+                "enabled" to JsonPrimitive(true),
+                "raw" to JsonPrimitive(1),
+            ),
+        )
+
+        tracker.track("Recipe Saved", properties)
+
+        transport.assertEventFired(
+            "Recipe Saved",
+            properties = mapOf("note" to null, "enabled" to true, "raw" to JsonPrimitive(1)),
+            exact = true,
+        )
+    }
+
+    @Test
     fun clearDiscardsRecordedEvents() {
         val (transport, tracker) = transportAndTracker()
 
