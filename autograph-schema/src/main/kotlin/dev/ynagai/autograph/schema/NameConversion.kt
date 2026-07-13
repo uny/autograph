@@ -11,11 +11,16 @@ internal fun String.toPascalCase(): String = words().joinToString("") { it.repla
 internal fun String.toCamelCase(): String = toPascalCase().replaceFirstChar(Char::lowercaseChar)
 
 /**
- * Escapes a string for embedding as a Kotlin string-literal body (between the quotes) —
- * including `$`, which would otherwise be parsed as string-template interpolation.
+ * Escapes a string for embedding as a Kotlin string-literal body (between the quotes) — `$`
+ * (string-template interpolation) and raw line terminators (a literal newline/carriage-return
+ * inside `"..."` is a syntax error; only `"""..."""` allows them unescaped).
  */
 internal fun String.escapeKotlinStringLiteral(): String =
-    replace("\\", "\\\\").replace("\"", "\\\"").replace("$", "\\$")
+    replace("\\", "\\\\")
+        .replace("\"", "\\\"")
+        .replace("$", "\\$")
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
 
 // Kotlin hard keywords (kotlinlang.org/docs/keyword-reference.html#hard-keywords) — these, unlike
 // soft/modifier keywords, are never valid as a plain identifier and MUST be backtick-escaped.

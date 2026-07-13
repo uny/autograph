@@ -26,3 +26,18 @@ public fun Tracker.trackRecipeSaved(
         },
     )
 }
+
+// Stand-in for a property name ("in") that's a Kotlin hard keyword — proves the backtick-escaped
+// identifier generateTrackerExtensions() produces (see TrackerCodegenTest's
+// backtickEscapesAParameterNameThatIsAKotlinHardKeyword) actually compiles and is usable both as a
+// parameter declaration and as an expression (the `in`?.let { ... } / put(..., `in`) usage sites).
+public fun Tracker.trackE(
+    `in`: String,
+) {
+    track(
+        "E",
+        buildJsonObject {
+            put("in", `in`)
+        },
+    )
+}

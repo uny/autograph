@@ -26,11 +26,12 @@ class GeneratedSampleTest {
             ),
         )
         val marker = "public fun Tracker.trackRecipeSaved("
-        val generatedFunction = generateTrackerExtensions(events, "p").substringAfter(marker)
+        // Bounded to just this one function's closing brace — GeneratedSample.kt has more than one
+        // function in it (see backtickEscapedKeywordParameterCompilesAndFiresTheRightEvent below).
+        fun extractFunction(source: String) = source.substringAfter(marker).let { marker + it.substringBefore("\n}") + "\n}" }
 
-        val sampleFunction = File("src/test/kotlin/dev/ynagai/autograph/schema/GeneratedSample.kt")
-            .readText()
-            .substringAfter(marker)
+        val generatedFunction = extractFunction(generateTrackerExtensions(events, "p"))
+        val sampleFunction = extractFunction(File("src/test/kotlin/dev/ynagai/autograph/schema/GeneratedSample.kt").readText())
 
         assertEquals(sampleFunction.trim(), generatedFunction.trim())
     }
@@ -51,6 +52,20 @@ class GeneratedSampleTest {
             properties = mapOf("target" to "share_button", "quantity" to 2L),
             exact = true,
         )
+    }
+
+    @Test
+    fun backtickEscapedKeywordParameterCompilesAndFiresTheRightEvent() {
+        val transport = InMemoryTestTransport()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+        }
+
+        tracker.trackE(`in` = "value")
+
+        transport.assertEventFired("E", properties = mapOf("in" to "value"), exact = true)
     }
 
     @Test

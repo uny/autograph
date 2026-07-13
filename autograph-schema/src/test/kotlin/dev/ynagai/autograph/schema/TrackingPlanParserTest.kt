@@ -108,6 +108,64 @@ class TrackingPlanParserTest {
     }
 
     @Test
+    fun throwsOnAnEventNameWithNoAlphanumericCharacters() {
+        val exception = assertFailsWith<TrackingPlanParseException> {
+            parseTrackingPlan("""{ "events": [ { "name": "!!!" } ] }""")
+        }
+        assertTrue(exception.message!!.contains("alphanumeric"))
+    }
+
+    @Test
+    fun throwsTrackingPlanParseExceptionWhenEventsIsNotAnArray() {
+        assertFailsWith<TrackingPlanParseException> {
+            parseTrackingPlan("""{ "events": {} }""")
+        }
+    }
+
+    @Test
+    fun throwsTrackingPlanParseExceptionWhenAnEventEntryIsNotAnObject() {
+        assertFailsWith<TrackingPlanParseException> {
+            parseTrackingPlan("""{ "events": [ "not-an-object" ] }""")
+        }
+    }
+
+    @Test
+    fun throwsTrackingPlanParseExceptionWhenPropertiesIsNotAnObject() {
+        assertFailsWith<TrackingPlanParseException> {
+            parseTrackingPlan("""{ "events": [ { "name": "E", "properties": "not-an-object" } ] }""")
+        }
+    }
+
+    @Test
+    fun throwsTrackingPlanParseExceptionWhenAPropertySchemaIsNotAnObject() {
+        val json = """
+            { "events": [ { "name": "E", "properties": { "type": "object", "properties": { "a": "not-an-object" } } } ] }
+        """.trimIndent()
+
+        assertFailsWith<TrackingPlanParseException> { parseTrackingPlan(json) }
+    }
+
+    @Test
+    fun throwsTrackingPlanParseExceptionWhenRequiredIsNotAnArrayOfStrings() {
+        val json = """
+            {
+              "events": [
+                {
+                  "name": "E",
+                  "properties": {
+                    "type": "object",
+                    "properties": { "target": { "type": "string" } },
+                    "required": "target"
+                  }
+                }
+              ]
+            }
+        """.trimIndent()
+
+        assertFailsWith<TrackingPlanParseException> { parseTrackingPlan(json) }
+    }
+
+    @Test
     fun throwsOnMissingEventsArray() {
         assertFailsWith<TrackingPlanParseException> {
             parseTrackingPlan("""{ "notEvents": [] }""")

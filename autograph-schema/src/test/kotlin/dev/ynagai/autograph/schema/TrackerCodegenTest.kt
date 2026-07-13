@@ -105,6 +105,21 @@ class TrackerCodegenTest {
     }
 
     @Test
+    fun escapesEmbeddedNewlinesAndCarriageReturnsInEventAndPropertyNames() {
+        val events = listOf(
+            EventSchema(
+                "Line1\nLine2",
+                listOf(PropertySchema("a\rb", PropertyType.STRING, required = true)),
+            ),
+        )
+
+        val source = generateTrackerExtensions(events, "p")
+
+        assertTrue(source.contains("\"Line1\\nLine2\""), source)
+        assertTrue(source.contains("put(\"a\\rb\", "), source)
+    }
+
+    @Test
     fun distinctEventsProduceDistinctFunctionsInOneFile() {
         val events = listOf(
             EventSchema("A", emptyList()),

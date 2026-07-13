@@ -13,6 +13,11 @@ class GenerateAutographEventsTaskTest {
         return project.tasks.register("generateAutographEvents", GenerateAutographEventsTask::class.java).get()
     }
 
+    /** Dispatches through Gradle's real task-action mechanism, not a direct method call — proves @TaskAction is wired. */
+    private fun runTask(task: GenerateAutographEventsTask) {
+        task.actions.forEach { it.execute(task) }
+    }
+
     @Test
     fun writesGeneratedSourceToTheNestedPackagePath() {
         val projectDir = createTempDirectory().toFile()
@@ -26,7 +31,7 @@ class GenerateAutographEventsTaskTest {
         task.packageName.set("com.example.generated")
         task.outputDirectory.set(outputDir)
 
-        task.generate()
+        runTask(task)
 
         val outputFile = File(outputDir, "com/example/generated/AutographEvents.kt")
         assertTrue(outputFile.exists(), "expected $outputFile to exist")
@@ -46,7 +51,7 @@ class GenerateAutographEventsTaskTest {
         task.packageName.set("p")
         task.outputDirectory.set(outputDir)
 
-        task.generate()
+        runTask(task)
 
         assertTrue(File(outputDir, "p/AutographEvents.kt").exists())
     }
@@ -61,7 +66,7 @@ class GenerateAutographEventsTaskTest {
         task.schemaFile.set(schemaFile)
         task.outputDirectory.set(outputDir)
 
-        task.generate()
+        runTask(task)
 
         assertTrue(File(outputDir, "dev/ynagai/autograph/schema/generated/AutographEvents.kt").exists())
     }
