@@ -22,11 +22,14 @@ public data class Envelope(
     /** Name and version of this library, e.g. `autograph/0.1.0`. */
     val sdk: String,
     /**
-     * When [Stamper.stamp] captured this event, as an ISO-8601 UTC instant — independent of
-     * whatever event-time field the transport ends up stamping, which can lag behind by however
-     * long the transport batches/enqueues before sending. Precision matches the platform clock
-     * backing [kotlin.time.Clock.System] (millisecond resolution on the JVM and Android; may be
-     * finer on other targets), not a guaranteed nanosecond timestamp.
+     * When the app fired this event, as an ISO-8601 UTC instant. Captured at the
+     * `track`/`screen`/`identify` call site (on the caller's thread), so it is independent both of
+     * the serial dispatcher's own stamping lag and of whatever event-time field the transport ends
+     * up stamping — either of which can lag behind by however long they batch/enqueue before
+     * sending. (Transports that stamp inside their own pipeline record their processing time here
+     * instead, since the app's call time isn't available to them.) Precision matches the platform
+     * clock backing [kotlin.time.Clock.System] (millisecond resolution on the JVM and Android; may
+     * be finer on other targets), not a guaranteed nanosecond timestamp.
      */
     val eventTimestamp: String,
     /**

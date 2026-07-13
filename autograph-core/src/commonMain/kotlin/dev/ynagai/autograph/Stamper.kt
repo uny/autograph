@@ -5,7 +5,7 @@ import kotlinx.atomicfu.locks.synchronized
 import kotlin.time.Instant
 import kotlin.uuid.Uuid
 
-internal const val SDK_ID: String = "autograph/0.1.0"
+internal const val SDK_ID: String = "autograph/$AUTOGRAPH_VERSION"
 
 private const val KEY_SESSION_ID = "autograph.session.id"
 private const val KEY_SESSION_START = "autograph.session.start"
@@ -77,8 +77,10 @@ internal class Stamper(
         }
     }
 
-    override fun stamp(): Envelope = synchronized(lock) {
-        val now = clock()
+    override fun stamp(): Envelope = stamp(clock())
+
+    override fun stamp(eventTimestampMillis: Long): Envelope = synchronized(lock) {
+        val now = eventTimestampMillis
         rotateIfExpired(now)
         lastActivity = now
 

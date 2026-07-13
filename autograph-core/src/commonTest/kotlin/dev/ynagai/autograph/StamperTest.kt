@@ -150,6 +150,28 @@ class StamperTest {
     }
 
     @Test
+    fun stampRecordsThePassedEventTimestampNotTheClock() {
+        val s = stamper() // clock is fixed at now = 1_000_000
+        val envelope = s.stamp(eventTimestampMillis = 2_000_000L)
+        assertEquals(
+            "1970-01-01T00:33:20Z",
+            envelope.eventTimestamp,
+            "must render the caller-supplied event timestamp (2_000_000ms), not the clock (1_000_000ms)",
+        )
+    }
+
+    @Test
+    fun sdkIsDerivedFromTheBuildVersionNotAHardcodedLiteral() {
+        assertTrue(AUTOGRAPH_VERSION.isNotBlank(), "the generated build version must be present")
+        assertEquals(
+            "autograph/$AUTOGRAPH_VERSION",
+            SDK_ID,
+            "SDK_ID must be built from the project version, not a re-hardcoded literal (see #50)",
+        )
+        assertEquals(SDK_ID, stamper().stamp().sdk)
+    }
+
+    @Test
     fun schemaVersionIsOmittedWhenUnset() {
         val envelope = stamper().stamp()
         assertNull(envelope.schemaVersion)

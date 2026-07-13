@@ -30,6 +30,7 @@ abstract fun interface dev.ynagai.autograph/EventValidator { // dev.ynagai.autog
 abstract interface dev.ynagai.autograph/EnvelopeSource { // dev.ynagai.autograph/EnvelopeSource|null[0]
     abstract fun reset() // dev.ynagai.autograph/EnvelopeSource.reset|reset(){}[0]
     abstract fun stamp(): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/EnvelopeSource.stamp|stamp(){}[0]
+    open fun stamp(kotlin/Long): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/EnvelopeSource.stamp|stamp(kotlin.Long){}[0]
 }
 
 abstract interface dev.ynagai.autograph/SeqStore { // dev.ynagai.autograph/SeqStore|null[0]

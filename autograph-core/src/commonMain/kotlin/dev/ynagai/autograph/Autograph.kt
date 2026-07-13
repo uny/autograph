@@ -97,7 +97,7 @@ public fun Autograph(configure: AutographConfig.() -> Unit): Tracker {
         clock = config.clock,
         schemaVersion = config.schemaVersion,
     )
-    return AutographTracker(transport, stamper, config.dispatcher, config.validator, config.strictValidation)
+    return AutographTracker(transport, stamper, config.dispatcher, config.validator, config.strictValidation, config.clock)
 }
 
 internal class AutographTracker(
@@ -106,6 +106,7 @@ internal class AutographTracker(
     dispatcher: CoroutineDispatcher,
     private val validator: EventValidator?,
     private val strictValidation: Boolean,
+    private val clock: () -> Long,
 ) : Tracker {
 
     // A failed analytics delivery must never crash the app, and one failure must not tear down the
@@ -127,12 +128,17 @@ internal class AutographTracker(
      * every event), so we do it on the serial [scope] to keep that write off the caller's thread —
      * which is frequently the main thread (a Compose `LaunchedEffect`). The dispatcher is single-slot,
      * so events are still stamped in call order.
+     *
+     * The `event_timestamp` is read here, on the caller's thread at call time, and handed to the
+     * stamper — so it reflects when the app fired the event, not when the dispatcher later drained
+     * and stamped it (which can lag behind under backpressure).
      */
     private fun deliver(send: (Envelope?) -> Unit) {
         if (transport.stampsInPipeline) {
             send(null)
         } else {
-            scope.launch { send(stamper.stamp()) }
+            val eventTimestampMillis = clock()
+            scope.launch { send(stamper.stamp(eventTimestampMillis)) }
         }
     }
 

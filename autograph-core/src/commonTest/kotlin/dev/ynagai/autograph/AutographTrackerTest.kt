@@ -15,6 +15,7 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Instant
 
 private class RecordingTransport(
     override val stampsInPipeline: Boolean = false,
@@ -122,6 +123,32 @@ class AutographTrackerTest {
         // All delivered, and stamped in call order despite the async hand-off.
         assertEquals(listOf("track", "screen", "identify"), transport.calls.map { it.first })
         assertEquals(listOf(1L, 2L, 3L), transport.calls.map { it.third?.seq })
+    }
+
+    @Test
+    fun eventTimestampIsCapturedAtCallTimeNotWhenTheDispatcherStamps() = runTest {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        var now = 1_000L
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = StandardTestDispatcher(testScheduler)
+            clock = { now }
+        }
+
+        // Fire at t=1000. Delivery is deferred to the dispatcher (not yet stamped).
+        tracker.track("A")
+        // Time advances while the event sits in the queue (e.g. disk I/O backpressure).
+        now = 9_000L
+        advanceUntilIdle()
+
+        // event_timestamp must reflect the call time (1000ms), not the dequeue/stamp time (9000ms).
+        val envelope = transport.calls.single().third!!
+        assertEquals(
+            Instant.fromEpochMilliseconds(1_000L).toString(),
+            envelope.eventTimestamp,
+            "event_timestamp lagged to the dispatcher's stamp time instead of the call time",
+        )
     }
 
     @Test
