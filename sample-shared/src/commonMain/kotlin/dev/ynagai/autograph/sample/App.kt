@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.MaterialTheme
@@ -53,7 +54,10 @@ public fun App() {
 @Composable
 private fun DemoScreen(lastEvent: String) {
     Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
+        // systemBarsPadding, not the host relying on `.ignoresSafeArea()`: on iOS this is also
+        // what exercises ElementResolver.ios.kt's real-world case, a Compose root that doesn't
+        // fill its window — see the resolver's own kdoc for why that used to misattribute taps.
+        modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Text("Autograph sample", style = MaterialTheme.typography.headlineSmall)
