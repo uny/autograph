@@ -51,6 +51,7 @@ SPI is vendor-neutral.
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, and opt-in autocapture of taps (Android and iOS). |
 | `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
+| `autograph-schema` | Generates typed `Tracker.track<EventName>(...)` extension functions from a JSON Schema tracking-plan document, as a compile-time alternative to `EventValidator` (see [Typed event schemas](#typed-event-schemas) below). |
 
 ## Quick start
 
@@ -170,6 +171,55 @@ happens next: `true` throws immediately (fail fast during development), `false` 
 and logs the reason (never crash in production) — the same validator works in both modes. Applies
 to `track`/`screen`; `identify` is unaffected, since it carries no event name to validate.
 
+## Typed event schemas
+
+`autograph-schema` is a compile-time alternative to `EventValidator`: it generates a typed
+`Tracker.track<EventName>(...)` extension function per event from a JSON Schema tracking-plan
+document, so a missing required property or a wrong type is a compile error instead of a runtime
+validator rejection.
+
+```json
+{
+  "events": [
+    {
+      "name": "Recipe Saved",
+      "properties": {
+        "type": "object",
+        "properties": { "target": { "type": "string" }, "quantity": { "type": "integer" } },
+        "required": ["target"]
+      }
+    }
+  ]
+}
+```
+
+```kotlin
+tracker.trackRecipeSaved(target = "share_button") // quantity is optional, defaults to null
+```
+
+**This first slice ships the codegen engine and a plain `GenerateAutographEventsTask` you register
+and wire into your source set by hand** — a convenience Gradle plugin that applies and wires it
+automatically is a planned follow-up, not yet shipped:
+
+```kotlin
+val generateEvents = tasks.register<GenerateAutographEventsTask>("generateAutographEvents") {
+    schemaFile.set(layout.projectDirectory.file("tracking-plan.json"))
+    packageName.set("com.example.analytics.generated")
+    outputDirectory.set(layout.buildDirectory.dir("generated/autographSchema"))
+}
+kotlin.sourceSets.commonMain {
+    kotlin.srcDir(generateEvents.map { it.outputDirectory })
+}
+```
+
+Only a minimal JSON Schema subset is understood: a top-level `events` array, each with a `name`
+and an optional `properties` object schema (`string`/`integer`/`number`/`boolean` properties,
+`required`). Nested objects/arrays, `enum`, `$ref`, and `oneOf`/`anyOf`/`allOf` are not supported.
+Generated functions don't yet expose `Tracker.track`'s `target` parameter — pass it via a regular
+schema property for now. This is additive, not a replacement — `EventValidator` remains useful for
+consumers who don't want a codegen step, or for cross-cutting rules a single event's shape doesn't
+capture.
+
 ## Testing
 
 `autograph-test`'s `InMemoryTestTransport` records every event in memory instead of sending it
@@ -250,6 +300,8 @@ Its `AutographSegment` binary target picks one of two sources depending on what'
 - [x] `autograph-test`: in-memory transport with assertion helpers
 - [x] `autograph-segment-swift` companion package (SPM)
 - [ ] More transport adapters (PostHog, Amplitude, Firebase)
+- [ ] `autograph-schema`: typed generated event schemas — codegen engine + manual `Task` shipped; a
+  convenience Gradle plugin for automatic wiring is not yet
 
 ## Releasing
 
