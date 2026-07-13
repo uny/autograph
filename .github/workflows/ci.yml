@@ -59,8 +59,11 @@ jobs:
       # sample-ios/iosApp embeds sample-shared's exported framework via a Run Script build phase
       # (`embedAndSignAppleFrameworkForXcode`, invoked from within the xcodebuild step itself, not
       # a separate Gradle task here) — building it end-to-end catches breakage in that embed path
-      # that `./gradlew build` alone (which never invokes Xcode) can't.
-      - name: Build sample-ios
+      # that `./gradlew build` alone (which never invokes Xcode) can't. `test`, not just `build`,
+      # also runs iosAppUITests: permanent on-device regression coverage for
+      # ElementResolver.ios.kt's hit-testing (correct-element attribution, autographIgnore/
+      # trackClick dedup) that compose.uiTest can't provide — see its kdoc for why.
+      - name: Test sample-ios
         run: |
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
-          xcodebuild build -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=$device"
+          xcodebuild test -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=$device"

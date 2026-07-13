@@ -16,7 +16,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -34,20 +37,21 @@ import dev.ynagai.autograph.compose.trackImpression
  */
 @Composable
 public fun App() {
-    val tracker = remember { LoggingTracker() }
+    var lastEvent by remember { mutableStateOf("(none yet)") }
+    val tracker = remember { LoggingTracker(onTrack = { target -> lastEvent = target ?: "(no target)" }) }
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             // autocapture = AutocaptureConfig() reports every tap without instrumenting each
             // element — see the README's "Autocapture" section.
             AutographProvider(tracker = tracker, autocapture = AutocaptureConfig()) {
-                DemoScreen()
+                DemoScreen(lastEvent)
             }
         }
     }
 }
 
 @Composable
-private fun DemoScreen() {
+private fun DemoScreen(lastEvent: String) {
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -126,5 +130,9 @@ private fun DemoScreen() {
                 modifier = Modifier.padding(16.dp),
             )
         }
+
+        // Read by sample-iosUITests to assert which element a tap resolved to, since a UI test
+        // can't inspect Kotlin state directly — see LoggingTracker's onTrack kdoc.
+        Text("Last event target: $lastEvent", modifier = Modifier.testTag("last_event_label"))
     }
 }
