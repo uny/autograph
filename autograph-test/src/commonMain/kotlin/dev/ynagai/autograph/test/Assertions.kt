@@ -58,24 +58,36 @@ public fun InMemoryTestTransport.assertOrder(vararg names: String) {
 }
 
 /**
- * Asserts that [dev.ynagai.autograph.Envelope.seq] is gapless and increases by exactly 1 within
- * each contiguous run of events sharing the same session id — a session rotation restarts the
- * per-session sequence at 1, which is expected and not treated as a gap. Events with no envelope
- * or a null `seq` (e.g. `SequenceMode.None`, or a `stampsInPipeline` transport) are skipped.
+ * Asserts that both [dev.ynagai.autograph.Envelope.seq] (gapless, +1 within each contiguous run of
+ * events sharing a session id — a session rotation restarts it at 1, which is expected and not a
+ * gap) and [dev.ynagai.autograph.Envelope.globalSeq] (gapless, +1 across the whole device lifetime,
+ * independent of session) hold wherever each is non-null. Depending on `AutographConfig.sequence`,
+ * only one, both, or neither may be stamped (`SequenceMode.None` stamps neither, so nothing is
+ * checked); events with no envelope are skipped.
  */
 public fun InMemoryTestTransport.assertNoSeqGaps() {
     var previousSessionId: String? = null
     var previousSeq: Long? = null
+    var previousGlobalSeq: Long? = null
     for ((index, event) in events.withIndex()) {
         val envelope = event.envelope ?: continue
-        val seq = envelope.seq ?: continue
-        if (envelope.session.id == previousSessionId && previousSeq != null && seq != previousSeq + 1) {
-            throw EventAssertionError(
-                "seq gap at event #$index (\"${event.name}\"): expected ${previousSeq + 1}, got $seq",
-            )
+        envelope.seq?.let { seq ->
+            if (envelope.session.id == previousSessionId && previousSeq != null && seq != previousSeq + 1) {
+                throw EventAssertionError(
+                    "seq gap at event #$index (\"${event.name}\"): expected ${previousSeq + 1}, got $seq",
+                )
+            }
+            previousSeq = seq
+        }
+        envelope.globalSeq?.let { globalSeq ->
+            if (previousGlobalSeq != null && globalSeq != previousGlobalSeq + 1) {
+                throw EventAssertionError(
+                    "global_seq gap at event #$index (\"${event.name}\"): expected ${previousGlobalSeq + 1}, got $globalSeq",
+                )
+            }
+            previousGlobalSeq = globalSeq
         }
         previousSessionId = envelope.session.id
-        previousSeq = seq
     }
 }
 
