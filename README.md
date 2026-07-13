@@ -171,6 +171,7 @@ a real build) it's actually assertable:
 val transport = InMemoryTestTransport()
 val tracker = Autograph {
     transport(transport)
+    store = InMemorySeqStore() // don't let seq/session state leak onto disk between test runs
     dispatcher = Dispatchers.Unconfined // stamp synchronously, so assertions run right after the call
 }
 
