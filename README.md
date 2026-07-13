@@ -215,8 +215,10 @@ kotlin.sourceSets.commonMain {
 Only a minimal JSON Schema subset is understood: a top-level `events` array, each with a `name`
 and an optional `properties` object schema (`string`/`integer`/`number`/`boolean` properties,
 `required`). Nested objects/arrays, `enum`, `$ref`, and `oneOf`/`anyOf`/`allOf` are not supported.
-This is additive, not a replacement — `EventValidator` remains useful for consumers who don't want
-a codegen step, or for cross-cutting rules a single event's shape doesn't capture.
+Generated functions don't yet expose `Tracker.track`'s `target` parameter — pass it via a regular
+schema property for now. This is additive, not a replacement — `EventValidator` remains useful for
+consumers who don't want a codegen step, or for cross-cutting rules a single event's shape doesn't
+capture.
 
 ## Testing
 

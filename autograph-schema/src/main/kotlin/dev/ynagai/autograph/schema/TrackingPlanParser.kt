@@ -68,6 +68,12 @@ private fun parseProperties(eventName: String, schema: JsonObject): List<Propert
     val required = schema["required"]?.jsonArray?.map { it.jsonPrimitive.content }?.toSet() ?: emptySet()
 
     val properties = propsObject.entries.map { (propName, propSchema) ->
+        if (propName.toCamelCase().isEmpty()) {
+            throw TrackingPlanParseException(
+                "event \"$eventName\": property \"$propName\" contains no alphanumeric characters — " +
+                    "cannot derive a Kotlin parameter name from it",
+            )
+        }
         val typeName = propSchema.jsonObject["type"]?.jsonPrimitive?.content
             ?: throw TrackingPlanParseException("event \"$eventName\": property \"$propName\" is missing \"type\"")
         val type = PropertyType.entries.find { it.name.equals(typeName, ignoreCase = true) }

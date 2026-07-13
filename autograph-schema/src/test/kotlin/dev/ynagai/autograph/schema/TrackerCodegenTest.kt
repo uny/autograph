@@ -70,6 +70,41 @@ class TrackerCodegenTest {
     }
 
     @Test
+    fun escapesDollarSignsInEventAndPropertyNamesSoTheyAreNotTemplateInterpolation() {
+        val events = listOf(
+            EventSchema(
+                "User \$id Set",
+                listOf(PropertySchema("cost\$usd", PropertyType.STRING, required = true)),
+            ),
+        )
+
+        val source = generateTrackerExtensions(events, "p")
+
+        assertTrue(source.contains("\"User \\\$id Set\""))
+        assertTrue(source.contains("put(\"cost\\\$usd\", "))
+    }
+
+    @Test
+    fun backtickEscapesAParameterNameThatIsAKotlinHardKeyword() {
+        val events = listOf(EventSchema("E", listOf(PropertySchema("in", PropertyType.STRING, required = true))))
+
+        val source = generateTrackerExtensions(events, "p")
+
+        assertTrue(source.contains("`in`: String,"), source)
+        assertTrue(source.contains("put(\"in\", `in`)"), source)
+    }
+
+    @Test
+    fun backtickEscapesAParameterNameThatStartsWithADigit() {
+        val events = listOf(EventSchema("E", listOf(PropertySchema("2fa_enabled", PropertyType.BOOLEAN, required = false))))
+
+        val source = generateTrackerExtensions(events, "p")
+
+        assertTrue(source.contains("`2faEnabled`: Boolean? = null,"), source)
+        assertTrue(source.contains("`2faEnabled`?.let { put(\"2fa_enabled\", it) }"), source)
+    }
+
+    @Test
     fun distinctEventsProduceDistinctFunctionsInOneFile() {
         val events = listOf(
             EventSchema("A", emptyList()),

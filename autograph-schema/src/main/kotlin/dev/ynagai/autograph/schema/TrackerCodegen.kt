@@ -31,7 +31,7 @@ private fun generateFunction(event: EventSchema): String {
     return buildString {
         appendLine("public fun Tracker.$functionName(")
         for (property in orderedProperties) {
-            val paramName = property.name.toCamelCase()
+            val paramName = property.name.toKotlinParameterName()
             val paramType = if (property.required) property.type.kotlinType else "${property.type.kotlinType}?"
             val default = if (property.required) "" else " = null"
             appendLine("    $paramName: $paramType$default,")
@@ -41,7 +41,7 @@ private fun generateFunction(event: EventSchema): String {
         appendLine("        \"${event.name.escapeKotlinStringLiteral()}\",")
         appendLine("        buildJsonObject {")
         for (property in event.properties) {
-            val paramName = property.name.toCamelCase()
+            val paramName = property.name.toKotlinParameterName()
             if (property.required) {
                 appendLine("            put(\"${property.name.escapeKotlinStringLiteral()}\", $paramName)")
             } else {

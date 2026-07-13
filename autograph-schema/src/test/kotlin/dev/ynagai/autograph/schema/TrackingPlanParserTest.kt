@@ -51,6 +51,29 @@ class TrackingPlanParserTest {
     }
 
     @Test
+    fun parsesAnEventWithAPropertiesObjectButNoNestedPropertiesKey() {
+        val json = """{ "events": [ { "name": "E", "properties": { "type": "object" } } ] }"""
+
+        val events = parseTrackingPlan(json)
+
+        assertEquals(EventSchema("E", emptyList()), events.single())
+    }
+
+    @Test
+    fun throwsWhenAPropertyNameHasNoAlphanumericCharacters() {
+        val json = """
+            {
+              "events": [
+                { "name": "E", "properties": { "type": "object", "properties": { "---": { "type": "string" } } } }
+              ]
+            }
+        """.trimIndent()
+
+        val exception = assertFailsWith<TrackingPlanParseException> { parseTrackingPlan(json) }
+        assertTrue(exception.message!!.contains("no alphanumeric characters"))
+    }
+
+    @Test
     fun parsesAllSupportedPropertyTypes() {
         val json = """
             {
