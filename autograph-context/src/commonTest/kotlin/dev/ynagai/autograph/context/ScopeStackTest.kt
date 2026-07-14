@@ -5,6 +5,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 
 class ScopeStackTest {
 
@@ -85,6 +86,47 @@ class ScopeStackTest {
         stack.remove(a)
         stack.remove(a)                        // double remove: no-op
         stack.remove(ScopeStack().push())      // handle from another stack: no-op
+        assertEquals(JsonObject(emptyMap()), stack.current().enrich(JsonObject(emptyMap())))
+    }
+
+    @Test
+    fun update_revises_a_frame_in_place_so_inner_frames_keep_precedence() {
+        val stack = ScopeStack()
+        val outer = stack.push(scope = props("k" to "outer1"))
+        stack.push(scope = props("k" to "inner"))
+        assertEquals("inner", stack.current().scope["k"]?.jsonPrimitive?.content)
+
+        // The outer frame's value changes while the inner frame is still mounted. Updating in place
+        // must keep the outer frame at its position: remove + re-push would move it to the top and
+        // let it override the inner frame, silently mis-attributing captured events.
+        stack.update(outer, scope = props("k" to "outer2"))
+        assertEquals(
+            "inner",
+            stack.current().scope["k"]?.jsonPrimitive?.content,
+            "an updated outer frame must not overtake a still-mounted inner frame",
+        )
+    }
+
+    @Test
+    fun update_replaces_the_frames_own_contents() {
+        val stack = ScopeStack()
+        val handle = stack.push(scope = props("a" to "1"), screen = "Home")
+        stack.update(handle, scope = props("a" to "2"), screen = "Detail")
+        val ctx = stack.current()
+        assertEquals("2", ctx.scope["a"]?.jsonPrimitive?.content)
+        assertEquals("Detail", ctx.screen)
+        // Contents are REPLACED, not merged: an omitted argument reverts to its default.
+        stack.update(handle, scope = props("a" to "3"))
+        assertNull(stack.current().screen)
+    }
+
+    @Test
+    fun updating_an_unknown_or_removed_handle_is_a_noop() {
+        val stack = ScopeStack()
+        val a = stack.push(scope = props("a" to "1"))
+        stack.remove(a)
+        stack.update(a, scope = props("a" to "zombie"))          // removed handle: no-op
+        stack.update(ScopeStack().push(), scope = props("b" to "foreign")) // foreign handle: no-op
         assertEquals(JsonObject(emptyMap()), stack.current().enrich(JsonObject(emptyMap())))
     }
 

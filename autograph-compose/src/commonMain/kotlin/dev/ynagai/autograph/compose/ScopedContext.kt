@@ -4,9 +4,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -77,12 +80,43 @@ public fun AutographScope(
     // nested frames, so no double-counting despite the decorator above being pre-flattened. The
     // decorator stays the source of truth for explicit `track` calls (lexical scope); the stack
     // serves the capture path (dynamic scope). See [ScopeStack].
-    val stack = LocalScopeStack.current
-    DisposableEffect(stack, properties) {
-        val handle = stack.push(scope = properties)
-        onDispose { stack.remove(handle) }
-    }
+    MirrorAmbientFrame(LocalScopeStack.current, scope = properties)
     CompositionLocalProvider(LocalTracker provides scoped, content = content)
+}
+
+/**
+ * Mirrors one frame into [stack] for the lifetime of the calling composable: pushed on enter,
+ * removed on exit, and revised IN PLACE when [scope]/[screen] change.
+ *
+ * The in-place revision is load-bearing, not an optimization. The stack resolves precedence by
+ * position ("later frames win"), so re-pushing a frame whose value changed would move it to the top
+ * and let an OUTER scope/screen wrongly override a still-mounted INNER one — e.g. an outer
+ * `AutographScope("cart_size" to n)` that updates while an inner scope is on screen would start
+ * winning the shared keys. Pushing once (keyed on [stack] alone) and updating keeps each frame at
+ * its nesting position for as long as it is mounted. Only the capture path reads this; explicit
+ * `track` keeps its lexical scope via the decorator either way.
+ */
+@Composable
+internal fun MirrorAmbientFrame(
+    stack: ScopeStack,
+    scope: JsonObject = EmptyJsonObject,
+    screen: String? = null,
+) {
+    // A plain box, not state: written from the effect below and read only by the SideEffect, so it
+    // must not itself invalidate the composition.
+    val handle = remember(stack) { arrayOfNulls<ScopeHandle>(1) }
+    // Pushed empty and filled by the SideEffect below (which runs in this same apply phase, long
+    // before any tap can read the stack) so this effect references no changing value and therefore
+    // never restarts — restarting is exactly what would reorder the frame.
+    DisposableEffect(stack) {
+        val pushed = stack.push()
+        handle[0] = pushed
+        onDispose {
+            stack.remove(pushed)
+            handle[0] = null
+        }
+    }
+    SideEffect { handle[0]?.let { stack.update(it, scope = scope, screen = screen) } }
 }
 
 private val fallbackScopeStack = ScopeStack()

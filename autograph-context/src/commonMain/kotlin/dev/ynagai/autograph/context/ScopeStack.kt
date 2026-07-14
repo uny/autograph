@@ -57,6 +57,28 @@ public class ScopeStack {
     }
 
     /**
+     * Replaces the contents of the frame [handle] refers to, in place — keeping its position, and
+     * thus its precedence, in the stack. Use this instead of [remove] + [push] when a still-mounted
+     * frame's [scope]/[screen]/[section] changes: re-pushing would move the frame to the top and let
+     * it wrongly override inner frames that are still on the stack. A no-op (and no snapshot churn)
+     * if the contents are unchanged, the handle was already removed, or it belongs to another stack.
+     */
+    public fun update(
+        handle: ScopeHandle,
+        scope: JsonObject = EmptyJsonObject,
+        screen: String? = null,
+        section: String? = null,
+    ) {
+        val frame = handle.frame
+        if (frames.none { it === frame }) return
+        if (frame.scope == scope && frame.screen == screen && frame.section == section) return
+        frame.scope = scope
+        frame.screen = screen
+        frame.section = section
+        snapshot = recompute()
+    }
+
+    /**
      * Removes the frame [handle] refers to, by identity and independent of position — screen
      * transitions (a Compose `Crossfade`, an iOS interactive-pop that the user cancels) do not
      * guarantee frames leave in push order, so a positional pop would remove the wrong one.
@@ -89,11 +111,16 @@ public class ScopeStack {
     }
 }
 
-/** One pushed contribution to a [ScopeStack]. Opaque to callers; they hold a [ScopeHandle]. */
+/**
+ * One pushed contribution to a [ScopeStack]. Opaque to callers; they hold a [ScopeHandle].
+ *
+ * Contents are mutable so [ScopeStack.update] can revise a frame without moving it (see there);
+ * mutated only from the main thread, and every mutation republishes an immutable [AmbientContext].
+ */
 internal class ScopeFrame(
-    val scope: JsonObject,
-    val screen: String?,
-    val section: String?,
+    var scope: JsonObject,
+    var screen: String?,
+    var section: String?,
 )
 
 /** An opaque token identifying a pushed frame, for [ScopeStack.remove]. */

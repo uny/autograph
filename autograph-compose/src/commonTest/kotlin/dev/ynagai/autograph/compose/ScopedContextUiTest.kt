@@ -238,6 +238,61 @@ class ScopedContextUiTest {
     }
 
     @Test
+    fun changingAnOuterScopeValueDoesNotLetItOverrideAnInnerScopeInTheAmbientStack() = runComposeUiTest {
+        val stack = ScopeStack()
+        val outer = mutableStateOf("outer1")
+        var k: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                AutographScope("k" to outer.value) {
+                    AutographScope("k" to "inner") {
+                        SideEffect { k = stack.current().scope.str("k") }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("inner", k, "the inner scope wins the shared key")
+
+        outer.value = "outer2"
+        waitForIdle()
+
+        // The stack resolves precedence by position, so the outer frame must be revised IN PLACE
+        // rather than re-pushed: a re-push would move it above the still-mounted inner frame and
+        // silently attribute captured taps to the outer scope's value.
+        assertEquals("inner", k, "an outer scope value change must not overtake the inner scope")
+    }
+
+    @Test
+    fun changingAnOuterScreenNameDoesNotOverrideAnInnerScreenInTheAmbientStack() = runComposeUiTest {
+        val stack = ScopeStack()
+        val outer = mutableStateOf("Outer1")
+        var screen: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScreenHistory provides ScreenHistory(),
+                LocalScopeStack provides stack,
+            ) {
+                TrackedScreen(outer.value) {
+                    TrackedScreen("Inner") {
+                        SideEffect { screen = stack.current().screen }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("Inner", screen, "the innermost screen wins")
+
+        outer.value = "Outer2"
+        waitForIdle()
+        assertEquals("Inner", screen, "an outer screen rename must not overtake the inner screen")
+    }
+
+    @Test
     fun leavingAScopeRemovesItsFrameFromTheAmbientStack() = runComposeUiTest {
         val stack = ScopeStack()
         val show = mutableStateOf(true)
