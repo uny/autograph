@@ -131,6 +131,23 @@ class ScopeStackTest {
     }
 
     @Test
+    fun updating_a_foreign_handle_does_not_mutate_the_owning_stacks_frame() {
+        val owner = ScopeStack()
+        val foreign = owner.push(scope = props("b" to "orig"))
+        // A frame's contents are mutable, so without the identity guard this would reach across and
+        // silently rewrite another stack's frame — asserting only that the CALLING stack stayed
+        // empty cannot catch that, since the frame was never in its list either way.
+        ScopeStack().update(foreign, scope = props("b" to "hijacked"))
+        // Force the owner to recompute, so a mutation performed behind its back would surface.
+        owner.push()
+        assertEquals(
+            "orig",
+            owner.current().scope["b"]?.jsonPrimitive?.content,
+            "update must not touch a frame belonging to another stack",
+        )
+    }
+
+    @Test
     fun mixed_frame_carries_scope_and_screen_together() {
         val stack = ScopeStack()
         stack.push(scope = props("article_id" to "7"), screen = "Article")
