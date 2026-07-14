@@ -214,4 +214,32 @@ class StamperTest {
         assertNotEquals(first.session.id, after.session.id, "foreground after timeout must start a new session")
         assertEquals(1L, after.seq, "new session restarts the per-session seq")
     }
+
+    @Test
+    fun queuedOlderCallTimeDoesNotRegressActivityAndRotatePrematurely() {
+        // A non-pipeline event carries its call-site time (see stamp(Long)). If it drains from the
+        // dispatcher *after* a synchronous notifyBackground that used the wall clock, its older call
+        // time must not move session activity backward — otherwise the next event rotates the
+        // session prematurely.
+        val s = stamper()
+        val first = s.stamp(now) // session S1, activity = now (1_000_000)
+
+        // App backgrounds 20 minutes later (wall clock).
+        now += 20.minutes.inWholeMilliseconds
+        s.notifyBackground() // real most-recent activity
+
+        // A queued event fired back at t=1_000_000 now drains and stamps with its call time.
+        s.stamp(1_000_000L)
+
+        // 20 minutes after the background (well within the 30-minute timeout).
+        now += 20.minutes.inWholeMilliseconds
+        val after = s.stamp(now)
+
+        assertEquals(
+            first.session.id,
+            after.session.id,
+            "a queued older-call-time event must not regress session activity and force premature rotation",
+        )
+        assertEquals(3L, after.seq, "the session (and its per-session seq) must be preserved")
+    }
 }

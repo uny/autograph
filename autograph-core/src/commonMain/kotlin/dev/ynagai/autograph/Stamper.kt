@@ -82,7 +82,13 @@ internal class Stamper(
     override fun stamp(eventTimestampMillis: Long): Envelope = synchronized(lock) {
         val now = eventTimestampMillis
         rotateIfExpired(now)
-        lastActivity = now
+        // Session activity is a high-water mark, never moved backward: a non-pipeline event
+        // carries its *call-site* time, which can predate a synchronous notifyBackground/reset that
+        // ran (with the wall clock) while the event sat queued under backpressure. Regressing
+        // lastActivity to that older call time would make the next foreground/event rotate the
+        // session prematurely. rotateIfExpired above still keys off the call time (an event fired
+        // long ago legitimately belongs to its own session); only the stored activity is clamped.
+        lastActivity = maxOf(lastActivity, now)
 
         val seq = if (tracksSession) ++sessionSeq else null
         val global = if (tracksGlobal) ++globalSeq else null
