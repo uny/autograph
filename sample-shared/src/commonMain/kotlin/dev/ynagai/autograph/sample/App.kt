@@ -27,6 +27,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.compose.AutocaptureConfig
 import dev.ynagai.autograph.compose.AutographProvider
+import dev.ynagai.autograph.compose.AutographScope
 import dev.ynagai.autograph.compose.autographIgnore
 import dev.ynagai.autograph.compose.trackClick
 import dev.ynagai.autograph.compose.trackImpression
@@ -45,7 +46,13 @@ public fun App() {
             // autocapture = AutocaptureConfig() reports every tap without instrumenting each
             // element — see the README's "Autocapture" section.
             AutographProvider(tracker = tracker, autocapture = AutocaptureConfig()) {
-                DemoScreen(lastEvent)
+                // AutographScope attaches a property to every event fired inside — see the README's
+                // "Scoped context" section. Here the explicitly-tracked events below carry
+                // article_id (autocaptured taps fire above this scope and don't — that's the
+                // documented boundary).
+                AutographScope("article_id" to "42") {
+                    DemoScreen(lastEvent)
+                }
             }
         }
     }

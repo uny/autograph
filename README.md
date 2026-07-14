@@ -49,7 +49,7 @@ SPI is vendor-neutral.
 |:--|:--|
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
-| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, and opt-in autocapture of taps (Android and iOS). |
+| `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, `AutographScope` for screen-scoped event context, and opt-in autocapture of taps (Android and iOS). |
 | `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
 | `autograph-schema` | Generates typed `Tracker.track<EventName>(...)` extension functions from a JSON Schema tracking-plan document, as a compile-time alternative to `EventValidator` (see [Typed event schemas](#typed-event-schemas) below). |
 
@@ -85,6 +85,10 @@ navController.TrackScreenViews()
 // ...or per screen
 TrackedScreen("RecipeDetail") { RecipeDetailContent() }
 
+// Scope a property onto every event fired below — e.g. the id from an articles/{article_id}
+// route. trackClick/trackImpression, screen views, and plain track() calls all pick it up.
+AutographScope("article_id" to articleId) { ArticleScreen() }
+
 // Custom events, anywhere in the composition
 LocalTracker.current.track("Recipe Saved")
 
@@ -118,6 +122,38 @@ AutographProvider(tracker, autocapture = AutocaptureConfig()) {
   `xcodebuild build -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=<device>"`.
   Its Run Script build phase calls `./gradlew :sample-shared:embedAndSignAppleFrameworkForXcode`
   automatically, so no separate Gradle step is needed first.
+
+### Scoped context
+
+`AutographScope` attaches a property to **every** event emitted from its content — the canonical
+case being a route parameter like the `article_id` on `articles/{article_id}` that you want on all
+of that screen's events without threading it through each call:
+
+```kotlin
+composable("articles/{article_id}") { entry ->
+    val id = entry.arguments!!.getString("article_id")!!
+    AutographScope("article_id" to id) {
+        ArticleScreen()   // every event below carries article_id
+    }
+}
+```
+
+It works by wrapping the ambient `LocalTracker` in a decorator that merges the property into each
+event, so it reaches everything nested inside that reads the tracker — `Modifier.trackClick` /
+`trackImpression`, `TrackScreenView` / `TrackedScreen`, and plain `LocalTracker.current.track(...)`.
+There's a `JsonObject` overload for non-string values. Notes:
+
+- **Scopes nest and compose.** An inner scope adds to the enclosing one; on a key clash the inner
+  scope wins, and a property the call site passes explicitly always wins over the scope (the scope
+  is a default a specific event can still refine). Screen/section from `TrackedScreen` compose
+  independently.
+- **`identify` traits are not scoped** — they describe the user, not the screen the event fired on.
+- **Autocapture is out of scope.** Autocaptured taps fire from the root tracker above your screens,
+  so they carry the current screen (from history) but not an `AutographScope` property. Explicit
+  instrumentation and manual `track` calls are fully covered.
+- **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
+  composition subtree only). Since the scoped value is usually the route argument the ViewModel
+  already receives, include it there explicitly.
 
 ### Autocapture
 

@@ -32,6 +32,11 @@ public final class dev/ynagai/autograph/compose/NavigationTrackingKt {
 	public static final fun TrackScreenViews (Landroidx/navigation/NavController;Lkotlin/jvm/functions/Function1;Landroidx/compose/runtime/Composer;II)V
 }
 
+public final class dev/ynagai/autograph/compose/ScopedContextKt {
+	public static final fun AutographScope (Lkotlinx/serialization/json/JsonObject;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V
+	public static final fun AutographScope ([Lkotlin/Pair;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;I)V
+}
+
 public final class dev/ynagai/autograph/compose/ScreenContext {
 	public static final field $stable I
 	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
