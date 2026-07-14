@@ -64,6 +64,11 @@ public final class dev/ynagai/autograph/Envelope {
 public abstract interface class dev/ynagai/autograph/EnvelopeSource {
 	public abstract fun reset ()V
 	public abstract fun stamp ()Ldev/ynagai/autograph/Envelope;
+	public fun stamp (J)Ldev/ynagai/autograph/Envelope;
+}
+
+public final class dev/ynagai/autograph/EnvelopeSource$DefaultImpls {
+	public static fun stamp (Ldev/ynagai/autograph/EnvelopeSource;J)Ldev/ynagai/autograph/Envelope;
 }
 
 public final class dev/ynagai/autograph/EventId {
