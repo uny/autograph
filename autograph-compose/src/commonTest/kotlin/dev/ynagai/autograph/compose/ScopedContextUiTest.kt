@@ -2,6 +2,8 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import dev.ynagai.autograph.Tracker
@@ -10,6 +12,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 private class ScopeUiRecordingTracker : Tracker {
     val tracks = mutableListOf<Pair<String, JsonObject>>()
@@ -107,6 +110,41 @@ class ScopedContextUiTest {
         // A track nested under both carries screen (from TrackedScreen) and article_id (from scope).
         val trackProps = tracker.tracks.single().second
         assertEquals("42", trackProps.str("article_id"))
+    }
+
+    @Test
+    fun scopedTrackerInstanceStaysStableAcrossRecomposition() = runComposeUiTest {
+        val tracker = ScopeUiRecordingTracker()
+        val seen = mutableListOf<Tracker>()
+        val tick = mutableStateOf(0)
+        setContent {
+            CompositionLocalProvider(LocalTracker provides tracker) {
+                // Reading `tick` in this scope forces AutographScope to re-execute on each tick,
+                // rebuilding a fresh (but structurally-equal) scope via the vararg overload.
+                if (tick.value >= 0) {
+                    AutographScope("article_id" to "42") {
+                        val current = LocalTracker.current
+                        SideEffect { seen += current }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        tick.value = 1
+        waitForIdle()
+        tick.value = 2
+        waitForIdle()
+
+        // AutographScope keys `remember` on (parent, properties) using JsonObject's structural
+        // equality, so a rebuilt-but-equal scope returns the SAME ScopedTracker instance across
+        // recompositions — otherwise tracker-keyed DisposableEffect/LaunchedEffect in nested
+        // screens would restart every frame (and re-fire screen views).
+        assertTrue(seen.isNotEmpty(), "the scoped content must have composed at least once")
+        assertEquals(
+            1,
+            seen.distinct().size,
+            "the ScopedTracker instance must survive recomposition",
+        )
     }
 }
 
