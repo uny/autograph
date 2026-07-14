@@ -52,8 +52,8 @@ class ScopeStackTest {
     @Test
     fun innermost_screen_wins_section_tracks_independently() {
         val stack = ScopeStack()
-        stack.push(screen = "Outer")           // outer screen, no section
-        stack.push(section = "Header")         // inner section marker refines the outer screen
+        stack.push(screen = "Outer")
+        stack.push(section = "Header") // inner section marker refines the outer screen
         val ctx = stack.current()
         assertEquals("Outer", ctx.screen)
         assertEquals("Header", ctx.section)

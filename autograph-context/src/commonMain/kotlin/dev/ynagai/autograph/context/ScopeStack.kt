@@ -8,12 +8,12 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * The ambient scope + screen context of the currently visible UI, as a stack of [push]ed frames.
  *
- * This is the non-Compose home for what [AutographScope][dev.ynagai.autograph] and screen context
- * express inside Compose via `CompositionLocal`: a place that autocapture pipelines can read at the
- * moment a tap or screen view is observed, regardless of which UI framework produced it (Compose,
- * UIKit/SwiftUI, or the Android View system). Each surface pushes a frame when a screen or scope
- * comes into view and removes it when it leaves; the capture pipeline calls [current] and
- * [AmbientContext.enrich] to attribute the event.
+ * This is the non-Compose home for what `AutographScope` and screen context express inside Compose
+ * via `CompositionLocal`: a place that autocapture pipelines can read at the moment a tap or screen
+ * view is observed, regardless of which UI framework produced it (Compose, UIKit/SwiftUI, or the
+ * Android View system). Each surface pushes a frame when a screen or scope comes into view and
+ * removes it when it leaves; the capture pipeline calls [current] and [AmbientContext.enrich] to
+ * attribute the event.
  *
  * **Read this only from auto-capture code, not from explicit `track` calls.** The stack answers
  * "what was on screen when the user acted", which is the right question for an autocaptured tap but
@@ -25,10 +25,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * `autograph-compose` scopes screen history to its provider) so context can't leak across trackers
  * or outlive a tracker swap on logout.
  *
- * **Threading.** [push] and [remove] must be called from the main thread (they mutate the frame
- * list). [current] is lock-free and safe from any thread: it returns an immutable snapshot that is
- * republished atomically on every mutation, so a background reader always sees a whole, consistent
- * context — never a half-applied one.
+ * **Threading.** [push], [update], and [remove] must be called from the main thread ([push] and
+ * [remove] mutate the frame list; [update] mutates a frame's contents). [current] is lock-free and
+ * safe from any thread: it returns an immutable snapshot that is republished atomically on every
+ * mutation, so a background reader always sees a whole, consistent context — never a half-applied
+ * one.
  */
 public class ScopeStack {
 
@@ -42,8 +43,8 @@ public class ScopeStack {
     /**
      * Pushes a frame contributing [scope] properties (low precedence — an explicit call-site
      * property always wins over them) and/or a [screen]/[section] (reserved keys, high precedence).
-     * Returns a [ScopeHandle] to [remove] it with. A frame may carry scope only (an `AutographScope`
-     * analogue), screen only (a `TrackedScreen` analogue), or both.
+     * Returns a [ScopeHandle] to [update] or [remove] it with. A frame may carry scope only (an
+     * `AutographScope` analogue), screen only (a `TrackedScreen` analogue), or both.
      */
     public fun push(
         scope: JsonObject = EmptyJsonObject,
@@ -123,7 +124,7 @@ internal class ScopeFrame(
     var section: String?,
 )
 
-/** An opaque token identifying a pushed frame, for [ScopeStack.remove]. */
+/** An opaque token identifying a pushed frame, for [ScopeStack.update] and [ScopeStack.remove]. */
 public class ScopeHandle internal constructor(internal val frame: ScopeFrame)
 
 /**
