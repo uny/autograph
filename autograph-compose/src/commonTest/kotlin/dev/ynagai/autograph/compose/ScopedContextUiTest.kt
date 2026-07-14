@@ -293,6 +293,44 @@ class ScopedContextUiTest {
     }
 
     @Test
+    fun replacingTheTrackerGivesAFreshScopeStackSoContextCannotLeakAcrossTrackers() = runComposeUiTest {
+        val before = ScopeUiRecordingTracker()
+        val after = ScopeUiRecordingTracker()
+        val step = mutableStateOf(0)
+        val stacks = mutableListOf<ScopeStack>()
+        setContent {
+            AutographProvider(if (step.value == 0) before else after) {
+                AutographScope("article_id" to "42") {
+                    val stack = LocalScopeStack.current
+                    SideEffect { if (stacks.lastOrNull() !== stack) stacks += stack }
+                }
+            }
+        }
+        waitForIdle()
+        val first = stacks.single()
+        assertEquals("42", first.current().scope.str("article_id"))
+
+        step.value = 1
+        waitForIdle()
+
+        // AutographProvider scopes the stack to its tracker (`remember(tracker)`), so replacing the
+        // tracker — e.g. after logout — must hand out a FRESH stack: ambient context must not leak
+        // across trackers, and the retired stack must not keep the old frame alive. The twin
+        // ScreenHistory mechanism is pinned the same way (see ScreenTrackingUiTest).
+        assertEquals(2, stacks.size, "a tracker swap must produce a new ScopeStack")
+        assertTrue(first !== stacks[1], "the stack must be owned per tracker, never shared")
+        assertNull(
+            first.current().scope.str("article_id"),
+            "the retired stack must release its frame, not outlive the tracker swap",
+        )
+        assertEquals(
+            "42",
+            stacks[1].current().scope.str("article_id"),
+            "the live scope must be mirrored into the new tracker's stack exactly once",
+        )
+    }
+
+    @Test
     fun leavingAScopeRemovesItsFrameFromTheAmbientStack() = runComposeUiTest {
         val stack = ScopeStack()
         val show = mutableStateOf(true)

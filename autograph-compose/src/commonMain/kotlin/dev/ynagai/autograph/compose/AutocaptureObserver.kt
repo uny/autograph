@@ -14,6 +14,8 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Observes taps app-wide in [PointerEventPass.Final] — after any child `clickable` had a chance
@@ -27,6 +29,7 @@ import dev.ynagai.autograph.context.ScopeStack
  * home that [AutographScope] and [TrackedScreen] mirror into. This observer sits at the provider
  * root, above any nested scope/screen, and holds the root [tracker] rather than the scope decorator,
  * so reading the stack is the only way it can attribute a tap to the scope/screen it happened under.
+ * Precedence is applied by `AmbientContext.enrich` itself, so this path cannot drift from it;
  * [screenHistory] supplies a screen fallback for a bare [TrackScreenView] that pushes no frame.
  */
 @Composable
@@ -74,16 +77,19 @@ internal fun reportTapIfResolvable(
     try {
         val target = resolve() ?: return
         val ctx = scopeStack.current()
-        // Effective screen: the ambient TrackedScreen frame if any, else the most recently viewed
-        // screen (preserves attribution for a bare TrackScreenView, which pushes no frame). Section
-        // comes only from the ambient frame.
-        val screen = ctx.screen ?: screenHistory.lastScreen
-        val screenContext = screen?.let { ScreenContext(it, ctx.section) }
-        // Scope sits underneath (there are no call-site properties for an autocaptured tap), then
-        // screen/section are written on top as reserved keys — the precedence AmbientContext.enrich
-        // encodes, with the screen fallback layered in.
-        val base = if (ctx.scope.isEmpty()) EmptyJsonObject else ctx.scope
-        tracker.track(config.eventName, withScreenContext(base, screenContext), target)
+        // Delegate the precedence to enrich itself — scope underneath (an autocaptured tap has no
+        // call-site properties), then screen/section on top as reserved keys — so this path cannot
+        // drift from the contract it claims to share. Re-implementing it here previously dropped an
+        // ambient section whenever no screen resolved, which enrich would have written.
+        var properties = ctx.enrich(EmptyJsonObject)
+        // The one addition enrich can't know about: a bare TrackScreenView pushes no frame, so fall
+        // back to the most recently viewed screen. An ambient frame's screen always wins.
+        if (ctx.screen == null) {
+            screenHistory.lastScreen?.let {
+                properties = JsonObject(properties + ("screen" to JsonPrimitive(it)))
+            }
+        }
+        tracker.track(config.eventName, properties, target)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.
     }

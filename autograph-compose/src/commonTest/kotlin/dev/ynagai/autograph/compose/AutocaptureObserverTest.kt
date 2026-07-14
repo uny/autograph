@@ -104,6 +104,21 @@ class ReportTapIfResolvableTest {
 
         assertEquals("Article", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
+
+    @Test
+    fun keepsAnAmbientSectionEvenWhenNoScreenResolves() {
+        val tracker = AutocaptureRecordingTracker()
+        // A section-only frame with no screen anywhere (no ambient screen, empty history) — a shape
+        // ScopeStack supports and native push sites can produce. The capture path defers precedence
+        // to AmbientContext.enrich, which writes screen and section independently, so the section
+        // must survive; hand-rolling the precedence here used to drop it.
+        val stack = ScopeStack().apply { push(section = "Header") }
+        reportTapIfResolvable(tracker, ScreenHistory(), stack, AutocaptureConfig()) { "x" }
+
+        val props = tracker.trackedProps.single()
+        assertEquals("Header", props["section"]?.jsonPrimitive?.content)
+        assertNull(props["screen"])
+    }
 }
 
 /**
