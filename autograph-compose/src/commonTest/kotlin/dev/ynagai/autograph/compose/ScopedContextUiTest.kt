@@ -2,6 +2,7 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
@@ -170,6 +171,35 @@ class ScopedContextUiTest {
         assertTrue(scoped.delegate === root, "nested scopes must flatten to one hop over the root tracker")
         assertEquals("1", scoped.scope.str("a"))
         assertEquals("2", scoped.scope.str("b"))
+    }
+
+    @Test
+    fun changingTheScopeValueProducesANewDecoratorCarryingTheNewValue() = runComposeUiTest {
+        val tracker = ScopeUiRecordingTracker()
+        val seen = mutableListOf<Tracker>()
+        val id = mutableStateOf("1")
+        setContent {
+            CompositionLocalProvider(LocalTracker provides tracker) {
+                AutographScope("article_id" to id.value) {
+                    val current = LocalTracker.current
+                    SideEffect { seen += current }
+                    // Re-fires whenever the decorator instance changes, so a scope-value change
+                    // emits a fresh event through the new decorator.
+                    LaunchedEffect(current) { current.track("E") }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("1", tracker.tracks.first { it.first == "E" }.second.str("article_id"))
+
+        id.value = "2"
+        waitForIdle()
+
+        // The counterpart of instance-stability: when the scope value genuinely changes,
+        // remember(parent, properties) must produce a NEW ScopedTracker so later events carry the
+        // new value — a keying that ignored `properties` would serve a permanently stale scope.
+        assertEquals("2", tracker.tracks.last { it.first == "E" }.second.str("article_id"))
+        assertEquals(2, seen.distinct().size, "a scope-value change must produce a new ScopedTracker")
     }
 }
 
