@@ -17,6 +17,8 @@ private class ScopeRecordingTracker : Tracker {
     var flushed = 0
     var reset = 0
     var closed = 0
+    var foregrounded = 0
+    var backgrounded = 0
 
     override fun track(name: String, properties: JsonObject, target: String?) {
         tracks += Triple(name, properties, target)
@@ -40,6 +42,14 @@ private class ScopeRecordingTracker : Tracker {
 
     override fun close() {
         closed++
+    }
+
+    override fun notifyForeground() {
+        foregrounded++
+    }
+
+    override fun notifyBackground() {
+        backgrounded++
     }
 }
 
@@ -97,10 +107,14 @@ class ScopedContextTest {
 
         scoped.flush()
         scoped.reset()
+        scoped.notifyForeground()
+        scoped.notifyBackground()
         scoped.close()
 
         assertEquals(1, inner.flushed)
         assertEquals(1, inner.reset)
+        assertEquals(1, inner.foregrounded)
+        assertEquals(1, inner.backgrounded)
         // A scoped view owns no resources; closing it must not tear down the real tracker.
         assertEquals(0, inner.closed)
     }

@@ -146,6 +146,31 @@ class ScopedContextUiTest {
             "the ScopedTracker instance must survive recomposition",
         )
     }
+
+    @Test
+    fun nestedScopesFlattenToASingleHopOverTheRootTracker() = runComposeUiTest {
+        val root = ScopeUiRecordingTracker()
+        var captured: Tracker? = null
+        setContent {
+            CompositionLocalProvider(LocalTracker provides root) {
+                AutographScope("a" to "1") {
+                    AutographScope("b" to "2") {
+                        val current = LocalTracker.current
+                        SideEffect { captured = current }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        // Flattening keeps the decorator a single hop over the ORIGINAL tracker no matter how deeply
+        // scopes nest (constant wrapper depth): the inner scope's delegate is the root tracker, not
+        // another ScopedTracker. A stacked chain would fail this assertion.
+        val scoped = captured as ScopedTracker
+        assertTrue(scoped.delegate === root, "nested scopes must flatten to one hop over the root tracker")
+        assertEquals("1", scoped.scope.str("a"))
+        assertEquals("2", scoped.scope.str("b"))
+    }
 }
 
 /** Reads the ambient [LocalTracker] once on composition and hands it to [emit]. */
