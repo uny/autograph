@@ -1,0 +1,28 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.ynagai.autograph:autograph-context>
+final class dev.ynagai.autograph.context/AmbientContext { // dev.ynagai.autograph.context/AmbientContext|null[0]
+    final val scope // dev.ynagai.autograph.context/AmbientContext.scope|{}scope[0]
+        final fun <get-scope>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.context/AmbientContext.scope.<get-scope>|<get-scope>(){}[0]
+    final val screen // dev.ynagai.autograph.context/AmbientContext.screen|{}screen[0]
+        final fun <get-screen>(): kotlin/String? // dev.ynagai.autograph.context/AmbientContext.screen.<get-screen>|<get-screen>(){}[0]
+    final val section // dev.ynagai.autograph.context/AmbientContext.section|{}section[0]
+        final fun <get-section>(): kotlin/String? // dev.ynagai.autograph.context/AmbientContext.section.<get-section>|<get-section>(){}[0]
+
+    final fun enrich(kotlinx.serialization.json/JsonObject): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.context/AmbientContext.enrich|enrich(kotlinx.serialization.json.JsonObject){}[0]
+}
+
+final class dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.context/ScopeHandle|null[0]
+
+final class dev.ynagai.autograph.context/ScopeStack { // dev.ynagai.autograph.context/ScopeStack|null[0]
+    constructor <init>() // dev.ynagai.autograph.context/ScopeStack.<init>|<init>(){}[0]
+
+    final fun current(): dev.ynagai.autograph.context/AmbientContext // dev.ynagai.autograph.context/ScopeStack.current|current(){}[0]
+    final fun push(kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/String? = ...): dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.context/ScopeStack.push|push(kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.String?){}[0]
+    final fun remove(dev.ynagai.autograph.context/ScopeHandle) // dev.ynagai.autograph.context/ScopeStack.remove|remove(dev.ynagai.autograph.context.ScopeHandle){}[0]
+}

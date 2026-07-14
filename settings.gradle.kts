@@ -32,6 +32,7 @@ rootProject.name = "autograph"
 include(":autograph-core")
 include(":autograph-segment")
 include(":autograph-compose")
+include(":autograph-context")
 include(":autograph-test")
 include(":autograph-schema")
 include(":sample-shared")
