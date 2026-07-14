@@ -2,6 +2,7 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
@@ -66,6 +67,14 @@ public fun TrackedScreen(
     content: @Composable () -> Unit,
 ) {
     TrackScreenView(name, properties)
+    // Mirror the screen into the ambient stack so autocaptured taps on this screen carry it, the
+    // same way [LocalScreenContext] carries it to explicit trackClick/trackImpression. The observer
+    // sits above this composable and can't read the CompositionLocal.
+    val stack = LocalScopeStack.current
+    DisposableEffect(stack, name) {
+        val handle = stack.push(screen = name)
+        onDispose { stack.remove(handle) }
+    }
     CompositionLocalProvider(LocalScreenContext provides ScreenContext(name), content = content)
 }
 

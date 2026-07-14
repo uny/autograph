@@ -26,6 +26,9 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.autographCore)
+            // The ambient scope/screen-context stack that autocapture reads at capture time. Kept
+            // internal here (LocalScopeStack), so it stays an implementation dependency.
+            implementation(projects.autographContext)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(libs.jetbrains.lifecycle.runtime.compose)

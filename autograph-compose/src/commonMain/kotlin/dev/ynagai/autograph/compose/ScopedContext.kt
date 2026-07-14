@@ -2,8 +2,12 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -67,8 +71,30 @@ public fun AutographScope(
             ScopedTracker(parent, properties)
         }
     }
+    // Mirror this scope into the ambient stack so autocapture — which observes taps ABOVE this
+    // decorator, at the provider root, and never sees the LocalTracker we install below — attributes
+    // them with the scope too. Only this level's own [properties] is pushed; the stack re-accumulates
+    // nested frames, so no double-counting despite the decorator above being pre-flattened. The
+    // decorator stays the source of truth for explicit `track` calls (lexical scope); the stack
+    // serves the capture path (dynamic scope). See [ScopeStack].
+    val stack = LocalScopeStack.current
+    DisposableEffect(stack, properties) {
+        val handle = stack.push(scope = properties)
+        onDispose { stack.remove(handle) }
+    }
     CompositionLocalProvider(LocalTracker provides scoped, content = content)
 }
+
+private val fallbackScopeStack = ScopeStack()
+
+/**
+ * Per-[AutographProvider] ambient [ScopeStack]. Scoped to the provider (keyed on the tracker) for
+ * the same reason [LocalScreenHistory] is: context must not leak between independent trackers and
+ * must reset when the tracker is replaced (e.g. after logout). Outside a provider — where events are
+ * dropped anyway — reads fall back to a shared instance.
+ */
+internal val LocalScopeStack: ProvidableCompositionLocal<ScopeStack> =
+    staticCompositionLocalOf { fallbackScopeStack }
 
 /**
  * A [Tracker] decorator that merges an ambient [scope] into the properties of every `track` /

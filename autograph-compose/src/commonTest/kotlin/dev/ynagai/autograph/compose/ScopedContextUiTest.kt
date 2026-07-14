@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -200,6 +201,65 @@ class ScopedContextUiTest {
         // new value — a keying that ignored `properties` would serve a permanently stale scope.
         assertEquals("2", tracker.tracks.last { it.first == "E" }.second.str("article_id"))
         assertEquals(2, seen.distinct().size, "a scope-value change must produce a new ScopedTracker")
+    }
+
+    @Test
+    fun autographScopeAndTrackedScreenMirrorIntoTheAmbientStackForCapture() = runComposeUiTest {
+        val stack = ScopeStack()
+        var screen: String? = null
+        var section: String? = null
+        var articleId: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScreenHistory provides ScreenHistory(),
+                LocalScopeStack provides stack,
+            ) {
+                AutographScope("article_id" to "42") {
+                    TrackedScreen("Article") {
+                        SideEffect {
+                            val ctx = stack.current()
+                            screen = ctx.screen
+                            section = ctx.section
+                            articleId = ctx.scope.str("article_id")
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        // The wiring the capture path depends on: the scope + screen an autocaptured tap happened
+        // under are visible in the ambient stack, even though the observer sits above these
+        // composables and can't read their CompositionLocals.
+        assertEquals("Article", screen)
+        assertEquals("42", articleId)
+        assertNull(section, "no section was pushed")
+    }
+
+    @Test
+    fun leavingAScopeRemovesItsFrameFromTheAmbientStack() = runComposeUiTest {
+        val stack = ScopeStack()
+        val show = mutableStateOf(true)
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                if (show.value) {
+                    AutographScope("article_id" to "42") {}
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("42", stack.current().scope.str("article_id"))
+
+        show.value = false
+        waitForIdle()
+        assertNull(
+            stack.current().scope.str("article_id"),
+            "the frame must be removed once the scope leaves composition",
+        )
     }
 }
 
