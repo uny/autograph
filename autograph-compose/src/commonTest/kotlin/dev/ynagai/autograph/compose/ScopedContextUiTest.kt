@@ -274,7 +274,7 @@ class ScopedContextUiTest {
      * time) attributes exactly; scoping individual list rows does not.
      *
      * If you make attribution position-aware (resolving scope from the tap-position semantics tree,
-     * see #64), this test SHOULD fail — update it and the README's claim together.
+     * see #68), this test SHOULD fail — update it and the README's claim together.
      */
     @Test
     fun siblingScopesMountedAtOnceAreAttributedToTheLastOneMounted() = runComposeUiTest {

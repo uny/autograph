@@ -164,7 +164,7 @@ There's a `JsonObject` overload for non-string values. Notes:
   each wrapped in their own scope, split-pane content, a bottom sheet or dialog over the screen
   beneath it — a tap on an earlier sibling is attributed to the later one. Scope a screen/route
   rather than individual list rows until the Compose path can resolve scope from the tap-position
-  semantics tree ([#64](https://github.com/uny/autograph/issues/64)). Explicit instrumentation and
+  semantics tree ([#68](https://github.com/uny/autograph/issues/68)). Explicit instrumentation and
   manual `track` calls are unaffected: they keep their lexical scope and are always exact.
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
