@@ -266,6 +266,51 @@ class ScopedContextUiTest {
         assertEquals("inner", k, "an outer scope value change must not overtake the inner scope")
     }
 
+    /**
+     * Characterization test for the top-of-stack attribution limit the README documents under
+     * "Scoped context" — NOT an endorsement of this outcome. The ambient stack orders frames by when
+     * they were mounted, so with sibling scopes mounted simultaneously it cannot tell which subtree
+     * a tap landed in and reports the last one. Scoping a screen/route (one subtree mounted at a
+     * time) attributes exactly; scoping individual list rows does not.
+     *
+     * If you make attribution position-aware (resolving scope from the tap-position semantics tree,
+     * see #64), this test SHOULD fail — update it and the README's claim together.
+     */
+    @Test
+    fun siblingScopesMountedAtOnceAreAttributedToTheLastOneMounted() = runComposeUiTest {
+        val stack = ScopeStack()
+        var seenFromInsideRow1: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                // Three list rows, each scoped to its own article_id, all mounted together.
+                AutographScope("article_id" to "row1") {
+                    SideEffect { seenFromInsideRow1 = stack.current().scope.str("article_id") }
+                }
+                AutographScope("article_id" to "row2") {}
+                AutographScope("article_id" to "row3") {}
+            }
+        }
+        waitForIdle()
+
+        // Every row's frame is already pushed by the time any SideEffect runs (remember observers
+        // dispatch first), but each frame is pushed EMPTY and filled by its own SideEffect in
+        // composition order — so row1's effect, running before row2/row3 fill theirs, still reads
+        // row1. Attribution looks correct from inside the scope, which is what makes this limit easy
+        // to miss in a narrower test.
+        assertEquals("row1", seenFromInsideRow1)
+
+        // But an autocaptured tap reads the stack at TAP time, once every row is mounted. A tap on
+        // row1 is therefore reported with row3's article_id: the wrong row, silently.
+        assertEquals(
+            "row3",
+            stack.current().scope.str("article_id"),
+            "documented limit: with siblings mounted at once, the last one wins regardless of which was tapped",
+        )
+    }
+
     @Test
     fun changingAnOuterScreenNameDoesNotOverrideAnInnerScreenInTheAmbientStack() = runComposeUiTest {
         val stack = ScopeStack()

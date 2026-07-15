@@ -47,9 +47,10 @@ public fun App() {
             // element — see the README's "Autocapture" section.
             AutographProvider(tracker = tracker, autocapture = AutocaptureConfig()) {
                 // AutographScope attaches a property to every event fired inside — see the README's
-                // "Scoped context" section. Here the explicitly-tracked events below carry
-                // article_id (autocaptured taps fire above this scope and don't — that's the
-                // documented boundary).
+                // "Scoped context" section. Everything below carries article_id: the explicitly
+                // tracked events lexically, and autocaptured taps via the ambient scope stack this
+                // mirrors into. One scope is mounted at a time here, which is the shape that
+                // attributes exactly (see the README on why per-list-row scopes do not).
                 AutographScope("article_id" to "42") {
                     DemoScreen(lastEvent)
                 }
