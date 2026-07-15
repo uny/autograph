@@ -5,63 +5,43 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.uikit.LocalUIView
-import kotlinx.cinterop.ExperimentalForeignApi
-import kotlinx.cinterop.useContents
-import platform.UIKit.UIAccessibilityIdentificationProtocol
-import platform.UIKit.UIAccessibilityTraitButton
+import dev.ynagai.autograph.uikit.AutographInternalApi
+import dev.ynagai.autograph.uikit.AxPoint
+import dev.ynagai.autograph.uikit.AxRect
+import dev.ynagai.autograph.uikit.accessibilityBoundsInWindowPx
+import dev.ynagai.autograph.uikit.accessibilityIdentifierOrNull
+import dev.ynagai.autograph.uikit.deepestAccessibilityHitPath
+import dev.ynagai.autograph.uikit.isAccessibilityButton
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
-import platform.UIKit.accessibilityElements
-import platform.UIKit.accessibilityFrame
-import platform.UIKit.accessibilityTraits
-import platform.darwin.NSObject
 import kotlin.math.abs
 
 /**
- * Hit-tests the UIKit accessibility tree Compose Multiplatform builds from its semantics tree —
- * the standard, public `UIView.accessibilityElements`/`UIAccessibilityElement.accessibilityElements`
- * container API, walked recursively — rather than Compose's own `SemanticsOwner` (unlike Android:
- * iOS has no supported route to a `SemanticsOwner` from application code; every path to it —
- * `LocalComposeScene`, the `ComposeRootRegistry` `compose-ui-test` itself relies on, the Kotlin class
- * backing each accessibility element — is `internal` or `private` to the Compose UI library).
+ * Resolves a Compose tap to an element identifier by hit-testing the UIKit accessibility tree that
+ * Compose Multiplatform bridges its semantics into, rather than Compose's own `SemanticsOwner`
+ * (unlike Android — iOS has no supported route to a `SemanticsOwner` from application code). The walk
+ * itself lives in `autograph-uikit`, which documents that mechanism, its on-device evidence, and its
+ * coordinate space; this file is only the Compose adapter over it.
  *
- * Confirmed on-device (`ComposeUIViewController` hosted in a real `.app`, installed and launched via
- * `xcrun simctl`, Compose Multiplatform 1.11.1) that this tree is populated on the very first layout
- * pass, VoiceOver on or off — an earlier attempt at this same approach concluded otherwise because it
- * only read `LocalUIView.current.accessibilityElements()` directly, which is empty: Compose attaches
- * the real accessibility root to a *sibling* subview several levels down
- * (`ComposeContainerView.subviews[2]` — `OverlayInputView` — in the traced case, though that index
- * isn't a contract worth hard-coding), not to the view `LocalUIView` itself returns. Walking
- * `subviews` alongside `accessibilityElements` at every `UIView` node (below) finds it regardless of
- * exactly which subview it lives under.
+ * The adapter's two jobs:
  *
- * What's NOT reachable this way: custom semantics keys. [AutographIgnoredKey]/[AutographInstrumentedKey]
- * have no UIAccessibility equivalent, so unlike Android this resolver can't read them off the hit
- * node's ancestry — [autocaptureTaps] instead consults [AutocaptureClaims], which
- * [autographIgnore]/[trackClick]/[trackImpression] populate positionally.
+ * 1. **Coordinate conversion.** The walk works in window-space pixels, which is exactly what Compose
+ *    produces: [rememberElementResolver] converts the tap via `root.localToWindow(position)` (like
+ *    Android's `resolveAutocaptureTarget` does against `boundsInWindow`), and `Offset`/
+ *    `LayoutCoordinates` are already pixels. So the conversion here is a straight re-wrap into
+ *    [AxPoint] — no scaling, no origin shift.
+ * 2. **Claims.** Custom semantics keys don't survive the UIKit bridge, so unlike Android this resolver
+ *    can't read [AutographIgnoredKey]/[AutographInstrumentedKey] off the hit node's ancestry. It
+ *    consults [AutocaptureClaims] instead, which [autographIgnore]/[trackClick]/[trackImpression]
+ *    populate positionally.
  *
- * Because that check is purely "is the tap position inside some registered rect" rather than "is a
- * registered rect an ancestor of the hit node" (which is what Android's [resolveAutocaptureTarget]
- * does), it's blind to ancestry: a tap can be suppressed by an [autographIgnore]'d/instrumented
- * element that isn't actually on the hit path, merely overlapping it at that position (e.g. during a
- * scroll/transition, or a stale entry for a composable that's still composed but visually covered).
- * Android can't have this failure mode since it only ever looks at the hit node's own ancestor chain.
- *
- * `accessibilityFrame` is documented by Apple as screen coordinates; converted to the hosting
- * *window's* coordinate space — not [view]'s own local space — via
- * `UIView.convertRect(_:fromCoordinateSpace:)` (see [accessibilityLocalBounds]) to compare against
- * [Offset]s from the pointer-input tree — those arrive local to the tapped node, not to [view], so
- * [rememberElementResolver] converts via `root.localToWindow(position)` first (mirroring Android's
- * `resolveAutocaptureTarget`, which converts the same way via `root.localToWindow(position)`
- * against `boundsInWindow`). Converting to *window*, not [view]-local, space matters whenever
- * [view] doesn't fill its window — confirmed on-device (`sample-ios`) that `root.localToWindow`
- * returns a position relative to the window regardless of where [view] itself sits within it, so
- * comparing against [view]-local bounds silently misattributed every tap by [view]'s own offset
- * the moment it stopped being flush with the window's origin (e.g. `ComposeUIViewController`
- * embedded in a safe-area-respecting SwiftUI container, which shrinks/repositions [view] to fit
- * the safe content area). See [accessibilityLocalBounds]'s kdoc for the full account.
+ * Because the claims check is "is the tap position inside some registered rect" rather than "is a
+ * registered rect an ancestor of the hit node" (what Android's [resolveAutocaptureTarget] does), it's
+ * blind to ancestry: a tap can be suppressed by an [autographIgnore]'d/instrumented element that
+ * isn't on the hit path, merely overlapping it at that position (e.g. mid-scroll/transition, or a
+ * stale entry for a composable that's still composed but visually covered). Android can't have this
+ * failure mode since it only ever looks at the hit node's own ancestor chain.
  */
-@OptIn(ExperimentalForeignApi::class)
 @Composable
 internal actual fun rememberElementResolver(): ElementResolver {
     val view = LocalUIView.current
@@ -75,11 +55,14 @@ internal actual fun rememberElementResolver(): ElementResolver {
  * The non-Composable core of [rememberElementResolver]'s resolve callback, pulled out so it's
  * directly testable against a hand-built [UIView] tree and [AutocaptureClaims] fixture —
  * `compose.uiTest`'s iOS scene can't otherwise exercise this (see [PlatformAutocaptureTestHost.ios.kt]).
+ *
+ * [position] is window-relative and in pixels (see [rememberElementResolver]).
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(AutographInternalApi::class)
 internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, position: Offset): String? {
     if (claims != null && claims.ignored.values.any { it.contains(position) }) return null
-    val path = deepestAccessibilityHitPath(view, view, position) ?: return null
+    val scale = UIScreen.mainScreen.scale.toFloat()
+    val path = deepestAccessibilityHitPath(view, view, AxPoint(position.x, position.y), scale) ?: return null
     val nearestClickable = path.asReversed().firstOrNull { it.isAccessibilityButton() } ?: return null
     // Unlike `ignored` (deliberately ancestor-wide, matching Android's resolveAutocaptureTarget,
     // which suppresses on ANY ancestor's ignored flag), `instrumented` on Android suppresses only
@@ -91,94 +74,26 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
     // own boundsInWindow()) rather than the raw tap position, which would also match any larger
     // ancestor container overlapping the tap.
     if (claims != null) {
-        val nearestClickableBounds = nearestClickable.accessibilityLocalBounds(view)
+        val nearestClickableBounds = nearestClickable.accessibilityBoundsInWindowPx(view, scale)
         if (nearestClickableBounds != null && claims.instrumented.values.any { it.approximatelyEquals(nearestClickableBounds) }) return null
     }
-    // No `label` argument: UIKit exposes no way to tell an explicit `contentDescription`-derived
-    // accessibilityLabel apart from one Compose Multiplatform's UIKit bridge synthesizes from
-    // SemanticsProperties.Text (the on-screen text) when no contentDescription is set — falling back
-    // to it here would silently defeat the "never read displayed text" guarantee documented above
-    // and honored by Android's resolveAutocaptureTarget, which only ever reads ContentDescription.
+    // No `label` argument: the accessibility label is never read — see accessibilityIdentifierOrNull's
+    // kdoc in autograph-uikit for why falling back to it would defeat the "never read displayed text"
+    // guarantee that Android's resolveAutocaptureTarget honors by only ever reading ContentDescription.
     return identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = null)
 }
 
 /**
- * Bounds equality with tolerance: [nearestClickable]'s own bounds come from two different
- * measurement paths for the same physical element — Compose's `boundsInWindow()` (claim
- * registration) vs UIKit's `accessibilityFrame` + `convertRect` + scale (this resolver) — so exact
- * equality is too strict, but a real ancestor container's bounds differ by more than float noise.
+ * Bounds equality with tolerance, across the Compose/UIKit divide: [nearestClickable]'s own bounds
+ * come from two different measurement paths for the same physical element — Compose's
+ * `boundsInWindow()` (claim registration, a Compose [Rect]) vs the accessibility tree's
+ * `accessibilityFrame` + `convertRect` + scale (an [AxRect]) — so exact equality is too strict, but a
+ * real ancestor container's bounds differ by more than float noise. Both are window-space pixels, so
+ * they're directly comparable.
  */
-private fun Rect.approximatelyEquals(other: Rect, tolerance: Float = 1f): Boolean =
+@OptIn(AutographInternalApi::class)
+private fun Rect.approximatelyEquals(other: AxRect, tolerance: Float = 1f): Boolean =
     abs(left - other.left) < tolerance &&
         abs(top - other.top) < tolerance &&
         abs(right - other.right) < tolerance &&
         abs(bottom - other.bottom) < tolerance
-
-/**
- * Depth-first search mirroring [findDeepestHit]/[AutocaptureNode]'s Android counterpart, but over
- * the UIKit accessibility tree: returns the path from [node] down to the deepest descendant whose
- * [accessibilityFrame] contains [position], or null if [node] itself doesn't contain it. Preferring
- * later (visually on top) children when bounds overlap, same as Android.
- */
-@OptIn(ExperimentalForeignApi::class)
-internal fun deepestAccessibilityHitPath(node: Any, view: UIView, position: Offset): List<Any>? {
-    val bounds = node.accessibilityLocalBounds(view) ?: return null
-    if (!bounds.contains(position)) return null
-    val children = node.accessibilityChildren()
-    for (child in children.asReversed()) {
-        deepestAccessibilityHitPath(child, view, position)?.let { return listOf(node) + it }
-    }
-    return listOf(node)
-}
-
-@OptIn(ExperimentalForeignApi::class)
-internal fun Any.accessibilityLocalBounds(view: UIView): Rect? {
-    val screenFrame = (this as? NSObject)?.accessibilityFrame() ?: return null
-    // Converted into [view]'s window's coordinate space, NOT [view]'s own — confirmed on-device
-    // (`sample-ios`) that Compose's own `position` (from `root.localToWindow`, see
-    // `rememberElementResolver`) is expressed relative to the window, unaffected by wherever
-    // [view] itself sits within it. That distinction is invisible whenever [view] fills its
-    // window (the common case, and every prior on-device verification of this resolver — see
-    // this file's class kdoc), since window-relative and [view]-relative then coincide. It stops
-    // coinciding the moment [view] is embedded inside a safe-area-respecting SwiftUI container
-    // (`UIViewControllerRepresentable` without `.ignoresSafeArea()`): SwiftUI shrinks/repositions
-    // [view] to fit the safe content area, [view]'s own top-left moves away from the window's,
-    // and converting to [view]-local space (as this used to) silently subtracted an offset
-    // Compose's `position` was never adjusted for in the first place — misattributing every tap
-    // by roughly the safe-area inset. Falling back to [view] itself when it has no window yet
-    // (e.g. this file's own unit tests, which never attach one) preserves the exact prior
-    // behavior for that case, where window-relative and view-relative are the same thing anyway.
-    val coordinateSpace = view.window ?: view
-    val windowFrame = coordinateSpace.convertRect(screenFrame, fromCoordinateSpace = UIScreen.mainScreen.coordinateSpace)
-    // UIKit's convertRect returns points; Compose's Offset/LayoutCoordinates (what [position] and
-    // AutocaptureClaims bounds are expressed in) are in raw pixels — scale by the screen's point-to-pixel
-    // ratio or every containment check here silently fails on any non-1x screen (confirmed on-device: a
-    // 3x simulator reported a 48pt leaf frame against a 72px tap position, so `contains` was never true).
-    val scale = UIScreen.mainScreen.scale.toFloat()
-    return windowFrame.useContents {
-        Rect(
-            origin.x.toFloat() * scale,
-            origin.y.toFloat() * scale,
-            (origin.x.toFloat() + size.width.toFloat()) * scale,
-            (origin.y.toFloat() + size.height.toFloat()) * scale,
-        )
-    }
-}
-
-/**
- * Compose's accessibility root isn't necessarily attached to the receiver itself — it can live on a
- * sibling subview several levels down (see kdoc above) — so descendants are the union of both
- * `accessibilityElements()` (how the tree actually links together once inside it) and `subviews`
- * (how to reach into it from an arbitrary starting [UIView]).
- */
-internal fun Any.accessibilityChildren(): List<Any> {
-    val axChildren = (this as? NSObject)?.accessibilityElements()?.filterNotNull() ?: emptyList()
-    val subviewChildren = (this as? UIView)?.subviews?.filterNotNull() ?: emptyList()
-    return axChildren + subviewChildren
-}
-
-internal fun Any.isAccessibilityButton(): Boolean =
-    (((this as? NSObject)?.accessibilityTraits() ?: 0uL) and UIAccessibilityTraitButton) != 0uL
-
-private fun Any.accessibilityIdentifierOrNull(): String? =
-    (this as? UIAccessibilityIdentificationProtocol)?.accessibilityIdentifier

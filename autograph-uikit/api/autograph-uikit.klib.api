@@ -1,0 +1,56 @@
+// Klib ABI Dump
+// Targets: [iosArm64, iosSimulatorArm64]
+// Rendering settings:
+// - Signature version: 2
+// - Show manifest properties: true
+// - Show declarations: true
+
+// Library unique name: <dev.ynagai.autograph:autograph-uikit>
+open annotation class dev.ynagai.autograph.uikit/AutographInternalApi : kotlin/Annotation { // dev.ynagai.autograph.uikit/AutographInternalApi|null[0]
+    constructor <init>() // dev.ynagai.autograph.uikit/AutographInternalApi.<init>|<init>(){}[0]
+}
+
+final class dev.ynagai.autograph.uikit/AxPoint { // dev.ynagai.autograph.uikit/AxPoint|null[0]
+    constructor <init>(kotlin/Float, kotlin/Float) // dev.ynagai.autograph.uikit/AxPoint.<init>|<init>(kotlin.Float;kotlin.Float){}[0]
+
+    final val x // dev.ynagai.autograph.uikit/AxPoint.x|{}x[0]
+        final fun <get-x>(): kotlin/Float // dev.ynagai.autograph.uikit/AxPoint.x.<get-x>|<get-x>(){}[0]
+    final val y // dev.ynagai.autograph.uikit/AxPoint.y|{}y[0]
+        final fun <get-y>(): kotlin/Float // dev.ynagai.autograph.uikit/AxPoint.y.<get-y>|<get-y>(){}[0]
+
+    final fun component1(): kotlin/Float // dev.ynagai.autograph.uikit/AxPoint.component1|component1(){}[0]
+    final fun component2(): kotlin/Float // dev.ynagai.autograph.uikit/AxPoint.component2|component2(){}[0]
+    final fun copy(kotlin/Float = ..., kotlin/Float = ...): dev.ynagai.autograph.uikit/AxPoint // dev.ynagai.autograph.uikit/AxPoint.copy|copy(kotlin.Float;kotlin.Float){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.ynagai.autograph.uikit/AxPoint.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.ynagai.autograph.uikit/AxPoint.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.ynagai.autograph.uikit/AxPoint.toString|toString(){}[0]
+}
+
+final class dev.ynagai.autograph.uikit/AxRect { // dev.ynagai.autograph.uikit/AxRect|null[0]
+    constructor <init>(kotlin/Float, kotlin/Float, kotlin/Float, kotlin/Float) // dev.ynagai.autograph.uikit/AxRect.<init>|<init>(kotlin.Float;kotlin.Float;kotlin.Float;kotlin.Float){}[0]
+
+    final val bottom // dev.ynagai.autograph.uikit/AxRect.bottom|{}bottom[0]
+        final fun <get-bottom>(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.bottom.<get-bottom>|<get-bottom>(){}[0]
+    final val left // dev.ynagai.autograph.uikit/AxRect.left|{}left[0]
+        final fun <get-left>(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.left.<get-left>|<get-left>(){}[0]
+    final val right // dev.ynagai.autograph.uikit/AxRect.right|{}right[0]
+        final fun <get-right>(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.right.<get-right>|<get-right>(){}[0]
+    final val top // dev.ynagai.autograph.uikit/AxRect.top|{}top[0]
+        final fun <get-top>(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.top.<get-top>|<get-top>(){}[0]
+
+    final fun component1(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.component1|component1(){}[0]
+    final fun component2(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.component2|component2(){}[0]
+    final fun component3(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.component3|component3(){}[0]
+    final fun component4(): kotlin/Float // dev.ynagai.autograph.uikit/AxRect.component4|component4(){}[0]
+    final fun contains(dev.ynagai.autograph.uikit/AxPoint): kotlin/Boolean // dev.ynagai.autograph.uikit/AxRect.contains|contains(dev.ynagai.autograph.uikit.AxPoint){}[0]
+    final fun copy(kotlin/Float = ..., kotlin/Float = ..., kotlin/Float = ..., kotlin/Float = ...): dev.ynagai.autograph.uikit/AxRect // dev.ynagai.autograph.uikit/AxRect.copy|copy(kotlin.Float;kotlin.Float;kotlin.Float;kotlin.Float){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.ynagai.autograph.uikit/AxRect.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.ynagai.autograph.uikit/AxRect.hashCode|hashCode(){}[0]
+    final fun toString(): kotlin/String // dev.ynagai.autograph.uikit/AxRect.toString|toString(){}[0]
+}
+
+final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx(platform.UIKit/UIView, kotlin/Float): dev.ynagai.autograph.uikit/AxRect? // dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx|accessibilityBoundsInWindowPx@kotlin.Any(platform.UIKit.UIView;kotlin.Float){}[0]
+final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityChildren(): kotlin.collections/List<kotlin/Any> // dev.ynagai.autograph.uikit/accessibilityChildren|accessibilityChildren@kotlin.Any(){}[0]
+final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull(): kotlin/String? // dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull|accessibilityIdentifierOrNull@kotlin.Any(){}[0]
+final fun (kotlin/Any).dev.ynagai.autograph.uikit/isAccessibilityButton(): kotlin/Boolean // dev.ynagai.autograph.uikit/isAccessibilityButton|isAccessibilityButton@kotlin.Any(){}[0]
+final fun dev.ynagai.autograph.uikit/deepestAccessibilityHitPath(kotlin/Any, platform.UIKit/UIView, dev.ynagai.autograph.uikit/AxPoint, kotlin/Float): kotlin.collections/List<kotlin/Any>? // dev.ynagai.autograph.uikit/deepestAccessibilityHitPath|deepestAccessibilityHitPath(kotlin.Any;platform.UIKit.UIView;dev.ynagai.autograph.uikit.AxPoint;kotlin.Float){}[0]

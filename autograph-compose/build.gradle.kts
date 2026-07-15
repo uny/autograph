@@ -34,6 +34,13 @@ kotlin {
             implementation(libs.jetbrains.lifecycle.runtime.compose)
             implementation(libs.jetbrains.navigation.compose)
         }
+        iosMain.dependencies {
+            // The UIKit accessibility-tree walk this module's iOS ElementResolver hit-tests. Lives
+            // in its own module so the coming non-Compose iOS capture path can share it rather than
+            // duplicate it, keeping the walk's hard-won coordinate handling in exactly one home.
+            // `implementation`, so it stays out of this module's ABI.
+            implementation(projects.autographUikit)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
             @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
