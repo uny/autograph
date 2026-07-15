@@ -50,6 +50,7 @@ SPI is vendor-neutral.
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, `AutographScope` for screen-scoped event context, and opt-in autocapture of taps (Android and iOS). |
+| `autograph-context` | The ambient scope / screen-context stack that autocapture reads at tap time. Framework-agnostic (no Compose dependency), so native UIKit / SwiftUI / Android View surfaces can push context too. `autograph-compose` mirrors `AutographScope` and `TrackedScreen` into it for you — you only touch this module directly when instrumenting a non-Compose surface. |
 | `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
 | `autograph-schema` | Generates typed `Tracker.track<EventName>(...)` extension functions from a JSON Schema tracking-plan document, as a compile-time alternative to `EventValidator` (see [Typed event schemas](#typed-event-schemas) below). |
 
@@ -148,9 +149,23 @@ There's a `JsonObject` overload for non-string values. Notes:
   is a default a specific event can still refine). Screen/section from `TrackedScreen` compose
   independently.
 - **`identify` traits are not scoped** — they describe the user, not the screen the event fired on.
-- **Autocapture is out of scope.** Autocaptured taps fire from the root tracker above your screens,
-  so they carry the current screen (from history) but not an `AutographScope` property. Explicit
-  instrumentation and manual `track` calls are fully covered.
+- **Autocapture carries the scope, but attributes it by push order.** Autocaptured taps fire from
+  the root tracker above your screens, so they can't read this `CompositionLocal`; they read an
+  ambient stack (`autograph-context`) that `AutographScope` and `TrackedScreen` mirror into instead,
+  and so do carry the scope and the screen. (Not the section: `TrackedScreen` takes no section, and
+  a `ScreenContext` you provide through `LocalScreenContext` yourself is not mirrored either, so an
+  autocaptured tap carries a section only when a native push site supplies one —
+  [#67](https://github.com/uny/autograph/issues/67). `trackClick` / `trackImpression` are unchanged
+  and still read screen and section from `LocalScreenContext`.) That stack is ordered by when a
+  scope was *mounted*,
+  not by where the tap landed, so a tap is attributed to the **innermost scope mounted last** — which
+  is the tapped element's own scope only while a single scope subtree is mounted at a time (a screen
+  or route — the intended unit). When sibling scopes are mounted **simultaneously** — rows in a list
+  each wrapped in their own scope, split-pane content, a bottom sheet or dialog over the screen
+  beneath it — a tap on an earlier sibling is attributed to the later one. Scope a screen/route
+  rather than individual list rows until the Compose path can resolve scope from the tap-position
+  semantics tree ([#68](https://github.com/uny/autograph/issues/68)). Explicit instrumentation and
+  manual `track` calls are unaffected: they keep their lexical scope and are always exact.
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
   already receives, include it there explicitly.

@@ -8,6 +8,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -200,6 +201,203 @@ class ScopedContextUiTest {
         // new value — a keying that ignored `properties` would serve a permanently stale scope.
         assertEquals("2", tracker.tracks.last { it.first == "E" }.second.str("article_id"))
         assertEquals(2, seen.distinct().size, "a scope-value change must produce a new ScopedTracker")
+    }
+
+    @Test
+    fun autographScopeAndTrackedScreenMirrorIntoTheAmbientStackForCapture() = runComposeUiTest {
+        val stack = ScopeStack()
+        var screen: String? = null
+        var section: String? = null
+        var articleId: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScreenHistory provides ScreenHistory(),
+                LocalScopeStack provides stack,
+            ) {
+                AutographScope("article_id" to "42") {
+                    TrackedScreen("Article") {
+                        SideEffect {
+                            val ctx = stack.current()
+                            screen = ctx.screen
+                            section = ctx.section
+                            articleId = ctx.scope.str("article_id")
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        // The wiring the capture path depends on: the scope + screen an autocaptured tap happened
+        // under are visible in the ambient stack, even though the observer sits above these
+        // composables and can't read their CompositionLocals.
+        assertEquals("Article", screen)
+        assertEquals("42", articleId)
+        assertNull(section, "no section was pushed")
+    }
+
+    @Test
+    fun changingAnOuterScopeValueDoesNotLetItOverrideAnInnerScopeInTheAmbientStack() = runComposeUiTest {
+        val stack = ScopeStack()
+        val outer = mutableStateOf("outer1")
+        var k: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                AutographScope("k" to outer.value) {
+                    AutographScope("k" to "inner") {
+                        SideEffect { k = stack.current().scope.str("k") }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("inner", k, "the inner scope wins the shared key")
+
+        outer.value = "outer2"
+        waitForIdle()
+
+        // The stack resolves precedence by position, so the outer frame must be revised IN PLACE
+        // rather than re-pushed: a re-push would move it above the still-mounted inner frame and
+        // silently attribute captured taps to the outer scope's value.
+        assertEquals("inner", k, "an outer scope value change must not overtake the inner scope")
+    }
+
+    /**
+     * Characterization test for the top-of-stack attribution limit the README documents under
+     * "Scoped context" — NOT an endorsement of this outcome. The ambient stack orders frames by when
+     * they were mounted, so with sibling scopes mounted simultaneously it cannot tell which subtree
+     * a tap landed in and reports the last one. Scoping a screen/route (one subtree mounted at a
+     * time) attributes exactly; scoping individual list rows does not.
+     *
+     * If you make attribution position-aware (resolving scope from the tap-position semantics tree,
+     * see #68), this test SHOULD fail — update it and the README's claim together.
+     */
+    @Test
+    fun siblingScopesMountedAtOnceAreAttributedToTheLastOneMounted() = runComposeUiTest {
+        val stack = ScopeStack()
+        var seenFromInsideRow1: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                // Three list rows, each scoped to its own article_id, all mounted together.
+                AutographScope("article_id" to "row1") {
+                    SideEffect { seenFromInsideRow1 = stack.current().scope.str("article_id") }
+                }
+                AutographScope("article_id" to "row2") {}
+                AutographScope("article_id" to "row3") {}
+            }
+        }
+        waitForIdle()
+
+        // Every row's frame is already pushed by the time any SideEffect runs (remember observers
+        // dispatch first), but each frame is pushed EMPTY and filled by its own SideEffect in
+        // composition order — so row1's effect, running before row2/row3 fill theirs, still reads
+        // row1. Attribution looks correct from inside the scope, which is what makes this limit easy
+        // to miss in a narrower test.
+        assertEquals("row1", seenFromInsideRow1)
+
+        // But an autocaptured tap reads the stack at TAP time, once every row is mounted. A tap on
+        // row1 is therefore reported with row3's article_id: the wrong row, silently.
+        assertEquals(
+            "row3",
+            stack.current().scope.str("article_id"),
+            "documented limit: with siblings mounted at once, the last one wins regardless of which was tapped",
+        )
+    }
+
+    @Test
+    fun changingAnOuterScreenNameDoesNotOverrideAnInnerScreenInTheAmbientStack() = runComposeUiTest {
+        val stack = ScopeStack()
+        val outer = mutableStateOf("Outer1")
+        var screen: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScreenHistory provides ScreenHistory(),
+                LocalScopeStack provides stack,
+            ) {
+                TrackedScreen(outer.value) {
+                    TrackedScreen("Inner") {
+                        SideEffect { screen = stack.current().screen }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("Inner", screen, "the innermost screen wins")
+
+        outer.value = "Outer2"
+        waitForIdle()
+        assertEquals("Inner", screen, "an outer screen rename must not overtake the inner screen")
+    }
+
+    @Test
+    fun replacingTheTrackerGivesAFreshScopeStackSoContextCannotLeakAcrossTrackers() = runComposeUiTest {
+        val before = ScopeUiRecordingTracker()
+        val after = ScopeUiRecordingTracker()
+        val step = mutableStateOf(0)
+        val stacks = mutableListOf<ScopeStack>()
+        setContent {
+            AutographProvider(if (step.value == 0) before else after) {
+                AutographScope("article_id" to "42") {
+                    val stack = LocalScopeStack.current
+                    SideEffect { if (stacks.lastOrNull() !== stack) stacks += stack }
+                }
+            }
+        }
+        waitForIdle()
+        val first = stacks.single()
+        assertEquals("42", first.current().scope.str("article_id"))
+
+        step.value = 1
+        waitForIdle()
+
+        // AutographProvider scopes the stack to its tracker (`remember(tracker)`), so replacing the
+        // tracker — e.g. after logout — must hand out a FRESH stack: ambient context must not leak
+        // across trackers, and the retired stack must not keep the old frame alive. The twin
+        // ScreenHistory mechanism is pinned the same way (see ScreenTrackingUiTest).
+        assertEquals(2, stacks.size, "a tracker swap must produce a new ScopeStack")
+        assertTrue(first !== stacks[1], "the stack must be owned per tracker, never shared")
+        assertNull(
+            first.current().scope.str("article_id"),
+            "the retired stack must release its frame, not outlive the tracker swap",
+        )
+        assertEquals(
+            "42",
+            stacks[1].current().scope.str("article_id"),
+            "the live scope must be mirrored into the new tracker's stack exactly once",
+        )
+    }
+
+    @Test
+    fun leavingAScopeRemovesItsFrameFromTheAmbientStack() = runComposeUiTest {
+        val stack = ScopeStack()
+        val show = mutableStateOf(true)
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                if (show.value) {
+                    AutographScope("article_id" to "42") {}
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("42", stack.current().scope.str("article_id"))
+
+        show.value = false
+        waitForIdle()
+        assertNull(
+            stack.current().scope.str("article_id"),
+            "the frame must be removed once the scope leaves composition",
+        )
     }
 }
 

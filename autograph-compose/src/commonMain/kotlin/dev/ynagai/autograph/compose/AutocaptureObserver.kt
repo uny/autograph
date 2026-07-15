@@ -13,6 +13,9 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Observes taps app-wide in [PointerEventPass.Final] — after any child `clickable` had a chance
@@ -22,14 +25,18 @@ import dev.ynagai.autograph.Tracker
  * separately vetoes elements marked [autographIgnore] or already instrumented via [trackClick]/
  * [trackImpression].
  *
- * Screen is attributed from [screenHistory]'s most recently viewed screen (the same value used
- * for `previous_screen`) — section-level [ScreenContext] isn't available here since this observer
- * sits above any nested [TrackedScreen].
+ * Scope, screen, and section are read from the ambient [scopeStack] at tap time — the non-Compose
+ * home that [AutographScope] and [TrackedScreen] mirror into. This observer sits at the provider
+ * root, above any nested scope/screen, and holds the root [tracker] rather than the scope decorator,
+ * so reading the stack is the only way it can attribute a tap to the scope/screen it happened under.
+ * Precedence is applied by `AmbientContext.enrich` itself, so this path cannot drift from it;
+ * [screenHistory] supplies a screen fallback for a bare [TrackScreenView] that pushes no frame.
  */
 @Composable
 internal fun Modifier.autocaptureTaps(
     tracker: Tracker,
     screenHistory: ScreenHistory,
+    scopeStack: ScopeStack,
     config: AutocaptureConfig,
 ): Modifier {
     val resolver = rememberElementResolver()
@@ -49,7 +56,7 @@ internal fun Modifier.autocaptureTaps(
                     // isn't necessarily changes[0].
                     val change = event.changes.firstOrNull { it.isConsumed } ?: continue
                     val root = rootCoordinates ?: continue
-                    reportTapIfResolvable(tracker, screenHistory, config) { resolver.resolve(root, change.position) }
+                    reportTapIfResolvable(tracker, screenHistory, scopeStack, config) { resolver.resolve(root, change.position) }
                 }
             }
         }
@@ -63,13 +70,26 @@ internal fun Modifier.autocaptureTaps(
 internal fun reportTapIfResolvable(
     tracker: Tracker,
     screenHistory: ScreenHistory,
+    scopeStack: ScopeStack,
     config: AutocaptureConfig,
     resolve: () -> String?,
 ) {
     try {
         val target = resolve() ?: return
-        val screenContext = screenHistory.lastScreen?.let { ScreenContext(it) }
-        tracker.track(config.eventName, withScreenContext(EmptyJsonObject, screenContext), target)
+        val ctx = scopeStack.current()
+        // Delegate the precedence to enrich itself — scope underneath (an autocaptured tap has no
+        // call-site properties), then screen/section on top as reserved keys — so this path cannot
+        // drift from the contract it claims to share. Re-implementing it here previously dropped an
+        // ambient section whenever no screen resolved, which enrich would have written.
+        var properties = ctx.enrich(EmptyJsonObject)
+        // The one addition enrich can't know about: a bare TrackScreenView pushes no frame, so fall
+        // back to the most recently viewed screen. An ambient frame's screen always wins.
+        if (ctx.screen == null) {
+            screenHistory.lastScreen?.let {
+                properties = JsonObject(properties + ("screen" to JsonPrimitive(it)))
+            }
+        }
+        tracker.track(config.eventName, properties, target)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.
     }

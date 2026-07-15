@@ -12,6 +12,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -47,19 +48,22 @@ public fun AutographProvider(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    // Scope screen history to this tracker so previous_screen never leaks across trackers and
-    // resets when the tracker is replaced (e.g. after logout).
+    // Scope screen history and the ambient scope stack to this tracker so neither previous_screen
+    // nor scope/screen context leaks across trackers; both reset when the tracker is replaced (e.g.
+    // after logout).
     val screenHistory = remember(tracker) { ScreenHistory() }
+    val scopeStack = remember(tracker) { ScopeStack() }
     CompositionLocalProvider(
         LocalTracker provides tracker,
         LocalScreenHistory provides screenHistory,
+        LocalScopeStack provides scopeStack,
     ) {
         if (autocapture != null) {
             // Only provided when autocapture is on: registerAutocaptureClaim no-ops without it, so
             // autographIgnore()/trackClick()/trackImpression() don't pay for position tracking otherwise.
             val claims = remember { AutocaptureClaims() }
             CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
-                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, autocapture)) {
+                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, scopeStack, autocapture)) {
                     content()
                 }
             }
