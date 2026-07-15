@@ -60,11 +60,13 @@ jobs:
       # links its framework for real through Xcode's embed phase, so that path stays covered — it
       # just stops being paid for twice.
       #
-      # The one thing that exclusion takes with it that isn't sample-shared's: autograph-compose's
-      # iosArm64 publication resources, which `build` only ever reached through sample-shared's
-      # iosArm64 chain rather than through `:autograph-compose:assemble`. cd.yml publishes them, so
-      # naming the zip task explicitly (it pulls the copy task with it) keeps that path built here
-      # instead of letting a break in it surface first at release time.
+      # That exclusion reaches past sample-shared, though: it also drops autograph-compose's iosArm64
+      # publication resources, which `build` only ever reached through sample-shared's iosArm64 chain
+      # rather than through `:autograph-compose:assemble`. cd.yml publishes them, so naming the zip
+      # task explicitly (it pulls the copy task with it) keeps that path built here instead of
+      # letting a break in it surface first at release time. It drops three of that module's
+      # `export*ApiElements` tasks too — those are project-resolution plumbing, absent from the
+      # publish graph, and need no such re-add.
       - name: Build and test all targets
         run: ./gradlew build -x :sample-shared:assemble :autograph-compose:iosArm64ZipMultiplatformResourcesForPublication --stacktrace
 
