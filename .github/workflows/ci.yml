@@ -12,14 +12,8 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-# Three jobs rather than one, because the work splits into three chains that need nothing from each
-# other, and the old single job paid for all of them back-to-back (~31 min). Wall-clock is now the
-# slowest chain instead of their sum. They do duplicate some Kotlin/Native compilation — each job
-# rebuilds the library klibs it needs — but that overlap is cheaper than running them in series, and
-# macOS runners are free for public repositories.
-#
-# Every job needs macOS: iosSimulatorArm64 can only be compiled and tested there, and macos-latest is
-# Apple silicon so the simulator tests execute natively.
+# These independent chains run in parallel instead of adding their runtimes (~31 min previously).
+# All require macOS for iosSimulatorArm64; Apple silicon runners execute its tests natively.
 
 jobs:
   library:
@@ -40,33 +34,21 @@ jobs:
       # Diagnostic only (see issue #23): linkDebugTestIosSimulatorArm64 intermittently fails
       # with "framework 'UIUtilities' not found" / undefined symbols, which looks like it
       # depends on which Xcode/SDK the runner resolves via `xcode-select` at build time. This
-      # records that state on every run so the next failure can be correlated against it. It lives
-      # in this job because this is the job that runs that link task.
+      # records that state so failures can be correlated against it.
       - name: Log active Xcode/SDK
         run: |
           xcode-select -p
           xcodebuild -version
           ls /Applications | grep -i '^Xcode'
 
-      # `build` (not `check`) so packaging is covered too: it additionally compiles the device-target
-      # test sources and assembles the AARs / metadata jars that get published, none of which `check`
-      # would touch.
+      # Use `build` rather than `check` to cover device test sources and published artifacts.
       #
-      # `-x :sample-shared:assemble` skips linking the sample app's iOS frameworks, which took ~640s
-      # — half this step — for artifacts nothing here consumes: two are device (iosArm64) frameworks
-      # CI can never run, and the third is a Release framework the sample's Debug test build ignores.
-      # The library's own device klibs, its ABI dumps, and every test still build; sample-shared's
-      # Kotlin still compiles (sample-android depends on it); and the sample-ios job below still
-      # links its framework for real through Xcode's embed phase, so that path stays covered — it
-      # just stops being paid for twice.
+      # Skip sample framework assembly (~640s): CI cannot run the device frameworks, and sample-ios
+      # below covers the simulator framework through Xcode's embed phase. Library artifacts, ABI
+      # dumps, tests, and sample-shared Kotlin remain covered.
       #
-      # That exclusion reaches past sample-shared, though: it also drops autograph-compose's iosArm64
-      # publication resources, which `build` only ever reached through sample-shared's iosArm64 chain
-      # rather than through `:autograph-compose:assemble`. cd.yml publishes them, so naming the zip
-      # task explicitly (it pulls the copy task with it) keeps that path built here instead of
-      # letting a break in it surface first at release time. It drops three of that module's
-      # `export*ApiElements` tasks too — those are project-resolution plumbing, absent from the
-      # publish graph, and need no such re-add.
+      # The exclusion also removes autograph-compose's iosArm64 publication resources, so retain the
+      # zip task used by cd.yml. The omitted `export*ApiElements` tasks are not part of publication.
       - name: Build and test all targets
         run: ./gradlew build -x :sample-shared:assemble :autograph-compose:iosArm64ZipMultiplatformResourcesForPublication --stacktrace
 
@@ -111,13 +93,9 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
-      # sample-ios/iosApp embeds sample-shared's exported framework via a Run Script build phase
-      # (`embedAndSignAppleFrameworkForXcode`, invoked from within the xcodebuild step itself, not
-      # a separate Gradle task here) — building it end-to-end catches breakage in that embed path
-      # that `./gradlew build` alone (which never invokes Xcode) can't. `test`, not just `build`,
-      # also runs iosAppUITests: permanent on-device regression coverage for the iOS autocapture
-      # resolver's hit-testing (correct-element attribution, autographIgnore/trackClick dedup) that
-      # compose.uiTest can't provide — see its kdoc for why.
+      # xcodebuild exercises sample-shared's embedAndSignAppleFrameworkForXcode path, which Gradle's
+      # `build` does not. `test` also runs iosAppUITests for autocapture hit-testing behavior that
+      # compose.uiTest cannot cover.
       - name: Test sample-ios
         run: |
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
