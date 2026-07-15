@@ -183,9 +183,9 @@ double-reported, and `Modifier.autographIgnore()` excludes a subtree entirely.
 Implemented on Android (hit-testing the semantics tree via the same opt-in `RootForTest` entry
 point other autocapture SDKs use) and iOS (walking the native accessibility tree Compose
 Multiplatform bridges its semantics into — the walk lives in `autograph-uikit`'s
-`AccessibilityTree.kt`, driven by `ElementResolver.ios.kt` in this module; identification there is
-`testTag`-only, since UIKit gives no way to tell an explicit label apart from Compose's own
-text-synthesized one). Taps are silently not captured on JVM/desktop.
+`AccessibilityTree.kt`, driven by `autograph-compose`'s `ElementResolver.ios.kt`; identification
+there is `testTag`-only, since UIKit gives no way to tell an explicit label apart from Compose's
+own text-synthesized one). Taps are silently not captured on JVM/desktop.
 
 Every event now carries — this shape is the stable envelope contract described above:
 

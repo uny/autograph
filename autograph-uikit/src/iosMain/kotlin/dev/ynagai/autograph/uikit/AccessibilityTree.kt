@@ -60,9 +60,9 @@ import platform.darwin.NSObject
  * whose across-group order has no relation to what is drawn on top, and reversing it searches every
  * subview before every accessibility element. So a node that exposes an on-top overlay through
  * `accessibilityElements` while the covered content is a plain subview resolves a tap to the covered
- * subview instead of the overlay. This is long-standing behavior, unchanged by the extraction — noted
- * here rather than fixed because a second caller now depends on this contract and should know its
- * edge, not inherit a claim that overstates it.
+ * subview instead of the overlay. This is long-standing behavior, unchanged by the extraction —
+ * documented rather than fixed, since this walk is now shared API and its callers should know the
+ * edge of the contract they depend on.
  *
  * [view] supplies the coordinate space and [scale] the point-to-pixel ratio — both are handed to
  * [accessibilityBoundsInWindowPx] unchanged, so its precondition on [scale] applies here too.

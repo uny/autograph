@@ -35,10 +35,10 @@ kotlin {
             implementation(libs.jetbrains.navigation.compose)
         }
         iosMain.dependencies {
-            // The UIKit accessibility-tree walk this module's iOS ElementResolver hit-tests. Shared
-            // with the non-Compose iOS capture path rather than duplicated, so the walk's hard-won
-            // coordinate handling has exactly one home. `implementation`, so it stays out of this
-            // module's ABI.
+            // The UIKit accessibility-tree walk this module's iOS ElementResolver hit-tests. Lives
+            // in its own module so the coming non-Compose iOS capture path can share it rather than
+            // duplicate it, keeping the walk's hard-won coordinate handling in exactly one home.
+            // `implementation`, so it stays out of this module's ABI.
             implementation(projects.autographUikit)
         }
         commonTest.dependencies {
