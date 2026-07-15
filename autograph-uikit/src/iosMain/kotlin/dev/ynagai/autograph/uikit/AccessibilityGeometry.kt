@@ -25,7 +25,11 @@ public data class AxPoint(public val x: Float, public val y: Float)
  *   inset the moment it didn't (a `ComposeUIViewController` inside a safe-area-respecting SwiftUI
  *   container). Fixed by converting into the *window's* space.
  *
- * A caller in points must convert before calling in — see [accessibilityBoundsInWindowPx].
+ * A caller holding a point in UIKit's own terms has to convert it itself before calling in: take the
+ * touch's location in the *window* (e.g. `UITouch.locationInView(window)`, which is already
+ * window-relative) and multiply both components by `UIScreen.mainScreen.scale`. Nothing here does that
+ * for you — [accessibilityBoundsInWindowPx] converts an element's own `accessibilityFrame`, not a
+ * caller-supplied point.
  */
 @AutographInternalApi
 public data class AxRect(

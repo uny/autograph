@@ -48,16 +48,24 @@ import platform.darwin.NSObject
 
 /**
  * Returns the path from [node] down to the deepest descendant whose accessibility frame contains
- * [positionInWindowPx], or null if [node] itself doesn't contain it. Later (visually on top) children
- * win when bounds overlap.
+ * [positionInWindowPx], or null if [node] itself doesn't contain it.
  *
  * The full root-to-leaf path is returned, not just the leaf, so callers can inspect ancestry — pick
  * the nearest clickable ancestor of the hit node, or detect that the path crosses a view owned by
  * another capture pipeline.
  *
- * [view] supplies the coordinate space (see [accessibilityBoundsInWindowPx]); [scale] is the
- * point-to-pixel ratio, passed in rather than read from [UIScreen] so the unit conversion is visible
- * at the call site and testable.
+ * **Overlap tie-break, and its limit.** Children are searched in reverse order, so among *subviews* a
+ * later sibling — the one drawn on top — wins an overlap. That is only a true z-order tie-break within
+ * a single group: [accessibilityChildren] returns `accessibilityElements + subviews`, a concatenation
+ * whose across-group order has no relation to what is drawn on top, and reversing it searches every
+ * subview before every accessibility element. So a node that exposes an on-top overlay through
+ * `accessibilityElements` while the covered content is a plain subview resolves a tap to the covered
+ * subview instead of the overlay. This is long-standing behavior, unchanged by the extraction — noted
+ * here rather than fixed because a second caller now depends on this contract and should know its
+ * edge, not inherit a claim that overstates it.
+ *
+ * [view] supplies the coordinate space and [scale] the point-to-pixel ratio — both are handed to
+ * [accessibilityBoundsInWindowPx] unchanged, so its precondition on [scale] applies here too.
  */
 @AutographInternalApi
 @OptIn(ExperimentalForeignApi::class)
@@ -83,10 +91,17 @@ public fun deepestAccessibilityHitPath(
  * itself when it has no window yet (e.g. headless unit tests, which never attach one), where
  * window-relative and view-relative are the same thing anyway.
  *
- * [scale] is the point-to-pixel ratio (`UIScreen.scale`), taken as an argument rather than read
- * internally so callers convert deliberately. Note the conversion uses `UIScreen.mainScreen`'s
- * coordinate space as the source, which is not the right screen for content on an external display —
- * a pre-existing limitation, unchanged here.
+ * **[scale] must be `UIScreen.mainScreen.scale`** — not `view.window?.screen?.scale`. The source
+ * coordinate space below is hard-wired to `UIScreen.mainScreen`, so [scale] is the other half of one
+ * conversion and the two have to name the same screen. Passing another screen's scale converts out of
+ * mainScreen's space but multiplies by a different ratio: every frame lands at the wrong size, no
+ * frame contains the tap, and the walk returns null for every tap — silently capturing nothing. The
+ * argument exists to make the unit conversion visible and testable at the call site, not to let
+ * callers choose a screen.
+ *
+ * That mainScreen is hard-wired at all is a pre-existing limitation (unchanged here): it is the wrong
+ * screen for content on an external display. Fixing that means sourcing *both* halves from the same
+ * `view.window?.screen`, which is a behavior change and deliberately out of scope for this extraction.
  */
 @AutographInternalApi
 @OptIn(ExperimentalForeignApi::class)
