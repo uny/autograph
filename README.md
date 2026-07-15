@@ -152,10 +152,12 @@ There's a `JsonObject` overload for non-string values. Notes:
 - **Autocapture carries the scope, but attributes it by push order.** Autocaptured taps fire from
   the root tracker above your screens, so they can't read this `CompositionLocal`; they read an
   ambient stack (`autograph-context`) that `AutographScope` and `TrackedScreen` mirror into instead,
-  and so do carry the scope and the screen. (Not the section: `TrackedScreen` takes no section, so
-  nothing in the Compose API mirrors one — an autocaptured tap only carries a section when a native
-  push site supplies it. `trackClick` / `trackImpression` still read section from
-  `LocalScreenContext` as before.) That stack is ordered by when a scope was *mounted*,
+  and so do carry the scope and the screen. (Not the section: `TrackedScreen` takes no section, and
+  a `ScreenContext` you provide through `LocalScreenContext` yourself is not mirrored either, so an
+  autocaptured tap carries a section only when a native push site supplies one —
+  [#67](https://github.com/uny/autograph/issues/67). `trackClick` / `trackImpression` are unchanged
+  and still read screen and section from `LocalScreenContext`.) That stack is ordered by when a
+  scope was *mounted*,
   not by where the tap landed, so a tap is attributed to the **innermost scope mounted last** — which
   is the tapped element's own scope only while a single scope subtree is mounted at a time (a screen
   or route — the intended unit). When sibling scopes are mounted **simultaneously** — rows in a list
