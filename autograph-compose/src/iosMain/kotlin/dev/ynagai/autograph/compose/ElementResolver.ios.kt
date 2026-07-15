@@ -12,7 +12,6 @@ import dev.ynagai.autograph.uikit.accessibilityBoundsInWindowPx
 import dev.ynagai.autograph.uikit.accessibilityIdentifierOrNull
 import dev.ynagai.autograph.uikit.deepestAccessibilityHitPath
 import dev.ynagai.autograph.uikit.isAccessibilityButton
-import kotlinx.cinterop.ExperimentalForeignApi
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import kotlin.math.abs
@@ -43,7 +42,6 @@ import kotlin.math.abs
  * stale entry for a composable that's still composed but visually covered). Android can't have this
  * failure mode since it only ever looks at the hit node's own ancestor chain.
  */
-@OptIn(ExperimentalForeignApi::class)
 @Composable
 internal actual fun rememberElementResolver(): ElementResolver {
     val view = LocalUIView.current
@@ -60,7 +58,7 @@ internal actual fun rememberElementResolver(): ElementResolver {
  *
  * [position] is window-relative and in pixels (see [rememberElementResolver]).
  */
-@OptIn(ExperimentalForeignApi::class, AutographInternalApi::class)
+@OptIn(AutographInternalApi::class)
 internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, position: Offset): String? {
     if (claims != null && claims.ignored.values.any { it.contains(position) }) return null
     val scale = UIScreen.mainScreen.scale.toFloat()

@@ -12,6 +12,7 @@ import platform.UIKit.setAccessibilityTraits
 import platform.UIKit.setFrame
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -170,8 +171,8 @@ class AccessibilityTreeTest {
 
         assertTrue(rect.contains(AxPoint(10f, 20f)))
         assertTrue(rect.contains(AxPoint(29.9f, 39.9f)))
-        assertTrue(!rect.contains(AxPoint(30f, 30f)))
-        assertTrue(!rect.contains(AxPoint(20f, 40f)))
-        assertTrue(!rect.contains(AxPoint(9.9f, 30f)))
+        assertFalse(rect.contains(AxPoint(30f, 30f)))
+        assertFalse(rect.contains(AxPoint(20f, 40f)))
+        assertFalse(rect.contains(AxPoint(9.9f, 30f)))
     }
 }

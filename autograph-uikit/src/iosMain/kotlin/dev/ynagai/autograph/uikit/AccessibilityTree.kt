@@ -68,7 +68,6 @@ import platform.darwin.NSObject
  * [accessibilityBoundsInWindowPx] unchanged, so its precondition on [scale] applies here too.
  */
 @AutographInternalApi
-@OptIn(ExperimentalForeignApi::class)
 public fun deepestAccessibilityHitPath(
     node: Any,
     view: UIView,
