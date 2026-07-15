@@ -12,13 +12,12 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# These independent chains run in parallel instead of adding their runtimes (~31 min previously).
+# All require macOS for iosSimulatorArm64; Apple silicon runners execute its tests natively.
+
 jobs:
-  build:
-    # macOS is required: the iosSimulatorArm64 target can only be compiled and
-    # tested on macOS, and macos-latest runs on Apple silicon so the simulator
-    # tests execute natively. A single `./gradlew build` runs every target's
-    # checks: jvmTest, androidHostTest, iosSimulatorArm64Test, and the Compose
-    # module's tests.
+  library:
+    name: library
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
@@ -35,15 +34,38 @@ jobs:
       # Diagnostic only (see issue #23): linkDebugTestIosSimulatorArm64 intermittently fails
       # with "framework 'UIUtilities' not found" / undefined symbols, which looks like it
       # depends on which Xcode/SDK the runner resolves via `xcode-select` at build time. This
-      # records that state on every run so the next failure can be correlated against it.
+      # records that state so failures can be correlated against it.
       - name: Log active Xcode/SDK
         run: |
           xcode-select -p
           xcodebuild -version
           ls /Applications | grep -i '^Xcode'
 
+      # Use `build` rather than `check` to cover device test sources and published artifacts.
+      #
+      # Skip sample framework assembly (~640s): CI cannot run the device frameworks, and sample-ios
+      # below covers the simulator framework through Xcode's embed phase. Library artifacts, ABI
+      # dumps, tests, and sample-shared Kotlin remain covered.
+      #
+      # The exclusion also removes autograph-compose's iosArm64 publication resources, so retain the
+      # zip task used by cd.yml. The omitted `export*ApiElements` tasks are not part of publication.
       - name: Build and test all targets
-        run: ./gradlew build --stacktrace
+        run: ./gradlew build -x :sample-shared:assemble :autograph-compose:iosArm64ZipMultiplatformResourcesForPublication --stacktrace
+
+  swift-package:
+    name: swift-package
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
       # AutographSegmentSwift (root Package.swift) consumes AutographSegment.xcframework as a
       # local binaryTarget when present (see Package.swift), so it must be built before
@@ -56,13 +78,24 @@ jobs:
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -scheme AutographSegmentSwift -destination "platform=iOS Simulator,name=$device"
 
-      # sample-ios/iosApp embeds sample-shared's exported framework via a Run Script build phase
-      # (`embedAndSignAppleFrameworkForXcode`, invoked from within the xcodebuild step itself, not
-      # a separate Gradle task here) — building it end-to-end catches breakage in that embed path
-      # that `./gradlew build` alone (which never invokes Xcode) can't. `test`, not just `build`,
-      # also runs iosAppUITests: permanent on-device regression coverage for
-      # ElementResolver.ios.kt's hit-testing (correct-element attribution, autographIgnore/
-      # trackClick dedup) that compose.uiTest can't provide — see its kdoc for why.
+  sample-ios:
+    name: sample-ios
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      # xcodebuild exercises sample-shared's embedAndSignAppleFrameworkForXcode path, which Gradle's
+      # `build` does not. `test` also runs iosAppUITests for autocapture hit-testing behavior that
+      # compose.uiTest cannot cover.
       - name: Test sample-ios
         run: |
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
