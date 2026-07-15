@@ -50,7 +50,7 @@ jobs:
       # The exclusion also removes autograph-compose's iosArm64 publication resources, so retain the
       # zip task used by cd.yml. The omitted `export*ApiElements` tasks are not part of publication.
       - name: Build and test all targets
-        run: ./gradlew build -x :sample-shared:assemble :autograph-compose:iosArm64ZipMultiplatformResourcesForPublication --stacktrace
+        run: ./gradlew build -x :sample-shared:assemble :autograph-compose:iosArm64ZipMultiplatformResourcesForPublication --configuration-cache --stacktrace
 
   swift-package:
     name: swift-package
