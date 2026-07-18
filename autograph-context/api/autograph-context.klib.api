@@ -27,3 +27,6 @@ final class dev.ynagai.autograph.context/ScopeStack { // dev.ynagai.autograph.co
     final fun remove(dev.ynagai.autograph.context/ScopeHandle) // dev.ynagai.autograph.context/ScopeStack.remove|remove(dev.ynagai.autograph.context.ScopeHandle){}[0]
     final fun update(dev.ynagai.autograph.context/ScopeHandle, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/String? = ...) // dev.ynagai.autograph.context/ScopeStack.update|update(dev.ynagai.autograph.context.ScopeHandle;kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.String?){}[0]
 }
+
+final const val dev.ynagai.autograph.context/DEFAULT_AUTOCAPTURE_EVENT_NAME // dev.ynagai.autograph.context/DEFAULT_AUTOCAPTURE_EVENT_NAME|{}DEFAULT_AUTOCAPTURE_EVENT_NAME[0]
+    final fun <get-DEFAULT_AUTOCAPTURE_EVENT_NAME>(): kotlin/String // dev.ynagai.autograph.context/DEFAULT_AUTOCAPTURE_EVENT_NAME.<get-DEFAULT_AUTOCAPTURE_EVENT_NAME>|<get-DEFAULT_AUTOCAPTURE_EVENT_NAME>(){}[0]

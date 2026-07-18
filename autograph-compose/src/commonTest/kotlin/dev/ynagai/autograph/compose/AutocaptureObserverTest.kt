@@ -40,9 +40,12 @@ private class ThrowingTracker : Tracker {
 class ReportTapIfResolvableTest {
 
     @Test
-    fun reportsTheResolvedTarget() {
+    fun reportsTheResolvedTargetUnderTheDefaultEventName() {
         val tracker = AutocaptureRecordingTracker()
-        reportTapIfResolvable(tracker, ScreenHistory(), ScopeStack(), AutocaptureConfig(eventName = "Element Clicked")) { "share_button" }
+        // Deliberately the no-arg config: this pins the default all the way through to the tracked
+        // event, so re-hardcoding a literal here instead of the shared constant fails the build.
+        // Pinning the constant alone (AutocaptureDefaultsTest) leaves that wiring untested.
+        reportTapIfResolvable(tracker, ScreenHistory(), ScopeStack(), AutocaptureConfig()) { "share_button" }
         assertEquals(listOf<Pair<String, String?>>("Element Clicked" to "share_button"), tracker.tracked)
     }
 

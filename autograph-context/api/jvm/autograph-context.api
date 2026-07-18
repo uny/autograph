@@ -5,6 +5,10 @@ public final class dev/ynagai/autograph/context/AmbientContext {
 	public final fun getSection ()Ljava/lang/String;
 }
 
+public final class dev/ynagai/autograph/context/AutocaptureDefaultsKt {
+	public static final field DEFAULT_AUTOCAPTURE_EVENT_NAME Ljava/lang/String;
+}
+
 public final class dev/ynagai/autograph/context/ScopeHandle {
 }
 

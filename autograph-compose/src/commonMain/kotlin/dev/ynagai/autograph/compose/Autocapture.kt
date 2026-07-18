@@ -1,5 +1,7 @@
 package dev.ynagai.autograph.compose
 
+import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
+
 /**
  * Enables automatic click capture when passed to `AutographProvider` — taps anywhere in the
  * composition are observed and reported via [dev.ynagai.autograph.Tracker.track] without needing
@@ -29,5 +31,5 @@ package dev.ynagai.autograph.compose
  * targets (JVM/desktop).
  */
 public data class AutocaptureConfig(
-    val eventName: String = "Element Clicked",
+    val eventName: String = DEFAULT_AUTOCAPTURE_EVENT_NAME,
 )
