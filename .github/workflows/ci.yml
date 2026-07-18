@@ -31,6 +31,16 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
+      # Kotlin/Native re-downloads ~/.konan (compiler + LLVM, ~hundreds of MB) on every run;
+      # setup-gradle only caches ~/.gradle. Key on the version catalog so the download/extract is
+      # paid once; ~/.konan holds version-suffixed dirs, so a stale restore stays correct.
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
       # Diagnostic only (see issue #23): linkDebugTestIosSimulatorArm64 intermittently fails
       # with "framework 'UIUtilities' not found" / undefined symbols, which looks like it
       # depends on which Xcode/SDK the runner resolves via `xcode-select` at build time. This
@@ -67,6 +77,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
 
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
+
       # AutographSegmentSwift (root Package.swift) consumes AutographSegment.xcframework as a
       # local binaryTarget when present (see Package.swift), so it must be built before
       # `xcodebuild test` can link it.
@@ -92,6 +109,13 @@ jobs:
           java-version: '21'
 
       - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Cache Kotlin/Native (~/.konan)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.konan
+          key: konan-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml') }}
+          restore-keys: konan-${{ runner.os }}-
 
       # xcodebuild exercises sample-shared's embedAndSignAppleFrameworkForXcode path, which Gradle's
       # `build` does not. `test` also runs iosAppUITests for autocapture hit-testing behavior that
