@@ -2,6 +2,8 @@ package dev.ynagai.autograph.uikit
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
+import platform.Foundation.NSSelectorFromString
+import platform.Foundation.valueForKey
 import platform.UIKit.UIAccessibilityIdentificationProtocol
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIScreen
@@ -190,7 +192,35 @@ public fun Any.isAccessibilityButton(): Boolean =
  * facing text and is never read: UIKit gives no way to tell an explicit, developer-authored label
  * apart from one Compose Multiplatform synthesizes from the element's displayed text, so falling back
  * to it would silently defeat the "never capture displayed text" guarantee.
+ *
+ * **Why this needs two routes.** In Objective-C every `UIView` carries `accessibilityIdentifier` —
+ * `UIView` adopts `UIAccessibilityIdentification` through a *category*. Kotlin/Native's cinterop does
+ * not model protocol conformance added that way, so `UIView` (and therefore `UIButton`, and every
+ * other UIKit control) is statically not a [UIAccessibilityIdentificationProtocol] and the cast below
+ * fails at runtime — measured, not inferred. The property is still there; only the binding's view of
+ * the type system is missing it, so it is reachable by asking the object itself.
+ *
+ * The protocol cast alone was enough while the sole caller was `autograph-compose`, because Compose
+ * Multiplatform bridges its semantics as `UIAccessibilityElement` subclasses, which *do* conform in
+ * the headers. Aiming this at a UIKit/SwiftUI tree (#62) makes the gap load-bearing: a `UIButton`
+ * passes the clickability predicate and then yields no identifier, so every native tap is dropped and
+ * the pipeline is silently inert.
+ *
+ * The key-value fallback is guarded by `respondsToSelector` rather than caught: `valueForKey` raises
+ * `NSUnknownKeyException` for an object without the property, and an Objective-C exception crossing
+ * back into Kotlin is not a catchable Kotlin exception. The walk hands arbitrary objects to this
+ * function, so asking first is the only safe order.
  */
 @AutographInternalApi
-public fun Any.accessibilityIdentifierOrNull(): String? =
-    (this as? UIAccessibilityIdentificationProtocol)?.accessibilityIdentifier
+@OptIn(ExperimentalForeignApi::class)
+public fun Any.accessibilityIdentifierOrNull(): String? {
+    (this as? UIAccessibilityIdentificationProtocol)?.accessibilityIdentifier?.let { return it }
+    val obj = this as? NSObject ?: return null
+    if (!obj.respondsToSelector(accessibilityIdentifierSelector)) return null
+    return obj.valueForKey(ACCESSIBILITY_IDENTIFIER_KEY) as? String
+}
+
+private const val ACCESSIBILITY_IDENTIFIER_KEY = "accessibilityIdentifier"
+
+@OptIn(ExperimentalForeignApi::class)
+private val accessibilityIdentifierSelector = NSSelectorFromString(ACCESSIBILITY_IDENTIFIER_KEY)
