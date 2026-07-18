@@ -122,10 +122,12 @@ internal fun MirrorAmbientFrame(
 private val fallbackScopeStack = ScopeStack()
 
 /**
- * Per-[AutographProvider] ambient [ScopeStack]. Scoped to the provider (keyed on the tracker) for
- * the same reason [LocalScreenHistory] is: context must not leak between independent trackers and
- * must reset when the tracker is replaced (e.g. after logout). Outside a provider — where events are
- * dropped anyway — reads fall back to a shared instance.
+ * Per-[AutographProvider] ambient [ScopeStack]. A provider-owned stack is scoped to the provider
+ * (keyed on the tracker) for the same reason [LocalScreenHistory] is: context must not leak between
+ * independent trackers and must reset when the tracker is replaced (e.g. after logout). A stack the
+ * caller passed to [AutographProvider] instead — the hybrid-app case, where a native pipeline holds
+ * the same instance — is used as-is and never swapped out; that lifetime is the caller's. Outside a
+ * provider — where events are dropped anyway — reads fall back to a shared instance.
  */
 internal val LocalScopeStack: ProvidableCompositionLocal<ScopeStack> =
     staticCompositionLocalOf { fallbackScopeStack }

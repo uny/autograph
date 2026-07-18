@@ -29,11 +29,21 @@ public val LocalTracker: androidx.compose.runtime.ProvidableCompositionLocal<Tra
  * Pass [autocapture] to also report taps app-wide without instrumenting every element with
  * [trackClick] — opt-in, since observing every tap is a meaningfully different privacy posture
  * than explicit instrumentation. See [AutocaptureConfig].
+ *
+ * Pass [scopeStack] only in a **hybrid app** — one where part of the UI is Compose and part is
+ * native (UIKit/SwiftUI, or the Android View system) — and the native side runs its own capture
+ * pipeline. Both sides must then read and write the *same* stack: `TrackedScreen` and
+ * [AutographScope] push their frames into it here, and the native pipeline resolves a tap's screen
+ * and scope by reading it. Left null, this provider owns a private stack, which is correct for a
+ * Compose-only app but would leave the two sides attributing events against separate, half-empty
+ * contexts. Owning the stack outside the composition is also what lets it outlive a recomposition
+ * while still being replaceable on logout — scope it to the same lifetime as [tracker].
  */
 @Composable
 public fun AutographProvider(
     tracker: Tracker,
     autocapture: AutocaptureConfig? = null,
+    scopeStack: ScopeStack? = null,
     content: @Composable () -> Unit,
 ) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
@@ -50,20 +60,22 @@ public fun AutographProvider(
     }
     // Scope screen history and the ambient scope stack to this tracker so neither previous_screen
     // nor scope/screen context leaks across trackers; both reset when the tracker is replaced (e.g.
-    // after logout).
+    // after logout). A caller supplying its own stack takes on that lifetime obligation instead.
     val screenHistory = remember(tracker) { ScreenHistory() }
-    val scopeStack = remember(tracker) { ScopeStack() }
+    // A caller-supplied stack is used as-is: it is shared with a native pipeline that already holds
+    // it, so replacing it here would strand the frames that pipeline reads.
+    val effectiveScopeStack = remember(tracker, scopeStack) { scopeStack ?: ScopeStack() }
     CompositionLocalProvider(
         LocalTracker provides tracker,
         LocalScreenHistory provides screenHistory,
-        LocalScopeStack provides scopeStack,
+        LocalScopeStack provides effectiveScopeStack,
     ) {
         if (autocapture != null) {
             // Only provided when autocapture is on: registerAutocaptureClaim no-ops without it, so
             // autographIgnore()/trackClick()/trackImpression() don't pay for position tracking otherwise.
             val claims = remember { AutocaptureClaims() }
             CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
-                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, scopeStack, autocapture)) {
+                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, effectiveScopeStack, autocapture)) {
                     content()
                 }
             }
