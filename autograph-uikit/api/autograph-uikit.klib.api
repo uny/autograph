@@ -55,6 +55,7 @@ final object dev.ynagai.autograph.uikit/AutographComposeHosts { // dev.ynagai.au
     final fun unregister(platform.UIKit/UIView) // dev.ynagai.autograph.uikit/AutographComposeHosts.unregister|unregister(platform.UIKit.UIView){}[0]
 }
 
+final fun (kotlin.collections/List<kotlin/Any>).dev.ynagai.autograph.uikit/nearestAccessibilityClickable(): kotlin/Any? // dev.ynagai.autograph.uikit/nearestAccessibilityClickable|nearestAccessibilityClickable@kotlin.collections.List<kotlin.Any>(){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx(platform.UIKit/UIView, kotlin/Float): dev.ynagai.autograph.uikit/AxRect? // dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx|accessibilityBoundsInWindowPx@kotlin.Any(platform.UIKit.UIView;kotlin.Float){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityChildren(): kotlin.collections/List<kotlin/Any> // dev.ynagai.autograph.uikit/accessibilityChildren|accessibilityChildren@kotlin.Any(){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull(): kotlin/String? // dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull|accessibilityIdentifierOrNull@kotlin.Any(){}[0]

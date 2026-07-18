@@ -11,7 +11,7 @@ import dev.ynagai.autograph.uikit.AxRect
 import dev.ynagai.autograph.uikit.accessibilityBoundsInWindowPx
 import dev.ynagai.autograph.uikit.accessibilityIdentifierOrNull
 import dev.ynagai.autograph.uikit.deepestAccessibilityHitPath
-import dev.ynagai.autograph.uikit.isAccessibilityButton
+import dev.ynagai.autograph.uikit.nearestAccessibilityClickable
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import kotlin.math.abs
@@ -63,7 +63,7 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
     if (claims != null && claims.ignored.values.any { it.contains(position) }) return null
     val scale = UIScreen.mainScreen.scale.toFloat()
     val path = deepestAccessibilityHitPath(view, view, AxPoint(position.x, position.y), scale) ?: return null
-    val nearestClickable = path.asReversed().firstOrNull { it.isAccessibilityButton() } ?: return null
+    val nearestClickable = path.nearestAccessibilityClickable() ?: return null
     // Unlike `ignored` (deliberately ancestor-wide, matching Android's resolveAutocaptureTarget,
     // which suppresses on ANY ancestor's ignored flag), `instrumented` on Android suppresses only
     // when the resolved nearestClickable ITSELF is instrumented — an instrumented ANCESTOR (e.g. a

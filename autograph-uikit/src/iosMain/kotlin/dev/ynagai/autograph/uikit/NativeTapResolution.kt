@@ -46,6 +46,6 @@ public fun resolveNativeTapTarget(
 ): String? {
     val path = deepestAccessibilityHitPath(root, root, positionInWindowPx, scale) ?: return null
     if (AutographComposeHosts.containsAny(path)) return null
-    val nearestClickable = path.asReversed().firstOrNull { it.isAccessibilityButton() } ?: return null
+    val nearestClickable = path.nearestAccessibilityClickable() ?: return null
     return nearestClickable.accessibilityIdentifierOrNull()
 }
