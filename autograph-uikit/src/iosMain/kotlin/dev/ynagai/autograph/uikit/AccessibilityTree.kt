@@ -3,7 +3,6 @@ package dev.ynagai.autograph.uikit
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSSelectorFromString
-import platform.Foundation.valueForKey
 import platform.UIKit.UIAccessibilityIdentificationProtocol
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIScreen
@@ -206,21 +205,22 @@ public fun Any.isAccessibilityButton(): Boolean =
  * passes the clickability predicate and then yields no identifier, so every native tap is dropped and
  * the pipeline is silently inert.
  *
- * The key-value fallback is guarded by `respondsToSelector` rather than caught: `valueForKey` raises
- * `NSUnknownKeyException` for an object without the property, and an Objective-C exception crossing
- * back into Kotlin is not a catchable Kotlin exception. The walk hands arbitrary objects to this
- * function, so asking first is the only safe order.
+ * The fallback asks for the getter by selector, guarded by `respondsToSelector`, rather than trying
+ * and recovering: an Objective-C exception crossing back into Kotlin is not a catchable Kotlin
+ * exception, so a raise here takes the process down. The walk hands arbitrary objects to this
+ * function, so asking first is the only safe order — and once `respondsToSelector` says yes,
+ * `performSelector` cannot raise. (Key-value coding would reach the same property, but routes through
+ * `valueForKey:`, which an object is free to override and reject a key from; the selector call has no
+ * such surface.)
  */
 @AutographInternalApi
 @OptIn(ExperimentalForeignApi::class)
 public fun Any.accessibilityIdentifierOrNull(): String? {
-    (this as? UIAccessibilityIdentificationProtocol)?.accessibilityIdentifier?.let { return it }
+    if (this is UIAccessibilityIdentificationProtocol) return accessibilityIdentifier
     val obj = this as? NSObject ?: return null
     if (!obj.respondsToSelector(accessibilityIdentifierSelector)) return null
-    return obj.valueForKey(ACCESSIBILITY_IDENTIFIER_KEY) as? String
+    return obj.performSelector(accessibilityIdentifierSelector) as? String
 }
 
-private const val ACCESSIBILITY_IDENTIFIER_KEY = "accessibilityIdentifier"
-
 @OptIn(ExperimentalForeignApi::class)
-private val accessibilityIdentifierSelector = NSSelectorFromString(ACCESSIBILITY_IDENTIFIER_KEY)
+private val accessibilityIdentifierSelector = NSSelectorFromString("accessibilityIdentifier")

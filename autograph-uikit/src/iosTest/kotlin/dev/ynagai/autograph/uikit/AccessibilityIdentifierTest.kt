@@ -83,10 +83,10 @@ class AccessibilityIdentifierTest {
     /**
      * The walk hands this function whatever the tree contains, so it must stay total.
      *
-     * `valueForKey` raises `NSUnknownKeyException` for an object without the property, and an
-     * Objective-C exception crossing into Kotlin is not catchable there — it terminates the process.
-     * That is why the fallback asks `respondsToSelector` first rather than trying and recovering, and
-     * why this test asserts on objects that answer no to it.
+     * An Objective-C exception crossing into Kotlin is not catchable there — it terminates the
+     * process. That is why the fallback asks `respondsToSelector` before calling the getter rather
+     * than trying and recovering, and why this test asserts on objects that answer no to it: an
+     * `NSObject` without the property, and values that are not Objective-C objects at all.
      */
     @Test
     fun returnsNullRatherThanThrowingForAnObjectWithoutTheProperty() {
