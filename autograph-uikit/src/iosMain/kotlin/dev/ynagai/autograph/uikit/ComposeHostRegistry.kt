@@ -1,6 +1,8 @@
 package dev.ynagai.autograph.uikit
 
 import platform.Foundation.NSHashTable
+import platform.Foundation.NSHashTableObjectPointerPersonality
+import platform.Foundation.NSHashTableWeakMemory
 import platform.UIKit.UIView
 
 /**
@@ -39,15 +41,26 @@ public object AutographComposeHosts {
      * silently leaves the set even if [unregister] never ran (a controller torn down without its
      * `DisposableEffect` firing, say).
      *
-     * `NSHashTable.weakObjectsHashTable` compares by *pointer*, which is what makes this correct
-     * across the Kotlin/Native interop boundary. Kotlin does not canonicalize Objective-C wrappers:
-     * the same underlying view fetched twice — once handed over by Compose, once reached through
-     * `subviews` during the walk — arrives as two distinct Kotlin objects. A Kotlin-side `Set` or a
-     * `===` scan would call those different and the boundary would never match anything, silently
-     * double-counting every Compose tap. Routing the comparison through the hash table's own
-     * pointer personality sidesteps wrapper identity entirely.
+     * Compared by *pointer*, which is what makes this correct across the Kotlin/Native interop
+     * boundary. Kotlin does not canonicalize Objective-C wrappers: the same underlying view fetched
+     * twice — once handed over by Compose, once reached through `subviews` during the walk — arrives
+     * as two distinct Kotlin objects. A Kotlin-side `Set` or a `===` scan would call those different
+     * and the boundary would never match anything, silently double-counting every Compose tap.
+     * Routing the comparison through the table's pointer personality sidesteps wrapper identity
+     * entirely.
+     *
+     * [NSHashTableObjectPointerPersonality] is requested explicitly rather than taking
+     * `weakObjectsHashTable()`, which is weak memory at the *default* personality — `isEqual:`/`hash`.
+     * That default is very nearly the same thing here, since `NSObject`'s `isEqual:` is pointer
+     * equality (the same reasoning [deepestAccessibilityHitPath]'s cycle guard relies on for `==`),
+     * but only for as long as no registered view overrides it. A host app is free to subclass
+     * `UIView` and define equality by content; two such views would then be indistinguishable to the
+     * table, and unregistering one screen's host would silently disarm another's. Naming the
+     * personality removes that dependency instead of documenting it.
      */
-    private val hosts = NSHashTable.weakObjectsHashTable()
+    private val hosts = NSHashTable.hashTableWithOptions(
+        NSHashTableWeakMemory or NSHashTableObjectPointerPersonality,
+    )
 
     /** Marks [view] and everything under it as owned by the Compose pipeline. */
     public fun register(view: UIView) {

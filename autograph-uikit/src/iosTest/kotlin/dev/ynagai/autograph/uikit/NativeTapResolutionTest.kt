@@ -178,7 +178,7 @@ class NativeTapResolutionTest {
         composeHost.addSubview(button("b", 10.0, 10.0, 20.0, 20.0))
         val position = AxPoint(15f * scale, 15f * scale)
 
-        AutographComposeHosts.register(composeHost)
+        registerHost(composeHost)
         assertNull(resolveNativeTapTarget(root, position, scale))
 
         AutographComposeHosts.unregister(composeHost)
@@ -192,8 +192,11 @@ class NativeTapResolutionTest {
      * through `subviews` is a *different Kotlin object* than the one handed to [register] — measured
      * here, not assumed. A registry compared with `===` (or backed by a Kotlin `Set`) calls those
      * two different and matches nothing, so de-dup silently never fires and every Compose tap is
-     * double-counted. Only a pointer-personality comparison, which is what
-     * `NSHashTable.weakObjectsHashTable` does, gets this right.
+     * double-counted. What this pins is that the registry compares the *underlying object* rather
+     * than the Kotlin wrapper — the distinction between `===` and everything else, which is where
+     * the bug actually lives. It does not, and cannot cheaply, distinguish the table's pointer
+     * personality from the default `isEqual:` one: on a plain [UIView] those agree by construction.
+     * See [AutographComposeHosts]'s backing table for why the stricter of the two is asked for.
      *
      * Deliberately sources the lookup object from `subviews` rather than reusing the Kotlin
      * reference: a Kotlin round-trip preserves identity and would pass either way — a false
