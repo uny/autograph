@@ -163,6 +163,91 @@ class AccessibilityTreeTest {
         assertEquals((63f + 5f) * scale, bounds.bottom, 0.5f)
     }
 
+    /**
+     * The walked tree comes from the host app, and nothing stops an element from listing an ancestor
+     * among its `accessibilityElements` — a cycle. Before the path-identity check this recursed until
+     * the stack overflowed, i.e. any app with such a link crashed on its first tap. The walk must
+     * abandon the cyclic branch and still resolve, not hang or die.
+     */
+    @Test
+    fun terminatesWhenAnElementLinksBackToItsAncestor() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val child = UIView()
+        child.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        child.setAccessibilityTraits(UIAccessibilityTraitButton)
+        root.addSubview(child)
+        // The cycle: child points back at its own ancestor.
+        child.setAccessibilityElements(listOf(root))
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        // Resolves to the deepest non-cyclic node rather than recursing forever.
+        assertEquals(child, path?.last())
+    }
+
+    /**
+     * The cycle above closes over an `accessibilityElements` link, which is the one edge that happens
+     * to hand back the *same* Kotlin wrapper each time — so it passes even under an identity (`===`)
+     * check. This one closes the cycle over an ancestor the walk reached through `subviews`, where
+     * Kotlin/Native hands back a fresh wrapper per fetch (`v.subviews.first() === v.subviews.first()`
+     * is false). Under `===` the walk re-entered the cycle and returned a 5-long path with `mid` and
+     * `leaf` each visited twice; the guard has to compare with `==` to catch it.
+     */
+    @Test
+    fun terminatesWhenTheCycleClosesOverASubviewReachedAncestor() {
+        val outer = UIView()
+        outer.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val mid = UIView()
+        mid.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        outer.addSubview(mid)
+
+        val leaf = UIView()
+        leaf.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        mid.addSubview(leaf)
+
+        // The cycle: leaf points back at mid, which the walk reached via `subviews`.
+        leaf.setAccessibilityElements(listOf(mid))
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(outer, outer, position, scale)
+
+        // Each node exactly once — not a second lap around the cycle.
+        assertEquals(listOf(outer, mid, leaf), path)
+    }
+
+    /**
+     * Backstop for a tree that is pathologically deep without being cyclic (so the identity check
+     * can't catch it). Nests past [MAX_ACCESSIBILITY_TREE_DEPTH] and asserts the walk returns instead
+     * of overflowing; the resolved node is necessarily shallower than the true leaf, which is the
+     * intended trade — a truncated path loses one event, an overflow loses the app.
+     */
+    @Test
+    fun stopsDescendingAtTheDepthCeiling() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        var deepest = root
+        repeat(400) {
+            val next = UIView()
+            next.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            deepest.addSubview(next)
+            deepest = next
+        }
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertTrue(path != null)
+        assertTrue(
+            path.size <= 256,
+            "expected the walk to stop at the depth ceiling, but it descended ${path.size} levels",
+        )
+    }
+
     @Test
     fun containsIsLeftTopInclusiveAndRightBottomExclusive() {
         // Pins the boundary semantics against Compose's Rect.contains, which the Compose adapter's
