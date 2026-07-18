@@ -2,6 +2,7 @@ package dev.ynagai.autograph.uikit
 
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
+import platform.Foundation.NSSelectorFromString
 import platform.UIKit.UIAccessibilityIdentificationProtocol
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIScreen
@@ -190,7 +191,36 @@ public fun Any.isAccessibilityButton(): Boolean =
  * facing text and is never read: UIKit gives no way to tell an explicit, developer-authored label
  * apart from one Compose Multiplatform synthesizes from the element's displayed text, so falling back
  * to it would silently defeat the "never capture displayed text" guarantee.
+ *
+ * **Why this needs two routes.** In Objective-C every `UIView` carries `accessibilityIdentifier` —
+ * `UIView` adopts `UIAccessibilityIdentification` through a *category*. Kotlin/Native's cinterop does
+ * not model protocol conformance added that way, so `UIView` (and therefore `UIButton`, and every
+ * other UIKit control) is statically not a [UIAccessibilityIdentificationProtocol] and the cast below
+ * fails at runtime — measured, not inferred. The property is still there; only the binding's view of
+ * the type system is missing it, so it is reachable by asking the object itself.
+ *
+ * The protocol cast alone was enough while the sole caller was `autograph-compose`, because Compose
+ * Multiplatform bridges its semantics as `UIAccessibilityElement` subclasses, which *do* conform in
+ * the headers. Aiming this at a UIKit/SwiftUI tree (#62) makes the gap load-bearing: a `UIButton`
+ * passes the clickability predicate and then yields no identifier, so every native tap is dropped and
+ * the pipeline is silently inert.
+ *
+ * The fallback asks for the getter by selector, guarded by `respondsToSelector`, rather than trying
+ * and recovering: an Objective-C exception crossing back into Kotlin is not a catchable Kotlin
+ * exception, so a raise here takes the process down. The walk hands arbitrary objects to this
+ * function, so asking first is the only safe order — and once `respondsToSelector` says yes,
+ * `performSelector` cannot raise. (Key-value coding would reach the same property, but routes through
+ * `valueForKey:`, which an object is free to override and reject a key from; the selector call has no
+ * such surface.)
  */
 @AutographInternalApi
-public fun Any.accessibilityIdentifierOrNull(): String? =
-    (this as? UIAccessibilityIdentificationProtocol)?.accessibilityIdentifier
+@OptIn(ExperimentalForeignApi::class)
+public fun Any.accessibilityIdentifierOrNull(): String? {
+    if (this is UIAccessibilityIdentificationProtocol) return accessibilityIdentifier
+    val obj = this as? NSObject ?: return null
+    if (!obj.respondsToSelector(accessibilityIdentifierSelector)) return null
+    return obj.performSelector(accessibilityIdentifierSelector) as? String
+}
+
+@OptIn(ExperimentalForeignApi::class)
+private val accessibilityIdentifierSelector = NSSelectorFromString("accessibilityIdentifier")
