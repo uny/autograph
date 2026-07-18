@@ -49,8 +49,15 @@ final class dev.ynagai.autograph.uikit/AxRect { // dev.ynagai.autograph.uikit/Ax
     final fun toString(): kotlin/String // dev.ynagai.autograph.uikit/AxRect.toString|toString(){}[0]
 }
 
+final object dev.ynagai.autograph.uikit/AutographComposeHosts { // dev.ynagai.autograph.uikit/AutographComposeHosts|null[0]
+    final fun containsAny(kotlin.collections/List<kotlin/Any>): kotlin/Boolean // dev.ynagai.autograph.uikit/AutographComposeHosts.containsAny|containsAny(kotlin.collections.List<kotlin.Any>){}[0]
+    final fun register(platform.UIKit/UIView) // dev.ynagai.autograph.uikit/AutographComposeHosts.register|register(platform.UIKit.UIView){}[0]
+    final fun unregister(platform.UIKit/UIView) // dev.ynagai.autograph.uikit/AutographComposeHosts.unregister|unregister(platform.UIKit.UIView){}[0]
+}
+
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx(platform.UIKit/UIView, kotlin/Float): dev.ynagai.autograph.uikit/AxRect? // dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx|accessibilityBoundsInWindowPx@kotlin.Any(platform.UIKit.UIView;kotlin.Float){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityChildren(): kotlin.collections/List<kotlin/Any> // dev.ynagai.autograph.uikit/accessibilityChildren|accessibilityChildren@kotlin.Any(){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull(): kotlin/String? // dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull|accessibilityIdentifierOrNull@kotlin.Any(){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/isAccessibilityButton(): kotlin/Boolean // dev.ynagai.autograph.uikit/isAccessibilityButton|isAccessibilityButton@kotlin.Any(){}[0]
 final fun dev.ynagai.autograph.uikit/deepestAccessibilityHitPath(kotlin/Any, platform.UIKit/UIView, dev.ynagai.autograph.uikit/AxPoint, kotlin/Float): kotlin.collections/List<kotlin/Any>? // dev.ynagai.autograph.uikit/deepestAccessibilityHitPath|deepestAccessibilityHitPath(kotlin.Any;platform.UIKit.UIView;dev.ynagai.autograph.uikit.AxPoint;kotlin.Float){}[0]
+final fun dev.ynagai.autograph.uikit/resolveNativeTapTarget(platform.UIKit/UIView, dev.ynagai.autograph.uikit/AxPoint, kotlin/Float): kotlin/String? // dev.ynagai.autograph.uikit/resolveNativeTapTarget|resolveNativeTapTarget(platform.UIKit.UIView;dev.ynagai.autograph.uikit.AxPoint;kotlin.Float){}[0]
