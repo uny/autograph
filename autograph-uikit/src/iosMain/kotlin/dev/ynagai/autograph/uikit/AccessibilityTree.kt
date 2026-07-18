@@ -206,7 +206,9 @@ public fun Any.isAccessibilityButton(): Boolean =
     (((this as? NSObject)?.accessibilityTraits() ?: 0uL) and UIAccessibilityTraitButton) != 0uL
 
 /**
- * This element's developer-set `accessibilityIdentifier`, or null.
+ * This element's developer-set `accessibilityIdentifier`, or null — including when the identifier is
+ * present but blank, which is treated as absent rather than reported as a target (see the body for
+ * why, and for why it rejects without trimming).
  *
  * Deliberately the only identity source Autograph reads off this tree. `accessibilityLabel` is user-
  * facing text and is never read: UIKit gives no way to tell an explicit, developer-authored label
