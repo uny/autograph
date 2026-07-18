@@ -66,6 +66,17 @@ import platform.darwin.NSObject
  *
  * [view] supplies the coordinate space and [scale] the point-to-pixel ratio — both are handed to
  * [accessibilityBoundsInWindowPx] unchanged, so its precondition on [scale] applies here too.
+ *
+ * **Threading.** Main thread only: every property this reads ([accessibilityChildren],
+ * `accessibilityFrame`, `subviews`) is main-thread-only UIKit API.
+ *
+ * **Termination.** The tree this walks is supplied by the host app, not by this module, and nothing
+ * in the UIAccessibility contract forbids an element from listing an ancestor among its
+ * `accessibilityElements`. Such a link makes the graph cyclic, and a naive descent would recurse
+ * until the stack overflows. Two bounds prevent that: a branch that revisits a node already on the
+ * path being built is abandoned (the parent then tries its next sibling), and descent stops at
+ * [MAX_ACCESSIBILITY_TREE_DEPTH]. Both degrade to resolving a shallower element rather than
+ * crashing — a missed leaf is a dropped event, an overflow takes the app down.
  */
 @AutographInternalApi
 public fun deepestAccessibilityHitPath(
@@ -73,11 +84,36 @@ public fun deepestAccessibilityHitPath(
     view: UIView,
     positionInWindowPx: AxPoint,
     scale: Float,
+): List<Any>? = deepestAccessibilityHitPath(node, view, positionInWindowPx, scale, ancestors = emptyList())
+
+/**
+ * Depth ceiling for [deepestAccessibilityHitPath]. Far above any real accessibility tree (UIKit
+ * hierarchies run tens of levels, not hundreds), so it never truncates a genuine walk — it exists
+ * only to bound a pathological or adversarial one that the cycle check can't catch, such as a chain
+ * that generates a fresh element at every level.
+ */
+private const val MAX_ACCESSIBILITY_TREE_DEPTH = 256
+
+/**
+ * [ancestors] is the chain from the walk's starting node down to (not including) [node], carried so
+ * the cycle check can ask whether [node] is already on it. Compared by identity: two distinct
+ * elements may legitimately be equal, but re-entering the *same* object is what fails to terminate.
+ */
+@OptIn(AutographInternalApi::class)
+private fun deepestAccessibilityHitPath(
+    node: Any,
+    view: UIView,
+    positionInWindowPx: AxPoint,
+    scale: Float,
+    ancestors: List<Any>,
 ): List<Any>? {
+    if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return null
+    if (ancestors.any { it === node }) return null
     val bounds = node.accessibilityBoundsInWindowPx(view, scale) ?: return null
     if (!bounds.contains(positionInWindowPx)) return null
+    val pathToNode = ancestors + node
     for (child in node.accessibilityChildren().asReversed()) {
-        deepestAccessibilityHitPath(child, view, positionInWindowPx, scale)?.let { return listOf(node) + it }
+        deepestAccessibilityHitPath(child, view, positionInWindowPx, scale, pathToNode)?.let { return listOf(node) + it }
     }
     return listOf(node)
 }

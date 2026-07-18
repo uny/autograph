@@ -163,6 +163,60 @@ class AccessibilityTreeTest {
         assertEquals((63f + 5f) * scale, bounds.bottom, 0.5f)
     }
 
+    /**
+     * The walked tree comes from the host app, and nothing stops an element from listing an ancestor
+     * among its `accessibilityElements` — a cycle. Before the path-identity check this recursed until
+     * the stack overflowed, i.e. any app with such a link crashed on its first tap. The walk must
+     * abandon the cyclic branch and still resolve, not hang or die.
+     */
+    @Test
+    fun terminatesWhenAnElementLinksBackToItsAncestor() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val child = UIView()
+        child.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        child.setAccessibilityTraits(UIAccessibilityTraitButton)
+        root.addSubview(child)
+        // The cycle: child points back at its own ancestor.
+        child.setAccessibilityElements(listOf(root))
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        // Resolves to the deepest non-cyclic node rather than recursing forever.
+        assertEquals(child, path?.last())
+    }
+
+    /**
+     * Backstop for a tree that is pathologically deep without being cyclic (so the identity check
+     * can't catch it). Nests past [MAX_ACCESSIBILITY_TREE_DEPTH] and asserts the walk returns instead
+     * of overflowing; the resolved node is necessarily shallower than the true leaf, which is the
+     * intended trade — a truncated path loses one event, an overflow loses the app.
+     */
+    @Test
+    fun stopsDescendingAtTheDepthCeiling() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        var deepest = root
+        repeat(400) {
+            val next = UIView()
+            next.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            deepest.addSubview(next)
+            deepest = next
+        }
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertTrue(path != null)
+        assertTrue(
+            path.size <= 256,
+            "expected the walk to stop at the depth ceiling, but it descended ${path.size} levels",
+        )
+    }
+
     @Test
     fun containsIsLeftTopInclusiveAndRightBottomExclusive() {
         // Pins the boundary semantics against Compose's Rect.contains, which the Compose adapter's
