@@ -96,7 +96,16 @@ jobs:
       # xcodebuild exercises sample-shared's embedAndSignAppleFrameworkForXcode path, which Gradle's
       # `build` does not. `test` also runs iosAppUITests for autocapture hit-testing behavior that
       # compose.uiTest cannot cover.
+      #
+      # Boot the simulator asynchronously first so its boot overlaps the Gradle framework build that
+      # xcodebuild kicks off; target it by UDID so xcodebuild reuses that instance instead of picking
+      # another. -showBuildTimingSummary breaks the run into framework-gen vs Xcode phases for tuning.
       - name: Test sample-ios
         run: |
-          device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
-          xcodebuild test -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=$device"
+          device=$(xcrun simctl list devices available -j | jq -r '[.devices[][] | select(.name | startswith("iPhone"))][0].udid')
+          xcrun simctl boot "$device" 2>/dev/null || true
+          xcodebuild test \
+            -project sample-ios/iosApp.xcodeproj \
+            -scheme iosApp \
+            -destination "platform=iOS Simulator,id=$device" \
+            -showBuildTimingSummary
