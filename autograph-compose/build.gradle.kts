@@ -26,9 +26,11 @@ kotlin {
     sourceSets {
         commonMain.dependencies {
             api(projects.autographCore)
-            // The ambient scope/screen-context stack that autocapture reads at capture time. Kept
-            // internal here (LocalScopeStack), so it stays an implementation dependency.
-            implementation(projects.autographContext)
+            // The ambient scope/screen-context stack that autocapture reads at capture time.
+            // `api`, not `implementation`: AutographProvider takes a ScopeStack so a hybrid app can
+            // share one stack with a native capture pipeline, which puts the type in this module's
+            // public signature. LocalScopeStack itself stays internal.
+            api(projects.autographContext)
             implementation(compose.runtime)
             implementation(compose.foundation)
             implementation(libs.jetbrains.lifecycle.runtime.compose)

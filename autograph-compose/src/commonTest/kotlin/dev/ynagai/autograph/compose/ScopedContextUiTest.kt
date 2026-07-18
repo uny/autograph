@@ -375,6 +375,62 @@ class ScopedContextUiTest {
         )
     }
 
+    /**
+     * The hybrid-app contract: a stack the caller owns is the one Compose pushes into, so a native
+     * capture pipeline holding the same instance resolves a tap's screen and scope from frames the
+     * Compose side pushed — without being able to read a CompositionLocal.
+     */
+    @Test
+    fun aCallerSuppliedScopeStackIsTheOneComposePushesInto() = runComposeUiTest {
+        val shared = ScopeStack()
+        setContent {
+            AutographProvider(ScopeUiRecordingTracker(), scopeStack = shared) {
+                AutographScope("article_id" to "42") {
+                    TrackedScreen("Article") {}
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals("Article", shared.current().screen)
+        assertEquals("42", shared.current().scope.str("article_id"))
+    }
+
+    /**
+     * The deliberate inverse of [replacingTheTrackerGivesAFreshScopeStackSoContextCannotLeakAcrossTrackers]:
+     * the provider resets only the stack it *owns*. A caller-supplied stack is shared with a native
+     * pipeline that holds its own reference, so swapping it out here would strand that pipeline on a
+     * detached stack while Compose pushed into a new one — every native tap silently losing its
+     * screen and scope. Replacing it on logout is therefore the caller's call, not this provider's;
+     * the kdoc tells them to scope it to the tracker's lifetime.
+     */
+    @Test
+    fun aCallerSuppliedScopeStackIsNotReplacedOnATrackerSwap() = runComposeUiTest {
+        val shared = ScopeStack()
+        val step = mutableStateOf(0)
+        val stacks = mutableListOf<ScopeStack>()
+        setContent {
+            AutographProvider(
+                if (step.value == 0) ScopeUiRecordingTracker() else ScopeUiRecordingTracker(),
+                scopeStack = shared,
+            ) {
+                AutographScope("article_id" to "42") {
+                    val stack = LocalScopeStack.current
+                    SideEffect { if (stacks.lastOrNull() !== stack) stacks += stack }
+                }
+            }
+        }
+        waitForIdle()
+        step.value = 1
+        waitForIdle()
+
+        assertTrue(
+            stacks.all { it === shared },
+            "the caller's stack must stay in place across a tracker swap, or a native pipeline holding it goes deaf",
+        )
+        assertEquals("42", shared.current().scope.str("article_id"))
+    }
+
     @Test
     fun leavingAScopeRemovesItsFrameFromTheAmbientStack() = runComposeUiTest {
         val stack = ScopeStack()

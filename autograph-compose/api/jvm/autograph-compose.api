@@ -24,7 +24,7 @@ public final class dev/ynagai/autograph/compose/ElementTrackingKt {
 }
 
 public final class dev/ynagai/autograph/compose/LocalTrackerKt {
-	public static final fun AutographProvider (Ldev/ynagai/autograph/Tracker;Ldev/ynagai/autograph/compose/AutocaptureConfig;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
+	public static final fun AutographProvider (Ldev/ynagai/autograph/Tracker;Ldev/ynagai/autograph/compose/AutocaptureConfig;Ldev/ynagai/autograph/context/ScopeStack;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
 	public static final fun getLocalTracker ()Landroidx/compose/runtime/ProvidableCompositionLocal;
 }
 
