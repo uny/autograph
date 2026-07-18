@@ -248,6 +248,33 @@ class AccessibilityTreeTest {
         )
     }
 
+    /**
+     * The attribution rule both iOS pipelines share: leaf-upward, so a button inside a tappable row
+     * resolves to the button. Pinned here because the two pipelines used to hold their own copy of
+     * this search, and the promise that they agree was enforced by nothing but the copies being
+     * textually identical (#79).
+     */
+    @Test
+    fun nearestClickablePicksTheInnermostOne() {
+        val outer = UIView()
+        outer.setAccessibilityTraits(UIAccessibilityTraitButton)
+        val middle = UIView()
+        val inner = UIView()
+        inner.setAccessibilityTraits(UIAccessibilityTraitButton)
+
+        // Root-to-leaf, as deepestAccessibilityHitPath returns it.
+        val path = listOf<Any>(outer, middle, inner)
+
+        assertEquals(inner, path.nearestAccessibilityClickable())
+    }
+
+    @Test
+    fun nearestClickableIsNullWhenNothingOnThePathIsClickable() {
+        val path = listOf<Any>(UIView(), UIView())
+
+        assertNull(path.nearestAccessibilityClickable())
+    }
+
     @Test
     fun containsIsLeftTopInclusiveAndRightBottomExclusive() {
         // Pins the boundary semantics against Compose's Rect.contains, which the Compose adapter's

@@ -21,7 +21,8 @@ import platform.UIKit.UIView
  *    `UIAccessibilityTraitButton` ([isAccessibilityButton]); a tap on inert background is not an
  *    interaction worth reporting. The search runs leaf-upward so the *innermost* clickable wins —
  *    a button inside a tappable row attributes to the button, matching the Compose path.
- * 4. **The clickable element has no `accessibilityIdentifier`.** There is no stable name to report
+ * 4. **The clickable element has no `accessibilityIdentifier`** — or carries a blank one, which
+ *    [accessibilityIdentifierOrNull] treats as absent. There is no stable name to report
  *    it under, and this is where the privacy guarantee lives: identification never falls back to
  *    `accessibilityLabel`, which is user-facing display text. See [accessibilityIdentifierOrNull].
  *    In SwiftUI the identifier comes from `.accessibilityIdentifier(_:)`, the direct analogue of
@@ -46,6 +47,6 @@ public fun resolveNativeTapTarget(
 ): String? {
     val path = deepestAccessibilityHitPath(root, root, positionInWindowPx, scale) ?: return null
     if (AutographComposeHosts.containsAny(path)) return null
-    val nearestClickable = path.asReversed().firstOrNull { it.isAccessibilityButton() } ?: return null
+    val nearestClickable = path.nearestAccessibilityClickable() ?: return null
     return nearestClickable.accessibilityIdentifierOrNull()
 }

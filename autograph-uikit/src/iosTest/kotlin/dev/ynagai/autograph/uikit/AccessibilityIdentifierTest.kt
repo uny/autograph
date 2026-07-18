@@ -81,6 +81,38 @@ class AccessibilityIdentifierTest {
     }
 
     /**
+     * A blank identifier is absent, not a target. UIKit's default is nil, so an empty or
+     * whitespace-only string is an unset value that arrived through a template or a nil-coalesced
+     * binding rather than a name anyone chose. Reported, it produces an event whose target is blank
+     * in every dashboard — indistinguishable from an unnamed element except that it looks deliberate.
+     *
+     * Asserted on both routes, since the two families reach the getter differently.
+     */
+    @Test
+    fun treatsABlankIdentifierAsAbsent() {
+        val view = UIView()
+        view.setIdentifier("")
+        assertNull(view.accessibilityIdentifierOrNull())
+
+        val spaces = UIView()
+        spaces.setIdentifier("   ")
+        assertNull(spaces.accessibilityIdentifierOrNull())
+
+        val element = UIAccessibilityElement(accessibilityContainer = UIView())
+        element.setIdentifier("")
+        assertNull(element.accessibilityIdentifierOrNull())
+    }
+
+    /** Rejecting blanks must not turn into trimming a name the developer did choose. */
+    @Test
+    fun doesNotTrimAnIdentifierThatHasContent() {
+        val view = UIView()
+        view.setIdentifier("  share_button  ")
+
+        assertEquals("  share_button  ", view.accessibilityIdentifierOrNull())
+    }
+
+    /**
      * The walk hands this function whatever the tree contains, so it must stay total.
      *
      * An Objective-C exception crossing into Kotlin is not catchable there — it terminates the

@@ -179,13 +179,36 @@ public fun Any.accessibilityChildren(): List<Any> {
     return axChildren + subviewChildren
 }
 
+/**
+ * The innermost element on this hit path that is clickable, or null if none is.
+ *
+ * Both iOS capture pipelines attribute a tap this way — `autograph-compose` for Compose
+ * Multiplatform, [resolveNativeTapTarget] for UIKit/SwiftUI — and they must agree: the same element
+ * has to resolve the same way no matter which pipeline observed the tap, or a hybrid app reports one
+ * button under two names. Searching from the leaf upward is what makes a button inside a tappable row
+ * attribute to the button rather than the row.
+ *
+ * This lives here, next to the predicate it applies, so that agreement is a single definition rather
+ * than two call sites that happen to be written identically. The clickability predicate is expected
+ * to change — [isAccessibilityButton] is deliberately narrow, and the documented `.onTapGesture`-on-
+ * `Text` gap would be closed by widening it — and a widening applied to one copy only would silently
+ * split the two pipelines apart.
+ *
+ * Expects the path in root-to-leaf order, as [deepestAccessibilityHitPath] returns it.
+ */
+@AutographInternalApi
+public fun List<Any>.nearestAccessibilityClickable(): Any? =
+    asReversed().firstOrNull { it.isAccessibilityButton() }
+
 /** Whether this element exposes `UIAccessibilityTraitButton`, Autograph's clickability predicate. */
 @AutographInternalApi
 public fun Any.isAccessibilityButton(): Boolean =
     (((this as? NSObject)?.accessibilityTraits() ?: 0uL) and UIAccessibilityTraitButton) != 0uL
 
 /**
- * This element's developer-set `accessibilityIdentifier`, or null.
+ * This element's developer-set `accessibilityIdentifier`, or null — including when the identifier is
+ * present but blank, which is treated as absent rather than reported as a target (see the body for
+ * why, and for why it rejects without trimming).
  *
  * Deliberately the only identity source Autograph reads off this tree. `accessibilityLabel` is user-
  * facing text and is never read: UIKit gives no way to tell an explicit, developer-authored label
@@ -216,10 +239,24 @@ public fun Any.isAccessibilityButton(): Boolean =
 @AutographInternalApi
 @OptIn(ExperimentalForeignApi::class)
 public fun Any.accessibilityIdentifierOrNull(): String? {
-    if (this is UIAccessibilityIdentificationProtocol) return accessibilityIdentifier
-    val obj = this as? NSObject ?: return null
-    if (!obj.respondsToSelector(accessibilityIdentifierSelector)) return null
-    return obj.performSelector(accessibilityIdentifierSelector) as? String
+    val raw = if (this is UIAccessibilityIdentificationProtocol) {
+        accessibilityIdentifier
+    } else {
+        val obj = this as? NSObject ?: return null
+        if (!obj.respondsToSelector(accessibilityIdentifierSelector)) return null
+        obj.performSelector(accessibilityIdentifierSelector) as? String
+    }
+    // A blank identifier is treated as absent rather than reported as a target. UIKit's own default
+    // is nil, so an empty or whitespace-only string is not something a developer chose as a name —
+    // it is an unset value that arrived through a template, a nil-coalesced binding, or an
+    // interpolation that produced nothing. Reporting it emits an event whose target is blank in every
+    // dashboard downstream: indistinguishable from an unnamed element, except that it looks
+    // deliberate. Dropping it instead makes it the same non-event as an element with no identifier at
+    // all, which is what it is. This matters more now the walk is aimed at arbitrary UIKit/SwiftUI
+    // trees, where identifiers are far less curated than Compose testTags. Note this rejects, and
+    // never trims: " foo " stays " foo ", because normalizing a name the developer did choose would
+    // be a different and much less obvious decision.
+    return raw?.takeIf { it.isNotBlank() }
 }
 
 @OptIn(ExperimentalForeignApi::class)
