@@ -407,11 +407,13 @@ class ScopedContextUiTest {
     @Test
     fun aCallerSuppliedScopeStackIsNotReplacedOnATrackerSwap() = runComposeUiTest {
         val shared = ScopeStack()
+        val before = ScopeUiRecordingTracker()
+        val after = ScopeUiRecordingTracker()
         val step = mutableStateOf(0)
         val stacks = mutableListOf<ScopeStack>()
         setContent {
             AutographProvider(
-                if (step.value == 0) ScopeUiRecordingTracker() else ScopeUiRecordingTracker(),
+                if (step.value == 0) before else after,
                 scopeStack = shared,
             ) {
                 AutographScope("article_id" to "42") {
