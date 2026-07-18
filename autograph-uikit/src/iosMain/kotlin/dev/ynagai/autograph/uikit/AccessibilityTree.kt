@@ -96,8 +96,17 @@ private const val MAX_ACCESSIBILITY_TREE_DEPTH = 256
 
 /**
  * [ancestors] is the chain from the walk's starting node down to (not including) [node], carried so
- * the cycle check can ask whether [node] is already on it. Compared by identity: two distinct
- * elements may legitimately be equal, but re-entering the *same* object is what fails to terminate.
+ * the cycle check can ask whether [node] is already on it.
+ *
+ * Compared with `==`, not `===`, because Kotlin/Native does not canonicalize Objective-C wrappers:
+ * fetching the same underlying element twice across the interop boundary yields two distinct Kotlin
+ * objects. That is not theoretical here — [accessibilityChildren] reads `subviews`, and
+ * `view.subviews.first() === view.subviews.first()` is *false*, so an identity check would silently
+ * fail to detect the very cycles this guard exists for. `==` routes to `isEqual:`, whose NSObject
+ * default is pointer equality on the underlying object, which is the comparison actually wanted.
+ * (`UIView` and `UIAccessibilityElement` do not override `isEqual:`; if some element type did, the
+ * cost would be abandoning a branch early — the same shallower-resolution degrade this walk already
+ * accepts, not a failure to terminate.)
  */
 @OptIn(AutographInternalApi::class)
 private fun deepestAccessibilityHitPath(
@@ -108,7 +117,7 @@ private fun deepestAccessibilityHitPath(
     ancestors: List<Any>,
 ): List<Any>? {
     if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return null
-    if (ancestors.any { it === node }) return null
+    if (ancestors.any { it == node }) return null
     val bounds = node.accessibilityBoundsInWindowPx(view, scale) ?: return null
     if (!bounds.contains(positionInWindowPx)) return null
     val pathToNode = ancestors + node
