@@ -23,7 +23,10 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * **Own an instance; don't share one globally.** Scope a [ScopeStack] to the tracker it feeds (as
  * `autograph-compose` scopes screen history to its provider) so context can't leak across trackers
- * or outlive a tracker swap on logout.
+ * or outlive a tracker swap on logout. Sharing one instance across the *surfaces* of a single
+ * hybrid app is the exception, and the point: pass it to `AutographProvider` so the Compose and
+ * native pipelines attribute against the same context. That stack is then yours to replace when the
+ * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
  * **Threading.** [push], [update], and [remove] must be called from the main thread ([push] and
  * [remove] mutate the frame list; [update] mutates a frame's contents). [current] is lock-free and

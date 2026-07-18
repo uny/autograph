@@ -426,6 +426,9 @@ class ScopedContextUiTest {
         step.value = 1
         waitForIdle()
 
+        // Count first: `all {}` on an empty list is vacuously true, so without this the assertion
+        // below would still pass if the scope never composed at all.
+        assertEquals(1, stacks.size, "exactly one stack must ever be seen — no swap, no second instance")
         assertTrue(
             stacks.all { it === shared },
             "the caller's stack must stay in place across a tracker swap, or a native pipeline holding it goes deaf",
