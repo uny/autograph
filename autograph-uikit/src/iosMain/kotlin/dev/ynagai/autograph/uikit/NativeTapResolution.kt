@@ -17,6 +17,14 @@ import platform.UIKit.UIView
  * 2. **The path crosses a Compose host.** That content belongs to the Compose pipeline; reporting
  *    it here would double-count it, or worse, capture something `Modifier.autographIgnore()`
  *    excluded. See [AutographComposeHosts].
+ *
+ *    This is asked of the walk run *without* [deepestAccessibilityHitPath]'s clickable preference,
+ *    which is deliberate. Ownership is a question about where the tap visually landed, and the
+ *    preference exists to answer a different one — which element to attribute it to. Left conflated,
+ *    a Compose host whose content under the tap carries no button trait is simply walked around: the
+ *    preferred path never touches the host, the check below sees nothing, and this pipeline claims a
+ *    tap on Compose-owned content. Both paths are checked because a host can also sit *below* the
+ *    branch the preference chose.
  * 3. **Nothing on the path is clickable.** Autograph's clickability predicate is
  *    `UIAccessibilityTraitButton` ([isAccessibilityButton]); a tap on inert background is not an
  *    interaction worth reporting. The search runs leaf-upward so the *innermost* clickable wins —
@@ -45,6 +53,10 @@ public fun resolveNativeTapTarget(
     positionInWindowPx: AxPoint,
     scale: Float,
 ): String? {
+    // Ownership is asked of the *topmost* path and attribution of the clickable-preferred one, because
+    // the two are different questions — see step 2 above.
+    val topmostPath = deepestAccessibilityHitPath(root, root, positionInWindowPx, scale, preferClickableBranches = false)
+    if (topmostPath != null && AutographComposeHosts.containsAny(topmostPath)) return null
     val path = deepestAccessibilityHitPath(root, root, positionInWindowPx, scale) ?: return null
     if (AutographComposeHosts.containsAny(path)) return null
     val nearestClickable = path.nearestAccessibilityClickable() ?: return null

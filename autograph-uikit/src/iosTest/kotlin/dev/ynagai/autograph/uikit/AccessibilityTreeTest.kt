@@ -15,6 +15,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * Exercises the accessibility-tree walk ([deepestAccessibilityHitPath] / [accessibilityChildren] /
@@ -82,6 +84,166 @@ class AccessibilityTreeTest {
         val path = deepestAccessibilityHitPath(root, root, position, scale)
 
         assertEquals(front, path?.last())
+    }
+
+    /**
+     * The shape that made every native tap resolve to null on a real SwiftUI `List`, measured on the
+     * simulator (iPhone 17 Pro): a full-screen `_UITouchPassthroughView` sits on top of the collection
+     * view and contains nothing, so the walk — which used to commit to the first branch containing the
+     * point — stopped there and never reached the cells. Its name is the point: it passes touches
+     * through, and the tap really does belong to what is underneath.
+     *
+     * Neither existing suite catches this. Hand-built trees like the ones above have no such overlay,
+     * and the Compose pipeline's bridged tree doesn't either — the same blind spot as #77, where a
+     * defect lived only in the shape real UI frameworks produce.
+     */
+    @Test
+    fun descendsPastAnEmptyOverlayThatCoversTheClickable() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val content = UIView()
+        content.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(content)
+
+        val button = UIView()
+        button.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        content.addSubview(button)
+
+        // Added last, so it is drawn on top and searched first — and it holds nothing at all.
+        val passthroughOverlay = UIView()
+        passthroughOverlay.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(passthroughOverlay)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(
+            listOf(root, content, button),
+            path,
+            "expected the walk to back out of the empty on-top overlay and find the clickable beneath it",
+        )
+    }
+
+    /**
+     * The other half of the rule: preferring a clickable branch must not become "always take the
+     * bottom branch". With no clickable anywhere the walk has nothing to prefer, so the topmost
+     * branch still wins exactly as it did before — the pre-existing z-order tie-break is intact for
+     * every caller that isn't asking about clickability.
+     */
+    @Test
+    fun keepsThePreferenceForTheTopmostBranchWhenNoBranchIsClickable() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val back = UIView()
+        back.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(back)
+
+        val front = UIView()
+        front.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(front)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(listOf(root, front), path)
+    }
+
+    /**
+     * A clickable *deeper* in a lower branch still beats a shallower non-clickable one, so the
+     * preference survives more than one level of backing out — the SwiftUI case above nests the cell
+     * several levels below the collection view, not directly under it.
+     */
+    @Test
+    fun backsOutOfAnEmptyBranchAcrossMultipleLevels() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val content = UIView()
+        content.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(content)
+        val cell = UIView()
+        cell.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        content.addSubview(cell)
+        val button = UIView()
+        button.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        cell.addSubview(button)
+
+        // An on-top branch that is deep but leads nowhere clickable.
+        val overlay = UIView()
+        overlay.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(overlay)
+        val overlayInner = UIView()
+        overlayInner.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        overlay.addSubview(overlayInner)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(listOf(root, content, cell, button), path)
+    }
+
+    /**
+     * The cost side of exploring every branch: a child that appears in *both* `accessibilityElements`
+     * and `subviews` must be returned once, or the walk above pays for it 2^depth times.
+     *
+     * `accessibilityElements = subviews` is an ordinary thing for a view to do (it pins VoiceOver's
+     * reading order), so this is the common shape, not an adversarial one.
+     */
+    @Test
+    fun accessibilityChildrenReturnsAChildListedBothWaysOnlyOnce() {
+        val root = UIView()
+        val child = UIView()
+        root.addSubview(child)
+        root.setAccessibilityElements(listOf(child))
+
+        val children = root.accessibilityChildren()
+
+        assertEquals(1, children.size, "a child reached through both routes is still one child")
+        assertTrue(children.single() == child)
+    }
+
+    /**
+     * The breadth bound, which the depth ceiling does not give. Two parents per level sharing the same
+     * two children is a DAG, not a cycle, so the cycle guard never fires and every one of the 2^depth
+     * root-to-leaf *paths* would be walked. Nothing in the UIAccessibility contract forbids a host app
+     * from building this, and unlike the duplicate above it cannot be deduplicated away.
+     *
+     * The assertion is a wall-clock bound because the failure mode is time, not a wrong answer: with
+     * [MAX_ACCESSIBILITY_NODE_VISITS] the walk stops after ten thousand nodes and returns instantly;
+     * without it this shape is ~2^26 frame conversions and takes minutes on the main thread. Four
+     * orders of magnitude separate the two, so the threshold is not a flake risk.
+     */
+    @Test
+    fun boundsTotalWorkWhenABranchingDagWouldExplode() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        var level = listOf<UIView>(root)
+        repeat(26) {
+            val left = UIView()
+            left.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            val right = UIView()
+            right.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            // Every parent on this level points at BOTH of the next level's nodes: the node count
+            // stays linear while the path count doubles.
+            level.forEach { it.setAccessibilityElements(listOf(left, right)) }
+            level = listOf(left, right)
+        }
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val started = TimeSource.Monotonic.markNow()
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+        val elapsed = started.elapsedNow()
+
+        assertTrue(path != null && path.isNotEmpty())
+        assertTrue(
+            elapsed < 5.seconds,
+            "expected the visit budget to bound the walk, but it took $elapsed",
+        )
     }
 
     @Test

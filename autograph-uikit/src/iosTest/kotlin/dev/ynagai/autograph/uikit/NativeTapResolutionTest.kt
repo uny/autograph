@@ -221,4 +221,40 @@ class NativeTapResolutionTest {
             "the registry must match the underlying view, not the Kotlin wrapper it arrived in",
         )
     }
+
+    /**
+     * Ownership must not depend on which branch the walk's clickable preference chose.
+     *
+     * A Compose host covering the tap whose content there carries no button trait — inert Compose
+     * background, or anything the bridge exposes without the trait — is a branch the preference
+     * declines, so a naive `containsAny(path)` is handed a path that never touches the host and lets
+     * this pipeline claim a tap that landed on Compose-owned content. Measured, not hypothetical: this
+     * asserted `native-button` before [resolveNativeTapTarget] started asking the topmost walk.
+     */
+    @Test
+    fun dropsATapOnAComposeHostEvenWhenAClickableSitsBeneathIt() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val nativeContent = UIView()
+        nativeContent.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(nativeContent)
+        nativeContent.addSubview(button("native-button", 10.0, 10.0, 20.0, 20.0))
+
+        // On top of it, and Compose-owned — with nothing clickable at the tap position.
+        val composeHost = UIView()
+        composeHost.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(composeHost)
+        val composeInert = UIView()
+        composeInert.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        composeHost.addSubview(composeInert)
+        registerHost(composeHost)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+
+        assertNull(
+            resolveNativeTapTarget(root, position, scale),
+            "a tap landing on Compose-owned content belongs to the Compose pipeline, not this one",
+        )
+    }
 }
