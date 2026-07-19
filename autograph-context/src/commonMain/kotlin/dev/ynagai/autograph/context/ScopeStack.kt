@@ -60,6 +60,11 @@ public class ScopeStack {
      * property always wins over them) and/or a [screen]/[section] (reserved keys, high precedence).
      * Returns a [ScopeHandle] to [update] or [remove] it with. A frame may carry scope only (an
      * `AutographScope` analogue), screen only (a `TrackedScreen` analogue), or both.
+     *
+     * A frame that names a [screen] owns its [section]: pushing `screen = "X"` with no section means
+     * "screen X, no section", and an inner screen that declares none does not inherit the section of
+     * an outer one still on the stack. A frame with a [section] but no [screen] is a section-only
+     * marker that refines the surrounding screen instead.
      */
     public fun push(
         scope: JsonObject = EmptyJsonObject,
@@ -118,10 +123,18 @@ public class ScopeStack {
             if (frame.scope.isNotEmpty()) {
                 scope = if (scope.isEmpty()) frame.scope else JsonObject(scope + frame.scope)
             }
-            // Screen and section track independently so an inner section marker can refine an outer
-            // screen's context (screen from the outer frame, section from the inner one).
-            if (frame.screen != null) screen = frame.screen
-            if (frame.section != null) section = frame.section
+            // A frame that names a screen OWNS its section — it replaces both, so a section carried by
+            // an outer screen cannot bleed onto an inner one that declared none (`push(screen = "X")`
+            // means "screen X, no section", not "keep whatever section was showing"). A frame with no
+            // screen is a section-only marker that refines the surrounding screen's context, so it
+            // still updates section alone. This keeps screen and section composing independently in the
+            // marker case while stopping the cross-screen leak in the replacement case.
+            if (frame.screen != null) {
+                screen = frame.screen
+                section = frame.section
+            } else if (frame.section != null) {
+                section = frame.section
+            }
         }
         return AmbientContext(scope, screen, section)
     }

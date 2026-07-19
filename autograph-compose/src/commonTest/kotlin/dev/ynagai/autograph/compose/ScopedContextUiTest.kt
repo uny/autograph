@@ -267,17 +267,22 @@ class ScopedContextUiTest {
     }
 
     @Test
-    fun anInnerSectionRefinesAnOuterScreenInTheAmbientStack() = runComposeUiTest {
+    fun anInnerScreenDoesNotInheritTheOuterScreensSection() = runComposeUiTest {
+        // Two screens co-mounted — e.g. mid nav transition — the outer carrying a section, the inner
+        // carrying none. A tap resolving to the inner screen must NOT pick up the outer screen's
+        // section: `TrackedScreen("Comments")` means "Comments, no section". This is the section
+        // analogue of changingAnOuterScreenNameDoesNotOverrideAnInnerScreen — the leak the frame model
+        // has to prevent, verified through the real TrackedScreen path rather than a raw stack push.
         val stack = ScopeStack()
         var screen: String? = null
-        var section: String? = null
+        var section: String? = "unset"
         setContent {
             CompositionLocalProvider(
                 LocalTracker provides ScopeUiRecordingTracker(),
                 LocalScopeStack provides stack,
             ) {
-                TrackedScreen("Article") {
-                    TrackedScreen("Article", section = "Recommendations") {
+                TrackedScreen("Article", section = "Header") {
+                    TrackedScreen("Comments") {
                         SideEffect {
                             val ctx = stack.current()
                             screen = ctx.screen
@@ -289,11 +294,8 @@ class ScopedContextUiTest {
         }
         waitForIdle()
 
-        // Screen and section accumulate independently down the stack: the outer frame contributes
-        // no section, so the inner one's survives rather than being reset to null by the frame
-        // above it.
-        assertEquals("Article", screen)
-        assertEquals("Recommendations", section)
+        assertEquals("Comments", screen)
+        assertNull(section, "the inner screen declared no section, so the outer 'Header' must not leak")
     }
 
     @Test

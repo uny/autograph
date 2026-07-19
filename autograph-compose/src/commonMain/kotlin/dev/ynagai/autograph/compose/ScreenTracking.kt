@@ -58,11 +58,18 @@ internal fun withPreviousScreen(properties: JsonObject, previousScreen: String?)
  * [TrackScreenView] plus ambient [ScreenContext] for the content — nested
  * instrumentation inside [content] is attributed to this screen automatically.
  *
- * [section] names a region *within* the screen — the `"Header"` of an article, say. It is attached
- * to events fired inside [content] under the reserved `section` key, on both the explicit
- * (`trackClick` / `trackImpression`) and the autocapture path. A section is context for those
- * events, not a navigation destination of its own: it is deliberately **not** part of the
- * `Screen Viewed` event this composable fires, and changing only the section does not re-fire it.
+ * [section] is a screen-wide sub-label attached to every event fired inside [content] under the
+ * reserved `section` key, on both the explicit (`trackClick` / `trackImpression`) and the autocapture
+ * path — a variant or sub-mode of the whole screen, such as the selected tab of a home screen
+ * (`"For You"` vs `"Following"`) or an A/B layout. It applies to the entire screen, not to a region
+ * within it: because it is a parameter of the screen, a tap anywhere in [content] carries it, so it
+ * cannot distinguish a header tap from a body tap. (Region-level attribution would need a separate
+ * marker around the sub-tree; this composable does not provide one.)
+ *
+ * A section is context for the events fired under it, not a navigation destination: it is
+ * deliberately **not** part of the `Screen Viewed` event this composable fires, and changing only the
+ * section does not re-fire it. A nested [TrackedScreen] that names a different screen replaces both
+ * the screen and the section — an inner screen does not inherit an outer one's section.
  *
  * Note the parameter order: [section] follows [properties] so that existing positional calls of the
  * form `TrackedScreen(name, properties) { ... }` keep compiling.

@@ -153,10 +153,11 @@ There's a `JsonObject` overload for non-string values. Notes:
 - **Autocapture carries the scope, but attributes it by push order.** Autocaptured taps fire from
   the root tracker above your screens, so they can't read this `CompositionLocal`; they read an
   ambient stack (`autograph-context`) that `AutographScope` and `TrackedScreen` mirror into instead,
-  and so do carry the scope, the screen, and the section you passed to `TrackedScreen`. (A
-  `ScreenContext` you provide through `LocalScreenContext` *yourself* is still not mirrored, so set a
-  section via `TrackedScreen(name, section = "Header")` rather than by providing the
-  `CompositionLocal` directly. `trackClick` / `trackImpression` read screen and section from
+  and so do carry the scope, the screen, and the section you passed to `TrackedScreen`. (The section
+  is a screen-wide sub-label — a tab or layout variant, e.g. `TrackedScreen(name, section = "For You")`
+  — not a region within the screen; every tap under the screen carries it. Set it through
+  `TrackedScreen`, not by providing a `ScreenContext` through `LocalScreenContext` yourself, which is
+  still not mirrored. `trackClick` / `trackImpression` read screen and section from
   `LocalScreenContext` either way.) That stack is ordered by when a scope was *mounted*,
   not by where the tap landed, so a tap is attributed to the **innermost scope mounted last** — which
   is the tapped element's own scope only while a single scope subtree is mounted at a time (a screen
