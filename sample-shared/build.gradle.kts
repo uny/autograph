@@ -31,5 +31,11 @@ kotlin {
             implementation(compose.foundation)
             implementation(compose.material3)
         }
+        iosMain.dependencies {
+            // The native (non-Compose) tap capture the SwiftUI sample screen exercises. iOS-only, so
+            // it cannot live in commonMain alongside the rest.
+            implementation(projects.autographUikit)
+            implementation(projects.autographContext)
+        }
     }
 }
