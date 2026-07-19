@@ -18,6 +18,13 @@ kotlin {
     iosSimulatorArm64()
 
     sourceSets {
+        commonMain.dependencies {
+            // Tracker (the events this reports) and ScopeStack (the ambient screen/scope they carry)
+            // both appear in installAutographNativeTapCapture's signature, so `api`, not
+            // `implementation` — a consumer calling it has to name these types.
+            api(projects.autographCore)
+            api(projects.autographContext)
+        }
         commonTest.dependencies {
             implementation(libs.kotlin.test)
         }
