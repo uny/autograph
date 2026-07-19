@@ -25,6 +25,9 @@ let nativeSampleLaunchArgument = "-autograph-native-sample"
 /// `@State` cannot be written from an escaping closure that captured a copy of the struct.
 final class NativeSampleEvents: ObservableObject {
     @Published var lastEvent = "(none yet)"
+    /// The full properties JSON of the last reported tap, so a UI test can observe the `screen` /
+    /// `section` a native tap was enriched with — not just its target.
+    @Published var lastProps = "(none yet)"
 }
 
 /// A SwiftUI-only screen — no Compose anywhere in it — exercising `autograph-uikit`'s native tap
@@ -43,6 +46,8 @@ struct NativeSampleView: View {
         VStack(spacing: 12) {
             Text("Last event target: \(events.lastEvent)")
                 .accessibilityIdentifier("native_last_event_label")
+            Text("Last event props: \(events.lastProps)")
+                .accessibilityIdentifier("native_last_event_props_label")
 
             Button("Plain") {}
                 .accessibilityIdentifier("native_plain_button")
@@ -58,8 +63,9 @@ struct NativeSampleView: View {
             .accessibilityIdentifier("native_list")
         }
         .onAppear {
-            NativeSampleCaptureKt.installNativeSampleCapture { target in
+            NativeSampleCaptureKt.installNativeSampleCapture { target, props in
                 events.lastEvent = target
+                events.lastProps = props
             }
         }
     }
@@ -99,8 +105,9 @@ struct HybridSampleView: View {
             ComposeHybridView()
         }
         .onAppear {
-            NativeSampleCaptureKt.installNativeSampleCapture { target in
+            NativeSampleCaptureKt.installNativeSampleCapture { target, props in
                 events.lastEvent = target
+                events.lastProps = props
             }
         }
     }

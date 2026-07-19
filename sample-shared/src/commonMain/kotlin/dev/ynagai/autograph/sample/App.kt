@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.compose.AutocaptureConfig
 import dev.ynagai.autograph.compose.AutographProvider
 import dev.ynagai.autograph.compose.AutographScope
+import dev.ynagai.autograph.compose.TrackedScreen
 import dev.ynagai.autograph.compose.autographIgnore
 import dev.ynagai.autograph.compose.trackClick
 import dev.ynagai.autograph.compose.trackImpression
@@ -39,8 +40,22 @@ import dev.ynagai.autograph.compose.trackImpression
  */
 @Composable
 public fun App() {
-    var lastEvent by remember { mutableStateOf("(none yet)") }
-    val tracker = remember { LoggingTracker(onTrack = { target -> lastEvent = target ?: "(no target)" }) }
+    var lastTarget by remember { mutableStateOf(noEventYet) }
+    var lastProps by remember { mutableStateOf(noEventYet) }
+    var screenLog by remember { mutableStateOf(noEventYet) }
+    val tracker = remember {
+        LoggingTracker(
+            onTrack = { props, target ->
+                lastTarget = targetOrNoTarget(target)
+                // The whole properties object, so a UI test can observe the screen/section/scope an
+                // autocaptured tap was attributed with — not just its target.
+                lastProps = props.toString()
+            },
+            onScreen = { name, props ->
+                screenLog = appendScreenLog(screenLog, name, props.reservedOrNone("previous_screen"))
+            },
+        )
+    }
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
             // autocapture = AutocaptureConfig() reports every tap without instrumenting each
@@ -52,7 +67,12 @@ public fun App() {
                 // mirrors into. One scope is mounted at a time here, which is the shape that
                 // attributes exactly (see the README on why per-list-row scopes do not).
                 AutographScope("article_id" to "42") {
-                    DemoScreen(lastEvent)
+                    // TrackedScreen fires a `Screen Viewed` and mirrors screen+section into that same
+                    // ambient stack, so every autocaptured tap below also carries screen=Sample and
+                    // section=Main. The section is screen-wide (a tab/variant label), not a region.
+                    TrackedScreen("Sample", section = "Main") {
+                        DemoScreen(lastTarget, lastProps, screenLog)
+                    }
                 }
             }
         }
@@ -60,7 +80,7 @@ public fun App() {
 }
 
 @Composable
-private fun DemoScreen(lastEvent: String) {
+private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String) {
     Column(
         // systemBarsPadding, not the host relying on `.ignoresSafeArea()`: on iOS this is also
         // what exercises ElementResolver.ios.kt's real-world case, a Compose root that doesn't
@@ -143,8 +163,11 @@ private fun DemoScreen(lastEvent: String) {
             )
         }
 
-        // Read by sample-iosUITests to assert which element a tap resolved to, since a UI test
-        // can't inspect Kotlin state directly — see LoggingTracker's onTrack kdoc.
-        Text("Last event target: $lastEvent", modifier = Modifier.testTag("last_event_label"))
+        // Read by sample-iosUITests, which can't inspect Kotlin state directly — see LoggingTracker.
+        // target: which element a tap resolved to. props: the full properties (screen/section/scope)
+        // it was attributed with. screen views: the ordered log of Screen Viewed events.
+        Text("Last event target: $lastTarget", modifier = Modifier.testTag("last_event_label"))
+        Text("Last event props: $lastProps", modifier = Modifier.testTag("last_event_props_label"))
+        Text("Screen views: $screenLog", modifier = Modifier.testTag("screen_view_log_label"))
     }
 }
