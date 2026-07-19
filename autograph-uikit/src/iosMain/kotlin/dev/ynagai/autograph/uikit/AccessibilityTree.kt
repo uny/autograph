@@ -84,6 +84,14 @@ import platform.darwin.NSObject
  * Note this is decided per branch, not globally: a subtree with no clickable anywhere still resolves
  * exactly as before, so callers that don't care about clickability see no change.
  *
+ * **[preferClickableBranches] turns the preference off**, restoring the plain topmost-branch descent.
+ * That is not a compatibility shim: the preference answers "which element should this tap be
+ * attributed to", and a caller asking "where did this tap visually land" needs the other answer.
+ * [resolveNativeTapTarget] needs both — it decides Compose ownership from the topmost path, because
+ * a preference for clickables would otherwise route the path around a Compose host and let the native
+ * pipeline claim a tap that landed on Compose-owned content — and resolves the target from the
+ * preferred one. Conflating the two is exactly the bug that motivated splitting them.
+ *
  * [view] supplies the coordinate space and [scale] the point-to-pixel ratio — both are handed to
  * [accessibilityBoundsInWindowPx] unchanged, so its precondition on [scale] applies here too.
  *
@@ -93,10 +101,14 @@ import platform.darwin.NSObject
  * **Termination.** The tree this walks is supplied by the host app, not by this module, and nothing
  * in the UIAccessibility contract forbids an element from listing an ancestor among its
  * `accessibilityElements`. Such a link makes the graph cyclic, and a naive descent would recurse
- * until the stack overflows. Two bounds prevent that: a branch that revisits a node already on the
- * path being built is abandoned (the parent then tries its next sibling), and descent stops at
- * [MAX_ACCESSIBILITY_TREE_DEPTH]. Both degrade to resolving a shallower element rather than
- * crashing — a missed leaf is a dropped event, an overflow takes the app down.
+ * until the stack overflows. Three bounds prevent that: a branch that revisits a node already on the
+ * path being built is abandoned (the parent then tries its next sibling), descent stops at
+ * [MAX_ACCESSIBILITY_TREE_DEPTH], and the walk as a whole stops after
+ * [MAX_ACCESSIBILITY_NODE_VISITS] nodes. The last is what bounds *breadth* rather than depth, and it
+ * is load-bearing precisely because of the clickable preference above: exploring every branch of a
+ * clickable-free subtree compounds per level whenever a node is reachable by more than one route. All
+ * three degrade to resolving a shallower element rather than crashing — a missed leaf is a dropped
+ * event, an overflow or a multi-second walk on the main thread is a wedged app.
  */
 @AutographInternalApi
 public fun deepestAccessibilityHitPath(
@@ -104,7 +116,16 @@ public fun deepestAccessibilityHitPath(
     view: UIView,
     positionInWindowPx: AxPoint,
     scale: Float,
-): List<Any>? = deepestAccessibilityHitPath(node, view, positionInWindowPx, scale, ancestors = emptyList())
+    preferClickableBranches: Boolean = true,
+): List<Any>? = deepestAccessibilityHitPath(
+    node,
+    view,
+    positionInWindowPx,
+    scale,
+    preferClickableBranches,
+    ancestors = emptyList(),
+    budget = intArrayOf(MAX_ACCESSIBILITY_NODE_VISITS),
+)
 
 /**
  * Depth ceiling for [deepestAccessibilityHitPath]. Far above any real accessibility tree (UIKit
@@ -113,6 +134,23 @@ public fun deepestAccessibilityHitPath(
  * that generates a fresh element at every level.
  */
 private const val MAX_ACCESSIBILITY_TREE_DEPTH = 256
+
+/**
+ * Total-work ceiling for one [deepestAccessibilityHitPath] call, counted in nodes examined.
+ *
+ * [MAX_ACCESSIBILITY_TREE_DEPTH] bounds how *deep* the walk goes; this bounds how *wide*. The two
+ * became different questions once the walk started exploring every branch of a clickable-free
+ * subtree instead of committing to the first: depth alone does not bound a tree whose nodes are
+ * reachable by more than one route, where the branch count compounds per level. [accessibilityChildren]
+ * removes the one duplication source this module creates, but the tree is the host app's, and nothing
+ * stops it from sharing a subtree between two parents.
+ *
+ * Sized far above any real hit-test — a genuine walk examines the nodes along one root-to-leaf chain
+ * plus their siblings, tens to low hundreds — so it only ever fires on a shape that would otherwise
+ * hang. Exhausting it degrades exactly as the depth ceiling does: a shallower element resolves, which
+ * is a dropped event rather than a frozen main thread.
+ */
+private const val MAX_ACCESSIBILITY_NODE_VISITS = 10_000
 
 /**
  * [ancestors] is the chain from the walk's starting node down to (not including) [node], carried so
@@ -134,21 +172,28 @@ private fun deepestAccessibilityHitPath(
     view: UIView,
     positionInWindowPx: AxPoint,
     scale: Float,
+    preferClickableBranches: Boolean,
     ancestors: List<Any>,
+    budget: IntArray,
 ): List<Any>? {
+    // Single-element array rather than a counter field: the walk is main-thread-only and this is the
+    // cheapest way to carry one mutable count down a recursion whose callers must not see it.
+    if (budget[0]-- <= 0) return null
     if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return null
     if (ancestors.any { it == node }) return null
     val bounds = node.accessibilityBoundsInWindowPx(view, scale) ?: return null
     if (!bounds.contains(positionInWindowPx)) return null
     val pathToNode = ancestors + node
-    // First branch that contains a clickable wins outright; otherwise the first branch that resolved
-    // at all is kept as a fallback and the search continues, in case a later one does better. Reverse
-    // order makes "first" mean topmost, so among branches that tie on clickability the z-order
-    // tie-break above still decides. Only a fully clickable-free subtree is walked exhaustively, and
-    // the depth and cycle bounds apply to that walk exactly as they do to a direct descent.
+    // Keep the first branch that resolved at all as a fallback and carry on looking for a clickable
+    // one — see the kdoc for why clickability outranks the z-order tie-break. Walking on instead of
+    // returning is what makes a clickable-free subtree exhaustive, which is what
+    // MAX_ACCESSIBILITY_NODE_VISITS is there to bound.
     var fallback: List<Any>? = null
     for (child in node.accessibilityChildren().asReversed()) {
-        val branch = deepestAccessibilityHitPath(child, view, positionInWindowPx, scale, pathToNode) ?: continue
+        val branch = deepestAccessibilityHitPath(
+            child, view, positionInWindowPx, scale, preferClickableBranches, pathToNode, budget,
+        ) ?: continue
+        if (!preferClickableBranches) return listOf(node) + branch
         if (branch.any { it.isAccessibilityButton() }) return listOf(node) + branch
         if (fallback == null) fallback = branch
     }
@@ -197,13 +242,29 @@ public fun Any.accessibilityBoundsInWindowPx(view: UIView, scale: Float): AxRect
  * starting [UIView]).
  *
  * Both are needed because an accessibility root isn't necessarily attached to the view you start
- * from — see this file's leading documentation for the Compose case that proves it.
+ * from — see this file's leading documentation for the Compose case that proves it. It is a union and
+ * not a concatenation: an element that appears in both lists is one child, and returning it twice
+ * costs [deepestAccessibilityHitPath] an exponential amount of repeated work (see the body).
  */
 @AutographInternalApi
 public fun Any.accessibilityChildren(): List<Any> {
     val axChildren = (this as? NSObject)?.accessibilityElements()?.filterNotNull() ?: emptyList()
     val subviewChildren = (this as? UIView)?.subviews?.filterNotNull() ?: emptyList()
-    return axChildren + subviewChildren
+    // Deduplicated, keeping first occurrence. A view is free to list its own subviews in
+    // `accessibilityElements` — `accessibilityElements = subviews` is an ordinary way to pin
+    // VoiceOver's reading order — and the union would then return each of them twice. One child
+    // reached by two routes is still one child, and the duplicate is not free:
+    // [deepestAccessibilityHitPath] explores every branch of a clickable-free subtree, so a duplicate
+    // at every level costs 2^depth walks of the same nodes. Measured before this filter existed: 18
+    // such levels took ~11s to resolve a single tap, on the main thread inside a tap handler.
+    //
+    // Compared with `==`, not `distinct()`/`toSet()`, for the reason [deepestAccessibilityHitPath]'s
+    // cycle guard documents: Kotlin/Native hands out a fresh wrapper per interop crossing, so the
+    // same underlying element arrives as two objects that a hash-based dedup would keep. `==` routes
+    // to `isEqual:`, whose NSObject default is pointer equality on the underlying object. The list is
+    // a node's child count, so the quadratic scan is cheaper than the allocation it avoids.
+    val children = axChildren + subviewChildren
+    return children.filterIndexed { index, child -> children.subList(0, index).none { it == child } }
 }
 
 /**

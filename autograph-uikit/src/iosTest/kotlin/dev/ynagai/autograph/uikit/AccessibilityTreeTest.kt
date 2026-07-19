@@ -15,6 +15,8 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
+import kotlin.time.TimeSource
 
 /**
  * Exercises the accessibility-tree walk ([deepestAccessibilityHitPath] / [accessibilityChildren] /
@@ -182,6 +184,66 @@ class AccessibilityTreeTest {
         val path = deepestAccessibilityHitPath(root, root, position, scale)
 
         assertEquals(listOf(root, content, cell, button), path)
+    }
+
+    /**
+     * The cost side of exploring every branch: a child that appears in *both* `accessibilityElements`
+     * and `subviews` must be returned once, or the walk above pays for it 2^depth times.
+     *
+     * `accessibilityElements = subviews` is an ordinary thing for a view to do (it pins VoiceOver's
+     * reading order), so this is the common shape, not an adversarial one.
+     */
+    @Test
+    fun accessibilityChildrenReturnsAChildListedBothWaysOnlyOnce() {
+        val root = UIView()
+        val child = UIView()
+        root.addSubview(child)
+        root.setAccessibilityElements(listOf(child))
+
+        val children = root.accessibilityChildren()
+
+        assertEquals(1, children.size, "a child reached through both routes is still one child")
+        assertTrue(children.single() == child)
+    }
+
+    /**
+     * The breadth bound, which the depth ceiling does not give. Two parents per level sharing the same
+     * two children is a DAG, not a cycle, so the cycle guard never fires and every one of the 2^depth
+     * root-to-leaf *paths* would be walked. Nothing in the UIAccessibility contract forbids a host app
+     * from building this, and unlike the duplicate above it cannot be deduplicated away.
+     *
+     * The assertion is a wall-clock bound because the failure mode is time, not a wrong answer: with
+     * [MAX_ACCESSIBILITY_NODE_VISITS] the walk stops after ten thousand nodes and returns instantly;
+     * without it this shape is ~2^26 frame conversions and takes minutes on the main thread. Four
+     * orders of magnitude separate the two, so the threshold is not a flake risk.
+     */
+    @Test
+    fun boundsTotalWorkWhenABranchingDagWouldExplode() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        var level = listOf<UIView>(root)
+        repeat(26) {
+            val left = UIView()
+            left.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            val right = UIView()
+            right.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            // Every parent on this level points at BOTH of the next level's nodes: the node count
+            // stays linear while the path count doubles.
+            level.forEach { it.setAccessibilityElements(listOf(left, right)) }
+            level = listOf(left, right)
+        }
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val started = TimeSource.Monotonic.markNow()
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+        val elapsed = started.elapsedNow()
+
+        assertTrue(path != null && path.isNotEmpty())
+        assertTrue(
+            elapsed < 5.seconds,
+            "expected the visit budget to bound the walk, but it took $elapsed",
+        )
     }
 
     @Test
