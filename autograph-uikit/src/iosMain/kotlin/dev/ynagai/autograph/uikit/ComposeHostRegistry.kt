@@ -1,8 +1,11 @@
 package dev.ynagai.autograph.uikit
 
-import platform.Foundation.NSHashTable
-import platform.Foundation.NSHashTableObjectPointerPersonality
-import platform.Foundation.NSHashTableWeakMemory
+import platform.Foundation.NSMapTable
+import platform.Foundation.NSMapTableObjectPointerPersonality
+import platform.Foundation.NSMapTableStrongMemory
+import platform.Foundation.NSMapTableWeakMemory
+import platform.Foundation.NSNumber
+import platform.Foundation.numberWithInt
 import platform.UIKit.UIView
 
 /**
@@ -37,40 +40,67 @@ import platform.UIKit.UIView
 public object AutographComposeHosts {
 
     /**
-     * Weak, so a dismissed Compose screen's host view is not kept alive — and, once deallocated,
-     * silently leaves the set even if [unregister] never ran (a controller torn down without its
-     * `DisposableEffect` firing, say).
+     * View → how many live registrations claim it, rather than a plain set.
      *
-     * Compared by *pointer*, which is what makes this correct across the Kotlin/Native interop
-     * boundary. Kotlin does not canonicalize Objective-C wrappers: the same underlying view fetched
-     * twice — once handed over by Compose, once reached through `subviews` during the walk — arrives
-     * as two distinct Kotlin objects. A Kotlin-side `Set` or a `===` scan would call those different
-     * and the boundary would never match anything, silently double-counting every Compose tap.
-     * Routing the comparison through the table's pointer personality sidesteps wrapper identity
+     * **Why counted.** One host view can be claimed more than once: every `AutographProvider` under a
+     * `ComposeUIViewController` reads the *same* `LocalUIView`, so nested providers — or two
+     * navigation destinations that each wrap their content, overlapping while a transition runs —
+     * register the same view. Under set semantics the first `onDispose` would drop the entry outright
+     * and leave the still-composed provider unprotected, with nothing left to re-register it. That
+     * fails *open*: the native walk descends into live Compose content, which is the leak this whole
+     * boundary exists to prevent, and it is silent.
+     *
+     * Keys are weak, so a dismissed Compose screen's host view is not kept alive — and, once
+     * deallocated, silently leaves the table even if [unregister] never ran (a controller torn down
+     * without its `DisposableEffect` firing, say). The count is what leaks in that case, which costs
+     * nothing: it dies with its key.
+     *
+     * Keys are compared by *pointer*, which is what makes this correct across the Kotlin/Native
+     * interop boundary. Kotlin does not canonicalize Objective-C wrappers: the same underlying view
+     * fetched twice — once handed over by Compose, once reached through `subviews` during the walk —
+     * arrives as two distinct Kotlin objects. A Kotlin-side `Map` or a `===` scan would call those
+     * different and the boundary would never match anything, silently double-counting every Compose
+     * tap. Routing the comparison through the table's pointer personality sidesteps wrapper identity
      * entirely.
      *
-     * [NSHashTableObjectPointerPersonality] is requested explicitly rather than taking
-     * `weakObjectsHashTable()`, which is weak memory at the *default* personality — `isEqual:`/`hash`.
-     * That default is very nearly the same thing here, since `NSObject`'s `isEqual:` is pointer
-     * equality (the same reasoning [deepestAccessibilityHitPath]'s cycle guard relies on for `==`),
-     * but only for as long as no registered view overrides it. A host app is free to subclass
-     * `UIView` and define equality by content; two such views would then be indistinguishable to the
-     * table, and unregistering one screen's host would silently disarm another's. Naming the
-     * personality removes that dependency instead of documenting it.
+     * [NSMapTableObjectPointerPersonality] is requested explicitly rather than taking
+     * `weakToStrongObjectsMapTable()`, which is weak keys at the *default* personality —
+     * `isEqual:`/`hash`. That default is very nearly the same thing here, since `NSObject`'s
+     * `isEqual:` is pointer equality (the same reasoning [deepestAccessibilityHitPath]'s cycle guard
+     * relies on for `==`), but only for as long as no registered view overrides it. A host app is free
+     * to subclass `UIView` and define equality by content; two such views would then be
+     * indistinguishable to the table, and unregistering one screen's host would silently disarm
+     * another's. Naming the personality removes that dependency instead of documenting it.
      */
-    private val hosts = NSHashTable.hashTableWithOptions(
-        NSHashTableWeakMemory or NSHashTableObjectPointerPersonality,
+    private val hosts = NSMapTable.mapTableWithKeyOptions(
+        keyOptions = NSMapTableWeakMemory or NSMapTableObjectPointerPersonality,
+        valueOptions = NSMapTableStrongMemory,
     )
 
-    /** Marks [view] and everything under it as owned by the Compose pipeline. */
+    /**
+     * Marks [view] and everything under it as owned by the Compose pipeline, until a matching
+     * [unregister]. Registrations nest: callers pair their own, and the view stays owned until the
+     * last one is released.
+     */
     public fun register(view: UIView) {
-        hosts.addObject(view)
+        hosts.setObject(NSNumber.numberWithInt(countFor(view) + 1), forKey = view)
     }
 
-    /** Reverses [register]. Safe to call for a view that was never registered. */
+    /**
+     * Releases one [register]. Safe to call for a view that was never registered, and — deliberately —
+     * for one already fully released: an unbalanced extra call must not push the count negative and
+     * re-arm nothing.
+     */
     public fun unregister(view: UIView) {
-        hosts.removeObject(view)
+        val remaining = countFor(view) - 1
+        if (remaining <= 0) {
+            hosts.removeObjectForKey(view)
+        } else {
+            hosts.setObject(NSNumber.numberWithInt(remaining), forKey = view)
+        }
     }
+
+    private fun countFor(view: Any): Int = (hosts.objectForKey(view) as? NSNumber)?.intValue ?: 0
 
     /**
      * Whether [path] — a hit path from [deepestAccessibilityHitPath] — crosses a registered host,
@@ -79,5 +109,5 @@ public object AutographComposeHosts {
      * Asks about the whole path rather than its leaf because the leaf is typically a bridged
      * accessibility element, not the host view itself; the host appears as one of its ancestors.
      */
-    public fun containsAny(path: List<Any>): Boolean = path.any { hosts.containsObject(it) }
+    public fun containsAny(path: List<Any>): Boolean = path.any { hosts.objectForKey(it) != null }
 }

@@ -188,3 +188,55 @@ final class NativeSampleUITests: XCTestCase {
         assertCaptureIsStillLive(app)
     }
 }
+
+/// The Compose/native boundary, on-device.
+///
+/// Both pipelines hit-test the same accessibility tree, so a tap on Compose content is visible to
+/// both. `AutographComposeHosts` is what keeps the native side off it — and the registration that
+/// populates it has to happen whether or not Compose autocapture is on, because the invariant is
+/// *content under a Compose host belongs to the Compose pipeline exclusively*, not *content the
+/// Compose pipeline reported*.
+final class HybridBoundaryUITests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func launchHybridSample() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-autograph-hybrid-sample"]
+        app.launch()
+        return app
+    }
+
+    private func lastEventLabel(_ app: XCUIApplication) -> String {
+        app.staticTexts["native_last_event_label"].label
+    }
+
+    /// The privacy case. Compose runs here with autocapture *off*, so it reports nothing; if the
+    /// native pipeline is not held off the Compose subtree, it reports the tap instead — capturing
+    /// content whose `autographIgnore()` exclusions live in Compose state it cannot see.
+    ///
+    /// The Compose button carries a `testTag`, so it reaches the bridged tree with an identifier and a
+    /// button trait: it is something the native side genuinely *could* name. Without that the
+    /// assertion would hold for the wrong reason.
+    func testNativeCaptureDoesNotReportTapsOnComposeContent() {
+        let app = launchHybridSample()
+        let before = lastEventLabel(app)
+
+        app.buttons["compose_button_in_hybrid"].tap()
+
+        XCTAssertEqual(
+            lastEventLabel(app),
+            before,
+            "the native pipeline reported a tap on Compose-owned content — the host boundary is not holding"
+        )
+
+        // Proves the native capture was alive for the assertion above, rather than never installed.
+        app.buttons["native_button_in_hybrid"].tap()
+        XCTAssertEqual(
+            lastEventLabel(app),
+            "Last event target: native_button_in_hybrid",
+            "native capture reported nothing for a known-good tap either — the assertion above proved nothing"
+        )
+    }
+}

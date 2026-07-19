@@ -186,6 +186,40 @@ class NativeTapResolutionTest {
     }
 
     /**
+     * One host, two registrations: the first release must not disarm the boundary the second still
+     * needs.
+     *
+     * `AutographProvider` registers `LocalUIView`, and every provider under one `ComposeUIViewController`
+     * reads the *same* host view. Two of them therefore register the same view — nested providers, or
+     * simply two navigation destinations that each wrap their content while the outgoing one is still
+     * composed during a transition. If the registry forgot the view on the first `unregister`, the
+     * survivor would be left unprotected with nothing to re-register it, and the native walk would
+     * descend into live Compose content: the exact privacy leak the boundary exists to prevent, back
+     * again and silent.
+     */
+    @Test
+    fun aHostStaysRegisteredUntilEveryRegistrationIsReleased() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val composeHost = UIView()
+        composeHost.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(composeHost)
+        composeHost.addSubview(button("b", 10.0, 10.0, 20.0, 20.0))
+        val position = AxPoint(15f * scale, 15f * scale)
+
+        registerHost(composeHost)
+        registerHost(composeHost)
+
+        AutographComposeHosts.unregister(composeHost)
+        registered.remove(composeHost)
+
+        assertNull(
+            resolveNativeTapTarget(root, position, scale),
+            "a host released by one of its two registrations must stay owned by the one still holding it",
+        )
+    }
+
+    /**
      * Regression test for the trap that made #74's first cycle guard inert.
      *
      * Kotlin/Native does not canonicalize Objective-C wrappers, so the host view fetched back
