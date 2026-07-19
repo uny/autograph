@@ -11,6 +11,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScreenHistory
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -90,7 +91,7 @@ class ReportTapIfResolvableTest {
     fun fallsBackToTheLastViewedScreenWhenNoScreenFrameIsPushed() {
         val tracker = AutocaptureRecordingTracker()
         // A bare TrackScreenView updates history but pushes no ambient frame.
-        val history = ScreenHistory().apply { lastScreen = "Feed" }
+        val history = ScreenHistory().apply { record("Feed") }
         reportTapIfResolvable(tracker, history, ScopeStack(), AutocaptureConfig()) { "row" }
 
         val props = tracker.trackedProps.single()
@@ -101,7 +102,7 @@ class ReportTapIfResolvableTest {
     @Test
     fun theAmbientScreenFrameWinsOverTheHistoryFallback() {
         val tracker = AutocaptureRecordingTracker()
-        val history = ScreenHistory().apply { lastScreen = "Feed" }
+        val history = ScreenHistory().apply { record("Feed") }
         val stack = ScopeStack().apply { push(screen = "Article") }
         reportTapIfResolvable(tracker, history, stack, AutocaptureConfig()) { "x" }
 

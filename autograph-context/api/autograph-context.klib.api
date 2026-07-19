@@ -22,10 +22,22 @@ final class dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.con
 final class dev.ynagai.autograph.context/ScopeStack { // dev.ynagai.autograph.context/ScopeStack|null[0]
     constructor <init>() // dev.ynagai.autograph.context/ScopeStack.<init>|<init>(){}[0]
 
+    final val screenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory|{}screenHistory[0]
+        final fun <get-screenHistory>(): dev.ynagai.autograph.context/ScreenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory.<get-screenHistory>|<get-screenHistory>(){}[0]
+
     final fun current(): dev.ynagai.autograph.context/AmbientContext // dev.ynagai.autograph.context/ScopeStack.current|current(){}[0]
     final fun push(kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/String? = ...): dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.context/ScopeStack.push|push(kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.String?){}[0]
     final fun remove(dev.ynagai.autograph.context/ScopeHandle) // dev.ynagai.autograph.context/ScopeStack.remove|remove(dev.ynagai.autograph.context.ScopeHandle){}[0]
     final fun update(dev.ynagai.autograph.context/ScopeHandle, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/String? = ...) // dev.ynagai.autograph.context/ScopeStack.update|update(dev.ynagai.autograph.context.ScopeHandle;kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.String?){}[0]
+}
+
+final class dev.ynagai.autograph.context/ScreenHistory { // dev.ynagai.autograph.context/ScreenHistory|null[0]
+    constructor <init>() // dev.ynagai.autograph.context/ScreenHistory.<init>|<init>(){}[0]
+
+    final var lastScreen // dev.ynagai.autograph.context/ScreenHistory.lastScreen|{}lastScreen[0]
+        final fun <get-lastScreen>(): kotlin/String? // dev.ynagai.autograph.context/ScreenHistory.lastScreen.<get-lastScreen>|<get-lastScreen>(){}[0]
+
+    final fun record(kotlin/String) // dev.ynagai.autograph.context/ScreenHistory.record|record(kotlin.String){}[0]
 }
 
 final const val dev.ynagai.autograph.context/DEFAULT_AUTOCAPTURE_EVENT_NAME // dev.ynagai.autograph.context/DEFAULT_AUTOCAPTURE_EVENT_NAME|{}DEFAULT_AUTOCAPTURE_EVENT_NAME[0]

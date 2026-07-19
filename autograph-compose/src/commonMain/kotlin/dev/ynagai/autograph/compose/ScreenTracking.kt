@@ -5,9 +5,8 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.staticCompositionLocalOf
 import dev.ynagai.autograph.EmptyJsonObject
-import kotlin.concurrent.Volatile
+import dev.ynagai.autograph.context.ScreenHistory
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -36,10 +35,10 @@ public fun TrackScreenView(
     properties: JsonObject = EmptyJsonObject,
 ) {
     val tracker = LocalTracker.current
-    val history = LocalScreenHistory.current
+    val history = currentScreenHistory
     LaunchedEffect(name) {
         tracker.screen(name, withPreviousScreen(properties, history.lastScreen))
-        history.lastScreen = name
+        history.record(name)
     }
 }
 
@@ -73,21 +72,17 @@ public fun TrackedScreen(
     CompositionLocalProvider(LocalScreenContext provides ScreenContext(name), content = content)
 }
 
-/** The most recent screen name, used to enrich the next event with `previous_screen`. */
-internal class ScreenHistory {
-    // Written from a LaunchedEffect coroutine and from the NavController listener callback; @Volatile
-    // makes writes visible across those contexts even if they are ever not on the same thread.
-    @Volatile
-    var lastScreen: String? = null
-}
-
-private val fallbackScreenHistory = ScreenHistory()
-
 /**
- * Per-[AutographProvider] screen history. Scoping it to the provider (keyed on the tracker)
- * keeps `previous_screen` from leaking between independent trackers and resets it when the
- * tracker is replaced (e.g. after logout). Outside a provider — where events are dropped
- * anyway — reads fall back to a shared instance.
+ * The screen history this composition writes to: the one carried by the ambient [ScopeStack].
+ *
+ * Reading it off the stack rather than providing it separately is what keeps `previous_screen`
+ * continuous across a Compose↔native transition. A hybrid app passes one [ScopeStack] to
+ * `AutographProvider` and to the native pipeline; both then share this history, and a native screen
+ * view becomes the `previous_screen` of the next Compose one and vice versa.
+ *
+ * Its per-provider scoping is unchanged: `AutographProvider` keys a caller-less stack on the tracker,
+ * so history still resets when the tracker is replaced (e.g. after logout). A caller supplying its own
+ * stack takes on that lifetime obligation, exactly as it already does for the stack's frames.
  */
-internal val LocalScreenHistory: ProvidableCompositionLocal<ScreenHistory> =
-    staticCompositionLocalOf { fallbackScreenHistory }
+internal val currentScreenHistory: ScreenHistory
+    @Composable get() = LocalScopeStack.current.screenHistory

@@ -15,10 +15,17 @@ public final class dev/ynagai/autograph/context/ScopeHandle {
 public final class dev/ynagai/autograph/context/ScopeStack {
 	public fun <init> ()V
 	public final fun current ()Ldev/ynagai/autograph/context/AmbientContext;
+	public final fun getScreenHistory ()Ldev/ynagai/autograph/context/ScreenHistory;
 	public final fun push (Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public static synthetic fun push$default (Ldev/ynagai/autograph/context/ScopeStack;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public final fun remove (Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public final fun update (Ldev/ynagai/autograph/context/ScopeHandle;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun update$default (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/context/ScopeHandle;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+
+public final class dev/ynagai/autograph/context/ScreenHistory {
+	public fun <init> ()V
+	public final fun getLastScreen ()Ljava/lang/String;
+	public final fun record (Ljava/lang/String;)V
 }
 
