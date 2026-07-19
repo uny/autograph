@@ -57,19 +57,39 @@ internal fun withPreviousScreen(properties: JsonObject, previousScreen: String?)
 /**
  * [TrackScreenView] plus ambient [ScreenContext] for the content — nested
  * instrumentation inside [content] is attributed to this screen automatically.
+ *
+ * [section] is a screen-wide sub-label attached to every event fired inside [content] under the
+ * reserved `section` key, on both the explicit (`trackClick` / `trackImpression`) and the autocapture
+ * path — a variant or sub-mode of the whole screen, such as the selected tab of a home screen
+ * (`"For You"` vs `"Following"`) or an A/B layout. It applies to the entire screen, not to a region
+ * within it: because it is a parameter of the screen, a tap anywhere in [content] carries it, so it
+ * cannot distinguish a header tap from a body tap. (Region-level attribution would need a separate
+ * marker around the sub-tree; this composable does not provide one.)
+ *
+ * A section is context for the events fired under it, not a navigation destination: it is
+ * deliberately **not** part of the `Screen Viewed` event this composable fires, and changing only the
+ * section does not re-fire it. A nested [TrackedScreen] that names a different screen replaces both
+ * the screen and the section — an inner screen does not inherit an outer one's section.
+ *
+ * Note the parameter order: [section] follows [properties] so that existing positional calls of the
+ * form `TrackedScreen(name, properties) { ... }` keep compiling.
  */
 @Composable
 public fun TrackedScreen(
     name: String,
     properties: JsonObject = EmptyJsonObject,
+    section: String? = null,
     content: @Composable () -> Unit,
 ) {
     TrackScreenView(name, properties)
-    // Mirror the screen into the ambient stack so autocaptured taps on this screen carry it, the
-    // same way [LocalScreenContext] carries it to explicit trackClick/trackImpression. The observer
-    // sits above this composable and can't read the CompositionLocal.
-    MirrorAmbientFrame(LocalScopeStack.current, screen = name)
-    CompositionLocalProvider(LocalScreenContext provides ScreenContext(name), content = content)
+    // Mirror screen + section into the ambient stack so autocaptured taps on this screen carry them,
+    // the same way [LocalScreenContext] carries them to explicit trackClick/trackImpression. The
+    // observer sits above this composable and can't read the CompositionLocal.
+    MirrorAmbientFrame(LocalScopeStack.current, screen = name, section = section)
+    CompositionLocalProvider(
+        LocalScreenContext provides ScreenContext(name, section),
+        content = content,
+    )
 }
 
 /**

@@ -105,6 +105,50 @@ class ScreenTrackingUiTest {
     }
 
     @Test
+    fun trackedScreenSectionReachesTheScreenContextButNotTheScreenViewedEvent() = runComposeUiTest {
+        val tracker = RecordingTracker()
+        var captured: ScreenContext? = null
+        setContent {
+            WithTracker(tracker) {
+                TrackedScreen("Article", section = "Header") {
+                    captured = LocalScreenContext.current
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals(ScreenContext("Article", "Header"), captured)
+        // A section refines the events fired inside the screen; it is not a destination of its own,
+        // so the Screen Viewed event itself stays a plain screen view.
+        assertEquals(listOf("Article"), tracker.names)
+        assertNull(tracker.screens[0].second["section"])
+    }
+
+    @Test
+    fun changingOnlyTheSectionRefreshesTheContextWithoutRefiringTheScreenView() = runComposeUiTest {
+        val tracker = RecordingTracker()
+        var section by mutableStateOf("Header")
+        var captured: ScreenContext? = null
+        setContent {
+            WithTracker(tracker) {
+                TrackedScreen("Article", section = section) {
+                    captured = LocalScreenContext.current
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals(ScreenContext("Article", "Header"), captured)
+
+        section = "Recommendations"
+        waitForIdle()
+
+        // The new section reaches nested instrumentation, but the user did not navigate anywhere —
+        // a section change must not look like a second screen view.
+        assertEquals(ScreenContext("Article", "Recommendations"), captured)
+        assertEquals(listOf("Article"), tracker.names)
+    }
+
+    @Test
     fun navTrackScreenViewsFiresPerDestinationWithPreviousScreen() = runComposeUiTest {
         val tracker = RecordingTracker()
         lateinit var navController: NavHostController

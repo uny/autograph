@@ -60,6 +60,19 @@ class ScopeStackTest {
     }
 
     @Test
+    fun a_new_screen_frame_does_not_inherit_the_previous_screens_section() {
+        val stack = ScopeStack()
+        stack.push(screen = "Article", section = "Header")
+        // A screen frame owns its section: "Comments" declared none, so the outer "Header" must not
+        // bleed onto it. Otherwise a tap on the Comments screen would be mis-attributed to a section
+        // belonging to the Article screen. A screen frame replaces both fields, not just the screen.
+        stack.push(screen = "Comments")
+        val ctx = stack.current()
+        assertEquals("Comments", ctx.screen)
+        assertNull(ctx.section)
+    }
+
+    @Test
     fun removal_is_by_identity_not_lifo() {
         val stack = ScopeStack()
         val outer = stack.push(scope = props("a" to "1"))
