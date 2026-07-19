@@ -146,6 +146,22 @@ final class NativeSampleUITests: XCTestCase {
         )
     }
 
+    /// Asserts that capture is still live, so a preceding "nothing was reported" assertion means the
+    /// gesture was declined rather than that the pipeline was dead the whole time.
+    ///
+    /// Without this, both negative tests below pass on an app where `installNativeSampleCapture`
+    /// never ran: the label simply stays at its initial value and every `XCTAssertEqual(label, before)`
+    /// holds. Their Compose counterpart (`testIgnoredElementIsNotCaptured`) doesn't need the check
+    /// because its baseline is already a value the pipeline produced.
+    private func assertCaptureIsStillLive(_ app: XCUIApplication) {
+        app.buttons["native_plain_button"].tap()
+        XCTAssertEqual(
+            lastEventLabel(app),
+            "Last event target: native_plain_button",
+            "capture reported nothing for a known-good tap either — the preceding assertion proved nothing"
+        )
+    }
+
     /// A scroll is not an interaction worth reporting. Measured on-device, a scroll delivers
     /// `touchesEnded` rather than `touchesCancelled`, so nothing but `UITapGestureRecognizer`
     /// declining to fire keeps it from being reported as a tap.
@@ -156,6 +172,7 @@ final class NativeSampleUITests: XCTestCase {
         scrollList(app)
 
         XCTAssertEqual(lastEventLabel(app), before)
+        assertCaptureIsStillLive(app)
     }
 
     /// An element with no `accessibilityIdentifier` has no stable name to report. Identification must
@@ -168,5 +185,6 @@ final class NativeSampleUITests: XCTestCase {
         app.buttons["Unidentified"].tap()
 
         XCTAssertEqual(lastEventLabel(app), before)
+        assertCaptureIsStillLive(app)
     }
 }
