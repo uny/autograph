@@ -74,6 +74,12 @@ final class iosAppUITests: XCTestCase {
         let app = XCUIApplication()
         app.launch()
         app.buttons["plain_button"].tap()
+        // Pin the props to the TAP's own event. The launch-time trackImpression is itself enriched
+        // with the same screen/section/scope, so `last_event_props_label` already satisfies the
+        // assertions below before any tap — asserting the last event was the plain_button tap
+        // (target label, whose value only the tap produces) is what makes this observe the tap and
+        // not the stale impression. Without it, a tap that fired no event at all would pass green.
+        XCTAssertEqual(lastEventLabel(app), "Last event target: plain_button")
         let props = lastEventProps(app)
         XCTAssertTrue(props.contains("\"screen\":\"Sample\""), "screen missing from props: \(props)")
         XCTAssertTrue(props.contains("\"section\":\"Main\""), "section missing from props: \(props)")
@@ -87,7 +93,12 @@ final class iosAppUITests: XCTestCase {
     func testScreenViewIsObservableAndFiresOnce() {
         let app = XCUIApplication()
         app.launch()
-        XCTAssertEqual(app.staticTexts["screen_view_log_label"].label, "Screen views: Sample:(none)")
+        // TrackedScreen fires its Screen Viewed from a composition effect, so the label recomposes
+        // from "(none yet)" a beat after launch. Wait for the value rather than reading it eagerly.
+        let label = app.staticTexts["screen_view_log_label"]
+        let expected = "Screen views: Sample:(none)"
+        expectation(for: NSPredicate(format: "label == %@", expected), evaluatedWith: label)
+        waitForExpectations(timeout: 5)
     }
 }
 
