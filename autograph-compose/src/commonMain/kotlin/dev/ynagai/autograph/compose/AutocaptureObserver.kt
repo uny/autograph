@@ -49,7 +49,12 @@ internal fun Modifier.autocaptureTaps(
     var rootCoordinates by remember { mutableStateOf<LayoutCoordinates?>(null) }
     return this
         .onGloballyPositioned { rootCoordinates = it }
-        .pointerInput(tracker, config, resolver) {
+        // Keyed on scopeStack too: this coroutine is long-lived and captures the stack (and, through
+        // it, the screen history), so a caller that swaps the stack alone would otherwise leave it
+        // attributing taps against the one nobody writes to any more. Same reasoning as the nav
+        // listener's key in TrackScreenViews — the two sites capture the same thing and should not
+        // disagree about it.
+        .pointerInput(tracker, scopeStack, config, resolver) {
             awaitPointerEventScope {
                 while (true) {
                     val event = awaitPointerEvent(PointerEventPass.Final)
