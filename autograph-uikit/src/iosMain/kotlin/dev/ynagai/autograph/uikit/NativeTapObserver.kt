@@ -45,6 +45,13 @@ internal class NativeTapObserver(
 
     private var beganAt: AxPoint? = null
 
+    /**
+     * Which recognizer [beganAt] belongs to. One observer is the delegate for every instrumented
+     * window's recognizer, so without this a touch beginning in one window could be reported as the
+     * position of a tap recognized in another. Mismatch drops the tap rather than guessing.
+     */
+    private var beganFor: UIGestureRecognizer? = null
+
     /** The recognizer to attach to a window. Retains this object as its target; see [delegate]. */
     fun makeRecognizer(): UITapGestureRecognizer =
         UITapGestureRecognizer(target = this, action = HANDLE_TAP_SELECTOR).apply {
@@ -61,18 +68,36 @@ internal class NativeTapObserver(
      * Records where a touch began, and lets it through untouched.
      *
      * Only the first touch of a sequence is recorded: a second finger landing mid-gesture is not a
-     * new tap, and overwriting would resolve against whichever finger happened to land last. The
-     * slot is cleared when a tap is reported, so the next sequence starts clean.
+     * new tap, and overwriting would resolve against whichever finger happened to land last.
+     *
+     * The slot must therefore be replaced at the *start of a sequence*, not merely when it is empty.
+     * A sequence that never becomes a tap — a scroll, a drag, a long press — never reaches
+     * [handleTap], so an "only if empty" test would preserve that dead position and hand it to the
+     * next real tap, resolving it against whatever the finger last went down on. `numberOfTouches`
+     * is the sequence boundary available from the umbrella header: it is zero exactly when this
+     * recognizer is holding no touches yet.
      */
     override fun gestureRecognizer(
         gestureRecognizer: UIGestureRecognizer,
         shouldReceiveTouch: UITouch,
     ): Boolean {
-        if (beganAt == null) {
-            beganAt = shouldReceiveTouch.locationInView(null)
-                .useContents { AxPoint(x.toFloat(), y.toFloat()) }
-        }
+        recordBegin(
+            recognizer = gestureRecognizer,
+            touchesAlreadyHeld = gestureRecognizer.numberOfTouches(),
+            position = shouldReceiveTouch.locationInView(null)
+                .useContents { AxPoint(x.toFloat(), y.toFloat()) },
+        )
         return true
+    }
+
+    /**
+     * The state machine behind [gestureRecognizer], split out from it so tests can drive it: `UITouch`
+     * has no constructible form, so the delegate callback itself is unreachable from a unit test.
+     */
+    internal fun recordBegin(recognizer: UIGestureRecognizer, touchesAlreadyHeld: ULong, position: AxPoint) {
+        if (touchesAlreadyHeld != 0uL) return
+        beganAt = position
+        beganFor = recognizer
     }
 
     /** Never competes: whatever else wants this gesture is welcome to it. */
@@ -84,12 +109,15 @@ internal class NativeTapObserver(
     @ObjCAction
     fun handleTap(sender: UITapGestureRecognizer) {
         val began = beganAt
+        val begunFor = beganFor
         beganAt = null
+        beganFor = null
         val window = sender.view ?: return
-        // A recognized tap with no recorded begin position should not happen — shouldReceiveTouch
-        // runs first for every touch — but resolving against the end position instead would quietly
-        // attribute to the wrong element, so drop it rather than guess.
-        if (began == null) return
+        // A recognized tap with no recorded begin position — or one recorded for a different window's
+        // recognizer — should not happen: shouldReceiveTouch runs first for every touch. But resolving
+        // against the end position, or against another window's, would quietly attribute to the wrong
+        // element, so drop it rather than guess.
+        if (began == null || begunFor != sender) return
         onTap(began, window)
     }
 }

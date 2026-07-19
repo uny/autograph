@@ -183,15 +183,89 @@ class NativeTapCaptureTest {
 
         assertNull(reported)
     }
+
+    /**
+     * The bug this pins: a touch sequence that never becomes a tap — a scroll, a drag, a long press —
+     * never reaches `handleTap`, so it never clears the recorded begin position. Recording only when
+     * the slot is empty would preserve that dead position and hand it to the *next* real tap, which
+     * would then resolve against whatever the finger last went down on rather than what it just
+     * tapped. Every tap following any scroll would be attributed to the wrong element, silently.
+     */
+    @Test
+    fun aBeginPositionLeftBehindByAGestureThatNeverTappedIsNotReusedByTheNextTap() {
+        var reported: AxPoint? = null
+        val observer = NativeTapObserver { position, _ -> reported = position }
+        val window = UIWindow()
+        val recognizer = observer.makeRecognizer()
+        window.addGestureRecognizer(recognizer)
+
+        // A scroll: the touch begins and is recorded, but the tap recognizer fails, so no action fires.
+        observer.recordBegin(recognizer, touchesAlreadyHeld = 0uL, position = AxPoint(10f, 10f))
+
+        // Then a real tap somewhere else entirely.
+        observer.recordBegin(recognizer, touchesAlreadyHeld = 0uL, position = AxPoint(200f, 400f))
+        observer.handleTap(recognizer)
+
+        assertEquals(AxPoint(200f, 400f), reported, "the tap was attributed to where the earlier scroll began")
+    }
+
+    /**
+     * A second finger landing while the recognizer already holds a touch is not a new tap, and letting
+     * it overwrite would resolve against whichever finger happened to land last.
+     */
+    @Test
+    fun aSecondFingerMidSequenceDoesNotMoveTheRecordedPosition() {
+        var reported: AxPoint? = null
+        val observer = NativeTapObserver { position, _ -> reported = position }
+        val recognizer = observer.makeRecognizer()
+
+        observer.recordBegin(recognizer, touchesAlreadyHeld = 0uL, position = AxPoint(10f, 10f))
+        observer.recordBegin(recognizer, touchesAlreadyHeld = 1uL, position = AxPoint(300f, 300f))
+        UIWindow().addGestureRecognizer(recognizer)
+        observer.handleTap(recognizer)
+
+        assertEquals(AxPoint(10f, 10f), reported)
+    }
+
+    /**
+     * One observer is the delegate for every instrumented window's recognizer, so the recorded position
+     * has to be scoped to the recognizer that produced it — otherwise a touch beginning in one window
+     * is reported as the position of a tap recognized in another.
+     */
+    @Test
+    fun aTapIsDroppedWhenTheBeginPositionBelongsToAnotherWindowsRecognizer() {
+        var reported: AxPoint? = null
+        val observer = NativeTapObserver { position, _ -> reported = position }
+        val recognizerA = observer.makeRecognizer()
+        val recognizerB = observer.makeRecognizer()
+        UIWindow().addGestureRecognizer(recognizerB)
+
+        observer.recordBegin(recognizerA, touchesAlreadyHeld = 0uL, position = AxPoint(10f, 10f))
+        observer.handleTap(recognizerB)
+
+        assertNull(reported)
+    }
+
+    /**
+     * `addObserverForName` delivers its block as an operation on the main queue, so a window-visible
+     * notification posted before `uninstall` can drain after it. Re-attaching then would leave a
+     * recognizer in no set anyone iterates again, permanently reporting into the retired tracker.
+     */
+    @Test
+    fun attachAfterUninstallDoesNothing() {
+        val capture = AutographNativeTapCapture(NoopTracker(), ScopeStack(), "test_event")
+        val window = UIWindow()
+
+        capture.uninstall()
+        capture.attach(window)
+
+        assertTrue(window.captureRecognizers().isEmpty())
+    }
 }
 
-/** Records what the capture reports, so a test can assert on it without a transport. */
+/** Stands in for a real tracker where the test asserts on the capture's plumbing, not on its output. */
 private class NoopTracker : Tracker {
-    val tracked = mutableListOf<Triple<String, JsonObject, String?>>()
-
-    override fun track(name: String, properties: JsonObject, target: String?) {
-        tracked += Triple(name, properties, target)
-    }
+    override fun track(name: String, properties: JsonObject, target: String?) = Unit
 
     override fun screen(name: String, properties: JsonObject) = Unit
 

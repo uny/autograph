@@ -15,7 +15,7 @@ import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIView
 import platform.UIKit.UIWindow
 import platform.UIKit.UIWindowDidBecomeVisibleNotification
-import platform.darwin.NSObject
+import platform.darwin.NSObjectProtocol
 
 /**
  * Starts reporting taps on native (UIKit/SwiftUI) content as [eventName], resolved through the
@@ -80,7 +80,21 @@ public class AutographNativeTapCapture internal constructor(
         NSHashTableWeakMemory or NSHashTableObjectPointerPersonality,
     )
 
-    private var windowObserver: NSObject? = null
+    // Held as the protocol type NSNotificationCenter hands back and takes again. Narrowing it to
+    // NSObject with `as?` would turn an unexpected wrapper type into a silent null — an observer that
+    // uninstall can never remove, still attaching recognizers to new windows and still holding the
+    // tracker. Same silent-failure shape as `===` on the delegate match, avoided the same way.
+    private var windowObserver: NSObjectProtocol? = null
+
+    /**
+     * Set by [uninstall], and checked by [attach].
+     *
+     * `addObserverForName` delivers its block as an *operation* on the main queue, not synchronously,
+     * so a window-visible notification posted before [uninstall] can drain after it. Re-attaching then
+     * would leave a recognizer in no [instrumented] set anyone iterates again — permanently reporting
+     * into the very tracker [uninstall] exists to release.
+     */
+    private var uninstalled = false
 
     internal fun install() {
         // Both halves are required and neither is a fallback for the other: the scan catches windows
@@ -94,11 +108,12 @@ public class AutographNativeTapCapture internal constructor(
             queue = NSOperationQueue.mainQueue,
         ) { notification ->
             (notification?.`object` as? UIWindow)?.let(::attach)
-        } as? NSObject
+        }
     }
 
     /** Detaches every recognizer and stops listening for new windows. Safe to call more than once. */
     public fun uninstall() {
+        uninstalled = true
         windowObserver?.let { NSNotificationCenter.defaultCenter.removeObserver(it) }
         windowObserver = null
         instrumented.allObjects.filterIsInstance<UIWindow>().forEach { window ->
@@ -127,6 +142,7 @@ public class AutographNativeTapCapture internal constructor(
     // hand-made window: [install]'s other half reads UIApplication.sharedApplication.windows, which a
     // unit test cannot populate.
     internal fun attach(window: UIWindow) {
+        if (uninstalled) return
         if (!window.isCapturableWindow()) return
         if (instrumented.containsObject(window)) return
         window.addGestureRecognizer(observer.makeRecognizer())
@@ -142,6 +158,10 @@ public class AutographNativeTapCapture internal constructor(
      */
     private fun report(positionInWindowPoints: AxPoint, window: UIView) {
         try {
+            // Re-checked here, not only at attach time: windowLevel is mutable, and an app that raises
+            // an already-instrumented window to alert level would otherwise keep having its taps
+            // reported as ordinary app interactions — exactly what isCapturableWindow exists to stop.
+            if (window is UIWindow && !window.isCapturableWindow()) return
             // `scale` is mainScreen's, and must be — the accessibility frames this is compared
             // against are converted out of mainScreen's coordinate space. See
             // accessibilityBoundsInWindowPx, whose precondition this inherits.
