@@ -14,6 +14,12 @@ final class iosAppUITests: XCTestCase {
         app.staticTexts["last_event_label"].label
     }
 
+    /// The full properties JSON an event was attributed with — screen, section, and scope keys — which
+    /// the `target`-only label cannot show. See `App.kt`'s `last_event_props_label`.
+    private func lastEventProps(_ app: XCUIApplication) -> String {
+        app.staticTexts["last_event_props_label"].label
+    }
+
     func testPlainButtonAttribution() {
         let app = XCUIApplication()
         app.launch()
@@ -58,6 +64,42 @@ final class iosAppUITests: XCTestCase {
         app.buttons["ignored_button"].tap()
         XCTAssertEqual(lastEventLabel(app), beforeTap)
     }
+
+    /// An autocaptured tap must carry the screen, section, and scope it happened under — not just its
+    /// target. The sample wraps its content in `AutographScope("article_id" to "42")` +
+    /// `TrackedScreen("Sample", section = "Main")`, all of which mirror into the ambient stack the
+    /// autocapture observer reads. Before the harness widening, this context was surfaced nowhere and
+    /// the swizzle work (#65) would have had no way to verify its output on-device.
+    func testAutocapturedTapCarriesScreenSectionAndScope() {
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["plain_button"].tap()
+        // Pin the props to the TAP's own event. The launch-time trackImpression is itself enriched
+        // with the same screen/section/scope, so `last_event_props_label` already satisfies the
+        // assertions below before any tap — asserting the last event was the plain_button tap
+        // (target label, whose value only the tap produces) is what makes this observe the tap and
+        // not the stale impression. Without it, a tap that fired no event at all would pass green.
+        XCTAssertEqual(lastEventLabel(app), "Last event target: plain_button")
+        let props = lastEventProps(app)
+        XCTAssertTrue(props.contains("\"screen\":\"Sample\""), "screen missing from props: \(props)")
+        XCTAssertTrue(props.contains("\"section\":\"Main\""), "section missing from props: \(props)")
+        XCTAssertTrue(props.contains("\"article_id\":\"42\""), "scope missing from props: \(props)")
+    }
+
+    /// The Screen Viewed channel the native screen capture (#65) reports through, proven on the Compose
+    /// side first: `TrackedScreen` fires exactly one Screen Viewed on entry, with no `previous_screen`
+    /// (it is the first screen). The ordered log — not a last-value label — is what will later let a
+    /// test see a screen was not double-emitted.
+    func testScreenViewIsObservableAndFiresOnce() {
+        let app = XCUIApplication()
+        app.launch()
+        // TrackedScreen fires its Screen Viewed from a composition effect, so the label recomposes
+        // from "(none yet)" a beat after launch. Wait for the value rather than reading it eagerly.
+        let label = app.staticTexts["screen_view_log_label"]
+        let expected = "Screen views: Sample:(none)"
+        expectation(for: NSPredicate(format: "label == %@", expected), evaluatedWith: label)
+        waitForExpectations(timeout: 5)
+    }
 }
 
 /// Coverage for the *native* (UIKit/SwiftUI) capture in `autograph-uikit` — a separate pipeline from
@@ -82,6 +124,10 @@ final class NativeSampleUITests: XCTestCase {
 
     private func lastEventLabel(_ app: XCUIApplication) -> String {
         app.staticTexts["native_last_event_label"].label
+    }
+
+    private func lastEventProps(_ app: XCUIApplication) -> String {
+        app.staticTexts["native_last_event_props_label"].label
     }
 
     /// Scrolls the list with a real touch stream.
@@ -109,6 +155,19 @@ final class NativeSampleUITests: XCTestCase {
         let app = launchNativeSample()
         app.buttons["native_plain_button"].tap()
         XCTAssertEqual(lastEventLabel(app), "Last event target: native_plain_button")
+    }
+
+    /// A native tap must carry the `screen`/`section` from the shared `ScopeStack`, through the same
+    /// `AmbientContext.enrich` path the Compose pipeline uses (`NativeTapCapture` enriches its report
+    /// with `scopeStack.current().enrich(...)`). The sample pushes a screen frame onto the native
+    /// stack — standing in for #65's `viewDidAppear` swizzle, which does not exist yet — so this pins
+    /// the *observation* end of the native screen-attribution path before the swizzle is built on it.
+    func testNativeTapCarriesScreenAndSection() {
+        let app = launchNativeSample()
+        app.buttons["native_plain_button"].tap()
+        let props = lastEventProps(app)
+        XCTAssertTrue(props.contains("\"screen\":\"NativeSample\""), "screen missing from props: \(props)")
+        XCTAssertTrue(props.contains("\"section\":\"NativeMain\""), "section missing from props: \(props)")
     }
 
     /// The #82 case, end to end: on a real SwiftUI `List` a full-screen `_UITouchPassthroughView`
