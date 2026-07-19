@@ -65,6 +65,25 @@ import platform.darwin.NSObject
  * documented rather than fixed, since this walk is now shared API and its callers should know the
  * edge of the contract they depend on.
  *
+ * **Clickable branches win over the tie-break.** Before z-order is consulted at all, a branch that
+ * yields a clickable ([isAccessibilityButton]) is preferred over one that yields none; the reverse
+ * order above decides only among branches that tie on that. Without this the walk commits to the
+ * first branch geometrically containing the point and never reconsiders, so a single empty view
+ * covering the content swallows every tap. That is not hypothetical — measured on a real SwiftUI
+ * `List`, where a full-screen `_UITouchPassthroughView` sits on top of the cells and, as its name
+ * says, passes touches straight through to them. UIKit's own `hitTest` gets this right because such
+ * views decline the hit; the accessibility tree carries no equivalent signal, so "did this branch
+ * lead anywhere a tap can be attributed to" is the closest available stand-in.
+ *
+ * The trade this accepts: an opaque non-interactive overlay that genuinely *does* block touches — a
+ * modal scrim over a button, say — is likewise invisible to this walk, and a tap on it now resolves
+ * to the button beneath instead of to nothing. Both directions are wrong for some tree; this one is
+ * wrong for the rarer one, and it fails toward reporting an event rather than toward the pipeline
+ * being silently inert on every SwiftUI screen built out of `List`.
+ *
+ * Note this is decided per branch, not globally: a subtree with no clickable anywhere still resolves
+ * exactly as before, so callers that don't care about clickability see no change.
+ *
  * [view] supplies the coordinate space and [scale] the point-to-pixel ratio — both are handed to
  * [accessibilityBoundsInWindowPx] unchanged, so its precondition on [scale] applies here too.
  *
@@ -122,10 +141,18 @@ private fun deepestAccessibilityHitPath(
     val bounds = node.accessibilityBoundsInWindowPx(view, scale) ?: return null
     if (!bounds.contains(positionInWindowPx)) return null
     val pathToNode = ancestors + node
+    // First branch that contains a clickable wins outright; otherwise the first branch that resolved
+    // at all is kept as a fallback and the search continues, in case a later one does better. Reverse
+    // order makes "first" mean topmost, so among branches that tie on clickability the z-order
+    // tie-break above still decides. Only a fully clickable-free subtree is walked exhaustively, and
+    // the depth and cycle bounds apply to that walk exactly as they do to a direct descent.
+    var fallback: List<Any>? = null
     for (child in node.accessibilityChildren().asReversed()) {
-        deepestAccessibilityHitPath(child, view, positionInWindowPx, scale, pathToNode)?.let { return listOf(node) + it }
+        val branch = deepestAccessibilityHitPath(child, view, positionInWindowPx, scale, pathToNode) ?: continue
+        if (branch.any { it.isAccessibilityButton() }) return listOf(node) + branch
+        if (fallback == null) fallback = branch
     }
-    return listOf(node)
+    return fallback?.let { listOf(node) + it } ?: listOf(node)
 }
 
 /**

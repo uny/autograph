@@ -84,6 +84,106 @@ class AccessibilityTreeTest {
         assertEquals(front, path?.last())
     }
 
+    /**
+     * The shape that made every native tap resolve to null on a real SwiftUI `List`, measured on the
+     * simulator (iPhone 17 Pro): a full-screen `_UITouchPassthroughView` sits on top of the collection
+     * view and contains nothing, so the walk — which used to commit to the first branch containing the
+     * point — stopped there and never reached the cells. Its name is the point: it passes touches
+     * through, and the tap really does belong to what is underneath.
+     *
+     * Neither existing suite catches this. Hand-built trees like the ones above have no such overlay,
+     * and the Compose pipeline's bridged tree doesn't either — the same blind spot as #77, where a
+     * defect lived only in the shape real UI frameworks produce.
+     */
+    @Test
+    fun descendsPastAnEmptyOverlayThatCoversTheClickable() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val content = UIView()
+        content.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(content)
+
+        val button = UIView()
+        button.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        content.addSubview(button)
+
+        // Added last, so it is drawn on top and searched first — and it holds nothing at all.
+        val passthroughOverlay = UIView()
+        passthroughOverlay.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(passthroughOverlay)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(
+            listOf(root, content, button),
+            path,
+            "expected the walk to back out of the empty on-top overlay and find the clickable beneath it",
+        )
+    }
+
+    /**
+     * The other half of the rule: preferring a clickable branch must not become "always take the
+     * bottom branch". With no clickable anywhere the walk has nothing to prefer, so the topmost
+     * branch still wins exactly as it did before — the pre-existing z-order tie-break is intact for
+     * every caller that isn't asking about clickability.
+     */
+    @Test
+    fun keepsThePreferenceForTheTopmostBranchWhenNoBranchIsClickable() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val back = UIView()
+        back.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(back)
+
+        val front = UIView()
+        front.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(front)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(listOf(root, front), path)
+    }
+
+    /**
+     * A clickable *deeper* in a lower branch still beats a shallower non-clickable one, so the
+     * preference survives more than one level of backing out — the SwiftUI case above nests the cell
+     * several levels below the collection view, not directly under it.
+     */
+    @Test
+    fun backsOutOfAnEmptyBranchAcrossMultipleLevels() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val content = UIView()
+        content.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(content)
+        val cell = UIView()
+        cell.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        content.addSubview(cell)
+        val button = UIView()
+        button.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        cell.addSubview(button)
+
+        // An on-top branch that is deep but leads nowhere clickable.
+        val overlay = UIView()
+        overlay.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(overlay)
+        val overlayInner = UIView()
+        overlayInner.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        overlay.addSubview(overlayInner)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(listOf(root, content, cell, button), path)
+    }
+
     @Test
     fun accessibilityBoundsScalesPointsToPixels() {
         val root = UIView()
