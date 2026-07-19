@@ -46,6 +46,13 @@ public fun AutographProvider(
     scopeStack: ScopeStack? = null,
     content: @Composable () -> Unit,
 ) {
+    // Outside the `autocapture != null` branch below, and deliberately so: this marks the host as
+    // Compose-owned for a native capture pipeline running alongside, and that boundary has to hold
+    // even when this provider captures nothing itself. Gate it on the flag and a hybrid app running
+    // Compose-without-autocapture plus native-with-capture would have the native walk descend into
+    // Compose's bridged tree and report elements excluded with autographIgnore(). See
+    // RegisterComposeHostForNativeCapture.
+    RegisterComposeHostForNativeCapture()
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     DisposableEffect(lifecycle, tracker) {
         val observer = LifecycleEventObserver { _, event ->

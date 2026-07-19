@@ -65,10 +65,54 @@ struct NativeSampleView: View {
     }
 }
 
+/// Launch argument for the hybrid screen: SwiftUI content and a Compose host in one window, with the
+/// native capture running and Compose autocapture off.
+let hybridSampleLaunchArgument = "-autograph-hybrid-sample"
+
+/// Hosts `HybridViewController()` — Compose with autocapture *off*, embedded in the native screen.
+struct ComposeHybridView: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        HybridSampleKt.HybridViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
+/// A hybrid screen: native SwiftUI content and Compose content in the same window, with the native
+/// capture installed.
+///
+/// The boundary this exercises is a privacy invariant, not a de-duplication nicety. Content under a
+/// Compose host belongs to the Compose pipeline *exclusively* — not "content the Compose pipeline
+/// reported". Here Compose reports nothing at all, so if the native side is not held off the Compose
+/// subtree it will happily walk in and report elements whose exclusions it cannot see.
+struct HybridSampleView: View {
+    @StateObject private var events = NativeSampleEvents()
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text("Last event target: \(events.lastEvent)")
+                .accessibilityIdentifier("native_last_event_label")
+
+            Button("Native") {}
+                .accessibilityIdentifier("native_button_in_hybrid")
+
+            ComposeHybridView()
+        }
+        .onAppear {
+            NativeSampleCaptureKt.installNativeSampleCapture { target in
+                events.lastEvent = target
+            }
+        }
+    }
+}
+
 struct ContentView: View {
     var body: some View {
-        if ProcessInfo.processInfo.arguments.contains(nativeSampleLaunchArgument) {
+        let arguments = ProcessInfo.processInfo.arguments
+        if arguments.contains(nativeSampleLaunchArgument) {
             NativeSampleView()
+        } else if arguments.contains(hybridSampleLaunchArgument) {
+            HybridSampleView()
         } else {
             ComposeView()
         }
