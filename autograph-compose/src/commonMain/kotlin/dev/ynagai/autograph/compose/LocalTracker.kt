@@ -74,7 +74,6 @@ public fun AutographProvider(
     // it, so replacing it here would strand the frames that pipeline reads. Such a caller takes on
     // the lifetime obligation above.
     val effectiveScopeStack = remember(tracker, scopeStack) { scopeStack ?: ScopeStack() }
-    val screenHistory = effectiveScopeStack.screenHistory
     CompositionLocalProvider(
         LocalTracker provides tracker,
         LocalScopeStack provides effectiveScopeStack,
@@ -84,7 +83,7 @@ public fun AutographProvider(
             // autographIgnore()/trackClick()/trackImpression() don't pay for position tracking otherwise.
             val claims = remember { AutocaptureClaims() }
             CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
-                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, effectiveScopeStack, autocapture)) {
+                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, effectiveScopeStack, autocapture)) {
                     content()
                 }
             }

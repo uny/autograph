@@ -21,13 +21,36 @@ import kotlin.concurrent.Volatile
  */
 public class ScreenHistory {
 
-    /** The last screen [record]ed, or null before any screen has been viewed. */
+    /**
+     * The last screen [record]ed, or null before any screen has been viewed.
+     *
+     * There is deliberately no way to clear this. History is owned by the [ScopeStack] that carries
+     * it, so the way to drop it — on logout, say — is to replace that stack, which drops the ambient
+     * frames with it. Resetting one but not the other would leave a screen attributed to a context
+     * that no longer exists.
+     */
     @Volatile
     public var lastScreen: String? = null
         private set
 
-    /** Records [name] as the most recently viewed screen. */
-    public fun record(name: String) {
+    /**
+     * Records [name] as the most recently viewed screen, returning the screen it replaces — i.e.
+     * exactly the `previous_screen` of the view being recorded, or null if this is the first.
+     *
+     * Returning the displaced value rather than `Unit` makes the one correct usage the shortest one.
+     * Every emit site needs the same three steps — read the previous screen, emit with it, record the
+     * new one — and doing them in the wrong order silently attributes a screen view to *itself* as its
+     * own `previous_screen`. That is bad data with no error to notice, so the API hands the caller the
+     * right value instead of trusting the ordering:
+     *
+     * ```kotlin
+     * val previous = history.record(name)
+     * tracker.screen(name, withPreviousScreen(properties, previous))
+     * ```
+     */
+    public fun record(name: String): String? {
+        val previous = lastScreen
         lastScreen = name
+        return previous
     }
 }

@@ -37,8 +37,8 @@ public fun TrackScreenView(
     val tracker = LocalTracker.current
     val history = currentScreenHistory
     LaunchedEffect(name) {
-        tracker.screen(name, withPreviousScreen(properties, history.lastScreen))
-        history.record(name)
+        val previous = history.record(name)
+        tracker.screen(name, withPreviousScreen(properties, previous))
     }
 }
 

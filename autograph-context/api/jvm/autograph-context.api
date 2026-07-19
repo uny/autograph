@@ -26,6 +26,6 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 public final class dev/ynagai/autograph/context/ScreenHistory {
 	public fun <init> ()V
 	public final fun getLastScreen ()Ljava/lang/String;
-	public final fun record (Ljava/lang/String;)V
+	public final fun record (Ljava/lang/String;)Ljava/lang/String;
 }
 

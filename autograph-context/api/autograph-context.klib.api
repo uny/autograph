@@ -37,7 +37,7 @@ final class dev.ynagai.autograph.context/ScreenHistory { // dev.ynagai.autograph
     final var lastScreen // dev.ynagai.autograph.context/ScreenHistory.lastScreen|{}lastScreen[0]
         final fun <get-lastScreen>(): kotlin/String? // dev.ynagai.autograph.context/ScreenHistory.lastScreen.<get-lastScreen>|<get-lastScreen>(){}[0]
 
-    final fun record(kotlin/String) // dev.ynagai.autograph.context/ScreenHistory.record|record(kotlin.String){}[0]
+    final fun record(kotlin/String): kotlin/String? // dev.ynagai.autograph.context/ScreenHistory.record|record(kotlin.String){}[0]
 }
 
 final const val dev.ynagai.autograph.context/DEFAULT_AUTOCAPTURE_EVENT_NAME // dev.ynagai.autograph.context/DEFAULT_AUTOCAPTURE_EVENT_NAME|{}DEFAULT_AUTOCAPTURE_EVENT_NAME[0]

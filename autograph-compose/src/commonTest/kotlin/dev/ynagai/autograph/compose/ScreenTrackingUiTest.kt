@@ -188,6 +188,38 @@ class ScreenTrackingUiTest {
     }
 
     @Test
+    fun aCallerSuppliedStackKeepsItsHistoryAcrossATrackerSwap() = runComposeUiTest {
+        // Deliberate, and a change from when history was keyed on the tracker alone: a stack the
+        // caller owns is never swapped out from under the native pipeline holding it, and its history
+        // travels with it. So swapping ONLY the tracker does not reset previous_screen here.
+        //
+        // The remedy is to replace the stack, not the tracker — which is the same obligation the
+        // caller already has for the stack's frames, and why ScreenHistory offers no clear(): resetting
+        // history while leaving the frames would attribute a screen to a context that no longer exists.
+        // Pinned because it is a real trade, not an accident: an app that swaps trackers on logout and
+        // keeps its stack will carry the pre-logout screen into the first post-logout previous_screen.
+        val shared = ScopeStack()
+        val before = RecordingTracker()
+        val after = RecordingTracker()
+        var step by mutableStateOf(0)
+        setContent {
+            val (tracker, screen) = if (step == 0) before to "Home" else after to "Login"
+            AutographProvider(tracker, scopeStack = shared) {
+                TrackScreenView(screen)
+            }
+        }
+        waitForIdle()
+        step = 1
+        waitForIdle()
+
+        assertEquals(
+            "Home",
+            after.screens.single().second.previousScreen(),
+            "a caller-owned stack carries its history across a tracker swap",
+        )
+    }
+
+    @Test
     fun autographProviderResetsPreviousScreenWhenTrackerReplaced() = runComposeUiTest {
         val before = RecordingTracker()
         val after = RecordingTracker()

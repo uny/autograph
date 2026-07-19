@@ -14,7 +14,6 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
-import dev.ynagai.autograph.context.ScreenHistory
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -30,13 +29,15 @@ import kotlinx.serialization.json.JsonPrimitive
  * home that [AutographScope] and [TrackedScreen] mirror into. This observer sits at the provider
  * root, above any nested scope/screen, and holds the root [tracker] rather than the scope decorator,
  * so reading the stack is the only way it can attribute a tap to the scope/screen it happened under.
- * Precedence is applied by `AmbientContext.enrich` itself, so this path cannot drift from it;
- * [screenHistory] supplies a screen fallback for a bare [TrackScreenView] that pushes no frame.
+ * Precedence is applied by `AmbientContext.enrich` itself, so this path cannot drift from it.
+ *
+ * The stack's own [ScopeStack.screenHistory] supplies a screen fallback for a bare [TrackScreenView]
+ * that pushes no frame. Reading it off the stack rather than taking it as a separate argument means
+ * the two cannot be handed a mismatched pair.
  */
 @Composable
 internal fun Modifier.autocaptureTaps(
     tracker: Tracker,
-    screenHistory: ScreenHistory,
     scopeStack: ScopeStack,
     config: AutocaptureConfig,
 ): Modifier {
@@ -57,7 +58,7 @@ internal fun Modifier.autocaptureTaps(
                     // isn't necessarily changes[0].
                     val change = event.changes.firstOrNull { it.isConsumed } ?: continue
                     val root = rootCoordinates ?: continue
-                    reportTapIfResolvable(tracker, screenHistory, scopeStack, config) { resolver.resolve(root, change.position) }
+                    reportTapIfResolvable(tracker, scopeStack, config) { resolver.resolve(root, change.position) }
                 }
             }
         }
@@ -70,7 +71,6 @@ internal fun Modifier.autocaptureTaps(
  */
 internal fun reportTapIfResolvable(
     tracker: Tracker,
-    screenHistory: ScreenHistory,
     scopeStack: ScopeStack,
     config: AutocaptureConfig,
     resolve: () -> String?,
@@ -86,7 +86,7 @@ internal fun reportTapIfResolvable(
         // The one addition enrich can't know about: a bare TrackScreenView pushes no frame, so fall
         // back to the most recently viewed screen. An ambient frame's screen always wins.
         if (ctx.screen == null) {
-            screenHistory.lastScreen?.let {
+            scopeStack.screenHistory.lastScreen?.let {
                 properties = JsonObject(properties + ("screen" to JsonPrimitive(it)))
             }
         }

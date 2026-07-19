@@ -23,6 +23,16 @@ class ScreenHistoryTest {
     }
 
     @Test
+    fun recordReturnsTheScreenItReplaces() {
+        // The returned value IS the previous_screen of the view being recorded, which is why record
+        // returns it rather than leaving each call site to read lastScreen in the right order.
+        val history = ScreenHistory()
+        assertNull(history.record("Home"), "the first screen has no previous")
+        assertEquals("Home", history.record("Detail"))
+        assertEquals("Detail", history.record("Cart"))
+    }
+
+    @Test
     fun survivesTheScreenItNames() {
         // History is deliberately not current state: `previous_screen` needs the name of a screen the
         // user has already left, so nothing about leaving a screen clears this.

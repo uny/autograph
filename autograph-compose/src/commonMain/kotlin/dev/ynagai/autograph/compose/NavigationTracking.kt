@@ -5,7 +5,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
 import dev.ynagai.autograph.EmptyJsonObject
-import dev.ynagai.autograph.context.ScreenHistory
 
 /**
  * Automatically records a `Screen Viewed` event for every destination change of this
@@ -26,7 +25,10 @@ public fun NavController.TrackScreenViews(
 ) {
     val tracker = LocalTracker.current
     val history = currentScreenHistory
-    DisposableEffect(this, tracker) {
+    // Keyed on `history` as well as the tracker: the listener captures it, and it now travels with
+    // the ambient ScopeStack rather than the tracker, so a caller that swaps the stack alone would
+    // otherwise leave this listener writing to the history nobody reads any more.
+    DisposableEffect(this, tracker, history) {
         val listener = object : NavController.OnDestinationChangedListener {
             override fun onDestinationChanged(
                 controller: NavController,
@@ -34,8 +36,8 @@ public fun NavController.TrackScreenViews(
                 arguments: androidx.savedstate.SavedState?,
             ) {
                 val name = screenName(destination) ?: return
-                tracker.screen(name, withPreviousScreen(EmptyJsonObject, history.lastScreen))
-                history.record(name)
+                val previous = history.record(name)
+                tracker.screen(name, withPreviousScreen(EmptyJsonObject, previous))
             }
         }
         addOnDestinationChangedListener(listener)
