@@ -65,16 +65,17 @@ public fun AutographProvider(
         lifecycle.addObserver(observer)
         onDispose { lifecycle.removeObserver(observer) }
     }
-    // Scope screen history and the ambient scope stack to this tracker so neither previous_screen
-    // nor scope/screen context leaks across trackers; both reset when the tracker is replaced (e.g.
-    // after logout). A caller supplying its own stack takes on that lifetime obligation instead.
-    val screenHistory = remember(tracker) { ScreenHistory() }
+    // Scope the ambient scope stack to this tracker so neither previous_screen nor scope/screen
+    // context leaks across trackers; both reset when the tracker is replaced (e.g. after logout).
+    // Screen history rides along on the stack (see ScopeStack.screenHistory), so it inherits that
+    // scoping — and, when the caller supplies a stack shared with a native pipeline, that pipeline's
+    // screen views and this composition's stay on one continuous previous_screen chain.
     // A caller-supplied stack is used as-is: it is shared with a native pipeline that already holds
-    // it, so replacing it here would strand the frames that pipeline reads.
+    // it, so replacing it here would strand the frames that pipeline reads. Such a caller takes on
+    // the lifetime obligation above.
     val effectiveScopeStack = remember(tracker, scopeStack) { scopeStack ?: ScopeStack() }
     CompositionLocalProvider(
         LocalTracker provides tracker,
-        LocalScreenHistory provides screenHistory,
         LocalScopeStack provides effectiveScopeStack,
     ) {
         if (autocapture != null) {
@@ -82,7 +83,7 @@ public fun AutographProvider(
             // autographIgnore()/trackClick()/trackImpression() don't pay for position tracking otherwise.
             val claims = remember { AutocaptureClaims() }
             CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
-                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, screenHistory, effectiveScopeStack, autocapture)) {
+                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, effectiveScopeStack, autocapture)) {
                     content()
                 }
             }

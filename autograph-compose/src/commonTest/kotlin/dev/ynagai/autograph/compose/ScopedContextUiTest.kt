@@ -94,7 +94,9 @@ class ScopedContextUiTest {
         setContent {
             CompositionLocalProvider(
                 LocalTracker provides tracker,
-                LocalScreenHistory provides ScreenHistory(),
+                // A fresh stack per test, for its screen history: the fallback stack is a shared
+                // global, so leaving it unprovided would let previous_screen leak between tests.
+                LocalScopeStack provides ScopeStack(),
             ) {
                 AutographScope("article_id" to "42") {
                     TrackedScreen("ArticleDetail") {
@@ -212,7 +214,6 @@ class ScopedContextUiTest {
         setContent {
             CompositionLocalProvider(
                 LocalTracker provides ScopeUiRecordingTracker(),
-                LocalScreenHistory provides ScreenHistory(),
                 LocalScopeStack provides stack,
             ) {
                 AutographScope("article_id" to "42") {
@@ -319,7 +320,6 @@ class ScopedContextUiTest {
         setContent {
             CompositionLocalProvider(
                 LocalTracker provides ScopeUiRecordingTracker(),
-                LocalScreenHistory provides ScreenHistory(),
                 LocalScopeStack provides stack,
             ) {
                 TrackedScreen(outer.value) {

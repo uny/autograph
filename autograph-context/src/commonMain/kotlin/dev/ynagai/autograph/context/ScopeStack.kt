@@ -21,11 +21,12 @@ import kotlinx.serialization.json.JsonPrimitive
  * completes after navigation) must not silently inherit whatever screen happens to be visible.
  * Explicit instrumentation keeps its own lexical scope; see the `autograph-compose` decorator.
  *
- * **Own an instance; don't share one globally.** Scope a [ScopeStack] to the tracker it feeds (as
- * `autograph-compose` scopes screen history to its provider) so context can't leak across trackers
- * or outlive a tracker swap on logout. Sharing one instance across the *surfaces* of a single
- * hybrid app is the exception, and the point: pass it to `AutographProvider` so the Compose and
- * native pipelines attribute against the same context. That stack is then yours to replace when the
+ * **Own an instance; don't share one globally.** Scope a [ScopeStack] to the tracker it feeds so
+ * context can't leak across trackers or outlive a tracker swap on logout — [screenHistory] rides
+ * along and inherits that scoping, which is what resets `previous_screen` when the tracker is
+ * replaced. Sharing one instance across the *surfaces* of a single hybrid app is the exception, and
+ * the point: pass it to `AutographProvider` so the Compose and native pipelines attribute against the
+ * same context and share one `previous_screen` chain. That stack is then yours to replace when the
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
  * **Threading.** [push], [update], and [remove] must be called from the main thread ([push] and
@@ -35,6 +36,17 @@ import kotlinx.serialization.json.JsonPrimitive
  * one.
  */
 public class ScopeStack {
+
+    /**
+     * The screen history that travels with this stack.
+     *
+     * Carried here rather than handed over separately so that sharing one stack across a hybrid app's
+     * surfaces — the sharing this class already exists to enable — is *all* it takes to keep
+     * `previous_screen` continuous across a Compose↔native transition. A second object to thread
+     * through would be one more thing to forget, and forgetting it would produce a silently
+     * discontinuous `previous_screen` rather than an error.
+     */
+    public val screenHistory: ScreenHistory = ScreenHistory()
 
     // Insertion-ordered; "innermost wins" for screen/section means later frames override earlier.
     // Mutated only from the main thread (see class kdoc), so a plain list needs no guard of its own.
