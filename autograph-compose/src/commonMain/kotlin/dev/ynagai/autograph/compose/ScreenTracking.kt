@@ -57,19 +57,32 @@ internal fun withPreviousScreen(properties: JsonObject, previousScreen: String?)
 /**
  * [TrackScreenView] plus ambient [ScreenContext] for the content — nested
  * instrumentation inside [content] is attributed to this screen automatically.
+ *
+ * [section] names a region *within* the screen — the `"Header"` of an article, say. It is attached
+ * to events fired inside [content] under the reserved `section` key, on both the explicit
+ * (`trackClick` / `trackImpression`) and the autocapture path. A section is context for those
+ * events, not a navigation destination of its own: it is deliberately **not** part of the
+ * `Screen Viewed` event this composable fires, and changing only the section does not re-fire it.
+ *
+ * Note the parameter order: [section] follows [properties] so that existing positional calls of the
+ * form `TrackedScreen(name, properties) { ... }` keep compiling.
  */
 @Composable
 public fun TrackedScreen(
     name: String,
     properties: JsonObject = EmptyJsonObject,
+    section: String? = null,
     content: @Composable () -> Unit,
 ) {
     TrackScreenView(name, properties)
-    // Mirror the screen into the ambient stack so autocaptured taps on this screen carry it, the
-    // same way [LocalScreenContext] carries it to explicit trackClick/trackImpression. The observer
-    // sits above this composable and can't read the CompositionLocal.
-    MirrorAmbientFrame(LocalScopeStack.current, screen = name)
-    CompositionLocalProvider(LocalScreenContext provides ScreenContext(name), content = content)
+    // Mirror screen + section into the ambient stack so autocaptured taps on this screen carry them,
+    // the same way [LocalScreenContext] carries them to explicit trackClick/trackImpression. The
+    // observer sits above this composable and can't read the CompositionLocal.
+    MirrorAmbientFrame(LocalScopeStack.current, screen = name, section = section)
+    CompositionLocalProvider(
+        LocalScreenContext provides ScreenContext(name, section),
+        content = content,
+    )
 }
 
 /**

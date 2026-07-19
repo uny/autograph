@@ -239,6 +239,90 @@ class ScopedContextUiTest {
     }
 
     @Test
+    fun trackedScreenMirrorsItsSectionIntoTheAmbientStackForCapture() = runComposeUiTest {
+        val stack = ScopeStack()
+        var screen: String? = null
+        var section: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                TrackedScreen("Article", section = "Header") {
+                    SideEffect {
+                        val ctx = stack.current()
+                        screen = ctx.screen
+                        section = ctx.section
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        // #67: the section was reaching explicit trackClick/trackImpression through
+        // LocalScreenContext but never the ambient stack, so an autocaptured tap on the same
+        // element carried a screen and no section.
+        assertEquals("Article", screen)
+        assertEquals("Header", section)
+    }
+
+    @Test
+    fun anInnerSectionRefinesAnOuterScreenInTheAmbientStack() = runComposeUiTest {
+        val stack = ScopeStack()
+        var screen: String? = null
+        var section: String? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                TrackedScreen("Article") {
+                    TrackedScreen("Article", section = "Recommendations") {
+                        SideEffect {
+                            val ctx = stack.current()
+                            screen = ctx.screen
+                            section = ctx.section
+                        }
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        // Screen and section accumulate independently down the stack: the outer frame contributes
+        // no section, so the inner one's survives rather than being reset to null by the frame
+        // above it.
+        assertEquals("Article", screen)
+        assertEquals("Recommendations", section)
+    }
+
+    @Test
+    fun clearingASectionRemovesItFromTheAmbientStackInPlace() = runComposeUiTest {
+        val stack = ScopeStack()
+        val current = mutableStateOf<String?>("Header")
+        var section: String? = "unset"
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                TrackedScreen("Article", section = current.value) {
+                    SideEffect { section = stack.current().section }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("Header", section)
+
+        current.value = null
+        waitForIdle()
+
+        // The revision goes through ScopeStack.update, which overwrites the frame's contents — a
+        // section that stopped applying must not linger on later events.
+        assertNull(section)
+    }
+
+    @Test
     fun changingAnOuterScopeValueDoesNotLetItOverrideAnInnerScopeInTheAmbientStack() = runComposeUiTest {
         val stack = ScopeStack()
         val outer = mutableStateOf("outer1")

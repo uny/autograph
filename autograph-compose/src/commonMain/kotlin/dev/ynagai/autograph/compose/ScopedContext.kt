@@ -86,7 +86,7 @@ public fun AutographScope(
 
 /**
  * Mirrors one frame into [stack] for the lifetime of the calling composable: pushed on enter,
- * removed on exit, and revised IN PLACE when [scope]/[screen] change.
+ * removed on exit, and revised IN PLACE when [scope]/[screen]/[section] change.
  *
  * The in-place revision is load-bearing, not an optimization. The stack resolves precedence by
  * position ("later frames win"), so re-pushing a frame whose value changed would move it to the top
@@ -101,6 +101,7 @@ internal fun MirrorAmbientFrame(
     stack: ScopeStack,
     scope: JsonObject = EmptyJsonObject,
     screen: String? = null,
+    section: String? = null,
 ) {
     // A plain box, not state: written from the effect below and read only by the SideEffect, so it
     // must not itself invalidate the composition.
@@ -116,7 +117,9 @@ internal fun MirrorAmbientFrame(
             handle[0] = null
         }
     }
-    SideEffect { handle[0]?.let { stack.update(it, scope = scope, screen = screen) } }
+    SideEffect {
+        handle[0]?.let { stack.update(it, scope = scope, screen = screen, section = section) }
+    }
 }
 
 private val fallbackScopeStack = ScopeStack()

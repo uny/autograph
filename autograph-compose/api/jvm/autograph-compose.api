@@ -54,7 +54,7 @@ public final class dev/ynagai/autograph/compose/ScreenContext {
 
 public final class dev/ynagai/autograph/compose/ScreenTrackingKt {
 	public static final fun TrackScreenView (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Landroidx/compose/runtime/Composer;II)V
-	public static final fun TrackedScreen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
+	public static final fun TrackedScreen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Lkotlin/jvm/functions/Function2;Landroidx/compose/runtime/Composer;II)V
 	public static final fun getLocalScreenContext ()Landroidx/compose/runtime/ProvidableCompositionLocal;
 }
 
