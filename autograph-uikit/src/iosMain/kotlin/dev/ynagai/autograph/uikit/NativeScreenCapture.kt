@@ -247,18 +247,32 @@ private fun onViewDidAppear(self: COpaquePointer?) {
     if (!controller.isCapturableScreen()) return
     val name = sink.screenName(controller) ?: return
     // Push the frame and register the entry BEFORE emitting, so that if the tracker throws the frame
-    // is already tracked and viewDidDisappear: can still remove it. record() then feeds the emit its
-    // previous_screen, per ScreenHistory's contract.
+    // is already tracked and viewDidDisappear: can still remove it. [emitScreenView] then records and
+    // emits with the correct previous_screen.
     val handle = sink.scopeStack.push(screen = name)
     screenEntries.add(ScreenEntry(sink.owner, sink.scopeStack, handle, weakSetOf(controller)))
-    // `previous == name` when this same screen is re-entered with nothing capturable recorded in
-    // between — e.g. leaving a UIKit screen for an excluded one (a SwiftUI tab, a system/Compose modal)
-    // and coming back. The intermediate screen is genuinely unknown, so the honest previous_screen is
-    // none, not the screen naming itself. The Compose path never hits this (its LaunchedEffect is keyed
-    // on the name, so it cannot re-record an unchanged one); this is the first caller that can, so the
-    // guard lives here rather than in ScreenHistory.record.
-    val previous = sink.scopeStack.screenHistory.record(name)?.takeIf { it != name }
-    sink.tracker.screen(name, withPreviousScreen(previous))
+    sink.scopeStack.emitScreenView(sink.tracker, name)
+}
+
+/**
+ * Records [name] as the current screen and emits a `Screen Viewed` for it, carrying the screen it
+ * replaced as `previous_screen`. The one place that couples recording with emitting, so the UIKit
+ * swizzle and the explicit SwiftUI path ([AutographScreenCapture]) can't drift on the order or on the
+ * self-previous guard.
+ *
+ * `previous == name` when this same screen is re-entered with nothing capturable recorded in between —
+ * leaving a screen for an excluded one (a SwiftUI tab, a system/Compose modal, or a SwiftUI screen with
+ * no `.autographScreen`) and coming back. The intermediate screen is genuinely unknown, so the honest
+ * `previous_screen` is none, not the screen naming itself — hence the `takeIf`. The Compose path never
+ * hits this (its `LaunchedEffect` is keyed on the name, so it cannot re-record an unchanged one); the
+ * native callers are the first that can, so the guard lives here rather than in [ScreenHistory.record].
+ *
+ * The caller pushes the frame first (see the call sites): this only records and emits, so a throwing
+ * tracker leaves an already-removable frame behind.
+ */
+internal fun ScopeStack.emitScreenView(tracker: Tracker, name: String) {
+    val previous = screenHistory.record(name)?.takeIf { it != name }
+    tracker.screen(name, withPreviousScreen(previous))
 }
 
 private fun onViewDidDisappear(self: COpaquePointer?) {

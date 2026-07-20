@@ -37,6 +37,10 @@ let package = Package(
     platforms: [.iOS(.v13), .macOS(.v10_15), .tvOS(.v13), .watchOS(.v7)],
     products: [
         .library(name: "AutographSegmentSwift", targets: ["AutographSegmentSwift"]),
+        // The Swift-side UI sugar over the Kotlin capture — `.autographScreen("Name")` for SwiftUI.
+        // Tracker-agnostic (imports only the Autograph umbrella, no Segment), so a non-Segment app can
+        // use it too.
+        .library(name: "AutographUI", targets: ["AutographUI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/segmentio/analytics-swift", from: "1.9.0"),
@@ -56,6 +60,14 @@ let package = Package(
                 "AutographSegmentSwift",
                 .product(name: "Segment", package: "analytics-swift"),
             ]
+        ),
+        .target(
+            name: "AutographUI",
+            dependencies: ["Autograph"]
+        ),
+        .testTarget(
+            name: "AutographUITests",
+            dependencies: ["AutographUI", "Autograph"]
         ),
     ]
 )

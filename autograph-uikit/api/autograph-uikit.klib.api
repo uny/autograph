@@ -18,6 +18,16 @@ final class dev.ynagai.autograph.uikit/AutographNativeTapCapture { // dev.ynagai
     final fun uninstall() // dev.ynagai.autograph.uikit/AutographNativeTapCapture.uninstall|uninstall(){}[0]
 }
 
+final class dev.ynagai.autograph.uikit/AutographScreenCapture { // dev.ynagai.autograph.uikit/AutographScreenCapture|null[0]
+    constructor <init>(dev.ynagai.autograph/Tracker, dev.ynagai.autograph.context/ScopeStack) // dev.ynagai.autograph.uikit/AutographScreenCapture.<init>|<init>(dev.ynagai.autograph.Tracker;dev.ynagai.autograph.context.ScopeStack){}[0]
+
+    final fun appeared(kotlin/String): dev.ynagai.autograph.uikit/AutographScreenView // dev.ynagai.autograph.uikit/AutographScreenCapture.appeared|appeared(kotlin.String){}[0]
+}
+
+final class dev.ynagai.autograph.uikit/AutographScreenView { // dev.ynagai.autograph.uikit/AutographScreenView|null[0]
+    final fun disappeared() // dev.ynagai.autograph.uikit/AutographScreenView.disappeared|disappeared(){}[0]
+}
+
 final class dev.ynagai.autograph.uikit/AxPoint { // dev.ynagai.autograph.uikit/AxPoint|null[0]
     constructor <init>(kotlin/Float, kotlin/Float) // dev.ynagai.autograph.uikit/AxPoint.<init>|<init>(kotlin.Float;kotlin.Float){}[0]
 
