@@ -9,6 +9,9 @@ public final class dev/ynagai/autograph/context/AutocaptureDefaultsKt {
 	public static final field DEFAULT_AUTOCAPTURE_EVENT_NAME Ljava/lang/String;
 }
 
+public abstract interface annotation class dev/ynagai/autograph/context/AutographInternalApi : java/lang/annotation/Annotation {
+}
+
 public final class dev/ynagai/autograph/context/ScopeHandle {
 }
 
@@ -21,6 +24,10 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 	public final fun remove (Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public final fun update (Ldev/ynagai/autograph/context/ScopeHandle;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;)V
 	public static synthetic fun update$default (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/context/ScopeHandle;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)V
+}
+
+public final class dev/ynagai/autograph/context/ScreenEmitKt {
+	public static final fun emitScreenView (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/Tracker;Ljava/lang/String;)V
 }
 
 public final class dev/ynagai/autograph/context/ScreenHistory {

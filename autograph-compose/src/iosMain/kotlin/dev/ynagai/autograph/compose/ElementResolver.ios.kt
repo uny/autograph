@@ -5,7 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.uikit.LocalUIView
-import dev.ynagai.autograph.uikit.AutographInternalApi
+import dev.ynagai.autograph.context.AutographInternalApi
 import dev.ynagai.autograph.uikit.AxPoint
 import dev.ynagai.autograph.uikit.AxRect
 import dev.ynagai.autograph.uikit.accessibilityBoundsInWindowPx

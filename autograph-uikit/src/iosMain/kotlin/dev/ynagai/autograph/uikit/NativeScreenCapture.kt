@@ -2,10 +2,11 @@
 
 package dev.ynagai.autograph.uikit
 
-import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.context.emitScreenView
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.CFunction
 import kotlinx.cinterop.COpaquePointer
@@ -14,8 +15,6 @@ import kotlinx.cinterop.interpretObjCPointerOrNull
 import kotlinx.cinterop.invoke
 import kotlinx.cinterop.reinterpret
 import kotlinx.cinterop.staticCFunction
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 import platform.Foundation.NSBundle
 import platform.Foundation.NSHashTable
 import platform.Foundation.NSHashTableObjectPointerPersonality
@@ -254,27 +253,6 @@ private fun onViewDidAppear(self: COpaquePointer?) {
     sink.scopeStack.emitScreenView(sink.tracker, name)
 }
 
-/**
- * Records [name] as the current screen and emits a `Screen Viewed` for it, carrying the screen it
- * replaced as `previous_screen`. The one place that couples recording with emitting, so the UIKit
- * swizzle and the explicit SwiftUI path ([AutographScreenCapture]) can't drift on the order or on the
- * self-previous guard.
- *
- * `previous == name` when this same screen is re-entered with nothing capturable recorded in between —
- * leaving a screen for an excluded one (a SwiftUI tab, a system/Compose modal, or a SwiftUI screen with
- * no `.autographScreen`) and coming back. The intermediate screen is genuinely unknown, so the honest
- * `previous_screen` is none, not the screen naming itself — hence the `takeIf`. The Compose path never
- * hits this (its `LaunchedEffect` is keyed on the name, so it cannot re-record an unchanged one); the
- * native callers are the first that can, so the guard lives here rather than in [ScreenHistory.record].
- *
- * The caller pushes the frame first (see the call sites): this only records and emits, so a throwing
- * tracker leaves an already-removable frame behind.
- */
-internal fun ScopeStack.emitScreenView(tracker: Tracker, name: String) {
-    val previous = screenHistory.record(name)?.takeIf { it != name }
-    tracker.screen(name, withPreviousScreen(previous))
-}
-
 private fun onViewDidDisappear(self: COpaquePointer?) {
     val controller = self.asViewControllerOrNull() ?: return
     sweepDeadScreenEntries()
@@ -363,15 +341,3 @@ internal fun String.isUnderPathComponents(ancestor: String): Boolean {
 private fun weakSetOf(controller: UIViewController): NSHashTable =
     NSHashTable.hashTableWithOptions(NSHashTableWeakMemory or NSHashTableObjectPointerPersonality)
         .also { it.addObject(controller) }
-
-/**
- * [properties]-free equivalent of `autograph-compose`'s `withPreviousScreen`: a `Screen Viewed`'s
- * `previous_screen`, or nothing when this is the first screen. Native screen views carry no base
- * properties, so there is no caller-supplied `previous_screen` to preserve.
- */
-private fun withPreviousScreen(previous: String?): JsonObject =
-    if (previous != null) {
-        JsonObject(mapOf("previous_screen" to JsonPrimitive(previous)))
-    } else {
-        EmptyJsonObject
-    }

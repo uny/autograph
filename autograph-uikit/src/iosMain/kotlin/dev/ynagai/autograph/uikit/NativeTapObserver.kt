@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.uikit
 
+import dev.ynagai.autograph.context.AutographInternalApi
 import kotlinx.cinterop.BetaInteropApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.ObjCAction

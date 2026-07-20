@@ -1,15 +1,16 @@
-package dev.ynagai.autograph.uikit
+package dev.ynagai.autograph.context
 
 /**
  * Marks a declaration that exists only so Autograph's own modules can share it across a module
  * boundary — not a supported API for library users. It may change or disappear in any release,
  * including a patch.
  *
- * Kotlin's `internal` doesn't cross module boundaries, so the accessibility-tree walk this module
- * holds has to be `public` for `autograph-compose` to reuse it. The alternative — letting each
- * module keep its own copy of the walk — is what this module exists to prevent: the walk's two
- * known coordinate-space bugs were each found only by exercising the real path on a device, and a
- * second copy would be a second place for them to come back.
+ * Kotlin's `internal` does not cross module boundaries, so a helper that two Autograph modules must
+ * share — the accessibility-tree walk `autograph-uikit` lends `autograph-compose`, or the
+ * `ScopeStack.emitScreenView` coupling the iOS and Android native pipelines reuse — has to be
+ * `public`. This annotation is how such a declaration says "public for mechanism, not for you": the
+ * alternative, each module keeping its own copy, is exactly the duplication these shared helpers exist
+ * to prevent. It lives in `autograph-context` because that is the lowest module the sharers depend on.
  */
 @RequiresOptIn(
     level = RequiresOptIn.Level.ERROR,
