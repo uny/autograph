@@ -24,10 +24,7 @@ kotlin {
         getByName("androidHostTest").dependencies {
             implementation(libs.junit)
             implementation(libs.robolectric)
-            implementation(libs.androidx.test.core)
-            implementation(libs.androidx.test.junit)
             implementation(libs.androidx.fragment)
-            implementation(libs.androidx.fragment.testing)
         }
     }
 }
