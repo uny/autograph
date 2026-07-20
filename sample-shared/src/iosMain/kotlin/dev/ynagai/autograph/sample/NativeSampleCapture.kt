@@ -18,12 +18,16 @@ import dev.ynagai.autograph.uikit.installAutographNativeTapCapture
  * [onTap] is what the XCUITest suite reads: it can't inspect Kotlin state, so the sample surfaces
  * every reported tap on-screen. Mirrors `LoggingTracker`'s role in the Compose sample.
  *
- * A fresh [ScopeStack] rather than a shared one, because this screen renders no Compose to share it
- * with. A hybrid app would pass the same stack it gives `AutographProvider`. A screen frame is pushed
- * onto it so native taps demonstrably carry `screen`/`section` through the shared
- * [dev.ynagai.autograph.context.AmbientContext.enrich] path — the exact path #65's native screen
- * capture feeds. That capture (the `viewDidAppear` swizzle) is what will push this frame for real;
- * pushing it here lets the harness observe the enrichment end of the path before the swizzle exists.
+ * A fresh [ScopeStack] rather than a shared one, because this SwiftUI screen renders no Compose to
+ * share it with. A hybrid app would pass the same stack it gives `AutographProvider`.
+ *
+ * **No screen frame is pushed here.** Native *screen* capture (#65's `viewDidAppear:` swizzle) works
+ * on real UIKit controllers, which this SwiftUI-only screen is not — its host is a system-bundle
+ * `UIHostingController` the swizzle excludes. So a tap reported here carries no `screen`, and that is
+ * correct: the screen-attribution path is exercised by the UIKit-navigation sample
+ * (`installNativeScreensCapture`) instead, where a swizzle-produced frame actually exists. (Until #65
+ * this installer pushed a stand-in screen frame; that fixture is gone now that the swizzle supplies
+ * real frames on the surface built for it.)
  *
  * **Idempotent.** SwiftUI may run `.onAppear` more than once for the same view, and installing twice
  * would attach a second recognizer to the same window and report every tap twice.
@@ -31,7 +35,7 @@ import dev.ynagai.autograph.uikit.installAutographNativeTapCapture
 @OptIn(AutographInternalApi::class)
 public fun installNativeSampleCapture(onTap: (target: String, properties: String) -> Unit) {
     if (installed != null) return
-    val scopeStack = ScopeStack().apply { push(screen = "NativeSample", section = "NativeMain") }
+    val scopeStack = ScopeStack()
     installed = installAutographNativeTapCapture(
         tracker = LoggingTracker(onTrack = { props, target -> onTap(targetOrNoTarget(target), props.toString()) }),
         scopeStack = scopeStack,
