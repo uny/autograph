@@ -1,19 +1,20 @@
 package dev.ynagai.autograph.uikit
 
-import kotlinx.cinterop.ExperimentalForeignApi
-import platform.CoreGraphics.CGRectMake
-import platform.UIKit.UIAccessibilityTraitButton
-import platform.UIKit.UIScreen
-import platform.UIKit.UIView
-import platform.UIKit.setAccessibilityFrame
-import platform.Foundation.setValue
-import platform.darwin.NSObject
-import platform.UIKit.setAccessibilityTraits
+import dev.ynagai.autograph.context.AutographInternalApi
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.CoreGraphics.CGRectMake
+import platform.Foundation.setValue
+import platform.UIKit.UIAccessibilityTraitButton
+import platform.UIKit.UIScreen
+import platform.UIKit.UIView
+import platform.UIKit.setAccessibilityFrame
+import platform.UIKit.setAccessibilityTraits
+import platform.darwin.NSObject
 
 /**
  * Drives [resolveNativeTapTarget] and [AutographComposeHosts] against real [UIView] trees — the same

@@ -1,5 +1,7 @@
 package dev.ynagai.autograph.uikit
 
+import dev.ynagai.autograph.context.AutographInternalApi
+
 /**
  * A point in **window-space pixels** — see [AxRect] for why that space, and why the unit is spelled
  * out in every name here rather than left to a comment.

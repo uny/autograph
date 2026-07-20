@@ -1,8 +1,12 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.context.emitScreenView
 
 /**
  * Reports **SwiftUI** screen views that the UIKit `viewDidAppear:` swizzle

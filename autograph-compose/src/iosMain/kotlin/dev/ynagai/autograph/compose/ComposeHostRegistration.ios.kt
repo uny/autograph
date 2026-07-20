@@ -6,7 +6,7 @@ import androidx.compose.runtime.InternalComposeApi
 import androidx.compose.runtime.currentComposer
 import androidx.compose.ui.uikit.LocalUIView
 import dev.ynagai.autograph.uikit.AutographComposeHosts
-import dev.ynagai.autograph.uikit.AutographInternalApi
+import dev.ynagai.autograph.context.AutographInternalApi
 
 /**
  * Registers this composition's host `UIView` with [AutographComposeHosts], so the native pipeline

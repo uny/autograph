@@ -1,5 +1,11 @@
 package dev.ynagai.autograph.uikit
 
+import dev.ynagai.autograph.context.AutographInternalApi
+import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertFalse
+import kotlin.test.assertNull
+import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.Foundation.setValue
 import platform.UIKit.UIAccessibilityElement
@@ -7,11 +13,6 @@ import platform.UIKit.UIAccessibilityIdentificationProtocol
 import platform.UIKit.UIButton
 import platform.UIKit.UIView
 import platform.darwin.NSObject
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertNull
-import kotlin.test.assertTrue
 
 /**
  * Covers [accessibilityIdentifierOrNull] across the two kinds of object the walk actually meets: the

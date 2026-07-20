@@ -1,17 +1,18 @@
 package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeStack
-import kotlinx.serialization.json.JsonObject
-import platform.UIKit.UITapGestureRecognizer
-import platform.UIKit.UIWindow
-import platform.UIKit.UIWindowLevelAlert
-import platform.UIKit.UIWindowLevelNormal
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonObject
+import platform.UIKit.UITapGestureRecognizer
+import platform.UIKit.UIWindow
+import platform.UIKit.UIWindowLevelAlert
+import platform.UIKit.UIWindowLevelNormal
 
 /**
  * Covers the parts of the native tap capture that a headless test can reach: which windows get
