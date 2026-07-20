@@ -12,6 +12,7 @@ lifecycle = "2.10.0"
 androidxStartup = "1.2.0"
 robolectric = "4.16"
 androidxFragment = "1.8.9"
+androidxComposeUi = "1.7.8"
 junit = "4.13.2"
 publish = "0.36.0"
 
@@ -31,6 +32,8 @@ androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = 
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
 robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
 androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "androidxFragment" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui", version.ref = "androidxComposeUi" }
+androidx-compose-runtime = { module = "androidx.compose.runtime:runtime", version.ref = "androidxComposeUi" }
 junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
