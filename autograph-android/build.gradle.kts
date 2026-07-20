@@ -3,14 +3,15 @@ plugins {
     alias(libs.plugins.androidKmpLibrary)
 }
 
-// SPIKE (feat/65-android-lifecycle-harness): the sole purpose of this module right now is to
-// answer one infra question before PR-E — can the AGP KMP `androidLibrary` host test run
-// Robolectric and drive real Android lifecycle callbacks (ActivityScenario / FragmentScenario)?
-// publish/abiValidation/core+context wiring are deliberately omitted to isolate that question.
+// This module currently ships no production code — it exists to host the Android lifecycle test
+// harness for #65 PR-E (Robolectric-driven Activity/Fragment lifecycle sentinels). PR-E adds the
+// screen-capture install API, and with it publish/abiValidation and core+context wiring.
 kotlin {
     explicitApi()
 
-    androidLibrary {
+    // `android { }`, not the older `androidLibrary { }` that autograph-segment/-compose still use:
+    // that block is deprecated in this AGP and emits a compiler warning. New module → current DSL.
+    android {
         namespace = "dev.ynagai.autograph.android"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
