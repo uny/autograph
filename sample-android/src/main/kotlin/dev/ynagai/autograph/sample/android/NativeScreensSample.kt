@@ -74,20 +74,18 @@ public class NativeScreensActivity : FragmentActivity() {
     internal var containerId: Int = View.NO_ID
         private set
 
+    private var logView: TextView? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        val logView = TextView(this).apply {
-            contentDescription = "screen_log"
-            text = NativeScreenLog.text()
-        }
+        val log = TextView(this).apply { contentDescription = "screen_log" }
+        logView = log
         val container = FrameLayout(this).apply { id = View.generateViewId() }
         containerId = container.id
-        root.addView(logView)
+        root.addView(log)
         root.addView(container)
         setContentView(root)
-
-        NativeScreenLog.onChange = { runOnUiThread { logView.text = NativeScreenLog.text() } }
 
         if (savedInstanceState == null) {
             // commitNow so ScreenAFragment (with its view) is present at this Activity's resume, which
@@ -98,9 +96,22 @@ public class NativeScreensActivity : FragmentActivity() {
         }
     }
 
-    override fun onDestroy() {
+    // Register in onStart / clear in onStop, not onCreate/onDestroy: across a rotation the old
+    // instance's onStop runs before the new instance's onStart, so the new registration is never
+    // clobbered by the old teardown (the reverse order onCreate/onDestroy would cause).
+    override fun onStart() {
+        super.onStart()
+        refreshLog()
+        NativeScreenLog.onChange = { runOnUiThread { refreshLog() } }
+    }
+
+    override fun onStop() {
         NativeScreenLog.onChange = null
-        super.onDestroy()
+        super.onStop()
+    }
+
+    private fun refreshLog() {
+        logView?.text = NativeScreenLog.text()
     }
 }
 
