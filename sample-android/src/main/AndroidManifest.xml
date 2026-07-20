@@ -1,5 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application
+        android:name=".NativeSampleApplication"
         android:label="Autograph Sample"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity
@@ -10,5 +11,9 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The non-Compose native screen-capture demo, launched directly by the instrumented smoke. -->
+        <activity
+            android:name=".NativeScreensActivity"
+            android:exported="true" />
     </application>
 </manifest>
