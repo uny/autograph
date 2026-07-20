@@ -10,6 +10,9 @@ analyticsKotlin = "1.25.0"
 navigationCompose = "2.9.2"
 lifecycle = "2.10.0"
 androidxStartup = "1.2.0"
+robolectric = "4.16"
+androidxFragment = "1.8.9"
+junit = "4.13.2"
 publish = "0.36.0"
 
 android-compileSdk = "36"
@@ -26,6 +29,9 @@ jetbrains-navigation-compose = { module = "org.jetbrains.androidx.navigation:nav
 jetbrains-lifecycle-runtime-compose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "lifecycle" }
 androidx-startup = { module = "androidx.startup:startup-runtime", version.ref = "androidxStartup" }
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+robolectric = { module = "org.robolectric:robolectric", version.ref = "robolectric" }
+androidx-fragment = { module = "androidx.fragment:fragment", version.ref = "androidxFragment" }
+junit = { module = "junit:junit", version.ref = "junit" }
 
 [plugins]
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
