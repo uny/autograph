@@ -36,8 +36,8 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
 
-      - name: Build AutographSegment.xcframework
-        run: ./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework --stacktrace
+      - name: Build Autograph.xcframework
+        run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
 
       # Kotlin/Native's build output isn't reproducible across separate builds — confirmed by
       # rebuilding the same source on the same machine and observing a different xcframework zip
@@ -45,15 +45,15 @@ jobs:
       # pre-computed and committed ahead of the tag. Self-correct: update Package.swift with the
       # checksum this build actually produced, commit it, and move the tag to point at that
       # commit — the same zip built above is what gets uploaded, so they can never disagree.
-      - name: Publish AutographSegmentSwift's binary target
+      - name: Publish Autograph.xcframework binary target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           tag="${GITHUB_REF#refs/tags/}"
           version="${tag#v}"
-          zip_path="autograph-segment/build/XCFrameworks/release/AutographSegment.xcframework.zip"
+          zip_path="autograph-apple/build/XCFrameworks/release/Autograph.xcframework.zip"
 
-          (cd autograph-segment/build/XCFrameworks/release && zip -ry AutographSegment.xcframework.zip AutographSegment.xcframework)
+          (cd autograph-apple/build/XCFrameworks/release && zip -ry Autograph.xcframework.zip Autograph.xcframework)
           checksum=$(swift package compute-checksum "$zip_path")
 
           sed -i '' -E "s/private let releaseVersion = \"[^\"]*\"/private let releaseVersion = \"$version\"/" Package.swift
@@ -63,7 +63,7 @@ jobs:
             git config user.name "github-actions[bot]"
             git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
             git add Package.swift
-            git commit -m "chore: sync AutographSegmentSwift's binary target checksum for $tag"
+            git commit -m "chore: sync Autograph binary target checksum for $tag"
             git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
             git push origin "HEAD:refs/tags/$tag" --force
           fi
