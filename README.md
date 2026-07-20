@@ -317,23 +317,29 @@ release build (gate it behind a debug-build check, or supply a logger that redac
 ## iOS: `AutographSegmentSwift`
 
 `SegmentBridge` (the interface `SegmentTransport` calls on iOS) is exported from Kotlin as an
-Objective-C protocol via `AutographSegment.xcframework`. The `AutographSegmentSwift` product (this
-repo's root `Package.swift`) is the reference adapter implementing it against `analytics-swift` —
+Objective-C protocol via `Autograph.xcframework`. The `AutographSegmentSwift` product (this repo's
+root `Package.swift`) is the reference adapter implementing it against `analytics-swift` —
 `analytics-swift`'s event model is pure-Swift structs/generics with no Objective-C-visible surface
 for the stamping this library needs, so this adapter exists as plain Swift rather than something
 Kotlin/Native could call into directly.
+
+`Autograph.xcframework` is a single umbrella framework carrying the whole Kotlin iOS surface — tracker
+core, the ambient scope/screen stack, UIKit capture, and the Segment bridge — emitted by the
+`autograph-apple` aggregation module. It has to be one framework: Kotlin/Native prefixes every exported
+Objective-C class with its framework's name, so splitting it would make a `Tracker` from one framework
+a different ObjC type than a `Tracker` from another, and a hybrid app uses more than one part together.
 
 `Package.swift` lives at the repository root (not a subdirectory) specifically so external apps
 can add it the normal way, `.package(url: "https://github.com/uny/autograph.git", from: "…")` —
 SwiftPM only resolves a URL-based dependency's manifest from the repo root.
 
-Its `AutographSegment` binary target picks one of two sources depending on what's on disk:
-- **Monorepo/local dev**: if `autograph-segment/build/XCFrameworks/release/AutographSegment.xcframework`
-  exists (built via `./gradlew :autograph-segment:assembleAutographSegmentReleaseXCFramework`), it's
+Its `Autograph` binary target picks one of two sources depending on what's on disk:
+- **Monorepo/local dev**: if `autograph-apple/build/XCFrameworks/release/Autograph.xcframework`
+  exists (built via `./gradlew :autograph-apple:assembleAutographReleaseXCFramework`), it's
   used directly — so this always reflects whatever the Kotlin side currently builds, uncommitted
   changes included.
 - **External consumers**: otherwise, falls back to a checksummed download from that version's
-  GitHub Release asset (`AutographSegment.xcframework.zip`).
+  GitHub Release asset (`Autograph.xcframework.zip`).
 
 ## Requirements
 

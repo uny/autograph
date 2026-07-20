@@ -1,4 +1,4 @@
-import AutographSegment
+import Autograph
 import Foundation
 import Segment
 
