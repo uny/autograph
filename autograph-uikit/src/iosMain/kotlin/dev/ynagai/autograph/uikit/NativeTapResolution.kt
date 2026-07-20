@@ -55,11 +55,20 @@ public fun resolveNativeTapTarget(
     scale: Float,
 ): String? {
     // Ownership is asked of the *topmost* path and attribution of the clickable-preferred one, because
-    // the two are different questions — see step 2 above.
+    // the two are different questions — see step 2 above. The developer opt-out
+    // (registerAutographIgnoredView) is checked on the same two paths and for the same reason as the
+    // Compose-host carve-out: an excluded subtree can sit under either path, and both "is this
+    // Compose-owned?" and "did the developer exclude this?" are ownership questions asked before
+    // attribution. Either veto drops the tap.
     val topmostPath = deepestAccessibilityHitPath(root, root, positionInWindowPx, scale, preferClickableBranches = false)
-    if (topmostPath != null && AutographComposeHosts.containsAny(topmostPath)) return null
+    if (topmostPath != null && topmostPath.crossesAnExcludedSubtree()) return null
     val path = deepestAccessibilityHitPath(root, root, positionInWindowPx, scale) ?: return null
-    if (AutographComposeHosts.containsAny(path)) return null
+    if (path.crossesAnExcludedSubtree()) return null
     val nearestClickable = path.nearestAccessibilityClickable() ?: return null
     return nearestClickable.accessibilityIdentifierOrNull()
 }
+
+/** Whether this hit path crosses a Compose host or a developer-excluded ([AutographIgnoredViews]) view. */
+@OptIn(AutographInternalApi::class)
+private fun List<Any>.crossesAnExcludedSubtree(): Boolean =
+    AutographComposeHosts.containsAny(this) || AutographIgnoredViews.containsAny(this)
