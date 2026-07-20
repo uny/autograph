@@ -110,4 +110,25 @@ public object AutographComposeHosts {
      * accessibility element, not the host view itself; the host appears as one of its ancestors.
      */
     public fun containsAny(path: List<Any>): Boolean = path.any { hosts.objectForKey(it) != null }
+
+    /**
+     * Whether [root] or anything under it is a registered host — i.e. whether a controller whose
+     * `view` is [root] renders Compose content and should be left to the Compose pipeline.
+     *
+     * Internal, and separate from [containsAny], because the screen-capture caller has a view subtree
+     * rather than an already-built hit path: it walks the tree itself and stops at the first host, so
+     * no intermediate path list is allocated for what is usually a negative answer. Depth-first over
+     * `subviews`; membership is the table's pointer-personality lookup, the same comparison
+     * [containsAny] uses.
+     */
+    internal fun hostInSubtree(root: UIView): Boolean {
+        val stack = ArrayDeque<UIView>()
+        stack.addLast(root)
+        while (stack.isNotEmpty()) {
+            val view = stack.removeLast()
+            if (hosts.objectForKey(view) != null) return true
+            view.subviews.forEach { subview -> (subview as? UIView)?.let(stack::addLast) }
+        }
+        return false
+    }
 }

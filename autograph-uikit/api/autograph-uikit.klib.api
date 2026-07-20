@@ -10,6 +10,10 @@ open annotation class dev.ynagai.autograph.uikit/AutographInternalApi : kotlin/A
     constructor <init>() // dev.ynagai.autograph.uikit/AutographInternalApi.<init>|<init>(){}[0]
 }
 
+final class dev.ynagai.autograph.uikit/AutographNativeScreenCapture { // dev.ynagai.autograph.uikit/AutographNativeScreenCapture|null[0]
+    final fun uninstall() // dev.ynagai.autograph.uikit/AutographNativeScreenCapture.uninstall|uninstall(){}[0]
+}
+
 final class dev.ynagai.autograph.uikit/AutographNativeTapCapture { // dev.ynagai.autograph.uikit/AutographNativeTapCapture|null[0]
     final fun uninstall() // dev.ynagai.autograph.uikit/AutographNativeTapCapture.uninstall|uninstall(){}[0]
 }
@@ -66,5 +70,7 @@ final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull(
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/isAccessibilityButton(): kotlin/Boolean // dev.ynagai.autograph.uikit/isAccessibilityButton|isAccessibilityButton@kotlin.Any(){}[0]
 final fun (platform.UIKit/UIWindow).dev.ynagai.autograph.uikit/isCapturableWindow(): kotlin/Boolean // dev.ynagai.autograph.uikit/isCapturableWindow|isCapturableWindow@platform.UIKit.UIWindow(){}[0]
 final fun dev.ynagai.autograph.uikit/deepestAccessibilityHitPath(kotlin/Any, platform.UIKit/UIView, dev.ynagai.autograph.uikit/AxPoint, kotlin/Float, kotlin/Boolean = ...): kotlin.collections/List<kotlin/Any>? // dev.ynagai.autograph.uikit/deepestAccessibilityHitPath|deepestAccessibilityHitPath(kotlin.Any;platform.UIKit.UIView;dev.ynagai.autograph.uikit.AxPoint;kotlin.Float;kotlin.Boolean){}[0]
+final fun dev.ynagai.autograph.uikit/defaultScreenName(platform.UIKit/UIViewController): kotlin/String? // dev.ynagai.autograph.uikit/defaultScreenName|defaultScreenName(platform.UIKit.UIViewController){}[0]
+final fun dev.ynagai.autograph.uikit/installAutographNativeScreenCapture(dev.ynagai.autograph/Tracker, dev.ynagai.autograph.context/ScopeStack, kotlin/Function1<platform.UIKit/UIViewController, kotlin/String?> = ...): dev.ynagai.autograph.uikit/AutographNativeScreenCapture // dev.ynagai.autograph.uikit/installAutographNativeScreenCapture|installAutographNativeScreenCapture(dev.ynagai.autograph.Tracker;dev.ynagai.autograph.context.ScopeStack;kotlin.Function1<platform.UIKit.UIViewController,kotlin.String?>){}[0]
 final fun dev.ynagai.autograph.uikit/installAutographNativeTapCapture(dev.ynagai.autograph/Tracker, dev.ynagai.autograph.context/ScopeStack, kotlin/String = ...): dev.ynagai.autograph.uikit/AutographNativeTapCapture // dev.ynagai.autograph.uikit/installAutographNativeTapCapture|installAutographNativeTapCapture(dev.ynagai.autograph.Tracker;dev.ynagai.autograph.context.ScopeStack;kotlin.String){}[0]
 final fun dev.ynagai.autograph.uikit/resolveNativeTapTarget(platform.UIKit/UIView, dev.ynagai.autograph.uikit/AxPoint, kotlin/Float): kotlin/String? // dev.ynagai.autograph.uikit/resolveNativeTapTarget|resolveNativeTapTarget(platform.UIKit.UIView;dev.ynagai.autograph.uikit.AxPoint;kotlin.Float){}[0]

@@ -126,10 +126,6 @@ final class NativeSampleUITests: XCTestCase {
         app.staticTexts["native_last_event_label"].label
     }
 
-    private func lastEventProps(_ app: XCUIApplication) -> String {
-        app.staticTexts["native_last_event_props_label"].label
-    }
-
     /// Scrolls the list with a real touch stream.
     ///
     /// **Deliberately not `swipeUp()`.** Measured on the simulator: XCUITest's swipe synthesis is
@@ -155,19 +151,6 @@ final class NativeSampleUITests: XCTestCase {
         let app = launchNativeSample()
         app.buttons["native_plain_button"].tap()
         XCTAssertEqual(lastEventLabel(app), "Last event target: native_plain_button")
-    }
-
-    /// A native tap must carry the `screen`/`section` from the shared `ScopeStack`, through the same
-    /// `AmbientContext.enrich` path the Compose pipeline uses (`NativeTapCapture` enriches its report
-    /// with `scopeStack.current().enrich(...)`). The sample pushes a screen frame onto the native
-    /// stack — standing in for #65's `viewDidAppear` swizzle, which does not exist yet — so this pins
-    /// the *observation* end of the native screen-attribution path before the swizzle is built on it.
-    func testNativeTapCarriesScreenAndSection() {
-        let app = launchNativeSample()
-        app.buttons["native_plain_button"].tap()
-        let props = lastEventProps(app)
-        XCTAssertTrue(props.contains("\"screen\":\"NativeSample\""), "screen missing from props: \(props)")
-        XCTAssertTrue(props.contains("\"section\":\"NativeMain\""), "section missing from props: \(props)")
     }
 
     /// The #82 case, end to end: on a real SwiftUI `List` a full-screen `_UITouchPassthroughView`
@@ -297,5 +280,157 @@ final class HybridBoundaryUITests: XCTestCase {
             "Last event target: native_button_in_hybrid",
             "native capture reported nothing for a known-good tap either — the assertion above proved nothing"
         )
+    }
+}
+
+/// Coverage for #65's native **screen** capture — the `viewDidAppear:` swizzle — on a real UIKit
+/// `UIViewController` hierarchy (`NativeScreensRootView` in `ContentView.swift`).
+///
+/// This is the surface that class of work has to reach: screen capture is lifecycle-driven, and every
+/// lifecycle defect this library has shipped (a scroll's stale begin position, a passthrough overlay,
+/// a screen frame that leaks) was invisible to unit tests and only surfaced under real synthetic
+/// touches. Each test drives real pushes, presents and tab switches and reads the cumulative
+/// `Screen Viewed` log the sample surfaces (a UI test cannot read Kotlin state).
+///
+/// The log is `name:previous_screen` entries joined by `|`. Because every assertion pins the *exact*
+/// log, a container controller that wrongly reported itself (a `UINavigationController`, a
+/// `UITabBarController`) would show up as an extra entry and fail the test — the exclusion of those is
+/// checked here, not just asserted in a comment.
+final class NativeScreensUITests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func launch() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-autograph-native-screens"]
+        app.launch()
+        return app
+    }
+
+    /// Waits for the cumulative screen-view log to reach [expected]. The log updates from a
+    /// `viewDidAppear:`-driven callback a beat after each transition, so this waits rather than reading
+    /// eagerly — and, being an exact match, fails if a container controller added a spurious entry.
+    ///
+    /// `.firstMatch`, not a bare subscript: a modal presented `.overFullScreen` leaves its presenter in
+    /// the accessibility tree, so two labels carry this identifier at once. Both show the same value
+    /// (the sample updates every screen's labels on every event), so taking the first is correct — and
+    /// a bare `app.staticTexts["id"]` would be an ambiguous query that never resolves in the predicate.
+    private func screenLog(_ app: XCUIApplication) -> XCUIElement {
+        app.staticTexts.matching(identifier: "native_screen_view_log_label").firstMatch
+    }
+
+    private func waitForScreenLog(_ app: XCUIApplication, _ expected: String) {
+        expectation(
+            for: NSPredicate(format: "label == %@", "Screen views: \(expected)"),
+            evaluatedWith: screenLog(app)
+        )
+        waitForExpectations(timeout: 5)
+    }
+
+    private func lastTarget(_ app: XCUIApplication) -> String {
+        app.staticTexts.matching(identifier: "native_last_event_label").firstMatch.label
+    }
+
+    private func lastProps(_ app: XCUIApplication) -> String {
+        app.staticTexts.matching(identifier: "native_last_event_props_label").firstMatch.label
+    }
+
+    /// The first UIKit screen fires exactly one Screen Viewed on entry, with no previous_screen — and
+    /// neither the hosting controller nor the navigation controller reports one alongside it.
+    func testFirstScreenFiresOnEntry() {
+        let app = launch()
+        waitForScreenLog(app, "FirstScreen:(none)")
+    }
+
+    /// Pushing a controller reports the new screen, carrying the one it replaced as previous_screen.
+    /// One push produces exactly one new entry — the navigation container is not itself a screen.
+    func testPushReportsTheNewScreenWithPrevious() {
+        let app = launch()
+        waitForScreenLog(app, "FirstScreen:(none)")
+        app.buttons["native_push_second"].tap()
+        waitForScreenLog(app, "FirstScreen:(none)|SecondScreen:FirstScreen")
+    }
+
+    /// Popping re-shows First as a fresh screen view whose previous_screen is Second. A re-appearance
+    /// is a screen view; the dedup rule only skips a re-fire while the *same* controller's frame is
+    /// still live (a cancelled interactive pop), which a completed pop is not.
+    func testPopReReportsFirst() {
+        let app = launch()
+        app.buttons["native_push_second"].tap()
+        waitForScreenLog(app, "FirstScreen:(none)|SecondScreen:FirstScreen")
+        app.buttons["native_pop"].tap()
+        waitForScreenLog(app, "FirstScreen:(none)|SecondScreen:FirstScreen|FirstScreen:SecondScreen")
+    }
+
+    /// A native tap on a UIKit screen carries the `screen` the swizzle pushed onto the shared stack —
+    /// and, deliberately, no `section` (a `UIViewController` has no section; section is Compose-only).
+    /// This is the assertion the removed `testNativeTapCarriesScreenAndSection` used to make against a
+    /// hand-pushed fixture frame; it now rides a real swizzle-produced frame. The target is pinned
+    /// first so the props are read off the tap's own event, not a stale one.
+    func testNativeTapCarriesScreenAndNoSection() {
+        let app = launch()
+        waitForScreenLog(app, "FirstScreen:(none)")
+        app.buttons["native_first_button"].tap()
+        XCTAssertEqual(lastTarget(app), "Last event target: native_first_button")
+        let props = lastProps(app)
+        XCTAssertTrue(props.contains("\"screen\":\"FirstScreen\""), "screen missing from props: \(props)")
+        XCTAssertFalse(props.contains("\"section\""), "a native screen must carry no section: \(props)")
+    }
+
+    /// A modal presented *over* its presenter (`.overFullScreen`) stacks on top and restores the
+    /// presenter on dismiss. The presenter (`FirstScreen`) gets no `viewDidDisappear:` on present nor
+    /// `viewDidAppear:` on dismiss, so its frame is never removed and never re-added: the screen-view
+    /// log gains `SheetScreen:FirstScreen` but *not* a second `FirstScreen` on dismiss, and a tap after
+    /// dismiss carries `FirstScreen` again because its frame was underneath the whole time. A single
+    /// "current screen" slot could not do this — it would drop to nothing once the sheet closed.
+    func testModalOverPresenterStacksAndRestoresIt() {
+        let app = launch()
+        waitForScreenLog(app, "FirstScreen:(none)")
+
+        app.buttons["native_present_sheet"].tap()
+        waitForScreenLog(app, "FirstScreen:(none)|SheetScreen:FirstScreen")
+        app.buttons["native_sheet_button"].tap()
+        XCTAssertTrue(
+            lastProps(app).contains("\"screen\":\"SheetScreen\""),
+            "a tap on the sheet should carry screen=SheetScreen: \(lastProps(app))"
+        )
+
+        app.buttons["native_dismiss_sheet"].tap()
+        // No new screen view on dismiss (the presenter got no viewDidAppear:); the log is unchanged.
+        // FirstScreen is proven restored by a tap carrying its screen again.
+        waitForScreenLog(app, "FirstScreen:(none)|SheetScreen:FirstScreen")
+        app.buttons["native_first_button"].tap()
+        XCTAssertEqual(lastTarget(app), "Last event target: native_first_button")
+        XCTAssertTrue(
+            lastProps(app).contains("\"screen\":\"FirstScreen\""),
+            "after dismiss the presenter's frame should be current again: \(lastProps(app))"
+        )
+    }
+
+    /// Returning to a screen from an *excluded* one (here a SwiftUI `UIHostingController` modal, which
+    /// the capture skips) must not name the screen as its own `previous_screen`. FirstScreen disappears
+    /// and reappears around the excluded modal with nothing capturable recorded in between, so
+    /// `record` sees FirstScreen as the last screen — the re-entry emits FirstScreen again but with no
+    /// previous, not `FirstScreen:FirstScreen`.
+    func testReturnFromExcludedScreenHasNoSelfPrevious() {
+        let app = launch()
+        waitForScreenLog(app, "FirstScreen:(none)")
+        app.buttons["native_present_excluded"].tap()
+        // The excluded modal reports no screen view; the dismiss brings FirstScreen back as a fresh
+        // view whose previous is unknown (none), never itself.
+        app.buttons["native_dismiss_excluded"].tap()
+        waitForScreenLog(app, "FirstScreen:(none)|FirstScreen:(none)")
+    }
+
+    /// Switching tabs reports the newly selected content controller. The `UITabBarController` itself is
+    /// a container and reports nothing; only `TabA` (shown first) and then `TabB` do.
+    func testTabSwitchReportsTheSelectedTab() {
+        let app = launch()
+        waitForScreenLog(app, "FirstScreen:(none)")
+        app.buttons["native_present_tabs"].tap()
+        waitForScreenLog(app, "FirstScreen:(none)|TabAScreen:FirstScreen")
+        app.tabBars.buttons["TabB"].tap()
+        waitForScreenLog(app, "FirstScreen:(none)|TabAScreen:FirstScreen|TabBScreen:TabAScreen")
     }
 }
