@@ -33,9 +33,14 @@ internal class AndroidScreenCapture(
     // explicit unregisters. Frames are keyed by screen identity; weak keys so a screen destroyed without
     // its stop callback (should not happen, but cheap insurance) cannot pin the Activity/Fragment.
     private var active = true
+    // Frame maps are weak: their values (ScopeHandle) do not reference the key, so a screen whose stop
+    // callback was somehow missed can still be collected. The registration map cannot be — its value
+    // holds the FragmentManager, which pins the Activity through its host, so weak keys would never be
+    // collected anyway. It is a plain map cleared explicitly on onActivityDestroyed and tearDown (both
+    // reliable short of process death, which frees everything regardless).
     private val activityFrames = java.util.WeakHashMap<Activity, ScopeHandle>()
     private val fragmentFrames = java.util.WeakHashMap<Fragment, ScopeHandle>()
-    private val fragmentRegistrations = java.util.WeakHashMap<Activity, FragmentRegistration>()
+    private val fragmentRegistrations = HashMap<Activity, FragmentRegistration>()
 
     // Screens whose next resume is a configuration-change re-creation, not a fresh view. Keyed by class
     // name because the leaving instance and the re-created one are different objects. Emit is skipped
