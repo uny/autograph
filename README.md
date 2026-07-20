@@ -343,6 +343,13 @@ Its `Autograph` binary target picks one of two sources depending on what's on di
 
 ## iOS: SwiftUI screens with `.autographScreen`
 
+> **Consumption model.** iOS instrumentation is **first-class today for hybrid apps** — a Kotlin
+> Multiplatform shared module (which builds the `Tracker` and owns the `ScopeStack`) plus a Swift /
+> SwiftUI shell. A **pure-Swift** app (no KMP module) can already implement `SegmentBridge`
+> (`AutographSegmentSwift`) and use `.autographScreen` (`AutographUI`), but there is not yet a
+> Swift-idiomatic way to *construct* a `Tracker` — tracked as its own epic in
+> [#94](https://github.com/uny/autograph/issues/94). The snippets below assume the hybrid shape.
+
 Native screen capture auto-emits `Screen Viewed` for UIKit `UIViewController` transitions (an opt-in
 `viewDidAppear:` swizzle). It cannot see **SwiftUI** screens: every SwiftUI screen is one
 system-bundle `UIHostingController`, and `NavigationStack` swaps its destinations inside that single
