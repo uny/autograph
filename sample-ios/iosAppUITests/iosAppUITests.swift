@@ -283,6 +283,73 @@ final class HybridBoundaryUITests: XCTestCase {
     }
 }
 
+/// Coverage for #65's **explicit** SwiftUI screen API (`.autographScreen`) on a real `NavigationStack`
+/// (`SwiftUIScreensView` in `ContentView.swift`). The UIKit swizzle can't see SwiftUI screens, so they
+/// name themselves; this drives the same Kotlin facade the shipped `AutographUI` modifier drives (via a
+/// shape-identical sample modifier — see `AutographSampleScreen`) through real synthetic navigation.
+///
+/// SwiftUI delivers `onAppear`/`onDisappear` in an order unit tests can't see (measured: on push the
+/// destination appears *before* the source disappears; on pop the parent re-appears), so this reads the
+/// cumulative `name:previous_screen` log after real pushes and pops. The log is exact, so a screen that
+/// wrongly named itself its own `previous_screen`, or a missed re-appearance, fails the test.
+final class SwiftUIScreensUITests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func launch() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-autograph-swiftui-screens"]
+        app.launch()
+        return app
+    }
+
+    private func waitForScreenLog(_ app: XCUIApplication, _ expected: String) {
+        expectation(
+            for: NSPredicate(format: "label == %@", "Screen views: \(expected)"),
+            evaluatedWith: app.staticTexts["swiftui_screen_view_log_label"]
+        )
+        waitForExpectations(timeout: 5)
+    }
+
+    /// The first SwiftUI screen fires exactly one Screen Viewed on entry, with no previous_screen.
+    func testFirstScreenFiresOnEntry() {
+        let app = launch()
+        waitForScreenLog(app, "SwiftUIFirst:(none)")
+    }
+
+    /// Pushing a destination reports it, carrying the screen it replaced as previous_screen — even
+    /// though SwiftUI fires the destination's onAppear before the source's onDisappear.
+    func testPushReportsSecondWithPrevious() {
+        let app = launch()
+        waitForScreenLog(app, "SwiftUIFirst:(none)")
+        app.buttons["swiftui_go_second"].tap()
+        waitForScreenLog(app, "SwiftUIFirst:(none)|SwiftUISecond:SwiftUIFirst")
+    }
+
+    /// Popping re-shows First as a fresh screen view whose previous_screen is Second.
+    func testPopReReportsFirst() {
+        let app = launch()
+        app.buttons["swiftui_go_second"].tap()
+        waitForScreenLog(app, "SwiftUIFirst:(none)|SwiftUISecond:SwiftUIFirst")
+        app.buttons["swiftui_back_second"].tap()
+        waitForScreenLog(app, "SwiftUIFirst:(none)|SwiftUISecond:SwiftUIFirst|SwiftUIFirst:SwiftUISecond")
+    }
+
+    /// Returning to First from an *untracked* screen (one with no `.autographScreen`) must not name
+    /// First its own previous_screen: nothing capturable was recorded in between, so `record` sees
+    /// First as the last screen and the self-previous guard drops the previous to none. This is the
+    /// SwiftUI mirror of `testReturnFromExcludedScreenHasNoSelfPrevious`.
+    func testReturnFromUntrackedHasNoSelfPrevious() {
+        let app = launch()
+        waitForScreenLog(app, "SwiftUIFirst:(none)")
+        app.buttons["swiftui_go_untracked"].tap()
+        // The untracked screen reports nothing; returning brings First back with previous = none.
+        app.buttons["swiftui_back_untracked"].tap()
+        waitForScreenLog(app, "SwiftUIFirst:(none)|SwiftUIFirst:(none)")
+    }
+}
+
 /// Coverage for #65's native **screen** capture — the `viewDidAppear:` swizzle — on a real UIKit
 /// `UIViewController` hierarchy (`NativeScreensRootView` in `ContentView.swift`).
 ///

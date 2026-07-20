@@ -341,6 +341,39 @@ Its `Autograph` binary target picks one of two sources depending on what's on di
 - **External consumers**: otherwise, falls back to a checksummed download from that version's
   GitHub Release asset (`Autograph.xcframework.zip`).
 
+## iOS: SwiftUI screens with `.autographScreen`
+
+Native screen capture auto-emits `Screen Viewed` for UIKit `UIViewController` transitions (an opt-in
+`viewDidAppear:` swizzle). It cannot see **SwiftUI** screens: every SwiftUI screen is one
+system-bundle `UIHostingController`, and `NavigationStack` swaps its destinations inside that single
+host with no per-destination `viewDidAppear:`. So SwiftUI screens name themselves, using the
+`AutographUI` product (iOS 14+):
+
+```kotlin
+// Kotlin, in your shared module: expose a capture built on the SAME ScopeStack you hand
+// AutographProvider / the native capture, so a SwiftUI screen becomes the previous_screen of the
+// next screen and taps under it carry it.
+fun makeScreenCapture(tracker: Tracker, scopeStack: ScopeStack) =
+    AutographScreenCapture(tracker, scopeStack)
+```
+
+```swift
+// Swift: set the capture once at the root, then name each screen.
+import AutographUI
+
+ContentView().autographScreenCapture(capture)          // once, at the root
+
+RecipeDetail().autographScreen("RecipeDetail")         // on each screen
+```
+
+A missing `.autographScreenCapture(_:)` is **loud** — it traps in debug and logs a fault in release,
+rather than silently dropping every screen view.
+
+**Hybrid double-emit.** If you host a `.autographScreen` SwiftUI screen inside an *app-bundle*
+`UIViewController` (not a plain `UIHostingController`, which the swizzle already skips) while native
+screen capture is also installed, both could report that screen. Return `null` from that controller's
+`screenName` in `installAutographNativeScreenCapture` to let the explicit path own it.
+
 ## Requirements
 
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)

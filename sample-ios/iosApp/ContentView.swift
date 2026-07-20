@@ -125,6 +125,8 @@ struct ContentView: View {
             HybridSampleView()
         } else if arguments.contains(nativeScreensLaunchArgument) {
             NativeScreensRootView()
+        } else if arguments.contains(swiftUIScreensLaunchArgument) {
+            SwiftUIScreensView()
         } else {
             ComposeView()
         }
@@ -400,4 +402,118 @@ private func makeTabsController() -> UITabBarController {
     b.tabBarItem = UITabBarItem(title: "TabB", image: nil, tag: 1)
     tabs.viewControllers = [a, b]
     return tabs
+}
+
+// MARK: - SwiftUI navigation sample for the explicit `.autographScreen` API (#65 PR-D2b)
+
+/// Launch argument for the SwiftUI `NavigationStack` sample that exercises #65's explicit screen API.
+let swiftUIScreensLaunchArgument = "-autograph-swiftui-screens"
+
+/// Installs the sample's `AutographScreenCapture` once (in `init`, before any screen appears) and holds
+/// the cumulative `name:previous_screen` log for the always-visible label the XCUITest reads.
+final class SwiftUIScreensEvents: ObservableObject {
+    @Published var screenLog = "(none yet)"
+
+    init() {
+        SwiftUIScreensCaptureKt.installSwiftUIScreensCapture { [weak self] log in
+            self?.screenLog = log
+        }
+    }
+}
+
+/// The sample's stand-in for the `AutographUI` product's `.autographScreen("Name")` modifier.
+///
+/// It is **intentionally identical in shape** to the shipped modifier — `onAppear` reports the screen,
+/// `onDisappear` retires it. The only difference is bookkeeping: the shipped modifier holds the
+/// `AutographScreenView` token in SwiftUI `@State`, whereas this drives `sample-shared`'s facade by
+/// name (so no `autograph-uikit`/umbrella type has to cross into the sample, which already links
+/// `sample_shared`). What it verifies — the Kotlin facade's emit + `previous_screen` + self-previous
+/// guard, driven through a real `NavigationStack` — is the same.
+struct AutographSampleScreen: ViewModifier {
+    let name: String
+
+    func body(content: Content) -> some View {
+        content
+            .onAppear { SwiftUIScreensCaptureKt.swiftUIScreenAppeared(name: name) }
+            .onDisappear { SwiftUIScreensCaptureKt.swiftUIScreenDisappeared(name: name) }
+    }
+}
+
+extension View {
+    func autographSampleScreen(_ name: String) -> some View {
+        modifier(AutographSampleScreen(name: name))
+    }
+}
+
+/// Guards the `NavigationStack` sample behind iOS 16 (the sample app targets iOS 15). The
+/// `.autographScreen` mechanism itself is `onAppear`/`onDisappear`, so it needs no such floor — only
+/// this sample's `NavigationStack` container does.
+struct SwiftUIScreensView: View {
+    var body: some View {
+        if #available(iOS 16.0, *) {
+            SwiftUIScreensNavigation()
+        } else {
+            Text("The SwiftUI screens sample needs iOS 16 (NavigationStack).")
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+struct SwiftUIScreensNavigation: View {
+    @StateObject private var events = SwiftUIScreensEvents()
+
+    var body: some View {
+        NavigationStack {
+            SwiftUIFirstScreen()
+        }
+        // Outside the navigation content, so the log stays visible and queryable no matter which screen
+        // is pushed on top.
+        .safeAreaInset(edge: .bottom) {
+            Text("Screen views: \(events.screenLog)")
+                .accessibilityIdentifier("swiftui_screen_view_log_label")
+                .padding(8)
+        }
+    }
+}
+
+@available(iOS 16.0, *)
+struct SwiftUIFirstScreen: View {
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("First").accessibilityIdentifier("swiftui_first_marker")
+            NavigationLink("Go to Second") { SwiftUISecondScreen() }
+                .accessibilityIdentifier("swiftui_go_second")
+            NavigationLink("Go to Untracked") { SwiftUIUntrackedScreen() }
+                .accessibilityIdentifier("swiftui_go_untracked")
+        }
+        .autographSampleScreen("SwiftUIFirst")
+    }
+}
+
+@available(iOS 16.0, *)
+struct SwiftUISecondScreen: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Second").accessibilityIdentifier("swiftui_second_marker")
+            Button("Back") { dismiss() }.accessibilityIdentifier("swiftui_back_second")
+        }
+        .autographSampleScreen("SwiftUISecond")
+    }
+}
+
+/// Deliberately carries **no** `.autographSampleScreen` — an untracked intermediate screen, so that
+/// returning to First from it records nothing in between and First must not become its own
+/// `previous_screen`.
+@available(iOS 16.0, *)
+struct SwiftUIUntrackedScreen: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Text("Untracked").accessibilityIdentifier("swiftui_untracked_marker")
+            Button("Back") { dismiss() }.accessibilityIdentifier("swiftui_back_untracked")
+        }
+    }
 }
