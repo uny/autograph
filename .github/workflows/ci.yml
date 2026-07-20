@@ -73,10 +73,10 @@ jobs:
       - name: Build Autograph.xcframework
         run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
 
-      - name: Test AutographSegmentSwift
+      - name: Test the Swift package (AutographSegmentSwift + AutographUI)
         run: |
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
-          xcodebuild test -scheme Autograph -destination "platform=iOS Simulator,name=$device"
+          xcodebuild test -scheme Autograph-Package -destination "platform=iOS Simulator,name=$device"
 
   sample-ios:
     name: sample-ios
