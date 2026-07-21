@@ -16,6 +16,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
+import kotlin.time.TimeSource
 
 private class RecordingTransport(
     override val stampsInPipeline: Boolean = false,
@@ -364,5 +365,82 @@ class AutographTrackerTest {
         assertNull(transport.calls.single().third)
         assertNotNull(transport.envelopes, "transport must receive the envelope source on connect")
         assertTrue(transport.envelopes!!.stamp().seq == 1L)
+    }
+
+    // #52: close() used to be `scope.cancel()`, which dropped every enqueued-but-unstamped event —
+    // a silent loss on a *normal* shutdown, in a library whose headline guarantee is that ordering
+    // information is never silently lost.
+    //
+    // These two use the real, serial background dispatcher (the production default) rather than
+    // Unconfined or StandardTestDispatcher, because the property under test only exists when events are
+    // genuinely still queued at close(): Unconfined delivers inline, and a virtual-time scheduler needs
+    // an advance that close()'s blocking drain cannot give it. SlowRecordingTransport spends a moment
+    // per event so the burst below is certain to be backed up when close() is called — without it, a
+    // fast enough dispatcher could drain everything first and the assertion would hold even for the old
+    // cancelling implementation, i.e. prove nothing.
+
+    @Test
+    fun closeDeliversEventsThatWereStillQueued() {
+        val transport = SlowRecordingTransport()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            // No dispatcher override: the production one, off the caller's thread.
+        }
+
+        val n = 50
+        repeat(n) { tracker.track("E$it") }
+        assertTrue(
+            transport.names.size < n,
+            "precondition: events must still be queued when close() is called, or this proves nothing",
+        )
+
+        tracker.close()
+
+        assertEquals(n, transport.names.size, "close() must deliver every event it accepted")
+    }
+
+    @Test
+    fun closeIsIdempotentAndStopsAcceptingWork() {
+        val transport = SlowRecordingTransport()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+        }
+
+        tracker.track("before")
+        tracker.close()
+        val deliveredAtClose = transport.names.size
+        tracker.close() // must not throw, block again, or deliver anything new
+        tracker.track("after")
+
+        assertEquals(listOf("before"), transport.names)
+        assertEquals(deliveredAtClose, transport.names.size, "a second close() delivers nothing new")
+    }
+}
+
+/**
+ * Records delivered event names, spending [perEventMillis] on each so that a burst of `track` calls is
+ * genuinely still queued on the serial dispatcher by the time `close()` runs. Busy-waits rather than
+ * sleeps because [Transport.track] is not a suspending function and `Thread.sleep` has no common
+ * equivalent; the total (a few tens of milliseconds) is small enough not to matter to the suite.
+ */
+private class SlowRecordingTransport(private val perEventMillis: Int = 2) : Transport {
+    val names = mutableListOf<String>()
+
+    override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
+        val start = TimeSource.Monotonic.markNow()
+        @Suppress("ControlFlowWithEmptyBody")
+        while (start.elapsedNow().inWholeMilliseconds < perEventMillis) {
+        }
+        names += name
+    }
+
+    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
+        names += name
+    }
+
+    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
+        names += userId
     }
 }
