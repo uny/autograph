@@ -17,14 +17,24 @@ private class NonDurableSeqStore : SeqStore {
     var putLongCount: Int = 0
         private set
 
-    override fun getLong(key: String): Long? = (pending[key] ?: durable[key]) as Long?
+    /** Reads (getLong + getString), counted so a test can assert construction touches the store at all. */
+    var readCount: Int = 0
+        private set
+
+    override fun getLong(key: String): Long? {
+        readCount++
+        return (pending[key] ?: durable[key]) as Long?
+    }
 
     override fun putLong(key: String, value: Long) {
         putLongCount++
         pending[key] = value
     }
 
-    override fun getString(key: String): String? = (pending[key] ?: durable[key]) as String?
+    override fun getString(key: String): String? {
+        readCount++
+        return (pending[key] ?: durable[key]) as String?
+    }
 
     override fun putString(key: String, value: String) {
         pending[key] = value
@@ -84,12 +94,31 @@ class SeqStoreDurabilityTest {
     }
 
     @Test
+    fun constructionDoesNoStoreWritesUntilFirstOperation() {
+        // #55: building a Stamper must not touch the store on the caller thread — the construction-time
+        // load + chunk reservation are deferred to the first operation, which the tracker runs on its
+        // serial dispatcher, off the (often main) thread. Fault injection: restoring the eager init{}
+        // block (reservation at construction) makes putLongCount non-zero before any stamp.
+        val store = NonDurableSeqStore()
+        val s = stamper(store, SeqPersistence.Chunked(10))
+        assertEquals(0, store.readCount, "construction must not read the store — the load is deferred (#55)")
+        assertEquals(0, store.putLongCount, "construction must not persist to the store — I/O is deferred (#55)")
+
+        s.stamp()
+        assertTrue(store.readCount > 0 && store.putLongCount > 0, "the first operation performs the deferred load + reservation")
+    }
+
+    @Test
     fun chunkedSingleCounterModePersistsOnlyAtBoundaries() {
         val store = NonDurableSeqStore()
         val s = stamper(store, SeqPersistence.Chunked(5), mode = SequenceMode.PerSession)
 
+        // The first stamp (seq 1) fires the deferred init writes; capture the count *after* it, since
+        // construction itself no longer writes (#55). What this test guards is the batching *between*
+        // boundaries: seq 2..4 must add nothing.
+        s.stamp() // seq 1 — fires the deferred load + reservation
         val afterInit = store.putLongCount
-        repeat(4) { s.stamp() } // seq 1..4 — no chunk boundary at 5
+        repeat(3) { s.stamp() } // seq 2..4 — no chunk boundary at 5
         assertEquals(afterInit, store.putLongCount, "Chunked+PerSession must not persist on non-boundary events")
 
         s.stamp() // seq 5 — chunk boundary

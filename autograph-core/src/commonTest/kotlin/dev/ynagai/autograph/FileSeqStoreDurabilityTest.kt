@@ -87,8 +87,9 @@ class FileSeqStoreDurabilityTest {
     @Test
     fun chunkedReservationOnRealFileNeverRehandsOutNumbers() {
         val chunked = SeqPersistence.Chunked(10)
-        // Chunk [1..10] is reserved and flushed to disk at construction; the three events advance the
-        // in-memory counter to 3 but do not persist again (no boundary crossed).
+        // Chunk [1..10] is reserved and flushed to disk on the first stamp (the reservation is deferred
+        // off construction — #55); the three events advance the in-memory counter to 3 but do not
+        // persist again (no boundary crossed).
         stamper(chunked).apply { repeat(3) { stamp() } }
 
         // Restarting before the boundary models a crash mid-chunk: the next run must skip past every
