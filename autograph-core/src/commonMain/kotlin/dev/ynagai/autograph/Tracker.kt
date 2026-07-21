@@ -48,14 +48,25 @@ public interface Tracker {
     public fun reset() {}
 
     /**
-     * Releases resources held by this tracker (its internal stamping/delivery coroutine scope).
-     * Call when a tracker is being discarded and replaced, such as recreating it on logout — not
-     * needed for a tracker that lives for the app's lifetime. [track]/[screen]/[identify]/[flush]/
-     * [reset] calls made after [close] are dropped, except when the transport stamps in its own
-     * pipeline, in which case they still reach the transport directly (this tracker never
-     * scheduled them onto the closed scope in the first place). [notifyForeground] and
-     * [notifyBackground] are unaffected either way: they update session state synchronously and
-     * never went through the scope, so they keep working on a closed tracker.
+     * Drains, then releases the resources held by this tracker (its internal stamping/delivery
+     * coroutine scope). Call when a tracker is being discarded and replaced, such as recreating it on
+     * logout — not needed for a tracker that lives for the app's lifetime.
+     *
+     * **Blocks until everything already accepted has been stamped and handed to the transport, then
+     * flushes it** — up to an internal timeout, after which it gives up and releases anyway rather than
+     * hold a shutdown open indefinitely. Events accepted before [close] are therefore delivered, not
+     * discarded; what the transport then does with them (network delivery, its own retry queue) is the
+     * transport's business and is not awaited beyond [flush].
+     *
+     * Do not point `AutographConfig.dispatcher` at the thread that calls [close]: blocking a
+     * single-threaded dispatcher from inside itself starves the drain, which then delivers nothing and
+     * returns at the timeout.
+     *
+     * Idempotent. [track]/[screen]/[identify]/[flush]/[reset] calls made after [close] are dropped,
+     * except when the transport stamps in its own pipeline, in which case they still reach the
+     * transport directly (this tracker never scheduled them onto its scope in the first place).
+     * [notifyForeground] and [notifyBackground] are unaffected either way: they update session state
+     * synchronously and never went through the scope, so they keep working on a closed tracker.
      */
     public fun close() {}
 }

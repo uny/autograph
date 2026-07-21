@@ -6,9 +6,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 
 /** Configuration for the [Autograph] builder. */
@@ -117,6 +120,14 @@ internal class AutographTracker(
         },
     )
 
+    /**
+     * Set at the very start of [close], before the drain, so nothing new joins the set of work being
+     * drained — otherwise a `track` racing the shutdown could enqueue after the children were
+     * snapshotted and be cancelled anyway, which is the loss [close] exists to prevent.
+     */
+    @Volatile
+    private var closed = false
+
     init {
         transport.connect(stamper)
     }
@@ -137,6 +148,7 @@ internal class AutographTracker(
         if (transport.stampsInPipeline) {
             send(null)
         } else {
+            if (closed) return
             val eventTimestampMillis = clock()
             scope.launch { send(stamper.stamp(eventTimestampMillis)) }
         }
@@ -195,6 +207,7 @@ internal class AutographTracker(
         if (transport.stampsInPipeline) {
             transport.flush()
         } else {
+            if (closed) return
             scope.launch { transport.flush() }
         }
     }
@@ -208,6 +221,7 @@ internal class AutographTracker(
             // the session out from under events still queued in the pipeline, mis-attributing them.
             transport.reset()
         } else {
+            if (closed) return
             scope.launch {
                 stamper.reset()
                 transport.reset()
@@ -215,10 +229,51 @@ internal class AutographTracker(
         }
     }
 
+    /**
+     * Drains before releasing: stop accepting new work, wait for everything already enqueued to be
+     * stamped and handed to the transport, [Transport.flush] it, and only then cancel the scope.
+     *
+     * The old implementation cancelled outright, which silently dropped every enqueued-but-unstamped
+     * event — a self-inconsistency for a library whose headline guarantee is that ordering information
+     * is never silently lost. It is rare on mobile (a tracker usually lives for the process) but real
+     * on `jvm()`/desktop, where a graceful shutdown is expected to deliver what it accepted.
+     *
+     * Waiting on the scope's *children* rather than enqueueing one last coroutine is deliberate: the
+     * latter only orders correctly while [AutographConfig.dispatcher] stays single-slot, and the
+     * dispatcher is caller-configurable. Joining the children drains whatever is outstanding under any
+     * dispatcher.
+     *
+     * Bounded by [CLOSE_DRAIN_TIMEOUT_MILLIS] — see [drainBlocking] for why a bound, and for the one
+     * configuration (closing from the tracker's own single-threaded dispatcher) that starves the drain.
+     * Idempotent.
+     */
     override fun close() {
+        if (closed) return
+        closed = true
+        if (transport.stampsInPipeline) {
+            // Nothing was ever scheduled onto the scope, so there is nothing of ours to drain; the
+            // transport owns its own queue and flush is the only thing we can ask of it.
+            transport.flush()
+        } else {
+            drainBlocking(CLOSE_DRAIN_TIMEOUT_MILLIS) {
+                // Snapshot first: joining a live sequence would also wait on anything added while we
+                // wait, and `closed` has already stopped this tracker adding more.
+                scope.coroutineContext.job.children.toList().joinAll()
+                transport.flush()
+            }
+        }
         scope.cancel()
     }
 }
+
+/**
+ * How long [Tracker.close] waits for already-enqueued events to reach the transport.
+ *
+ * Sized for a shutdown path a user is waiting on: long enough for a queue of stamped events and one
+ * transport flush (both local operations — the transport's own network delivery is its business, not
+ * something `close` can await), short enough that a wedged transport cannot hold an app's teardown.
+ */
+private const val CLOSE_DRAIN_TIMEOUT_MILLIS = 5_000L
 
 /** Merges [target] into [properties] under the reserved `"target"` key, or returns [properties] unchanged when null. */
 private fun withTarget(properties: JsonObject, target: String?): JsonObject =
