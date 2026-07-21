@@ -172,7 +172,15 @@ internal class AutographTracker(
      */
     private fun deliver(send: (Envelope?) -> Unit) {
         if (transport.stampsInPipeline) {
-            send(null)
+            // Pipeline delivery is synchronous on the caller's thread — no [scope], so the
+            // CoroutineExceptionHandler above never sees it. Mirror its swallow-and-[report] here so a
+            // throwing pipeline transport honors the same "a failed delivery must never crash the app"
+            // contract, and its failure still reaches [logger] instead of propagating into `track`.
+            try {
+                send(null)
+            } catch (e: Exception) {
+                report("Autograph: event delivery failed: ${e.message}")
+            }
         } else {
             if (closed) return
             val eventTimestampMillis = clock()

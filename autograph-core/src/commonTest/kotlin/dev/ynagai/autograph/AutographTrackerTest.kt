@@ -389,6 +389,35 @@ class AutographTrackerTest {
     }
 
     @Test
+    fun aThrowingPipelineTransportIsReportedAndDoesNotCrashDelivery() {
+        // #56 / CodeRabbit: a stampsInPipeline transport is delivered to synchronously on the caller
+        // thread, bypassing the scope's CoroutineExceptionHandler. A throwing one must still be
+        // swallowed and reported through the logger, honoring the never-crash-delivery contract on the
+        // pipeline path too. Fault injection: removing the try/catch in deliver()'s pipeline branch
+        // makes track("A") throw and reddens this.
+        val logs = mutableListOf<String>()
+        val throwing = object : Transport {
+            override val stampsInPipeline: Boolean = true
+            override fun connect(envelopes: EnvelopeSource) {}
+            override fun track(name: String, properties: JsonObject, envelope: Envelope?): Unit =
+                throw IllegalStateException("pipeline boom")
+            override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {}
+            override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {}
+        }
+        val tracker = Autograph {
+            transport(throwing)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            logger = AutographLogger { logs += it }
+        }
+
+        tracker.track("A") // pipeline delivery throws synchronously — must not propagate to the caller
+
+        assertEquals(1, logs.size, "the pipeline delivery failure must reach the configured logger")
+        assertTrue(logs.single().contains("event delivery failed") && logs.single().contains("pipeline boom"), logs.single())
+    }
+
+    @Test
     fun closeCancelsScopeSoLaterEventsAreDropped() = runTest {
         val transport = RecordingTransport(stampsInPipeline = false)
         val tracker = Autograph {
