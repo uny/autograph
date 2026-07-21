@@ -54,6 +54,10 @@ public fun resolveNativeTapTarget(
     positionInWindowPx: AxPoint,
     scale: Float,
 ): String? {
+    // A SwiftUI `.autographIgnore()` excludes by window region, not by view (see AutographIgnoredBounds):
+    // drop the tap immediately if it lands in one. Checked first, before the walk, since it needs only
+    // the position this already has.
+    if (AutographIgnoredBounds.contains(positionInWindowPx)) return null
     // Ownership is asked of the *topmost* path and attribution of the clickable-preferred one, because
     // the two are different questions — see step 2 above. The developer opt-out
     // (registerAutographIgnoredView) is checked on the same two paths and for the same reason as the
