@@ -36,8 +36,10 @@ internal object AutographIgnoredViews {
  * *both* registrations are released, so overlapping owners can't disarm each other. Keep the returned
  * [AutographIgnoredViewRegistration] and call [AutographIgnoredViewRegistration.unregister] to stop
  * excluding the view (e.g. when it leaves the screen). Dropping the registration without unregistering
- * leaves the view excluded and retained until the registration is collected — hold it for exactly as
- * long as the exclusion should last.
+ * does **not** end the exclusion: collecting it only releases its strong reference to the view, so the
+ * view stays excluded until either [AutographIgnoredViewRegistration.unregister] runs or the view
+ * itself deallocates. Hold the registration and unregister it explicitly for exactly as long as the
+ * exclusion should last.
  *
  * A genuinely supported API (unlike the `@AutographInternalApi` internals): reachable from UIKit
  * through the umbrella `Autograph` framework without importing the SwiftUI `AutographUI` product.
