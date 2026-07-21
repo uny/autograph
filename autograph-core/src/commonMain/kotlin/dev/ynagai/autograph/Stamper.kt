@@ -42,9 +42,29 @@ internal class Stamper(
     private var sessionSeq: Long = 0
     private var globalSeq: Long = 0
     private var eventsSincePersist: Long = 0
+    private var started = false
 
-    init {
-        val now = clock()
+    /**
+     * Performs the one-time load of persisted counters/session state and, under chunked
+     * persistence, the durable chunk reservation. Deferred out of the constructor so building a
+     * tracker does no disk I/O on the caller thread (#55) — the store read + reservation run on the
+     * first operation instead. For a core-stamping tracker that first operation is the first
+     * [stamp], which runs on the serial dispatcher, so the load lands off the app's (often main)
+     * thread; a lifecycle call ([notifyForeground]/[notifyBackground]) or [reset] that happens to
+     * precede any event performs it on its own (synchronous) caller thread, in the same spirit as
+     * [notifyBackground]'s existing session flush. Guarded by [started] under [lock], so it runs
+     * exactly once no matter which entry point reaches it first.
+     *
+     * [now] is the operation's own timestamp — a stamp's call-site time, or the wall clock for a
+     * lifecycle/reset call — so the session-restore decision keys off the same instant the operation
+     * does, rather than a constructor-time clock read that no longer exists. The first stamp
+     * therefore opens a fresh session *at its own event timestamp*, keeping the pre-existing
+     * `event_timestamp >= session.start` ordering intact. [started] is set only after a full pass
+     * completes, so a store I/O failure mid-load leaves the stamper un-started and the next operation
+     * retries rather than proceeding on half-initialized state.
+     */
+    private fun ensureStarted(now: Long) {
+        if (started) return
         // A crash may have lost up to (chunk - 1) increments past the persisted
         // high-water marks, so resuming *at* the mark could reuse numbers.
         // Skipping to the next chunk boundary guarantees uniqueness; with
@@ -75,11 +95,13 @@ internal class Stamper(
             store.putLong(KEY_SEQ_SESSION, sessionSeq)
             store.flush()
         }
+        started = true
     }
 
     override fun stamp(): Envelope = stamp(clock())
 
     override fun stamp(eventTimestampMillis: Long): Envelope = synchronized(lock) {
+        ensureStarted(eventTimestampMillis)
         val now = eventTimestampMillis
         rotateIfExpired(now)
         // Session activity is a high-water mark, never moved backward: a non-pipeline event
@@ -108,17 +130,26 @@ internal class Stamper(
     }
 
     fun notifyForeground(): Unit = synchronized(lock) {
-        rotateIfExpired(clock())
+        val now = clock()
+        ensureStarted(now)
+        rotateIfExpired(now)
     }
 
     fun notifyBackground(): Unit = synchronized(lock) {
-        lastActivity = clock()
+        val now = clock()
+        ensureStarted(now)
+        lastActivity = now
         persistSession()
     }
 
     /** Starts a fresh session, e.g. on logout. Device-lifetime counters are preserved. */
     override fun reset(): Unit = synchronized(lock) {
-        startNewSession(clock())
+        val now = clock()
+        // Load first: startNewSession preserves globalSeq, so a reset that is the very first
+        // operation must still read the persisted device-lifetime counter before rotating — otherwise
+        // it would rotate from a globalSeq of 0 and re-hand-out already-emitted device-lifetime numbers.
+        ensureStarted(now)
+        startNewSession(now)
     }
 
     private fun rotateIfExpired(now: Long) {

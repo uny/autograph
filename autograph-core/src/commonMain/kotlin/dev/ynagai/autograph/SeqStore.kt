@@ -72,7 +72,12 @@ internal class FileSeqStore(
     private val dir = Path(directory)
     private val file = Path(directory, fileName)
     private val tmp = Path(directory, "$fileName.tmp")
-    private val values: MutableMap<String, JsonPrimitive> = load()
+
+    // Loaded lazily so constructing the store does no disk I/O on the caller thread (#55): the file
+    // read is deferred to the first access, which for the default tracker is the first stamp on the
+    // serial dispatcher, off the app's (frequently main) thread. `lazy` is SYNCHRONIZED, and every
+    // access is already funnelled through Stamper's lock, so the one-time load can't race.
+    private val values: MutableMap<String, JsonPrimitive> by lazy { load() }
 
     private fun load(): MutableMap<String, JsonPrimitive> {
         if (!SystemFileSystem.exists(file)) return mutableMapOf()
