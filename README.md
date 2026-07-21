@@ -51,7 +51,8 @@ SPI is vendor-neutral.
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, `AutographScope` for screen-scoped event context, and opt-in autocapture of taps (Android and iOS). |
 | `autograph-context` | The ambient scope / screen-context stack that autocapture reads at tap time. Framework-agnostic (no Compose dependency), so native UIKit / SwiftUI / Android View surfaces can push context too. `autograph-compose` mirrors `AutographScope` and `TrackedScreen` into it for you — you only touch this module directly when instrumenting a non-Compose surface. |
-| `autograph-uikit` | iOS-only. The UIKit accessibility-tree hit-test that maps a tap position to an element — the one mechanism that identifies tapped elements across UIKit, SwiftUI, and Compose Multiplatform alike. Today it is an implementation detail shared by `autograph-compose`'s iOS resolver (everything in it is marked `@AutographInternalApi` and you should not depend on it directly); it becomes user-facing when native iOS tap capture lands. |
+| `autograph-uikit` | iOS-only. The UIKit accessibility-tree hit-test that maps a tap position to an element — the one mechanism that identifies tapped elements across UIKit, SwiftUI, and Compose Multiplatform alike. It backs `autograph-compose`'s iOS resolver *and* native (non-Compose) iOS capture: `installAutographNativeTapCapture`, `installAutographNativeScreenCapture`, and the tap opt-outs `registerAutographIgnoredView` / `registerAutographIgnoredBounds` are supported public API. The rest of the module is `@AutographInternalApi` — don't depend on it directly. |
+| `autograph-android` | Android-only. Native (non-Compose) screen capture: `installAutographNativeScreenCapture` auto-emits `Screen Viewed` from `Activity` / `Fragment` lifecycle, so a hybrid app's View/XML screens are tracked alongside its Compose ones. Taps on Android View content are *not* captured — see [What is and isn't captured](#what-is-and-isnt-captured). |
 | `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
 | `autograph-schema` | Generates typed `Tracker.track<EventName>(...)` extension functions from a JSON Schema tracking-plan document, as a compile-time alternative to `EventValidator` (see [Typed event schemas](#typed-event-schemas) below). |
 
@@ -185,7 +186,33 @@ point other autocapture SDKs use) and iOS (walking the native accessibility tree
 Multiplatform bridges its semantics into — the walk lives in `autograph-uikit`'s
 `AccessibilityTree.kt`, driven by `autograph-compose`'s `ElementResolver.ios.kt`; identification
 there is `testTag`-only, since UIKit gives no way to tell an explicit label apart from Compose's
-own text-synthesized one). Taps are silently not captured on JVM/desktop.
+own text-synthesized one).
+
+#### What is and isn't captured
+
+Autocapture is per **surface**, not per app: a Compose screen and a native screen go through different
+pipelines, each opt-in separately. An app migrating to Compose incrementally therefore runs both. This
+table is the whole picture, because a gap here produces **no event at all** — which reads downstream as
+"users didn't tap this" rather than "this surface isn't instrumented".
+
+| Surface | Taps | Screen views |
+|:--|:--|:--|
+| Compose — Android | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
+| Compose — iOS | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
+| Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
+| iOS native — UIKit / SwiftUI | ✅ `installAutographNativeTapCapture` | ✅ `installAutographNativeScreenCapture` (UIKit) · [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) (SwiftUI) |
+| Android native — View / XML | ❌ **not captured** ([#63](https://github.com/uny/autograph/issues/63)) | ✅ `installAutographNativeScreenCapture` (Activity / Fragment) |
+
+The asymmetry worth stating plainly: **a hybrid Android app gets `Screen Viewed` for its non-Compose
+screens but no `Element Clicked` for taps on them**, while the same app on iOS gets both. If that gap
+matters to you, say so on [#63](https://github.com/uny/autograph/issues/63) — it is deferred for want of
+a demand signal, not for a technical reason.
+
+Known gaps *within* iOS native tap capture, all tracked on
+[#86](https://github.com/uny/autograph/issues/86): `UIControl` target-action taps (the window-level
+recognizer only sees raw touches), `Menu`, `.onTapGesture` on a `Text` (it surfaces with no button trait,
+and widening the predicate would start capturing ordinary labels), and a `UIKitView` hosted inside Compose
+(excluded by the Compose boundary, unresolvable by Compose).
 
 Every event now carries — this shape is the stable envelope contract described above:
 
@@ -329,6 +356,15 @@ core, the ambient scope/screen stack, UIKit capture, and the Segment bridge — 
 Objective-C class with its framework's name, so splitting it would make a `Tracker` from one framework
 a different ObjC type than a `Tracker` from another, and a hybrid app uses more than one part together.
 
+**Splitting it also breaks the tap opt-out, silently and open.** Kotlin/Native embeds all reachable
+Kotlin code into *each* framework, so two frameworks carrying `autograph-uikit` carry two independent
+copies of its registries. Register a view or region through one and install tap capture through the
+other, and the resolver consults a registry that has never heard of your exclusion: taps you opted out of
+are captured, with nothing logged. Reach `registerAutographIgnoredView` / `.autographIgnore()` and
+`installAutographNativeTapCapture` through the same framework — which the umbrella gives you by
+construction, and which is why this repo's own sample registers through `sample_shared` (the framework it
+installs capture from) rather than through the umbrella.
+
 `Package.swift` lives at the repository root (not a subdirectory) specifically so external apps
 can add it the normal way, `.package(url: "https://github.com/uny/autograph.git", from: "…")` —
 SwiftPM only resolves a URL-based dependency's manifest from the repo root.
@@ -421,6 +457,10 @@ non-rectangular clipping is approximated by the axis-aligned bounding box.
 - [x] `Modifier.trackImpression` / `Modifier.trackClick` built on Compose visibility APIs
 - [x] Autocapture on Android (opt-in `AutocaptureConfig` on `AutographProvider`)
 - [x] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
+- [x] Native (non-Compose) capture for hybrid apps: iOS UIKit/SwiftUI taps, iOS + Android screen views,
+  and the tap opt-outs (`registerAutographIgnoredView`, SwiftUI `.autographIgnore()`)
+- [ ] Native taps on the Android View system ([#63](https://github.com/uny/autograph/issues/63)) — the
+  one hybrid gap left; deferred for want of a demand signal, so say so on the issue if you need it
 - [x] `sample-android` runnable sample app
 - [x] iOS sample app
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
