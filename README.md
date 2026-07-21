@@ -471,7 +471,13 @@ non-rectangular clipping is approximated by the axis-aligned bounding box.
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
-- Targets: Android, iOS, JVM. Web (Wasm) is planned.
+- Targets: **Android**, **JVM**, and **iOS** — device `iosArm64` and the Apple-Silicon simulator
+  `iosSimulatorArm64`. The Intel-Mac simulator (`iosX64`) is intentionally not shipped: Apple-Silicon
+  simulators cover current development, and adding a target costs a Kotlin/Native link on every CI run,
+  so it will be added when an Intel-Mac consumer needs it — open an issue if that's you. Compose Web /
+  Wasm (`wasmJs`) is out of scope for now, and by design rather than oversight: a browser target has no
+  filesystem for the sequence/session store and a different transport story, so it is a deliberate
+  design task, not a target flag to flip.
 
 ## Roadmap
 
