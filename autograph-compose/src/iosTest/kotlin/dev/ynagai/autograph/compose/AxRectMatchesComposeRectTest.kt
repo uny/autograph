@@ -2,7 +2,7 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.uikit.AxPoint
 import dev.ynagai.autograph.uikit.AxRect
 import kotlin.test.Test

@@ -9,8 +9,20 @@ import kotlinx.serialization.json.put
  *
  * Transports place it under `context.instrumentation` (or equivalent) and may reuse
  * [eventId] as their message id for deduplication.
+ *
+ * **Produced by the library, never constructed by callers.** The constructor (and with it `copy`)
+ * is `internal` so that new envelope fields stay binary-compatible additions forever — see
+ * [ADR 0001](../../../../../../../docs/adr/0001-public-api-evolution.md) §2a. A transport that
+ * needs an envelope calls [EnvelopeSource.stamp]; building one by hand would bypass event-id
+ * uniqueness, session rotation, and sequence monotonicity, which is the whole value of the type.
+ * Tests construct envelopes with `testEnvelope(...)` from `autograph-test`.
+ *
+ * New properties are appended at the end. That is binary-compatible but not *behavior*-compatible:
+ * it changes what `equals`/`hashCode`/`toString` mean, so a caller keying a map on an envelope sees
+ * a change with no compile error.
  */
-public data class Envelope(
+@ConsistentCopyVisibility
+public data class Envelope internal constructor(
     /** Unique event id, from the configured [EventIdGenerator]. */
     val eventId: String,
     /** The session this event belongs to. */
@@ -51,3 +63,30 @@ public data class Envelope(
         schemaVersion?.let { put("schema_version", it) }
     }
 }
+
+/**
+ * Builds an [Envelope] with caller-chosen field values, bypassing the stamper.
+ *
+ * Exists only so `autograph-test` can offer `testEnvelope(...)` across the module boundary that
+ * `internal` does not cross. Use that instead: this signature carries no stability guarantee and
+ * gains a parameter whenever [Envelope] gains a property.
+ */
+@AutographInternalApi
+public fun createEnvelope(
+    eventId: String,
+    sessionId: String,
+    sessionStartEpochMillis: Long,
+    seq: Long?,
+    globalSeq: Long?,
+    sdk: String,
+    eventTimestamp: String,
+    schemaVersion: String? = null,
+): Envelope = Envelope(
+    eventId = eventId,
+    session = SessionInfo(id = sessionId, startEpochMillis = sessionStartEpochMillis),
+    seq = seq,
+    globalSeq = globalSeq,
+    sdk = sdk,
+    eventTimestamp = eventTimestamp,
+    schemaVersion = schemaVersion,
+)

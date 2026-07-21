@@ -6,10 +6,6 @@
 // - Show declarations: true
 
 // Library unique name: <dev.ynagai.autograph:autograph-context>
-open annotation class dev.ynagai.autograph.context/AutographInternalApi : kotlin/Annotation { // dev.ynagai.autograph.context/AutographInternalApi|null[0]
-    constructor <init>() // dev.ynagai.autograph.context/AutographInternalApi.<init>|<init>(){}[0]
-}
-
 final class dev.ynagai.autograph.context/AmbientContext { // dev.ynagai.autograph.context/AmbientContext|null[0]
     final val scope // dev.ynagai.autograph.context/AmbientContext.scope|{}scope[0]
         final fun <get-scope>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.context/AmbientContext.scope.<get-scope>|<get-scope>(){}[0]

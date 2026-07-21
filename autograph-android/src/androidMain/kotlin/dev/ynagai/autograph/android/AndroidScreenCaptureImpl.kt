@@ -11,7 +11,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
 import dev.ynagai.autograph.Tracker
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.emitScreenView

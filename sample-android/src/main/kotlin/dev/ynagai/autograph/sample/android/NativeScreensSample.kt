@@ -15,7 +15,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeStack
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.serialization.json.JsonObject

@@ -3,7 +3,7 @@ package dev.ynagai.autograph.segment
 import com.segment.analytics.kotlin.core.TrackEvent
 import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.EnvelopeSource
-import dev.ynagai.autograph.SessionInfo
+import dev.ynagai.autograph.test.testEnvelope
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlin.test.Test
@@ -13,12 +13,11 @@ import kotlin.test.assertTrue
 
 class AutographPluginTest {
 
-    private val envelope = Envelope(
+    private val envelope = testEnvelope(
         eventId = "evt-123",
-        session = SessionInfo(id = "sess-1", startEpochMillis = 1000L),
+        sessionId = "sess-1",
+        sessionStartEpochMillis = 1000L,
         seq = 7L,
-        globalSeq = null,
-        sdk = "autograph/test",
         eventTimestamp = "2024-01-01T00:00:00Z",
     )
 

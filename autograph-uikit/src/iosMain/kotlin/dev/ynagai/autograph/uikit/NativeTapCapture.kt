@@ -2,7 +2,7 @@ package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
 import dev.ynagai.autograph.context.ScopeStack
 import platform.Foundation.NSHashTable

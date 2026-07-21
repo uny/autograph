@@ -9,9 +9,6 @@ public final class dev/ynagai/autograph/context/AutocaptureDefaultsKt {
 	public static final field DEFAULT_AUTOCAPTURE_EVENT_NAME Ljava/lang/String;
 }
 
-public abstract interface annotation class dev/ynagai/autograph/context/AutographInternalApi : java/lang/annotation/Annotation {
-}
-
 public final class dev/ynagai/autograph/context/ScopeHandle {
 }
 

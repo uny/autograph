@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.context
 
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import kotlinx.serialization.json.JsonObject

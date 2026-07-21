@@ -1,10 +1,8 @@
 package dev.ynagai.autograph.test
 
 import dev.ynagai.autograph.Autograph
-import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.InMemorySeqStore
 import dev.ynagai.autograph.SequenceMode
-import dev.ynagai.autograph.SessionInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
@@ -28,13 +26,11 @@ class InMemoryTestTransportTest {
         return transport to tracker
     }
 
-    private fun envelope(seq: Long?, globalSeq: Long?, sessionId: String = "session-1") = Envelope(
+    private fun envelope(seq: Long?, globalSeq: Long?, sessionId: String = "session-1") = testEnvelope(
         eventId = "event-id",
-        session = SessionInfo(id = sessionId, startEpochMillis = 0),
+        sessionId = sessionId,
         seq = seq,
         globalSeq = globalSeq,
-        sdk = "autograph/test",
-        eventTimestamp = "2026-01-01T00:00:00.000Z",
     )
 
     @Test

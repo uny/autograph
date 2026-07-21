@@ -1,6 +1,6 @@
 package dev.ynagai.autograph.uikit
 
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.useContents
 import platform.Foundation.NSSelectorFromString
