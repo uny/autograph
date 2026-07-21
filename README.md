@@ -25,6 +25,23 @@ process crash mid-write can never leave a corrupt or partially-written file. It 
 `fsync`, though, so on a hard power loss the last write may not have reached the disk
 platter yet — that's a gap in the guarantee, not in the atomicity.
 
+Two further boundaries of *"a sequence number is never reused"* are worth naming rather than
+implying:
+
+- **It assumes a single process.** The store is an in-memory map persisted last-write-wins, so it
+  expects one Autograph instance to own the file. That holds for a normal app, but on Android
+  `Application.onCreate` runs in **every** process — a `:webview`/`:service`/push-SDK process, not just
+  the main one — and a second Autograph built there would share the same file: the two could hand out
+  the same sequence numbers and clobber each other's session state. If your app runs Autograph in more
+  than one process, give each its own `AutographConfig.store` pointed at a process-named directory. A
+  built-in per-process split (a name suffix, or a file lock) is deliberately deferred until that need is
+  observed rather than guessed at.
+- **A corrupt state file resets to zero.** An unreadable or half-parsed file is treated as *absent*, so
+  the counters restart from 0 — a reuse, not a crash on launch (starting a fresh session beats refusing
+  to open the app). The atomic write above is exactly what keeps this unreachable in practice: a reader
+  only ever sees a complete old or complete new file. It is stated because a "never reused" guarantee
+  deserves its one exception named.
+
 Autograph deliberately owns **no transport**: queueing, batching, and retries stay in
 the battle-tested SDK underneath. The first adapter targets
 [Segment](https://segment.com) (`analytics-kotlin` / `analytics-swift`); the transport
