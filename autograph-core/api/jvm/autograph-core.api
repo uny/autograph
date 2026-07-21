@@ -20,6 +20,9 @@ public final class dev/ynagai/autograph/AutographConfig {
 	public final fun transport (Ldev/ynagai/autograph/Transport;)V
 }
 
+public abstract interface annotation class dev/ynagai/autograph/AutographInternalApi : java/lang/annotation/Annotation {
+}
+
 public final class dev/ynagai/autograph/AutographKt {
 	public static final fun Autograph (Lkotlin/jvm/functions/Function1;)Ldev/ynagai/autograph/Tracker;
 }
@@ -37,8 +40,6 @@ public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Tr
 }
 
 public final class dev/ynagai/autograph/Envelope {
-	public fun <init> (Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
-	public synthetic fun <init> (Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ldev/ynagai/autograph/SessionInfo;
 	public final fun component3 ()Ljava/lang/Long;
@@ -46,8 +47,6 @@ public final class dev/ynagai/autograph/Envelope {
 	public final fun component5 ()Ljava/lang/String;
 	public final fun component6 ()Ljava/lang/String;
 	public final fun component7 ()Ljava/lang/String;
-	public final fun copy (Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/ynagai/autograph/Envelope;
-	public static synthetic fun copy$default (Ldev/ynagai/autograph/Envelope;Ljava/lang/String;Ldev/ynagai/autograph/SessionInfo;Ljava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getEventId ()Ljava/lang/String;
 	public final fun getEventTimestamp ()Ljava/lang/String;
@@ -59,6 +58,11 @@ public final class dev/ynagai/autograph/Envelope {
 	public fun hashCode ()I
 	public final fun toJson ()Lkotlinx/serialization/json/JsonObject;
 	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/ynagai/autograph/EnvelopeKt {
+	public static final fun createEnvelope (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/ynagai/autograph/Envelope;
+	public static synthetic fun createEnvelope$default (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
 }
 
 public abstract interface class dev/ynagai/autograph/EnvelopeSource {
@@ -156,11 +160,8 @@ public final class dev/ynagai/autograph/SessionConfig {
 }
 
 public final class dev/ynagai/autograph/SessionInfo {
-	public fun <init> (Ljava/lang/String;J)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()J
-	public final fun copy (Ljava/lang/String;J)Ldev/ynagai/autograph/SessionInfo;
-	public static synthetic fun copy$default (Ldev/ynagai/autograph/SessionInfo;Ljava/lang/String;JILjava/lang/Object;)Ldev/ynagai/autograph/SessionInfo;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getId ()Ljava/lang/String;
 	public final fun getStartEpochMillis ()J

@@ -2,7 +2,7 @@
 
 package dev.ynagai.autograph.uikit
 
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 
 /**
  * Window-space regions a developer has excluded from native tap autocapture by POSITION rather than by

@@ -1,6 +1,6 @@
 package dev.ynagai.autograph.uikit
 
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import platform.UIKit.UIView
 
 /**

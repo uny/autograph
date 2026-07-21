@@ -38,6 +38,9 @@ kotlin {
         }
         getByName("androidHostTest").dependencies {
             implementation(libs.kotlin.test)
+            // testEnvelope(): the plugin test asserts on known envelope field values, and
+            // Envelope's constructor is internal to core (ADR 0001 §2a).
+            implementation(projects.autographTest)
         }
     }
 }

@@ -6,7 +6,7 @@ import android.app.Activity
 import android.app.Application
 import androidx.fragment.app.Fragment
 import dev.ynagai.autograph.Tracker
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeStack
 
 /**

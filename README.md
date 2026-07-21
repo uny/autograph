@@ -42,6 +42,10 @@ SPI is vendor-neutral.
 > migrations on top of today — everything else (Compose APIs, autocapture config, validator
 > shape, transport adapters) remains unstable under the
 > banner above.
+>
+> How the Kotlin API will be allowed to change once it *does* stabilize — which artifacts get a
+> SemVer ABI guarantee, and what may be added to each public type without a major bump — is
+> settled in [ADR 0001](docs/adr/0001-public-api-evolution.md).
 
 ## Modules
 

@@ -56,3 +56,8 @@ public final class dev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent
 	public fun toString ()Ljava/lang/String;
 }
 
+public final class dev/ynagai/autograph/test/TestEnvelopeKt {
+	public static final fun testEnvelope (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/ynagai/autograph/Envelope;
+	public static synthetic fun testEnvelope$default (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
+}
+

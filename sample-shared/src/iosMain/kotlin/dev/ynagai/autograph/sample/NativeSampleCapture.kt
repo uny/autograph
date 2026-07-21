@@ -1,7 +1,7 @@
 package dev.ynagai.autograph.sample
 
 import dev.ynagai.autograph.context.ScopeStack
-import dev.ynagai.autograph.context.AutographInternalApi
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.uikit.AutographNativeTapCapture
 import dev.ynagai.autograph.uikit.installAutographNativeTapCapture
 
