@@ -23,6 +23,10 @@ final enum class dev.ynagai.autograph/SequenceMode : kotlin/Enum<dev.ynagai.auto
     final fun values(): kotlin/Array<dev.ynagai.autograph/SequenceMode> // dev.ynagai.autograph/SequenceMode.values|values#static(){}[0]
 }
 
+abstract fun interface dev.ynagai.autograph/AutographLogger { // dev.ynagai.autograph/AutographLogger|null[0]
+    abstract fun log(kotlin/String) // dev.ynagai.autograph/AutographLogger.log|log(kotlin.String){}[0]
+}
+
 abstract fun interface dev.ynagai.autograph/EventIdGenerator { // dev.ynagai.autograph/EventIdGenerator|null[0]
     abstract fun next(): kotlin/String // dev.ynagai.autograph/EventIdGenerator.next|next(){}[0]
 }
@@ -97,6 +101,9 @@ final class dev.ynagai.autograph/AutographConfig { // dev.ynagai.autograph/Autog
     final var eventId // dev.ynagai.autograph/AutographConfig.eventId|{}eventId[0]
         final fun <get-eventId>(): dev.ynagai.autograph/EventIdGenerator // dev.ynagai.autograph/AutographConfig.eventId.<get-eventId>|<get-eventId>(){}[0]
         final fun <set-eventId>(dev.ynagai.autograph/EventIdGenerator) // dev.ynagai.autograph/AutographConfig.eventId.<set-eventId>|<set-eventId>(dev.ynagai.autograph.EventIdGenerator){}[0]
+    final var logger // dev.ynagai.autograph/AutographConfig.logger|{}logger[0]
+        final fun <get-logger>(): dev.ynagai.autograph/AutographLogger // dev.ynagai.autograph/AutographConfig.logger.<get-logger>|<get-logger>(){}[0]
+        final fun <set-logger>(dev.ynagai.autograph/AutographLogger) // dev.ynagai.autograph/AutographConfig.logger.<set-logger>|<set-logger>(dev.ynagai.autograph.AutographLogger){}[0]
     final var persistence // dev.ynagai.autograph/AutographConfig.persistence|{}persistence[0]
         final fun <get-persistence>(): dev.ynagai.autograph/SeqPersistence // dev.ynagai.autograph/AutographConfig.persistence.<get-persistence>|<get-persistence>(){}[0]
         final fun <set-persistence>(dev.ynagai.autograph/SeqPersistence) // dev.ynagai.autograph/AutographConfig.persistence.<set-persistence>|<set-persistence>(dev.ynagai.autograph.SeqPersistence){}[0]

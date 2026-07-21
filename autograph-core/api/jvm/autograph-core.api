@@ -1,6 +1,7 @@
 public final class dev/ynagai/autograph/AutographConfig {
 	public final fun getDispatcher ()Lkotlinx/coroutines/CoroutineDispatcher;
 	public final fun getEventId ()Ldev/ynagai/autograph/EventIdGenerator;
+	public final fun getLogger ()Ldev/ynagai/autograph/AutographLogger;
 	public final fun getPersistence ()Ldev/ynagai/autograph/SeqPersistence;
 	public final fun getSchemaVersion ()Ljava/lang/String;
 	public final fun getSequence ()Ldev/ynagai/autograph/SequenceMode;
@@ -10,6 +11,7 @@ public final class dev/ynagai/autograph/AutographConfig {
 	public final fun getValidator ()Ldev/ynagai/autograph/EventValidator;
 	public final fun setDispatcher (Lkotlinx/coroutines/CoroutineDispatcher;)V
 	public final fun setEventId (Ldev/ynagai/autograph/EventIdGenerator;)V
+	public final fun setLogger (Ldev/ynagai/autograph/AutographLogger;)V
 	public final fun setPersistence (Ldev/ynagai/autograph/SeqPersistence;)V
 	public final fun setSchemaVersion (Ljava/lang/String;)V
 	public final fun setSequence (Ldev/ynagai/autograph/SequenceMode;)V
@@ -25,6 +27,10 @@ public abstract interface annotation class dev/ynagai/autograph/AutographInterna
 
 public final class dev/ynagai/autograph/AutographKt {
 	public static final fun Autograph (Lkotlin/jvm/functions/Function1;)Ldev/ynagai/autograph/Tracker;
+}
+
+public abstract interface class dev/ynagai/autograph/AutographLogger {
+	public abstract fun log (Ljava/lang/String;)V
 }
 
 public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Transport {
