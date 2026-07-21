@@ -121,6 +121,8 @@ struct ContentView: View {
         let arguments = ProcessInfo.processInfo.arguments
         if arguments.contains(nativeSampleLaunchArgument) {
             NativeSampleView()
+        } else if arguments.contains(ignoreSampleLaunchArgument) {
+            IgnoreSampleView(baseline: arguments.contains(ignoreBaselineLaunchArgument))
         } else if arguments.contains(hybridSampleLaunchArgument) {
             HybridSampleView()
         } else if arguments.contains(nativeScreensLaunchArgument) {

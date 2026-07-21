@@ -381,6 +381,34 @@ rather than silently dropping every screen view.
 screen capture is also installed, both could report that screen. Return `null` from that controller's
 `screenName` in `installAutographNativeScreenCapture` to let the explicit path own it.
 
+## iOS: excluding native content from tap capture
+
+The native counterpart of Compose's `Modifier.autographIgnore()` — a **privacy** control for subtrees
+that must not be autocaptured (a payment field, anything sensitive). Explicit `trackClick` inside an
+excluded subtree still fires; only *ambient* tap autocapture is suppressed.
+
+```swift
+import AutographUI
+
+// SwiftUI — excludes this view's on-screen region:
+SensitiveCard()
+    .autographIgnore()
+```
+
+```swift
+import Autograph
+
+// UIKit — excludes a view (and its subtree). Keep the returned token; call `unregister()` to stop.
+let registration = registerAutographIgnoredView(view: sensitiveView)
+```
+
+A `UIView` *is* the thing on the accessibility hit path, so the UIKit form excludes it directly. A
+SwiftUI view is not UIView-backed, so `.autographIgnore()` reports the wrapped content's **window
+rectangle** and the pipeline vetoes taps that land inside it — tracked every frame, so scrolling or
+relayout can't leave a stale region behind. Place `.autographIgnore()` as close to the sensitive
+content as possible: the excluded region is the rectangle at the point of insertion, and rotation or
+non-rectangular clipping is approximated by the axis-aligned bounding box.
+
 ## Requirements
 
 - Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)

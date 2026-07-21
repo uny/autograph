@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		A0000000000000000000009 /* iosAppApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000007 /* iosAppApp.swift */; };
 		A000000000000000000000A /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A0000000000000000000008 /* ContentView.swift */; };
+		A00000000000000000000B0 /* IgnoreSample.swift in Sources */ = {isa = PBXBuildFile; fileRef = A00000000000000000000B1 /* IgnoreSample.swift */; };
 		B0000000000000000000003 /* iosAppUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000002 /* iosAppUITests.swift */; };
 /* End PBXBuildFile section */
 
@@ -26,6 +27,7 @@
 		A0000000000000000000006 /* iosApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = iosApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A0000000000000000000007 /* iosAppApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iosAppApp.swift; sourceTree = "<group>"; };
 		A0000000000000000000008 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		A00000000000000000000B1 /* IgnoreSample.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = IgnoreSample.swift; sourceTree = "<group>"; };
 		B0000000000000000000001 /* iosAppUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = iosAppUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		B0000000000000000000002 /* iosAppUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = iosAppUITests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -71,6 +73,7 @@
 			children = (
 				A0000000000000000000007 /* iosAppApp.swift */,
 				A0000000000000000000008 /* ContentView.swift */,
+				A00000000000000000000B1 /* IgnoreSample.swift */,
 			);
 			path = iosApp;
 			sourceTree = "<group>";
@@ -205,6 +208,7 @@
 			files = (
 				A0000000000000000000009 /* iosAppApp.swift in Sources */,
 				A000000000000000000000A /* ContentView.swift in Sources */,
+				A00000000000000000000B0 /* IgnoreSample.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

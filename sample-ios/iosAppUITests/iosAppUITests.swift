@@ -231,6 +231,85 @@ final class NativeSampleUITests: XCTestCase {
     }
 }
 
+/// The SwiftUI native tap opt-out (`.autographIgnore()`), on-device, under real synthetic touches.
+///
+/// `AutographUITests` proves the shipped marker registers the right window rectangle and follows it
+/// (in-process, fault-injected). This suite adds what only a real touch pipeline shows: an excluded
+/// button's tap is dropped *and its own action still fires*, and the exclusion is real rather than a
+/// never-capturable button (the baseline the first PR-B attempt lacked). Capture and registration both
+/// route through `sample_shared`, so one `AutographIgnoredBounds` registry backs both.
+final class IgnoreSampleUITests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func launch(baseline: Bool = false) -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-autograph-ignore-sample"] + (baseline ? ["-autograph-ignore-baseline"] : [])
+        app.launch()
+        return app
+    }
+
+    private func lastEventLabel(_ app: XCUIApplication) -> String {
+        app.staticTexts["native_last_event_label"].label
+    }
+
+    private func ignoredTapCount(_ app: XCUIApplication) -> String {
+        app.staticTexts["ignore_ignored_tap_count"].label
+    }
+
+    /// The shown button is never excluded, so it doubles as the live-capture control: a preceding
+    /// "nothing was reported" only means something if a known-good tap right after *is* reported.
+    private func assertCaptureIsStillLive(_ app: XCUIApplication) {
+        app.buttons["ignore_shown_button"].tap()
+        XCTAssertEqual(
+            lastEventLabel(app),
+            "Last event target: ignore_shown_button",
+            "capture reported nothing for a known-good tap either — the preceding assertion proved nothing"
+        )
+    }
+
+    /// The core claim: a tap on an `.autographIgnore()`'d button is not autocaptured, yet the button's
+    /// own action still runs. The marker sits behind the content and declines touches, so it excludes the
+    /// tap from capture without stealing it from the button.
+    func testIgnoredButtonIsExcludedFromCaptureButStillFires() {
+        let app = launch()
+        let before = lastEventLabel(app)
+        XCTAssertEqual(ignoredTapCount(app), "Ignored taps: 0")
+
+        app.buttons["ignore_ignored_button"].tap()
+
+        XCTAssertEqual(lastEventLabel(app), before, "an .autographIgnore()'d tap must not be autocaptured")
+        XCTAssertEqual(ignoredTapCount(app), "Ignored taps: 1", "the wrapped button must still receive its own tap")
+        assertCaptureIsStillLive(app)
+    }
+
+    /// Non-vacuity: the very same button, with no modifier, IS captured — so the exclusion above is the
+    /// modifier's doing and not a button that was never reportable.
+    func testWithoutTheModifierTheSameButtonIsCaptured() {
+        let app = launch(baseline: true)
+
+        app.buttons["ignore_ignored_button"].tap()
+
+        XCTAssertEqual(
+            lastEventLabel(app),
+            "Last event target: ignore_ignored_button",
+            "the button is capturable without .autographIgnore() — so the exclusion is real, not a never-capturable button"
+        )
+        XCTAssertEqual(ignoredTapCount(app), "Ignored taps: 1")
+    }
+
+    /// The exclusion is one button's rectangle, not the screen's: the adjacent, un-ignored button keeps
+    /// reporting with the ignored region present.
+    func testTheNeighbourKeepsReportingWithTheExclusionPresent() {
+        let app = launch()
+
+        app.buttons["ignore_shown_button"].tap()
+
+        XCTAssertEqual(lastEventLabel(app), "Last event target: ignore_shown_button")
+    }
+}
+
 /// The Compose/native boundary, on-device.
 ///
 /// Both pipelines hit-test the same accessibility tree, so a tap on Compose content is visible to
