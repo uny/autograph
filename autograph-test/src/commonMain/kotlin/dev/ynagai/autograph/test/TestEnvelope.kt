@@ -18,7 +18,7 @@ import dev.ynagai.autograph.createEnvelope
  * The production path is [EnvelopeSource.stamp] — the tracker owns event-id uniqueness, session
  * rotation, and sequence monotonicity, and an envelope assembled by hand has none of them. That is
  * why [Envelope]'s own constructor is `internal`, and why this factory lives in `autograph-test`,
- * which carries no ABI guarantee and can therefore gain parameters as the envelope grows.
+ * which carries no ABI guarantee and may therefore gain parameters as the envelope grows.
  *
  * To test *stamping itself*, build a real tracker over an [InMemoryTestTransport] and
  * `InMemorySeqStore` instead; this factory deliberately proves nothing about the stamper.

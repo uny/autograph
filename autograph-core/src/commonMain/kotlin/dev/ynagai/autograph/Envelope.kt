@@ -11,8 +11,9 @@ import kotlinx.serialization.json.put
  * [eventId] as their message id for deduplication.
  *
  * **Produced by the library, never constructed by callers.** The constructor (and with it `copy`)
- * is `internal` so that new envelope fields stay binary-compatible additions forever — see
- * [ADR 0001](../../../../../../../docs/adr/0001-public-api-evolution.md) §2a. A transport that
+ * is `internal` so that new envelope fields stay binary-compatible additions for every caller the
+ * compiler governs — see [ADR 0001](../../../../../../../docs/adr/0001-public-api-evolution.md)
+ * §2a, which records the one place that does not hold. A transport that
  * needs an envelope calls [EnvelopeSource.stamp]; building one by hand would bypass event-id
  * uniqueness, session rotation, and sequence monotonicity, which is the whole value of the type.
  * Tests construct envelopes with `testEnvelope(...)` from `autograph-test`.
