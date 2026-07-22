@@ -1,0 +1,57 @@
+name: Docs
+
+# Builds the aggregated Dokka API reference and publishes it to GitHub Pages.
+#
+# One-time setup: enable Pages with the "GitHub Actions" source under
+# Settings → Pages. Until then the deploy job fails harmlessly — it is a separate
+# workflow from CI, so it never blocks a PR.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Let an in-progress deploy finish rather than cancelling it mid-publish, but only keep one queued.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: build
+    runs-on: macos-latest # matches CI; Dokka analyzes the iOS source sets, though it does not link them
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+
+      - name: Generate the aggregated API reference
+        run: ./gradlew :dokkaGenerate --stacktrace
+
+      - uses: actions/upload-pages-artifact@56afc609e74202658d3ffba0e8f6dda462b719fa # v3
+        with:
+          path: build/dokka/html
+
+  deploy:
+    name: deploy
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/deploy-pages@d6db90164ac5ed86f2b6aed7e0febac5b3c0c03e # v4
+        id: deployment
