@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/uny/autograph/actions/workflows/ci.yml/badge.svg)](https://github.com/uny/autograph/actions/workflows/ci.yml)
 [![Maven Central](https://img.shields.io/maven-central/v/dev.ynagai.autograph/autograph-core)](https://central.sonatype.com/namespace/dev.ynagai.autograph)
+[![API docs](https://img.shields.io/badge/API-docs-4c1)](https://uny.github.io/autograph/)
 
 > Your app signs its own story.
 

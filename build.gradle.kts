@@ -9,11 +9,36 @@ plugins {
     alias(libs.plugins.composeMultiplatform) apply false
     alias(libs.plugins.composeCompiler) apply false
     alias(libs.plugins.publish) apply false
+    alias(libs.plugins.dokka)
+}
+
+// The published library modules whose API reference is aggregated into one Dokka site. The Apple
+// umbrella (autograph-apple) carries no Kotlin API of its own, and the samples are apps — neither is
+// documented.
+val documentedModules = listOf(
+    "autograph-core", "autograph-context", "autograph-compose", "autograph-segment",
+    "autograph-uikit", "autograph-android", "autograph-test", "autograph-schema",
+)
+
+dependencies {
+    documentedModules.forEach { dokka(project(":$it")) }
+}
+
+dokka {
+    moduleName.set("Autograph")
 }
 
 subprojects {
     group = "dev.ynagai.autograph"
     version = (findProperty("version") as String?) ?: "0.0.0-SNAPSHOT"
+
+    if (name in listOf(
+            "autograph-core", "autograph-context", "autograph-compose", "autograph-segment",
+            "autograph-uikit", "autograph-android", "autograph-test", "autograph-schema",
+        )
+    ) {
+        apply(plugin = "org.jetbrains.dokka")
+    }
 
     // Kotlin's SwiftPM support attaches an artifact with classifier "swiftpm-metadata" and an
     // empty extension (trailing dot, no file type) that Maven Central rejects. This registers
