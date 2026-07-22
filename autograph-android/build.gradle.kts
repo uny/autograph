@@ -7,8 +7,11 @@ plugins {
 kotlin {
     explicitApi()
 
-    @OptIn(org.jetbrains.kotlin.gradle.dsl.abi.ExperimentalAbiValidation::class)
-    abiValidation()
+    // No abiValidation() here — deliberately, not by omission. KGP derives its JVM/binary ABI dump
+    // from a `jvm()` target, and this module is Android-only (Activity/Fragment/lifecycle), so it can't
+    // have one. Applying abiValidation() produced an empty api/ and a vacuously-passing checkKotlinAbi,
+    // which is worse than nothing: it reads as protected while catching no public-API change. This
+    // module's ABI is enforced by review instead — see ADR 0001 §1 and #106.
 
     withSourcesJar(publish = true)
 

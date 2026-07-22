@@ -38,12 +38,27 @@ Declarations marked `@AutographInternalApi` are outside every tier. They are `pu
 only because Kotlin's `internal` does not cross a module boundary, and may change in a
 patch release.
 
-**Two modules are not covered by the dump check**, so the review checkpoint of §4 does not
-fire for them and their rules rest on review alone: `autograph-schema` does not run
-`abiValidation()` (deliberate, per the tier above), and `autograph-android` runs it but its
-sole AGP `android {}` target produces no dump — `checkKotlinAbi` passes on an empty `api/`
-directory. That second one is a gap rather than a decision;
-[#106](https://github.com/uny/autograph/issues/106) tracks closing it.
+**Some public surface is not covered by the dump check**, so the review checkpoint of §4 does
+not fire for it and its rules rest on review alone. This is a boundary of the tooling, documented
+here rather than hidden — it is the resolution of
+[#106](https://github.com/uny/autograph/issues/106):
+
+- `autograph-schema` does not run `abiValidation()` — deliberate, per the tier above (a no-ABI
+  code generator).
+- `autograph-android` does not run `abiValidation()` **either, and by decision rather than
+  oversight.** KGP derives its JVM/binary ABI dump from a `jvm()` target; a pure-Android module
+  built on `Activity`/`Fragment` cannot have one, so there is nothing for the dump to cover. The
+  module previously *applied* `abiValidation()`, which produced an empty `api/` and a
+  vacuously-passing `checkKotlinAbi` — worse than nothing, because it read as protected while
+  catching no public-API change (a contributor could add public API and get no signal). Removing
+  it makes the boundary honest; the module's public surface
+  (`installAutographNativeScreenCapture`, `AutographNativeScreenCapture`, …) is enforced by review.
+- `autograph-segment`'s **Android-specific** surface has the same gap for the same reason: it
+  keeps `abiValidation()` because its klib dump legitimately covers the common/iOS API, but with no
+  `jvm()` target its Android `SegmentTransport` face is not dumped, and is review-enforced.
+
+The common root cause — a JVM/Android ABI dump requires a `jvm()` target — is why the modules that
+*are* fully dump-covered (`autograph-core`, `-context`, `-compose`) all declare `jvm()`.
 
 ### 2. Public types are classified by *who constructs* and *who implements* them
 
