@@ -18,7 +18,7 @@ androidxTestEspresso = "3.7.0"
 androidxTestRunner = "1.7.0"
 junit = "4.13.2"
 publish = "0.37.0"
-dokka = "2.0.0"
+dokka = "2.2.0"
 
 android-compileSdk = "36"
 android-minSdk = "24"
