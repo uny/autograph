@@ -99,6 +99,9 @@ private object MissingTracker : Tracker {
     private fun warn() {
         if (!warned) {
             warned = true
+            // Goes to the console, not AutographConfig.logger: this fires precisely because no
+            // tracker (and therefore no configured logger) has been provided yet. It is a one-time
+            // develop-time warning that a tracker is missing, not a diagnostic of a running tracker.
             println(
                 "Autograph: no Tracker provided — events are being dropped. " +
                     "Wrap your UI in AutographProvider(tracker) { ... }.",

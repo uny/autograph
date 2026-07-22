@@ -323,6 +323,101 @@ class AutographTrackerTest {
     }
 
     @Test
+    fun droppedInvalidEventIsReportedThroughTheConfiguredLogger() {
+        // #56: the "dropping invalid event" diagnostic must reach AutographConfig.logger, not println.
+        val logs = mutableListOf<String>()
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            logger = AutographLogger { logs += it }
+            validator = EventValidator { name, _ -> if (name == "bad") "unknown event name" else null }
+            strictValidation = false
+        }
+
+        tracker.track("bad")
+
+        assertEquals(0, transport.calls.size, "the invalid event must be dropped")
+        assertEquals(1, logs.size, "the drop must be reported through the configured logger")
+        assertTrue(logs.single().contains("bad") && logs.single().contains("unknown event name"), logs.single())
+    }
+
+    @Test
+    fun deliveryFailureIsReportedThroughTheConfiguredLogger() {
+        // #56: a transport throwing during delivery is swallowed (must not crash the app) but its
+        // diagnostic must reach AutographConfig.logger rather than vanishing into println.
+        val logs = mutableListOf<String>()
+        val throwing = object : Transport {
+            override fun connect(envelopes: EnvelopeSource) {}
+            override fun track(name: String, properties: JsonObject, envelope: Envelope?): Unit =
+                throw IllegalStateException("boom")
+            override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {}
+            override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {}
+        }
+        val tracker = Autograph {
+            transport(throwing)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            logger = AutographLogger { logs += it }
+        }
+
+        tracker.track("A") // must not throw on the caller
+
+        assertEquals(1, logs.size, "a delivery failure must reach the configured logger")
+        assertTrue(logs.single().contains("event delivery failed") && logs.single().contains("boom"), logs.single())
+    }
+
+    @Test
+    fun aThrowingLoggerCannotCrashDelivery() {
+        // #56: a buggy logger must no more crash the app than a buggy validator can. The dropped-event
+        // diagnostic runs on the caller thread, so a throwing logger there would otherwise propagate to
+        // track(). Fault injection: dropping the try/catch in AutographTracker.report reddens this.
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            logger = AutographLogger { throw IllegalStateException("logger bug") }
+            validator = EventValidator { name, _ -> if (name == "bad") "unknown event name" else null }
+        }
+
+        tracker.track("bad")  // dropped → logger throws → must be swallowed, not propagated
+        tracker.track("good") // must still be delivered
+
+        assertEquals(listOf("good"), transport.calls.map { it.second }, "a throwing logger must not stop delivery")
+    }
+
+    @Test
+    fun aThrowingPipelineTransportIsReportedAndDoesNotCrashDelivery() {
+        // #56 / CodeRabbit: a stampsInPipeline transport is delivered to synchronously on the caller
+        // thread, bypassing the scope's CoroutineExceptionHandler. A throwing one must still be
+        // swallowed and reported through the logger, honoring the never-crash-delivery contract on the
+        // pipeline path too. Fault injection: removing the try/catch in deliver()'s pipeline branch
+        // makes track("A") throw and reddens this.
+        val logs = mutableListOf<String>()
+        val throwing = object : Transport {
+            override val stampsInPipeline: Boolean = true
+            override fun connect(envelopes: EnvelopeSource) {}
+            override fun track(name: String, properties: JsonObject, envelope: Envelope?): Unit =
+                throw IllegalStateException("pipeline boom")
+            override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {}
+            override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {}
+        }
+        val tracker = Autograph {
+            transport(throwing)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+            logger = AutographLogger { logs += it }
+        }
+
+        tracker.track("A") // pipeline delivery throws synchronously — must not propagate to the caller
+
+        assertEquals(1, logs.size, "the pipeline delivery failure must reach the configured logger")
+        assertTrue(logs.single().contains("event delivery failed") && logs.single().contains("pipeline boom"), logs.single())
+    }
+
+    @Test
     fun closeCancelsScopeSoLaterEventsAreDropped() = runTest {
         val transport = RecordingTransport(stampsInPipeline = false)
         val tracker = Autograph {

@@ -57,6 +57,16 @@ public class AutographConfig internal constructor() {
     public var strictValidation: Boolean = false
 
     /**
+     * Sink for the library's own diagnostics — a failed delivery, or an event dropped for failing
+     * [validator]. Defaults to printing to the console (the historical behavior); set your own to
+     * route them into your app's logging framework (Logcat, `os_log`, Timber) or to silence them.
+     * See [AutographLogger]. This routes only the diagnostics of a *constructed tracker*; a
+     * pre-provider warning (compose's `MissingTracker`) or a storage-fallback notice logged before a
+     * tracker exists still goes to the console, since there is no configured logger yet at that point.
+     */
+    public var logger: AutographLogger = DefaultAutographLogger
+
+    /**
      * The dispatcher on which events are stamped and persisted when the transport does not stamp
      * in its own pipeline (e.g. the iOS Segment bridge, or a custom transport). It must be
      * **single-threaded / serial** so sequence numbers keep their call order; the default is a
@@ -100,7 +110,7 @@ public fun Autograph(configure: AutographConfig.() -> Unit): Tracker {
         clock = config.clock,
         schemaVersion = config.schemaVersion,
     )
-    return AutographTracker(transport, stamper, config.dispatcher, config.validator, config.strictValidation, config.clock)
+    return AutographTracker(transport, stamper, config.dispatcher, config.validator, config.strictValidation, config.clock, config.logger)
 }
 
 internal class AutographTracker(
@@ -110,15 +120,31 @@ internal class AutographTracker(
     private val validator: EventValidator?,
     private val strictValidation: Boolean,
     private val clock: () -> Long,
+    private val logger: AutographLogger,
 ) : Tracker {
 
     // A failed analytics delivery must never crash the app, and one failure must not tear down the
     // scope for the next event — hence SupervisorJob + a swallowing handler.
     private val scope = CoroutineScope(
         SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, e ->
-            println("Autograph: event delivery failed: ${e.message}")
+            report("Autograph: event delivery failed: ${e.message}")
         },
     )
+
+    /**
+     * Routes a diagnostic to [logger], swallowing anything it throws. A buggy logger must not do what
+     * a buggy [EventValidator] can't — escalate a swallowed delivery failure or a dropped event into
+     * an app crash. This runs from two threads (the caller's, when an event is dropped; the dispatcher,
+     * when delivery fails), so the swallow keeps the never-crash contract on both.
+     */
+    private fun report(message: String) {
+        try {
+            logger.log(message)
+        } catch (_: Exception) {
+            // The diagnostic sink is itself what failed; there is nowhere safe left to report that, so
+            // the message is lost rather than turned into a crash.
+        }
+    }
 
     /**
      * Set at the very start of [close], before the drain, so nothing new joins the set of work being
@@ -146,7 +172,15 @@ internal class AutographTracker(
      */
     private fun deliver(send: (Envelope?) -> Unit) {
         if (transport.stampsInPipeline) {
-            send(null)
+            // Pipeline delivery is synchronous on the caller's thread — no [scope], so the
+            // CoroutineExceptionHandler above never sees it. Mirror its swallow-and-[report] here so a
+            // throwing pipeline transport honors the same "a failed delivery must never crash the app"
+            // contract, and its failure still reaches [logger] instead of propagating into `track`.
+            try {
+                send(null)
+            } catch (e: Exception) {
+                report("Autograph: event delivery failed: ${e.message}")
+            }
         } else {
             if (closed) return
             val eventTimestampMillis = clock()
@@ -180,7 +214,7 @@ internal class AutographTracker(
         if (strictValidation) {
             throw IllegalArgumentException("Autograph: invalid event \"$name\": $reason")
         }
-        println("Autograph: dropping invalid event \"$name\": $reason")
+        report("Autograph: dropping invalid event \"$name\": $reason")
         return false
     }
 
