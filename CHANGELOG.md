@@ -40,6 +40,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   ([#91]).
 - `event_timestamp` is captured on the caller's thread at call time, and `sdk` carries the real build
   version instead of a hardcoded literal ([#60]).
+- Android `compileSdk` raised to 37, required by the `androidx.lifecycle` 2.11.0 bump; consumers of
+  `autograph-compose` must now compile against Android SDK 37 or later ([#120]).
 
 ### Fixed
 
@@ -141,3 +143,4 @@ Initial release.
 [#91]: https://github.com/uny/autograph/issues/91
 [#94]: https://github.com/uny/autograph/issues/94
 [#102]: https://github.com/uny/autograph/issues/102
+[#120]: https://github.com/uny/autograph/pull/120
