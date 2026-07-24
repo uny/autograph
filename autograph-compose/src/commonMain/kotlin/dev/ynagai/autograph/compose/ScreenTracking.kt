@@ -84,12 +84,15 @@ public fun TrackedScreen(
     TrackScreenView(name, properties)
     // Mirror screen + section into the ambient stack so autocaptured taps on this screen carry them,
     // the same way [LocalScreenContext] carries them to explicit trackClick/trackImpression. The
-    // observer sits above this composable and can't read the CompositionLocal.
-    MirrorAmbientFrame(LocalScopeStack.current, screen = name, section = section)
-    CompositionLocalProvider(
-        LocalScreenContext provides ScreenContext(name, section),
-        content = content,
-    )
+    // observer sits above this composable and can't read the CompositionLocal. Wrapping the content
+    // also makes this screen frame the lineage parent of any scope nested inside it, so scopes under
+    // one screen stay on a single chain (and merge) rather than reading as siblings.
+    MirrorAmbientFrame(LocalScopeStack.current, screen = name, section = section) {
+        CompositionLocalProvider(
+            LocalScreenContext provides ScreenContext(name, section),
+            content = content,
+        )
+    }
 }
 
 /**

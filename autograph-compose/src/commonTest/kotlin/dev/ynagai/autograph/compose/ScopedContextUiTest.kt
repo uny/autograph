@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import dev.ynagai.autograph.Tracker
@@ -354,17 +356,15 @@ class ScopedContextUiTest {
     }
 
     /**
-     * Characterization test for the top-of-stack attribution limit the README documents under
-     * "Scoped context" — NOT an endorsement of this outcome. The ambient stack orders frames by when
-     * they were mounted, so with sibling scopes mounted simultaneously it cannot tell which subtree
-     * a tap landed in and reports the last one. Scoping a screen/route (one subtree mounted at a
-     * time) attributes exactly; scoping individual list rows does not.
-     *
-     * If you make attribution position-aware (resolving scope from the tap-position semantics tree,
-     * see #68), this test SHOULD fail — update it and the README's claim together.
+     * Sibling scopes mounted at once — list rows each in their own `AutographScope`, split-pane
+     * content, a sheet over the screen beneath — are ambiguous: the ambient stack cannot tell which
+     * subtree a captured tap landed in. It resolves them to NO scope rather than pinning the tap to
+     * an arbitrary sibling, because a wrong scope is worse than none and irreversible in analytics
+     * (#66). Scoping a screen/route (one subtree at a time) still attributes exactly; only the
+     * genuinely-ambiguous sibling case drops. Position-aware disambiguation is a separate layer (#68).
      */
     @Test
-    fun siblingScopesMountedAtOnceAreAttributedToTheLastOneMounted() = runComposeUiTest {
+    fun siblingScopesMountedAtOnceResolveToNoScope() = runComposeUiTest {
         val stack = ScopeStack()
         var seenFromInsideRow1: String? = null
         setContent {
@@ -372,7 +372,8 @@ class ScopedContextUiTest {
                 LocalTracker provides ScopeUiRecordingTracker(),
                 LocalScopeStack provides stack,
             ) {
-                // Three list rows, each scoped to its own article_id, all mounted together.
+                // Three list rows, each scoped to its own article_id, all mounted together with no
+                // enclosing scope — so none is the parent of another.
                 AutographScope("article_id" to "row1") {
                     SideEffect { seenFromInsideRow1 = stack.current().scope.str("article_id") }
                 }
@@ -382,20 +383,55 @@ class ScopedContextUiTest {
         }
         waitForIdle()
 
-        // Every row's frame is already pushed by the time any SideEffect runs (remember observers
-        // dispatch first), but each frame is pushed EMPTY and filled by its own SideEffect in
-        // composition order — so row1's effect, running before row2/row3 fill theirs, still reads
-        // row1. Attribution looks correct from inside the scope, which is what makes this limit easy
-        // to miss in a narrower test.
+        // From INSIDE a scope, explicit instrumentation stays exact — the lexical decorator still
+        // carries row1 to any `track` under it (this is why the bug was easy to miss: attribution
+        // looks correct from inside the scope, and only the capture path at tap time saw the sibling
+        // ambiguity). This effect runs before row2/row3 fill their frames, so it reads row1.
         assertEquals("row1", seenFromInsideRow1)
 
-        // But an autocaptured tap reads the stack at TAP time, once every row is mounted. A tap on
-        // row1 is therefore reported with row3's article_id: the wrong row, silently.
-        assertEquals(
-            "row3",
+        // But an autocaptured tap reads the stack at TAP time, once all three siblings are mounted.
+        // Rather than reporting the last one (row3) for a tap that may have hit row1, the stack now
+        // drops scope entirely: the ambiguous siblings resolve to no article_id at all.
+        assertNull(
             stack.current().scope.str("article_id"),
-            "documented limit: with siblings mounted at once, the last one wins regardless of which was tapped",
+            "ambiguous sibling scopes resolve to no scope, not the last one mounted",
         )
+    }
+
+    /**
+     * A scope carried by `movableContentOf` that relocates from inside another scope to being its
+     * sibling must pick up its new lineage. The parent link is revised in place through the frame's
+     * `update` (not frozen at push time), so after the move the two scopes read as siblings and drop
+     * — if the moved scope kept its stale parent it would still merge with the scope it left, silently
+     * reporting the wrong scope. Guards the #68 fix against `movableContentOf` reparenting.
+     */
+    @Test
+    fun aScopeMovedOutFromUnderAnotherPicksUpItsNewLineage() = runComposeUiTest {
+        val stack = ScopeStack()
+        val nested = mutableStateOf(true)
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                val row = remember { movableContentOf { AutographScope("x" to "1") {} } }
+                // While nested, `row` sits INSIDE scope "a" — a single chain a > x that merges.
+                AutographScope("a" to "1") { if (nested.value) row() }
+                // When moved out, `row` is a root sibling of "a": neither encloses the other.
+                if (!nested.value) row()
+            }
+        }
+        waitForIdle()
+        assertEquals("1", stack.current().scope.str("a"))
+        assertEquals("1", stack.current().scope.str("x"), "nested: a > x is one chain and merges")
+
+        nested.value = false
+        waitForIdle()
+
+        // Now "a" and "x" are siblings mounted at once — ambiguous, so scope drops entirely. A stale
+        // parent link would leave "x" merging with "a" and report the wrong scope for a tap in either.
+        assertNull(stack.current().scope.str("x"), "a relocated scope must not keep its old lineage")
+        assertNull(stack.current().scope.str("a"))
     }
 
     @Test
