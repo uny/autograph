@@ -49,7 +49,9 @@ public class ScopeStack {
     public val screenHistory: ScreenHistory = ScreenHistory()
 
     // Insertion-ordered; "innermost wins" for screen/section means later frames override earlier.
-    // Mutated only from the main thread (see class kdoc), so a plain list needs no guard of its own.
+    // For scope, precedence follows the frame LINEAGE (parent links) rather than insertion order —
+    // see [resolveScope]. Mutated only from the main thread (see class kdoc), so a plain list needs
+    // no guard of its own.
     private val frames = ArrayList<ScopeFrame>()
 
     @Volatile
@@ -65,13 +67,22 @@ public class ScopeStack {
      * "screen X, no section", and an inner screen that declares none does not inherit the section of
      * an outer one still on the stack. A frame with a [section] but no [screen] is a section-only
      * marker that refines the surrounding screen instead.
+     *
+     * [parent] declares this frame's enclosing frame, forming a lineage the *scope* merge follows:
+     * an enclosing scope contributes to a nested one, but two frames that are neither's ancestor
+     * (siblings mounted at once — a list's rows, split-pane, a sheet over content) are ambiguous, and
+     * [current] then drops scope for them rather than guessing (see [resolveScope]). Pass the
+     * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. Lineage is
+     * framework-independent — a native surface declares it the same way — so this does not tie the
+     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order.
      */
     public fun push(
         scope: JsonObject = EmptyJsonObject,
         screen: String? = null,
         section: String? = null,
+        parent: ScopeHandle? = null,
     ): ScopeHandle {
-        val frame = ScopeFrame(scope, screen, section)
+        val frame = ScopeFrame(scope, screen, section, parent?.frame)
         frames.add(frame)
         snapshot = recompute()
         return ScopeHandle(frame)
@@ -116,19 +127,17 @@ public class ScopeStack {
 
     private fun recompute(): AmbientContext {
         if (frames.isEmpty()) return AmbientContext.Empty
-        var scope: JsonObject = EmptyJsonObject
         var screen: String? = null
         var section: String? = null
         for (frame in frames) {
-            if (frame.scope.isNotEmpty()) {
-                scope = if (scope.isEmpty()) frame.scope else JsonObject(scope + frame.scope)
-            }
             // A frame that names a screen OWNS its section — it replaces both, so a section carried by
             // an outer screen cannot bleed onto an inner one that declared none (`push(screen = "X")`
             // means "screen X, no section", not "keep whatever section was showing"). A frame with no
             // screen is a section-only marker that refines the surrounding screen's context, so it
             // still updates section alone. This keeps screen and section composing independently in the
-            // marker case while stopping the cross-screen leak in the replacement case.
+            // marker case while stopping the cross-screen leak in the replacement case. Screen/section
+            // resolve by insertion order (one screen is active at a time, so "last mounted wins" is
+            // right for them); only scope is lineage-aware — see [resolveScope].
             if (frame.screen != null) {
                 screen = frame.screen
                 section = frame.section
@@ -136,7 +145,49 @@ public class ScopeStack {
                 section = frame.section
             }
         }
-        return AmbientContext(scope, screen, section)
+        return AmbientContext(resolveScope(), screen, section)
+    }
+
+    /**
+     * The merged scope, resolved along the frame lineage rather than by insertion order.
+     *
+     * Scope-bearing frames attribute a captured tap unambiguously only when they lie on a single
+     * ancestor chain (a route and the refinements nested inside it): then they merge outer→inner, the
+     * inner frame winning a key clash, exactly as nested `AutographScope`s compose. When two
+     * scope-bearing frames are mounted at once with neither enclosing the other — a list's rows each
+     * in their own scope, split-pane content, a sheet or dialog over the screen beneath — the stack
+     * cannot tell which subtree the tap landed in. It then drops scope entirely rather than pinning
+     * the tap to an arbitrary one: a *wrong* scope is worse than *no* scope and is irreversible in
+     * analytics data (#66). Resolving which sibling a tap actually hit needs the tap position, which
+     * this framework-independent stack does not have; that is a separate, additive layer (#68).
+     */
+    private fun resolveScope(): JsonObject {
+        val scoped = frames.filter { it.scope.isNotEmpty() }
+        if (scoped.isEmpty()) return EmptyJsonObject
+        if (scoped.size == 1) return scoped[0].scope
+        // A single chain has one frame that is a descendant of every other scoped frame (its ancestor
+        // chain contains them all). If none qualifies, the scoped frames branch — ambiguous, drop.
+        val single = scoped.any { candidate ->
+            val ancestry = generateSequence(candidate) { it.parent }.toHashSet()
+            scoped.all { it in ancestry }
+        }
+        if (!single) return EmptyJsonObject
+        // Merge outer→inner (ascending depth) so the deeper frame wins a shared key. Depths are
+        // distinct here: a chain strictly increases in depth, which is what `single` just established.
+        return scoped.sortedBy { it.depth() }
+            .fold(EmptyJsonObject) { acc, frame ->
+                if (acc.isEmpty()) frame.scope else JsonObject(acc + frame.scope)
+            }
+    }
+
+    private fun ScopeFrame.depth(): Int {
+        var depth = 0
+        var ancestor = parent
+        while (ancestor != null) {
+            depth++
+            ancestor = ancestor.parent
+        }
+        return depth
     }
 }
 
@@ -145,11 +196,14 @@ public class ScopeStack {
  *
  * Contents are mutable so [ScopeStack.update] can revise a frame without moving it (see there);
  * mutated only from the main thread, and every mutation republishes an immutable [AmbientContext].
+ * [parent] is fixed at push time and is never revised — it records the frame's enclosing frame for
+ * the scope-lineage resolution in [ScopeStack.resolveScope].
  */
 internal class ScopeFrame(
     var scope: JsonObject,
     var screen: String?,
     var section: String?,
+    val parent: ScopeFrame? = null,
 )
 
 /** An opaque token identifying a pushed frame, for [ScopeStack.update] and [ScopeStack.remove]. */

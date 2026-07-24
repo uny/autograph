@@ -33,8 +33,10 @@ class ScopeStackTest {
     @Test
     fun nested_scopes_accumulate_inner_overrides_outer() {
         val stack = ScopeStack()
-        stack.push(scope = props("a" to "outer", "b" to "outer"))
-        stack.push(scope = props("b" to "inner", "c" to "inner"))
+        // The inner frame declares the outer as its parent — the lineage that lets scope merge along
+        // a single chain (as opposed to two sibling scopes, which are ambiguous and dropped).
+        val outer = stack.push(scope = props("a" to "outer", "b" to "outer"))
+        stack.push(scope = props("b" to "inner", "c" to "inner"), parent = outer)
         assertEquals(
             props("a" to "outer", "b" to "inner", "c" to "inner"),
             stack.current().enrich(JsonObject(emptyMap())),
@@ -106,7 +108,7 @@ class ScopeStackTest {
     fun update_revises_a_frame_in_place_so_inner_frames_keep_precedence() {
         val stack = ScopeStack()
         val outer = stack.push(scope = props("k" to "outer1"))
-        stack.push(scope = props("k" to "inner"))
+        stack.push(scope = props("k" to "inner"), parent = outer)
         assertEquals("inner", stack.current().scope["k"]?.jsonPrimitive?.content)
 
         // The outer frame's value changes while the inner frame is still mounted. Updating in place
@@ -169,5 +171,62 @@ class ScopeStackTest {
             props("article_id" to "7", "action" to "like", "screen" to "Article"),
             enriched,
         )
+    }
+
+    @Test
+    fun sibling_scopes_mounted_at_once_drop_scope_rather_than_guess() {
+        val stack = ScopeStack()
+        // Two scopes with neither enclosing the other — a list's rows each in their own scope,
+        // split-pane content, a sheet over the screen beneath. The stack cannot tell which subtree a
+        // captured tap hit, so it emits NO scope rather than pinning the tap to an arbitrary sibling
+        // (#66: a wrong scope is worse than none, and irreversible in analytics).
+        stack.push(scope = props("article_id" to "row1"))
+        stack.push(scope = props("article_id" to "row2"))
+        assertEquals(
+            JsonObject(emptyMap()),
+            stack.current().scope,
+            "ambiguous sibling scopes resolve to no scope, not the last one mounted",
+        )
+    }
+
+    @Test
+    fun sibling_scopes_drop_scope_but_keep_screen_and_section() {
+        val stack = ScopeStack()
+        val screen = stack.push(screen = "Feed", section = "For You")
+        // Two sibling scopes under the screen: scope is ambiguous and dropped, but the screen/section
+        // are unambiguous (one screen is active at a time) and must still attribute the tap.
+        stack.push(scope = props("article_id" to "row1"), parent = screen)
+        stack.push(scope = props("article_id" to "row2"), parent = screen)
+        val ctx = stack.current()
+        assertEquals(JsonObject(emptyMap()), ctx.scope)
+        assertEquals("Feed", ctx.screen)
+        assertEquals("For You", ctx.section)
+    }
+
+    @Test
+    fun a_screen_frame_between_two_nested_scopes_keeps_them_on_one_chain() {
+        val stack = ScopeStack()
+        // outer scope -> screen -> inner scope. The empty-scope screen frame sits in the lineage but
+        // does not break the chain, so the two scopes still merge (inner wins the shared key).
+        val outer = stack.push(scope = props("a" to "outer", "b" to "outer"))
+        val screen = stack.push(screen = "Article", parent = outer)
+        stack.push(scope = props("b" to "inner", "c" to "inner"), parent = screen)
+        // Assert on scope directly: enrich would also inject the intermediate frame's screen key.
+        assertEquals(
+            props("a" to "outer", "b" to "inner", "c" to "inner"),
+            stack.current().scope,
+        )
+    }
+
+    @Test
+    fun removing_a_sibling_scope_resolves_the_ambiguity() {
+        val stack = ScopeStack()
+        val row1 = stack.push(scope = props("article_id" to "row1"))
+        stack.push(scope = props("article_id" to "row2"))
+        // While both siblings are mounted, scope is dropped...
+        assertEquals(JsonObject(emptyMap()), stack.current().scope)
+        // ...and once one leaves (its row scrolled off / disposed) the survivor is unambiguous again.
+        stack.remove(row1)
+        assertEquals("row2", stack.current().scope["article_id"]?.jsonPrimitive?.content)
     }
 }

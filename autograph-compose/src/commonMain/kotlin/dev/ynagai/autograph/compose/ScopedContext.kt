@@ -77,24 +77,27 @@ public fun AutographScope(
     // Mirror this scope into the ambient stack so autocapture — which observes taps ABOVE this
     // decorator, at the provider root, and never sees the LocalTracker we install below — attributes
     // them with the scope too. Only this level's own [properties] is pushed; the stack re-accumulates
-    // nested frames, so no double-counting despite the decorator above being pre-flattened. The
-    // decorator stays the source of truth for explicit `track` calls (lexical scope); the stack
-    // serves the capture path (dynamic scope). See [ScopeStack].
-    MirrorAmbientFrame(LocalScopeStack.current, scope = properties)
-    CompositionLocalProvider(LocalTracker provides scoped, content = content)
+    // nested frames along their lineage, so no double-counting despite the decorator above being
+    // pre-flattened. The decorator stays the source of truth for explicit `track` calls (lexical
+    // scope); the stack serves the capture path (dynamic scope). See [ScopeStack].
+    MirrorAmbientFrame(LocalScopeStack.current, scope = properties) {
+        CompositionLocalProvider(LocalTracker provides scoped, content = content)
+    }
 }
 
 /**
- * Mirrors one frame into [stack] for the lifetime of the calling composable: pushed on enter,
- * removed on exit, and revised IN PLACE when [scope]/[screen]/[section] change.
+ * Mirrors one frame into [stack] for the lifetime of [content]: pushed on enter, removed on exit,
+ * and revised IN PLACE when [scope]/[screen]/[section] change. The frame is linked to the nearest
+ * enclosing [MirrorAmbientFrame] as its parent, so the stack can resolve scope by lineage (an
+ * enclosing scope refines a nested one; sibling scopes mounted at once are ambiguous and dropped —
+ * see [ScopeStack]). [content] is wrapped so nested frames pick this one up as their parent.
  *
- * The in-place revision is load-bearing, not an optimization. The stack resolves precedence by
- * position ("later frames win"), so re-pushing a frame whose value changed would move it to the top
- * and let an OUTER scope/screen wrongly override a still-mounted INNER one — e.g. an outer
- * `AutographScope("cart_size" to n)` that updates while an inner scope is on screen would start
- * winning the shared keys. Pushing once (keyed on [stack] alone) and updating keeps each frame at
- * its nesting position for as long as it is mounted. Only the capture path reads this; explicit
- * `track` keeps its lexical scope via the decorator either way.
+ * The in-place revision is load-bearing, not an optimization. Re-pushing a frame whose value changed
+ * would move it to the top of the insertion order and let an OUTER screen/section wrongly override a
+ * still-mounted INNER one — e.g. an outer `TrackedScreen` whose section updates while an inner screen
+ * is on stack. Pushing once (keyed on [stack] alone) and updating keeps each frame at its position
+ * for as long as it is mounted. Only the capture path reads this; explicit `track` keeps its lexical
+ * scope via the decorator either way.
  */
 @Composable
 internal fun MirrorAmbientFrame(
@@ -102,15 +105,20 @@ internal fun MirrorAmbientFrame(
     scope: JsonObject = EmptyJsonObject,
     screen: String? = null,
     section: String? = null,
+    content: @Composable () -> Unit,
 ) {
     // A plain box, not state: written from the effect below and read only by the SideEffect, so it
     // must not itself invalidate the composition.
     val handle = remember(stack) { arrayOfNulls<ScopeHandle>(1) }
+    // The enclosing frame's holder. Its DisposableEffect ran before ours (it composed first), so by
+    // the time our effect reads `parentHolder[0]` below it is already filled — see [LocalScopeParent].
+    val parentHolder = LocalScopeParent.current
     // Pushed empty and filled by the SideEffect below (which runs in this same apply phase, long
     // before any tap can read the stack) so this effect references no changing value and therefore
-    // never restarts — restarting is exactly what would reorder the frame.
+    // never restarts — restarting is exactly what would reorder the frame. Keyed on [stack] alone:
+    // the parent link is read once here, and a genuine reparent remounts this composable anyway.
     DisposableEffect(stack) {
-        val pushed = stack.push()
+        val pushed = stack.push(parent = parentHolder?.get(0))
         handle[0] = pushed
         onDispose {
             stack.remove(pushed)
@@ -120,7 +128,19 @@ internal fun MirrorAmbientFrame(
     SideEffect {
         handle[0]?.let { stack.update(it, scope = scope, screen = screen, section = section) }
     }
+    CompositionLocalProvider(LocalScopeParent provides handle, content = content)
 }
+
+/**
+ * The nearest enclosing [MirrorAmbientFrame]'s handle holder, or null at the root. Carries the parent
+ * link down so a nested frame can declare its lineage to [ScopeStack] (which resolves scope by
+ * ancestry, not insertion order). The value is the enclosing frame's `remember`ed holder array, whose
+ * identity is stable across recompositions, so providing it triggers no extra recomposition; its
+ * single slot is filled by that frame's `DisposableEffect`, which — because the parent composes
+ * first — has already run by the time a child frame's own effect reads it.
+ */
+internal val LocalScopeParent: ProvidableCompositionLocal<Array<ScopeHandle?>?> =
+    staticCompositionLocalOf { null }
 
 private val fallbackScopeStack = ScopeStack()
 
