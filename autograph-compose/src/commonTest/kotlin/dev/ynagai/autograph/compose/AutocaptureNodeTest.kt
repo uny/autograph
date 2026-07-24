@@ -124,4 +124,15 @@ class AutocaptureNodeTest {
         assertEquals("Share", identifierFrom(testTag = null, role = null, label = "Share"))
         assertNull(identifierFrom(testTag = null, role = null, label = null))
     }
+
+    @Test
+    fun identifierFromTreatsBlankAsAbsentAndFallsThrough() {
+        // An empty or whitespace-only value is skipped so the chain continues rather than reporting blank.
+        assertEquals("Button", identifierFrom(testTag = "", role = "Button", label = "Share"))
+        assertEquals("Button", identifierFrom(testTag = "   ", role = "Button", label = "Share"))
+        assertEquals("Share", identifierFrom(testTag = "", role = "", label = "Share"))
+        assertNull(identifierFrom(testTag = "", role = "", label = ""))
+        // A value with content passes through byte-for-byte — surrounding whitespace is never trimmed.
+        assertEquals(" spaced tag ", identifierFrom(testTag = " spaced tag ", role = null, label = null))
+    }
 }

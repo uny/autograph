@@ -44,6 +44,15 @@ internal fun resolveAutocaptureTarget(chain: Sequence<AutocaptureNode>): String?
     return if (nearestClickable.instrumented) null else nearestClickable.identifier
 }
 
-/** Identifier priority: [testTag] first (explicit, stable), then [role], then [label] (a11y text). */
+/**
+ * Identifier priority: [testTag] first (explicit, stable), then [role], then [label] (a11y text).
+ *
+ * A blank value is treated as absent so it falls through the chain rather than reporting an empty
+ * target (a `testTag("")` most often arrives from a template or a nil-coalesced binding, not a
+ * deliberate name). Non-blank values pass through byte-for-byte — never trimmed. Mirrors the iOS
+ * native decision in #79 (blank accessibility identifiers are dropped there too).
+ */
 internal fun identifierFrom(testTag: String?, role: String?, label: String?): String? =
-    testTag ?: role ?: label
+    testTag?.takeIf { it.isNotBlank() }
+        ?: role?.takeIf { it.isNotBlank() }
+        ?: label?.takeIf { it.isNotBlank() }
