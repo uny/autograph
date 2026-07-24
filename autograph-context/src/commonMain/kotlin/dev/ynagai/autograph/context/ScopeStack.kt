@@ -91,22 +91,34 @@ public class ScopeStack {
     /**
      * Replaces the contents of the frame [handle] refers to, in place — keeping its position, and
      * thus its precedence, in the stack. Use this instead of [remove] + [push] when a still-mounted
-     * frame's [scope]/[screen]/[section] changes: re-pushing would move the frame to the top and let
-     * it wrongly override inner frames that are still on the stack. A no-op (and no snapshot churn)
-     * if the contents are unchanged, the handle was already removed, or it belongs to another stack.
+     * frame's [scope]/[screen]/[section]/[parent] changes: re-pushing would move the frame to the top
+     * and let it wrongly override inner frames that are still on the stack. A no-op (and no snapshot
+     * churn) if the contents are unchanged, the handle was already removed, or it belongs to another
+     * stack.
      */
     public fun update(
         handle: ScopeHandle,
         scope: JsonObject = EmptyJsonObject,
         screen: String? = null,
         section: String? = null,
+        parent: ScopeHandle? = null,
     ) {
         val frame = handle.frame
         if (frames.none { it === frame }) return
-        if (frame.scope == scope && frame.screen == screen && frame.section == section) return
+        val parentFrame = parent?.frame
+        if (frame.scope == scope && frame.screen == screen && frame.section == section &&
+            frame.parent === parentFrame
+        ) {
+            return
+        }
         frame.scope = scope
         frame.screen = screen
         frame.section = section
+        // Revised in place, like the other fields: a frame moved to a new lineage (e.g. a
+        // `movableContentOf` subtree relocated under a different parent) must pick up its new parent
+        // without being removed and re-pushed — re-pushing would change its identity and orphan any
+        // frames still pointing to it as *their* parent. See [resolveScope] for how the link is used.
+        frame.parent = parentFrame
         snapshot = recompute()
     }
 
@@ -196,14 +208,15 @@ public class ScopeStack {
  *
  * Contents are mutable so [ScopeStack.update] can revise a frame without moving it (see there);
  * mutated only from the main thread, and every mutation republishes an immutable [AmbientContext].
- * [parent] is fixed at push time and is never revised — it records the frame's enclosing frame for
- * the scope-lineage resolution in [ScopeStack.resolveScope].
+ * [parent] records the frame's enclosing frame for the scope-lineage resolution in
+ * [ScopeStack.resolveScope]; it is revisable (a frame can be reparented in place — see
+ * [ScopeStack.update]) rather than fixed, so a relocated subtree does not keep a stale lineage.
  */
 internal class ScopeFrame(
     var scope: JsonObject,
     var screen: String?,
     var section: String?,
-    val parent: ScopeFrame? = null,
+    var parent: ScopeFrame? = null,
 )
 
 /** An opaque token identifying a pushed frame, for [ScopeStack.update] and [ScopeStack.remove]. */

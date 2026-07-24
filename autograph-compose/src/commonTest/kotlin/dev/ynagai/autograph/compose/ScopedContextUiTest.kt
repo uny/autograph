@@ -4,7 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.movableContentOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import dev.ynagai.autograph.Tracker
@@ -394,6 +396,42 @@ class ScopedContextUiTest {
             stack.current().scope.str("article_id"),
             "ambiguous sibling scopes resolve to no scope, not the last one mounted",
         )
+    }
+
+    /**
+     * A scope carried by `movableContentOf` that relocates from inside another scope to being its
+     * sibling must pick up its new lineage. The parent link is revised in place through the frame's
+     * `update` (not frozen at push time), so after the move the two scopes read as siblings and drop
+     * — if the moved scope kept its stale parent it would still merge with the scope it left, silently
+     * reporting the wrong scope. Guards the #68 fix against `movableContentOf` reparenting.
+     */
+    @Test
+    fun aScopeMovedOutFromUnderAnotherPicksUpItsNewLineage() = runComposeUiTest {
+        val stack = ScopeStack()
+        val nested = mutableStateOf(true)
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                val row = remember { movableContentOf { AutographScope("x" to "1") {} } }
+                // While nested, `row` sits INSIDE scope "a" — a single chain a > x that merges.
+                AutographScope("a" to "1") { if (nested.value) row() }
+                // When moved out, `row` is a root sibling of "a": neither encloses the other.
+                if (!nested.value) row()
+            }
+        }
+        waitForIdle()
+        assertEquals("1", stack.current().scope.str("a"))
+        assertEquals("1", stack.current().scope.str("x"), "nested: a > x is one chain and merges")
+
+        nested.value = false
+        waitForIdle()
+
+        // Now "a" and "x" are siblings mounted at once — ambiguous, so scope drops entirely. A stale
+        // parent link would leave "x" merging with "a" and report the wrong scope for a tap in either.
+        assertNull(stack.current().scope.str("x"), "a relocated scope must not keep its old lineage")
+        assertNull(stack.current().scope.str("a"))
     }
 
     @Test

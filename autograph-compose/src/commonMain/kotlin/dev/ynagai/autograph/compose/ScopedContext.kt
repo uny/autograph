@@ -110,23 +110,30 @@ internal fun MirrorAmbientFrame(
     // A plain box, not state: written from the effect below and read only by the SideEffect, so it
     // must not itself invalidate the composition.
     val handle = remember(stack) { arrayOfNulls<ScopeHandle>(1) }
-    // The enclosing frame's holder. Its DisposableEffect ran before ours (it composed first), so by
-    // the time our effect reads `parentHolder[0]` below it is already filled — see [LocalScopeParent].
+    // The enclosing frame's holder. Its DisposableEffect ran before our SideEffect (it composed
+    // first, and all DisposableEffects in an apply phase run before any SideEffect), so by the time
+    // our SideEffect reads `parentHolder[0]` below it is already filled — see [LocalScopeParent].
     val parentHolder = LocalScopeParent.current
-    // Pushed empty and filled by the SideEffect below (which runs in this same apply phase, long
+    // Pushed EMPTY and filled by the SideEffect below (which runs in this same apply phase, long
     // before any tap can read the stack) so this effect references no changing value and therefore
-    // never restarts — restarting is exactly what would reorder the frame. Keyed on [stack] alone:
-    // the parent link is read once here, and a genuine reparent remounts this composable anyway.
+    // never restarts — restarting is exactly what would reorder the frame.
     DisposableEffect(stack) {
-        val pushed = stack.push(parent = parentHolder?.get(0))
+        val pushed = stack.push()
         handle[0] = pushed
         onDispose {
             stack.remove(pushed)
             handle[0] = null
         }
     }
+    // scope/screen/section AND the parent link are all set here, in place, on every recomposition.
+    // Routing the parent through `update` (not the one-shot `push` above) is what keeps a
+    // `movableContentOf` subtree correct: when it relocates under a different frame, this SideEffect
+    // re-runs with the new `parentHolder` and reparents in place, rather than keeping the stale link
+    // a push-time capture would freeze in. `update` no-ops when nothing changed, so this is cheap.
     SideEffect {
-        handle[0]?.let { stack.update(it, scope = scope, screen = screen, section = section) }
+        handle[0]?.let {
+            stack.update(it, scope = scope, screen = screen, section = section, parent = parentHolder?.get(0))
+        }
     }
     CompositionLocalProvider(LocalScopeParent provides handle, content = content)
 }
