@@ -8,7 +8,7 @@ atomicfu = "0.33.0"
 kotlinxIo = "0.9.1"
 analyticsKotlin = "1.25.0"
 navigationCompose = "2.9.2"
-lifecycle = "2.10.0"
+lifecycle = "2.11.0"
 androidxStartup = "1.2.0"
 robolectric = "4.16.1"
 androidxFragment = "1.8.9"
@@ -20,7 +20,7 @@ junit = "4.13.2"
 publish = "0.37.0"
 dokka = "2.2.0"
 
-android-compileSdk = "36"
+android-compileSdk = "37"
 android-minSdk = "24"
 
 [libraries]
