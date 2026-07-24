@@ -358,10 +358,12 @@ class ScopedContextUiTest {
     /**
      * Sibling scopes mounted at once — list rows each in their own `AutographScope`, split-pane
      * content, a sheet over the screen beneath — are ambiguous: the ambient stack cannot tell which
-     * subtree a captured tap landed in. It resolves them to NO scope rather than pinning the tap to
-     * an arbitrary sibling, because a wrong scope is worse than none and irreversible in analytics
-     * (#66). Scoping a screen/route (one subtree at a time) still attributes exactly; only the
-     * genuinely-ambiguous sibling case drops. Position-aware disambiguation is a separate layer (#68).
+     * subtree a captured tap landed in. It drops them rather than pinning the tap to an arbitrary
+     * sibling, because a wrong scope is worse than none and irreversible in analytics (#66). Here
+     * nothing encloses the rows, so nothing survives the drop — see
+     * [anEnclosingScopeSurvivesAmbiguousRowsBelowIt] for the case where something does. Scoping a
+     * screen/route (one subtree at a time) still attributes exactly; only the genuinely-ambiguous
+     * sibling case drops. Position-aware disambiguation is a separate layer (#68).
      */
     @Test
     fun siblingScopesMountedAtOnceResolveToNoScope() = runComposeUiTest {
@@ -396,6 +398,33 @@ class ScopedContextUiTest {
             stack.current().scope.str("article_id"),
             "ambiguous sibling scopes resolve to no scope, not the last one mounted",
         )
+    }
+
+    /**
+     * The layout the README recommends and the one above, combined: a route scope wrapping rows that
+     * each carry their own. Which row a captured tap hit is unknowable, but the tap is under the route
+     * scope whichever row it was — so the route still attributes and only the ambiguous row keys drop.
+     * Pins the Compose wiring specifically: that `MirrorAmbientFrame` really does make the enclosing
+     * frame the rows' lineage parent, which is what lets the stack tell "encloses" from "sibling".
+     */
+    @Test
+    fun anEnclosingScopeSurvivesAmbiguousRowsBelowIt() = runComposeUiTest {
+        val stack = ScopeStack()
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides ScopeUiRecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                AutographScope("tab" to "home") {
+                    AutographScope("article_id" to "row1") {}
+                    AutographScope("article_id" to "row2") {}
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals("home", stack.current().scope.str("tab"), "the enclosing scope is unambiguous")
+        assertNull(stack.current().scope.str("article_id"), "which row was tapped is not knowable")
     }
 
     /**

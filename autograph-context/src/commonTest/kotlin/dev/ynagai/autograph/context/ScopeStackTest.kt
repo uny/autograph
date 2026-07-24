@@ -219,6 +219,30 @@ class ScopeStackTest {
     }
 
     @Test
+    fun an_enclosing_scope_survives_the_ambiguous_siblings_below_it() {
+        val stack = ScopeStack()
+        // The layout the README recommends AND per-row scopes: a route scope wrapping rows that each
+        // carry their own. Which row was tapped is unknowable, but the tap is under the route scope
+        // whichever row it hit — so the route scope attributes and only the ambiguous rows drop.
+        val route = stack.push(scope = props("tab" to "home"))
+        stack.push(scope = props("row" to "1"), parent = route)
+        stack.push(scope = props("row" to "2"), parent = route)
+        assertEquals(props("tab" to "home"), stack.current().scope)
+    }
+
+    @Test
+    fun a_chain_above_a_branch_survives_whole_and_inner_still_wins() {
+        val stack = ScopeStack()
+        // outer -> inner -> {leaf1, leaf2}: the two leaves branch, but the whole chain above them
+        // encloses both, so it merges in full — including `inner` overriding `outer`'s shared key.
+        val outer = stack.push(scope = props("a" to "outer", "b" to "outer"))
+        val inner = stack.push(scope = props("b" to "inner"), parent = outer)
+        stack.push(scope = props("leaf" to "1"), parent = inner)
+        stack.push(scope = props("leaf" to "2"), parent = inner)
+        assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope)
+    }
+
+    @Test
     fun removing_a_sibling_scope_resolves_the_ambiguity() {
         val stack = ScopeStack()
         val row1 = stack.push(scope = props("article_id" to "row1"))
@@ -228,5 +252,32 @@ class ScopeStackTest {
         // ...and once one leaves (its row scrolled off / disposed) the survivor is unambiguous again.
         stack.remove(row1)
         assertEquals("row2", stack.current().scope["article_id"]?.jsonPrimitive?.content)
+    }
+
+    /**
+     * `parent` is public, so a caller wiring lineage by hand can name a frame the target already
+     * encloses. That link is refused (the frame drops to a root) instead of being stored: the ancestry
+     * walks behind [ScopeStack.current] run on the main thread inside every mutation, and a cycle
+     * would spin them forever — this test HANGS rather than fails if the guard regresses.
+     */
+    @Test
+    fun a_frame_reparented_under_itself_is_refused_and_becomes_a_root() {
+        val stack = ScopeStack()
+        val a = stack.push(scope = props("a" to "1"))
+        stack.update(a, scope = props("a" to "1"), parent = a)
+        // Refused, so `a` is a root — and a second root scope is its ambiguous sibling, not its child.
+        stack.push(scope = props("b" to "2"))
+        assertEquals(JsonObject(emptyMap()), stack.current().scope)
+    }
+
+    @Test
+    fun a_reparent_that_would_close_a_cycle_between_two_frames_is_refused() {
+        val stack = ScopeStack()
+        val outer = stack.push(scope = props("a" to "outer"))
+        val inner = stack.push(scope = props("b" to "inner"), parent = outer)
+        // Pointing the outer frame at its own descendant would close outer -> inner -> outer.
+        stack.update(outer, scope = props("a" to "outer"), parent = inner)
+        // Refused: `outer` stays a root and the chain outer -> inner still merges, unspun.
+        assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope)
     }
 }

@@ -173,7 +173,7 @@ There's a `JsonObject` overload for non-string values. Notes:
   is a default a specific event can still refine). Screen/section from `TrackedScreen` compose
   independently.
 - **`identify` traits are not scoped** — they describe the user, not the screen the event fired on.
-- **Autocapture carries the scope, but attributes it by push order.** Autocaptured taps fire from
+- **Autocapture carries the scope, but attributes it by lineage.** Autocaptured taps fire from
   the root tracker above your screens, so they can't read this `CompositionLocal`; they read an
   ambient stack (`autograph-context`) that `AutographScope` and `TrackedScreen` mirror into instead,
   and so do carry the scope, the screen, and the section you passed to `TrackedScreen`. (The section
@@ -187,11 +187,13 @@ There's a `JsonObject` overload for non-string values. Notes:
   rows in a list each wrapped in their own scope, split-pane content, a bottom sheet or dialog over
   the screen beneath it — neither encloses the other, and the stack cannot tell from mount order
   alone which subtree a tap landed in. Rather than attribute the tap to an arbitrary sibling, it
-  carries **no scope** for that tap: a wrong scope is worse than none and irreversible in analytics.
-  Screen and section are unaffected (one screen is active at a time), and so is explicit
-  instrumentation — `trackClick` / `trackImpression` and manual `track` calls keep their exact
-  lexical scope. Resolving *which* sibling a tap actually hit (so per-row scopes attribute exactly
-  instead of dropping) needs the tap position and is tracked in
+  drops **those** scopes: a wrong scope is worse than none and irreversible in analytics. What
+  **encloses** them all still attributes, since the tap is under it whichever sibling it hit — so a
+  route scope wrapping a list of per-row scopes keeps carrying the route, and only the ambiguous
+  row-level keys go missing. Screen and section are unaffected (one screen is active at a time), and
+  so is explicit instrumentation — `trackClick` / `trackImpression` and manual `track` calls keep
+  their exact lexical scope. Resolving *which* sibling a tap actually hit (so per-row scopes attribute
+  exactly instead of dropping) needs the tap position and is tracked in
   [#68](https://github.com/uny/autograph/issues/68).
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel

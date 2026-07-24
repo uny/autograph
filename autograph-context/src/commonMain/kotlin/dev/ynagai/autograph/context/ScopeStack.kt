@@ -71,7 +71,8 @@ public class ScopeStack {
      * [parent] declares this frame's enclosing frame, forming a lineage the *scope* merge follows:
      * an enclosing scope contributes to a nested one, but two frames that are neither's ancestor
      * (siblings mounted at once — a list's rows, split-pane, a sheet over content) are ambiguous, and
-     * [current] then drops scope for them rather than guessing (see [resolveScope]). Pass the
+     * [current] then drops *those* rather than guessing between them, keeping whatever encloses them
+     * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
      * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. Lineage is
      * framework-independent — a native surface declares it the same way — so this does not tie the
      * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order.
@@ -95,6 +96,9 @@ public class ScopeStack {
      * and let it wrongly override inner frames that are still on the stack. A no-op (and no snapshot
      * churn) if the contents are unchanged, the handle was already removed, or it belongs to another
      * stack.
+     *
+     * A [parent] that is this frame itself, or one of its descendants, cannot describe a real nesting
+     * and is refused: the frame becomes a root instead. See the note at the assignment below.
      */
     public fun update(
         handle: ScopeHandle,
@@ -105,7 +109,17 @@ public class ScopeStack {
     ) {
         val frame = handle.frame
         if (frames.none { it === frame }) return
-        val parentFrame = parent?.frame
+        // A parent that this frame already encloses would close the lineage into a cycle, and the
+        // ancestry walks in [resolveScope] — which run on the main thread inside every mutation —
+        // would spin forever on it. Only reparenting can produce one (at [push] the frame does not
+        // exist yet, so nothing can point at it), and no real nesting looks like this, so the link is
+        // refused rather than trusted: the frame becomes a root. Dropping to a root is the
+        // fail-closed reading — a root that branches off its siblings resolves to no scope — whereas
+        // keeping the previous parent would leave a lineage the caller has just contradicted, which
+        // can still merge and report a scope this stack exists to avoid guessing (#66). Refusing here
+        // also keeps "parent links form a forest" true for every reader of [frames].
+        val requested = parent?.frame
+        val parentFrame = if (requested != null && frame.encloses(requested)) null else requested
         if (frame.scope == scope && frame.screen == screen && frame.section == section &&
             frame.parent === parentFrame
         ) {
@@ -163,34 +177,38 @@ public class ScopeStack {
     /**
      * The merged scope, resolved along the frame lineage rather than by insertion order.
      *
-     * Scope-bearing frames attribute a captured tap unambiguously only when they lie on a single
-     * ancestor chain (a route and the refinements nested inside it): then they merge outer→inner, the
-     * inner frame winning a key clash, exactly as nested `AutographScope`s compose. When two
-     * scope-bearing frames are mounted at once with neither enclosing the other — a list's rows each
-     * in their own scope, split-pane content, a sheet or dialog over the screen beneath — the stack
-     * cannot tell which subtree the tap landed in. It then drops scope entirely rather than pinning
-     * the tap to an arbitrary one: a *wrong* scope is worse than *no* scope and is irreversible in
-     * analytics data (#66). Resolving which sibling a tap actually hit needs the tap position, which
-     * this framework-independent stack does not have; that is a separate, additive layer (#68).
+     * A scope-bearing frame may attribute a captured tap only if the tap is under it *whichever*
+     * subtree it landed in — that is, only if the frame is comparable (ancestor, descendant, or self)
+     * to every other scope-bearing frame. Those survivors are pairwise comparable, so they form a
+     * single chain and merge outer→inner, the inner frame winning a key clash, exactly as nested
+     * `AutographScope`s compose. Frames that branch away from one another — a list's rows each in
+     * their own scope, split-pane content, a sheet or dialog over the screen beneath — are the
+     * ambiguous part and drop out; what encloses them all stays, so a route scope above a list of
+     * ambiguous rows still attributes every tap under it. Nothing is ever guessed, so no *wrong*
+     * scope is reported (#66). Resolving which sibling a tap actually hit needs the tap position,
+     * which this framework-independent stack does not have; that is a separate, additive layer (#68).
      */
     private fun resolveScope(): JsonObject {
         val scoped = frames.filter { it.scope.isNotEmpty() }
         if (scoped.isEmpty()) return EmptyJsonObject
         if (scoped.size == 1) return scoped[0].scope
-        // A single chain has one frame that is a descendant of every other scoped frame (its ancestor
-        // chain contains them all). If none qualifies, the scoped frames branch — ambiguous, drop.
-        val single = scoped.any { candidate ->
-            val ancestry = generateSequence(candidate) { it.parent }.toHashSet()
-            scoped.all { it in ancestry }
+        val unambiguous = scoped.filter { frame ->
+            scoped.all { other -> frame.encloses(other) || other.encloses(frame) }
         }
-        if (!single) return EmptyJsonObject
-        // Merge outer→inner (ascending depth) so the deeper frame wins a shared key. Depths are
-        // distinct here: a chain strictly increases in depth, which is what `single` just established.
-        return scoped.sortedBy { it.depth() }
+        // Ascending depth is outer→inner, so the deeper frame wins a shared key. Depths are distinct:
+        // the survivors lie on one chain, which strictly increases in depth.
+        return unambiguous.sortedBy { it.depth() }
             .fold(EmptyJsonObject) { acc, frame ->
                 if (acc.isEmpty()) frame.scope else JsonObject(acc + frame.scope)
             }
     }
+
+    /**
+     * Whether this frame is [other]'s ancestor, or [other] itself. Terminates because [update] refuses
+     * exactly the links that would close a cycle, so the parent graph is always a forest.
+     */
+    private fun ScopeFrame.encloses(other: ScopeFrame): Boolean =
+        generateSequence(other) { it.parent }.any { it === this }
 
     private fun ScopeFrame.depth(): Int {
         var depth = 0
