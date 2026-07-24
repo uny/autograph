@@ -173,7 +173,7 @@ There's a `JsonObject` overload for non-string values. Notes:
   is a default a specific event can still refine). Screen/section from `TrackedScreen` compose
   independently.
 - **`identify` traits are not scoped** — they describe the user, not the screen the event fired on.
-- **Autocapture carries the scope, but attributes it by push order.** Autocaptured taps fire from
+- **Autocapture carries the scope, but attributes it by lineage.** Autocaptured taps fire from
   the root tracker above your screens, so they can't read this `CompositionLocal`; they read an
   ambient stack (`autograph-context`) that `AutographScope` and `TrackedScreen` mirror into instead,
   and so do carry the scope, the screen, and the section you passed to `TrackedScreen`. (The section
@@ -181,15 +181,20 @@ There's a `JsonObject` overload for non-string values. Notes:
   — not a region within the screen; every tap under the screen carries it. Set it through
   `TrackedScreen`, not by providing a `ScreenContext` through `LocalScreenContext` yourself, which is
   still not mirrored. `trackClick` / `trackImpression` read screen and section from
-  `LocalScreenContext` either way.) That stack is ordered by when a scope was *mounted*,
-  not by where the tap landed, so a tap is attributed to the **innermost scope mounted last** — which
-  is the tapped element's own scope only while a single scope subtree is mounted at a time (a screen
-  or route — the intended unit). When sibling scopes are mounted **simultaneously** — rows in a list
-  each wrapped in their own scope, split-pane content, a bottom sheet or dialog over the screen
-  beneath it — a tap on an earlier sibling is attributed to the later one. Scope a screen/route
-  rather than individual list rows until the Compose path can resolve scope from the tap-position
-  semantics tree ([#68](https://github.com/uny/autograph/issues/68)). Explicit instrumentation and
-  manual `track` calls are unaffected: they keep their lexical scope and are always exact.
+  `LocalScreenContext` either way.) The stack resolves scope along the scope **lineage**: nested
+  scopes (a screen/route and the scopes inside it — the intended unit) lie on a single chain and
+  merge exactly, inner winning a key clash. When sibling scopes are mounted **simultaneously** —
+  rows in a list each wrapped in their own scope, split-pane content, a bottom sheet or dialog over
+  the screen beneath it — neither encloses the other, and the stack cannot tell from mount order
+  alone which subtree a tap landed in. Rather than attribute the tap to an arbitrary sibling, it
+  drops **those** scopes: a wrong scope is worse than none and irreversible in analytics. What
+  **encloses** them all still attributes, since the tap is under it whichever sibling it hit — so a
+  route scope wrapping a list of per-row scopes keeps carrying the route, and only the ambiguous
+  row-level keys go missing. Screen and section are unaffected (one screen is active at a time), and
+  so is explicit instrumentation — `trackClick` / `trackImpression` and manual `track` calls keep
+  their exact lexical scope. Resolving *which* sibling a tap actually hit (so per-row scopes attribute
+  exactly instead of dropping) needs the tap position and is tracked in
+  [#68](https://github.com/uny/autograph/issues/68).
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
   already receives, include it there explicitly.
