@@ -52,12 +52,11 @@ internal val AutographScopeKey: SemanticsPropertyKey<JsonObject> = SemanticsProp
  * as a repeated `testTag` or `contentDescription` is. Pass the keys in one call, or put the second
  * scope on a wrapping element, where the ancestry merge does apply.
  *
- * **Prefer the clickable element itself over a wrapper.** Putting this on a wrapper adds that
- * wrapper to the semantics tree, and the hit test does not descend past a node whose bounds miss the
- * tap — so a `clickable` drawn *outside* the wrapper (an overhanging badge, an `offset` decoration)
- * stops being autocaptured, even though its `onClick` still fires. A dropped tap, never a wrong one:
- * descending anyway was measured and hands an overhang's tap to the row it covers rather than the
- * row that was clicked. See [#126](https://github.com/uny/autograph/issues/126).
+ * A wrapper works as well as the clickable element itself, including for a `clickable` drawn
+ * *outside* the wrapper's own bounds — an overhanging badge, an `offset` decoration. The hit test
+ * reaches such an element because Compose routes the real pointer to it, and the wrapper is on its
+ * ancestry either way. (Before [#126](https://github.com/uny/autograph/issues/126) it did not: the
+ * walk stopped above any child whose parent's bounds missed the tap, so those taps were dropped.)
  *
  * **Android only, for now.** Resolution reads the marker back off the tapped element's ancestry in
  * the semantics tree — the same chain the tap's `target` is picked from. That is the guarantee worth

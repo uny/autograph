@@ -10,7 +10,15 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 
-private data class TestNode(val name: String, val bounds: Rect, val children: List<TestNode> = emptyList())
+private data class TestNode(
+    val name: String,
+    val bounds: Rect,
+    val children: List<TestNode> = emptyList(),
+    val clickable: Boolean = false,
+)
+
+private fun findClickableHit(root: TestNode, point: Offset): TestNode? =
+    findClickableHit(root, point, bounds = { it.bounds }, children = { it.children }, clickable = { it.clickable })
 
 private fun scope(vararg pairs: Pair<String, String>): JsonObject =
     JsonObject(pairs.associate { (k, v) -> k to JsonPrimitive(v) })
@@ -50,23 +58,67 @@ class AutocaptureNodeTest {
 
     @Test
     fun findDeepestHitDoesNotDescendPastAParentWhoseBoundsMissThePoint() {
-        // Deliberate, and load-bearing. A child drawn outside its parent (offset/overhang) is NOT
-        // reachable, so a tap there resolves to nothing — even though Compose does route a real
-        // pointer to such a child. That is a known drop, tracked in #126.
+        // Deliberate, and load-bearing — but as the SECOND stage only, run from the element
+        // findClickableHit already picked. There it bounds the chain: every node it returns below
+        // that element is one the point is genuinely inside, so a scope or an ignore collected from
+        // below the reported element belongs to the tap.
         //
-        // Descending anyway was measured and rejected: it makes the walk model DRAWING while
-        // resolveAutocaptureTarget then walks UP to a clickable, so an overhanging decoration inside
-        // row2 that visually covers row1 hands the tap to row2 — a WRONG target, where Compose
-        // itself fired row1. This library trades a missing attribution for a wrong one every time
-        // (see ScopeStack's kdoc), and the prune is what buys that here: every node on the returned
-        // chain contains the point, so the reported clickable is one the pointer really was inside.
+        // Run from the root it would instead model DRAWING while resolveAutocaptureTarget walks UP
+        // to a clickable, so an overhanging decoration inside row2 covering row1 would hand row1's
+        // tap to row2 — a wrong target. That is why the entry point is findClickableHit.
         val overflowing = TestNode("badge", Rect(40f, 0f, 50f, 10f))
         val parent = TestNode("row", Rect(0f, 0f, 10f, 10f), children = listOf(overflowing))
         val root = TestNode("screen", Rect(0f, 0f, 100f, 100f), children = listOf(parent))
 
         val hit = findDeepestHit(root, Offset(45f, 5f), bounds = { it.bounds }, children = { it.children })
 
-        assertEquals("screen", hit?.name, "the overhanging child is out of reach; the walk stops above it")
+        assertEquals("screen", hit?.name, "the overhanging child is out of reach of this walk")
+    }
+
+    @Test
+    fun findClickableHitReachesAClickableDrawnOutsideItsParent() {
+        // The same tree, entered through stage 1: the parent's bounds no longer gate the descent,
+        // because Compose routes the real pointer to the overhanging child too.
+        val overflowing = TestNode("badge", Rect(40f, 0f, 50f, 10f), clickable = true)
+        val parent = TestNode("row", Rect(0f, 0f, 10f, 10f), children = listOf(overflowing))
+        val root = TestNode("screen", Rect(0f, 0f, 100f, 100f), children = listOf(parent))
+
+        assertEquals("badge", findClickableHit(root, Offset(45f, 5f))?.name)
+    }
+
+    @Test
+    fun findClickableHitSkipsANodeWhoseOwnBoundsMissThePoint() {
+        // The other half of the rule, and what keeps descending everywhere from misattributing: an
+        // overhanging DECORATION is entered but wins nothing, so the clickable row it covers keeps
+        // its own tap rather than handing it to the decoration's row.
+        val decoration = TestNode("avatar", Rect(0f, 40f, 40f, 80f))
+        val row2 = TestNode("row2", Rect(0f, 100f, 200f, 200f), children = listOf(decoration), clickable = true)
+        val row1 = TestNode("row1", Rect(0f, 0f, 200f, 100f), clickable = true)
+        val root = TestNode("screen", Rect(0f, 0f, 200f, 200f), children = listOf(row1, row2))
+
+        assertEquals("row1", findClickableHit(root, Offset(20f, 60f))?.name)
+    }
+
+    @Test
+    fun findClickableHitPrefersTheDeepestThenTopmostClickable() {
+        // Children before self, and later siblings before earlier ones — the same ordering
+        // findDeepestHit uses, so the visually topmost element still takes an overlapping tap.
+        val inner = TestNode("inner", Rect(0f, 0f, 20f, 20f), clickable = true)
+        val behind = TestNode("behind", Rect(0f, 0f, 50f, 50f), clickable = true)
+        val front = TestNode("front", Rect(0f, 0f, 50f, 50f), children = listOf(inner), clickable = true)
+        val root = TestNode("card", Rect(0f, 0f, 100f, 100f), children = listOf(behind, front), clickable = true)
+
+        assertEquals("inner", findClickableHit(root, Offset(10f, 10f))?.name)
+        assertEquals("front", findClickableHit(root, Offset(30f, 30f))?.name, "topmost of the overlapping pair")
+        assertEquals("card", findClickableHit(root, Offset(70f, 70f))?.name, "outside both, the container takes it")
+    }
+
+    @Test
+    fun findClickableHitReturnsNullWhenNothingClickableIsUnderThePoint() {
+        val leaf = TestNode("label", Rect(0f, 0f, 20f, 20f))
+        val root = TestNode("card", Rect(0f, 0f, 100f, 100f), children = listOf(leaf))
+
+        assertNull(findClickableHit(root, Offset(10f, 10f)))
     }
 
     @Test

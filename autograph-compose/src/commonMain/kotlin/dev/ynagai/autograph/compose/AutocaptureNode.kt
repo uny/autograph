@@ -6,10 +6,56 @@ import dev.ynagai.autograph.EmptyJsonObject
 import kotlinx.serialization.json.JsonObject
 
 /**
+ * The element a tap at [point] should be attributed to: the innermost — and among equals, the
+ * visually topmost — node that is itself [clickable] and whose OWN [bounds] contain the point.
+ *
+ * Unlike [findDeepestHit] this does **not** stop at a subtree whose parent misses the point, because
+ * Compose does not either: a `clickable` drawn outside its parent (an overhanging badge, a
+ * `Modifier.offset` decoration, `requiredSize` past the parent's constraints) still receives the real
+ * pointer. What keeps that from misattributing is the other half of the rule — a node only takes the
+ * tap if the point is inside *that node*, so a subtree is entered but wins nothing unless it actually
+ * contains a clickable under the point. A non-clickable decoration overhanging into a neighbouring
+ * row therefore yields nothing and the neighbour keeps its own tap.
+ *
+ * This approximates Compose's pointer routing over the unmerged semantics tree; it does not
+ * reproduce it. Three known divergences, all pre-existing and none introduced here: an element's
+ * touch target is expanded past its bounds below `minimumInteractiveComponentSize`
+ * ([#127](https://github.com/uny/autograph/issues/127)); `clickable(enabled = false)` still publishes
+ * the click action, so a disabled element takes the tap and is reported
+ * ([#128](https://github.com/uny/autograph/issues/128)) — it is left taking it deliberately, since it
+ * really does consume the pointer and skipping it would report an element the tap never reached; and
+ * a bare `semantics { onClick { } }` carries no pointer input at all yet is indistinguishable from
+ * `Modifier.clickable` here.
+ *
+ * Generic over the platform's UI tree node type ([T]) — e.g. `SemanticsNode` — so the geometry is
+ * testable without any platform tree.
+ */
+internal fun <T> findClickableHit(
+    root: T,
+    point: Offset,
+    bounds: (T) -> Rect,
+    children: (T) -> List<T>,
+    clickable: (T) -> Boolean,
+): T? {
+    for (child in children(root).asReversed()) {
+        findClickableHit(child, point, bounds, children, clickable)?.let { return it }
+    }
+    return if (clickable(root) && bounds(root).contains(point)) root else null
+}
+
+/**
  * Depth-first search for the most specific (innermost) node whose [bounds] contain [point],
  * preferring later (visually on top) siblings when bounds overlap. Generic over the platform's UI
  * tree node type ([T]) — e.g. Android's `SemanticsNode` — so the geometry itself is testable
  * without any platform tree.
+ *
+ * Refuses to descend past a node whose own bounds miss the point. Run from the node
+ * [findClickableHit] picked, that prune is what bounds the chain [resolveAutocaptureTarget] then
+ * walks: every node it returns below that element is one the point is genuinely inside, so a scope
+ * or an [autographIgnore] collected from *below* the reported element belongs to the tap. Run from
+ * the root it would instead model drawing, and an overhanging decoration would hand its own row's
+ * tap to whichever element the walk then resolved up to — which is why the entry point is
+ * [findClickableHit] and not this.
  */
 internal fun <T> findDeepestHit(root: T, point: Offset, bounds: (T) -> Rect, children: (T) -> List<T>): T? {
     if (!bounds(root).contains(point)) return null
