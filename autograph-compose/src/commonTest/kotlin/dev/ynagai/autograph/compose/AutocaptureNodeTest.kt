@@ -100,7 +100,7 @@ class AutocaptureNodeTest {
     }
 
     @Test
-    fun findClickableHitPrefersTheDeepestThenTopmostClickable() {
+    fun findClickableHitTakesTheInnermostClickableWithinOneBranch() {
         // Children before self, and later siblings before earlier ones — the same ordering
         // findDeepestHit uses, so the visually topmost element still takes an overlapping tap.
         val inner = TestNode("inner", Rect(0f, 0f, 20f, 20f), clickable = true)
@@ -111,6 +111,22 @@ class AutocaptureNodeTest {
         assertEquals("inner", findClickableHit(root, Offset(10f, 10f))?.name)
         assertEquals("front", findClickableHit(root, Offset(30f, 30f))?.name, "topmost of the overlapping pair")
         assertEquals("card", findClickableHit(root, Offset(70f, 70f))?.name, "outside both, the container takes it")
+    }
+
+    @Test
+    fun findClickableHitLetsTheTopmostBranchWinOverADeeperClickableBeneathIt() {
+        // Depth decides only WITHIN a branch; between branches, stacking does. `front` is a shallow
+        // clickable drawn over `behind`, which holds a deeper one — and `front` still takes the tap,
+        // because a pointer stops at the topmost element that accepts it however deep the covered
+        // subtree goes. Pins the ordering the walk actually has: "deepest, then topmost" would pick
+        // `deep` here and be wrong about what Compose does.
+        val deep = TestNode("deep", Rect(0f, 0f, 50f, 50f), clickable = true)
+        val middle = TestNode("middle", Rect(0f, 0f, 50f, 50f), children = listOf(deep))
+        val behind = TestNode("behind", Rect(0f, 0f, 50f, 50f), children = listOf(middle))
+        val front = TestNode("front", Rect(0f, 0f, 50f, 50f), clickable = true)
+        val root = TestNode("card", Rect(0f, 0f, 100f, 100f), children = listOf(behind, front))
+
+        assertEquals("front", findClickableHit(root, Offset(25f, 25f))?.name)
     }
 
     @Test

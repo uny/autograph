@@ -6,8 +6,14 @@ import dev.ynagai.autograph.EmptyJsonObject
 import kotlinx.serialization.json.JsonObject
 
 /**
- * The element a tap at [point] should be attributed to: the innermost — and among equals, the
- * visually topmost — node that is itself [clickable] and whose OWN [bounds] contain the point.
+ * The element a tap at [point] should be attributed to: the first node that is itself [clickable]
+ * and whose OWN [bounds] contain the point, searched children-before-self and taking each sibling's
+ * whole subtree in visual order, topmost first.
+ *
+ * So the topmost branch wins outright — even where a branch beneath it holds a *deeper* clickable —
+ * and within the winning branch the innermost clickable takes the tap. Depth decides only inside one
+ * branch; between branches, stacking does. That is the order Compose routes a pointer in, and it is
+ * why an element covered by a clickable overlay does not receive the tap however deep it sits.
  *
  * Unlike [findDeepestHit] this does **not** stop at a subtree whose parent misses the point, because
  * Compose does not either: a `clickable` drawn outside its parent (an overhanging badge, a

@@ -21,8 +21,9 @@ internal fun SemanticsNode.selfAndAncestors(): Sequence<SemanticsNode> = generat
 /**
  * Resolves a tap at [windowPosition] against this (unmerged) semantics tree, in two stages:
  *
- * 1. [findClickableHit] picks the element the tap is attributed to — the innermost, topmost node
- *    that is itself clickable and whose own bounds contain the point.
+ * 1. [findClickableHit] picks the element the tap is attributed to — the first node that is itself
+ *    clickable and whose own bounds contain the point, taking the visually topmost branch first and
+ *    the innermost such node within it.
  * 2. [findDeepestHit] runs from *that* element to find how far below it the point still lands, so
  *    that an [autocaptureScope] or [autographIgnore] declared on a leaf inside the reported element
  *    keeps contributing (it is subtree-wide by design — see [resolveAutocaptureTarget]).
