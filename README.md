@@ -210,10 +210,11 @@ There's a `JsonObject` overload for non-string values. Notes:
   }
   ```
 
-  Attribution reads the marker back off the **tapped element's own ancestry** in the semantics tree,
-  so mount order and geometry never enter it: nesting composes exactly (inner wins a key clash),
-  enclosing `AutographScope` frames still contribute underneath, and screen/section still win over
-  both. Two limits, both deliberate:
+  Attribution reads the marker back off the **tapped element's own ancestry** in the semantics tree
+  — the same chain the tap's `target` is picked from, so the scope always describes the element that
+  was actually hit rather than a neighbour. Mount order never enters it. Nesting composes exactly
+  (inner wins a key clash), enclosing `AutographScope` frames still contribute underneath, and
+  screen/section still win over both. Two limits, both deliberate:
   - **Autocapture only.** A `Modifier` cannot install a `CompositionLocal` for its element's
     children, so `trackClick` / `trackImpression` / manual `track` calls inside the subtree do *not*
     pick these properties up. Pass them explicitly there, or wrap the content in `AutographScope`

@@ -41,8 +41,14 @@ internal val AutographScopeKey: SemanticsPropertyKey<JsonObject> = SemanticsProp
  * they do for any other event.
  *
  * **Android only, for now.** Resolution reads the marker back off the tapped element's ancestry in
- * the semantics tree, which is what makes it exact — mount order and geometry never enter, so
- * `Modifier.clip`, z-order and mid-animation positions cannot mislead it. Compose Multiplatform's
+ * the semantics tree — the same chain the tap's `target` is picked from. That is the guarantee worth
+ * stating: the scope always describes *the element that was actually hit*, because the two are read
+ * together. Where the hit test itself misattributes — `Modifier.clip` cannot be expressed as a rect,
+ * so a tap in the corner of a rounded clip may land on the wrong element, see [AutocaptureConfig] —
+ * the scope follows the target and is wrong with it, rather than contradicting it. Resolving the
+ * scope any other way (a positional registry of last-known bounds, or mount order) admits the worse
+ * failure instead: a correct `target` carrying a *neighbouring* element's scope, silently, whenever
+ * bounds go stale mid-animation. Compose Multiplatform's
  * iOS accessibility bridge carries none of the custom semantics an element declares, so on iOS this
  * modifier currently contributes nothing and taps keep resolving as they did before it
  * ([AutographScope] siblings there stay ambiguous and drop, per `ScopeStack`). The failure is a

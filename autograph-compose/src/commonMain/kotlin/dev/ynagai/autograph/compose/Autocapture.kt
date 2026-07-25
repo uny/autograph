@@ -15,9 +15,11 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * (Android only, for now — see its kdoc).
  *
  * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer
- * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing doesn't account
- * for `Modifier.clip`/`Modifier.zIndex`, so an element that's visually clipped or reordered can be
- * misattributed.
+ * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing works on each
+ * element's bounding rectangle, so it cannot express a `Modifier.clip` that isn't rectangular: a tap
+ * in the corner of a rounded or shaped clip can be attributed to an element it visually missed.
+ * `Modifier.zIndex` is *not* in this category — the semantics children the walk descends are
+ * z-sorted, so the visually topmost element takes the tap (pinned by `AutocaptureScopeTest`).
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on

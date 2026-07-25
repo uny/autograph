@@ -7,12 +7,16 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
-import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
@@ -37,21 +41,37 @@ private class ScopeCaptureTracker : Tracker {
 private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.content
 
 /**
- * Runs the **real** Android read path over this node: the same `selfAndAncestors()` /
- * `toAutocaptureNode()` / [resolveAutocaptureTarget] calls `ElementResolver.android.kt` makes,
- * against a semantics node fetched from a live composition.
+ * Resolves a tap at [windowPosition] exactly the way `ElementResolver.android.kt` does: hit-test the
+ * unmerged semantics tree with [findDeepestHit], then read the hit node's ancestry through
+ * `selfAndAncestors()` / `toAutocaptureNode()` / [resolveAutocaptureTarget].
  *
- * Only the hit test is stood in for — picking the node by tag instead of by coordinates — because
- * `compose.uiTest` cannot reach a `RootForTest` on the JVM these tests run on. Everything downstream
- * of the hit is production code, so a scope that stops arriving in the semantics tree, or stops being
- * collected off the ancestry, fails here. The geometry it replaces is covered separately by
- * [AutocaptureNodeTest]'s `findDeepestHit` tests.
+ * Every line of that is the production path. The one substitution is where the root comes from —
+ * `onRoot(useUnmergedTree = true)` instead of `RootForTest.semanticsOwner.unmergedRootSemanticsNode`,
+ * which `compose.uiTest` cannot reach on the JVM these tests run on. It is the same node. In
+ * particular the **hit test is real**: nothing here tells the resolver which element was meant, so a
+ * scope collected off the wrong element's ancestry fails these tests rather than passing them.
  *
- * **Unmerged**, matching the resolver: on the merged tree a descendant's scope folds into its
- * clickable ancestor's config, which would make every test below pass for the wrong reason.
+ * Unmerged matters twice over — on the merged tree a descendant's scope folds into its clickable
+ * ancestor's config, and the sibling rows below would collapse into one node.
  */
-private fun SemanticsNodeInteraction.resolveAutocapture(): AutocaptureTarget? =
-    resolveAutocaptureTarget(fetchSemanticsNode().selfAndAncestors().map { it.toAutocaptureNode() })
+private fun SemanticsNode.resolveTapAt(windowPosition: Offset): AutocaptureTarget? {
+    val hit = findDeepestHit(
+        root = this,
+        point = windowPosition,
+        bounds = { it.boundsInWindow },
+        children = { it.children },
+    ) ?: return null
+    return resolveAutocaptureTarget(hit.selfAndAncestors().map { it.toAutocaptureNode() })
+}
+
+/** The window-space centre of the element tagged [tag] — where a user tapping it would land. */
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.centreOf(tag: String): Offset =
+    onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow.center
+
+/** The unmerged semantics root, the node the Android resolver hit-tests from. */
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.semanticsRoot(): SemanticsNode = onRoot(useUnmergedTree = true).fetchSemanticsNode()
 
 @OptIn(ExperimentalTestApi::class)
 class AutocaptureScopeTest {
@@ -74,7 +94,7 @@ class AutocaptureScopeTest {
         }
         waitForIdle()
 
-        assertEquals(EmptyJsonObject, onNodeWithTag("row", useUnmergedTree = true).resolveAutocapture()?.scope)
+        assertEquals(EmptyJsonObject, semanticsRoot().resolveTapAt(centreOf("row"))?.scope)
     }
 
     /**
@@ -94,9 +114,42 @@ class AutocaptureScopeTest {
         }
         waitForIdle()
 
-        assertEquals("row1", onNodeWithTag("row1", useUnmergedTree = true).resolveAutocapture()?.scope?.str("article_id"))
-        assertEquals("row2", onNodeWithTag("row2", useUnmergedTree = true).resolveAutocapture()?.scope?.str("article_id"))
-        assertEquals("row3", onNodeWithTag("row3", useUnmergedTree = true).resolveAutocapture()?.scope?.str("article_id"))
+        assertEquals("row1", semanticsRoot().resolveTapAt(centreOf("row1"))?.scope?.str("article_id"))
+        assertEquals("row2", semanticsRoot().resolveTapAt(centreOf("row2"))?.scope?.str("article_id"))
+        assertEquals("row3", semanticsRoot().resolveTapAt(centreOf("row3"))?.scope?.str("article_id"))
+    }
+
+    /**
+     * Two scopes stacked exactly on top of each other, the visually-topmost one raised by
+     * `Modifier.zIndex` *against* declaration order — the shape a scope resolved from anything other
+     * than the hit itself gets wrong.
+     *
+     * It resolves to the element actually on top. Measured, not assumed: `over` is declared FIRST,
+     * so [findDeepestHit]'s `asReversed()` would return `under` if `SemanticsNode.children` were in
+     * declaration order. It returns `over`, which means the semantics children are z-sorted and the
+     * walk sees the visual stacking. (`AutocaptureConfig`'s known-gaps note is corrected accordingly:
+     * `Modifier.clip` remains a gap — a rect cannot describe a rounded or shaped clip — but `zIndex`
+     * is not one, at least for overlapping siblings.)
+     *
+     * The invariant this pins is the one the design rests on: identifier and scope are read off the
+     * *same* chain, so whichever element the hit test picks, the scope names that element and no
+     * other. A scope resolved separately — from a positional registry, or from mount order — is what
+     * produces the far worse "right target carrying another element's scope".
+     */
+    @Test
+    fun theTopmostOfTwoStackedScopesWinsAndTheScopeNamesWhicheverElementWasHit() = runComposeUiTest {
+        setContent {
+            Box {
+                // Declared first, drawn on top: declaration order and visual order disagree here.
+                Box(Modifier.testTag("over").size(20.dp).zIndex(1f).autocaptureScope("card" to "over").clickable {})
+                Box(Modifier.testTag("under").size(20.dp).autocaptureScope("card" to "under").clickable {})
+            }
+        }
+        waitForIdle()
+
+        val resolved = assertNotNull(semanticsRoot().resolveTapAt(centreOf("over")))
+        assertEquals("over", resolved.identifier, "the visually topmost element takes the tap")
+        assertEquals(resolved.identifier, resolved.scope.str("card"), "the scope must name the element that was hit")
     }
 
     /**
@@ -120,7 +173,7 @@ class AutocaptureScopeTest {
         }
         waitForIdle()
 
-        val scope = assertNotNull(onNodeWithTag("row", useUnmergedTree = true).resolveAutocapture()).scope
+        val scope = assertNotNull(semanticsRoot().resolveTapAt(centreOf("row"))).scope
         assertEquals("42", scope.str("article_id"))
         assertEquals("for_you", scope.str("section"), "the enclosing scope must still reach the tap")
         assertEquals("row", scope.str("surface"), "the inner scope must win the shared key")
@@ -135,7 +188,7 @@ class AutocaptureScopeTest {
         }
         waitForIdle()
 
-        val resolved = onNodeWithTag("share", useUnmergedTree = true).resolveAutocapture()
+        val resolved = semanticsRoot().resolveTapAt(centreOf("share"))
         assertEquals("share", resolved?.identifier)
         assertEquals("42", resolved?.scope?.str("article_id"))
     }
@@ -150,7 +203,7 @@ class AutocaptureScopeTest {
         }
         waitForIdle()
 
-        assertNull(onNodeWithTag("row", useUnmergedTree = true).resolveAutocapture())
+        assertNull(semanticsRoot().resolveTapAt(centreOf("row")))
     }
 
     /**
@@ -178,7 +231,7 @@ class AutocaptureScopeTest {
         // The ambient stack alone cannot name the row — that is exactly the gap this modifier fills.
         assertNull(stack.current().scope.str("article_id"))
 
-        val resolved = assertNotNull(onNodeWithTag("row2", useUnmergedTree = true).resolveAutocapture())
+        val resolved = assertNotNull(semanticsRoot().resolveTapAt(centreOf("row2")))
         reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { resolved }
 
         val props = tracker.trackedProps.single()
