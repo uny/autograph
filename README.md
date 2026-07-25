@@ -192,9 +192,38 @@ There's a `JsonObject` overload for non-string values. Notes:
   route scope wrapping a list of per-row scopes keeps carrying the route, and only the ambiguous
   row-level keys go missing. Screen and section are unaffected (one screen is active at a time), and
   so is explicit instrumentation — `trackClick` / `trackImpression` and manual `track` calls keep
-  their exact lexical scope. Resolving *which* sibling a tap actually hit (so per-row scopes attribute
-  exactly instead of dropping) needs the tap position and is tracked in
-  [#68](https://github.com/uny/autograph/issues/68).
+  their exact lexical scope. To scope siblings *exactly* rather than have them drop, use
+  `Modifier.autocaptureScope` below.
+- **`Modifier.autocaptureScope(...)` scopes one element's subtree exactly.** It is the per-element
+  counterpart of `AutographScope`, for the case that composable cannot serve — simultaneously-mounted
+  siblings, above all a list's rows:
+
+  ```kotlin
+  LazyColumn {
+      items(articles) { article ->
+          Row(
+              Modifier
+                  .autocaptureScope("article_id" to article.id)
+                  .clickable { open(article) },
+          ) { ArticleRow(article) }
+      }
+  }
+  ```
+
+  Attribution reads the marker back off the **tapped element's own ancestry** in the semantics tree,
+  so mount order and geometry never enter it: nesting composes exactly (inner wins a key clash),
+  enclosing `AutographScope` frames still contribute underneath, and screen/section still win over
+  both. Two limits, both deliberate:
+  - **Autocapture only.** A `Modifier` cannot install a `CompositionLocal` for its element's
+    children, so `trackClick` / `trackImpression` / manual `track` calls inside the subtree do *not*
+    pick these properties up. Pass them explicitly there, or wrap the content in `AutographScope`
+    too. It is a companion to `AutographScope`, not a replacement.
+  - **Android only, for now.** Compose Multiplatform's iOS accessibility bridge carries none of the
+    custom semantics an element declares, so on iOS this modifier contributes nothing and taps
+    resolve as they did before it (sibling `AutographScope`s there still drop, as above). Expect an
+    `article_id` on Android and none on iOS for the same tap until
+    [#68](https://github.com/uny/autograph/issues/68) closes that gap — a missing property rather
+    than a wrong one, which is the trade this library takes on purpose.
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
   already receives, include it there explicitly.
@@ -206,7 +235,9 @@ element's identifier as `target` on a configurable event name (`"Element Clicked
 without needing `Modifier.trackClick` on every element. It's opt-in: observing every tap is a
 meaningfully different privacy posture than explicit instrumentation, so it's off unless you ask
 for it. Elements already instrumented with `trackClick` / `trackImpression` are never
-double-reported, and `Modifier.autographIgnore()` excludes a subtree entirely.
+double-reported, `Modifier.autographIgnore()` excludes a subtree entirely, and
+[`Modifier.autocaptureScope(...)`](#scoped-context) attaches per-element properties to the taps
+under it.
 
 Implemented on Android (hit-testing the semantics tree via the same opt-in `RootForTest` entry
 point other autocapture SDKs use) and iOS (walking the native accessibility tree Compose

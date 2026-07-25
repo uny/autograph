@@ -5,10 +5,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.InternalComposeUiApi
 import androidx.compose.ui.node.RootForTest
 import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.semantics.SemanticsActions
-import androidx.compose.ui.semantics.SemanticsNode
-import androidx.compose.ui.semantics.SemanticsProperties
-import androidx.compose.ui.semantics.getOrNull
 
 /**
  * Hit-tests the semantics tree via `RootForTest` — the same opt-in public entry point Compose's
@@ -18,8 +14,9 @@ import androidx.compose.ui.semantics.getOrNull
  * Uses [androidx.compose.ui.semantics.SemanticsOwner.getUnmergedRootSemanticsNode], not the merged
  * tree ([androidx.compose.ui.semantics.SemanticsOwner.getRootSemanticsNode]): [resolveAutocaptureTarget]
  * walks node-by-node expecting each [AutocaptureNode] to reflect only that node's own semantics —
- * on the merged tree a descendant's [AutographInstrumentedKey]/testTag folds into its clickable
- * ancestor's `config`, which would corrupt both the dedup walk and the identifier pick.
+ * on the merged tree a descendant's [AutographInstrumentedKey]/[AutographScopeKey]/testTag folds
+ * into its clickable ancestor's `config`, which would corrupt the dedup walk, the identifier pick,
+ * and which element a scope is read as sitting on. See [toAutocaptureNode].
  */
 @OptIn(InternalComposeUiApi::class)
 @Composable
@@ -39,16 +36,3 @@ internal actual fun rememberElementResolver(): ElementResolver {
         }
     }
 }
-
-private fun SemanticsNode.selfAndAncestors(): Sequence<SemanticsNode> = generateSequence(this) { it.parent }
-
-private fun SemanticsNode.toAutocaptureNode(): AutocaptureNode = AutocaptureNode(
-    identifier = identifierFrom(
-        testTag = config.getOrNull(SemanticsProperties.TestTag),
-        role = config.getOrNull(SemanticsProperties.Role)?.toString(),
-        label = config.getOrNull(SemanticsProperties.ContentDescription)?.firstOrNull(),
-    ),
-    clickable = config.getOrNull(SemanticsActions.OnClick) != null,
-    ignored = config.isAutocaptureIgnored(),
-    instrumented = config.isAutocaptureInstrumented(),
-)

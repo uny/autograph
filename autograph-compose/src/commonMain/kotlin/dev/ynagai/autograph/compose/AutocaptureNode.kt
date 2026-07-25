@@ -2,6 +2,8 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import dev.ynagai.autograph.EmptyJsonObject
+import kotlinx.serialization.json.JsonObject
 
 /**
  * Depth-first search for the most specific (innermost) node whose [bounds] contain [point],
@@ -27,6 +29,20 @@ internal data class AutocaptureNode(
     val clickable: Boolean,
     val ignored: Boolean,
     val instrumented: Boolean,
+    val scope: JsonObject = EmptyJsonObject,
+)
+
+/**
+ * What a resolved tap is reported as: the element's [identifier], plus the [scope] the tapped
+ * element's own ancestry declared through [autocaptureScope].
+ *
+ * The two travel together because they must come from the *same* hit test — deriving the scope
+ * separately (from mount order, or from a positional registry consulted after the fact) is what
+ * lets a tap be reported against one element with another element's scope.
+ */
+internal data class AutocaptureTarget(
+    val identifier: String,
+    val scope: JsonObject = EmptyJsonObject,
 )
 
 /**
@@ -36,12 +52,29 @@ internal data class AutocaptureNode(
  * root excludes the whole tap, even above the clickable that would otherwise be picked), whereas
  * [instrumented] only vetoes the walk when it reaches the node it would otherwise return — already
  * instrumented via [trackClick] / [trackImpression] and would otherwise be double-reported.
+ *
+ * [AutocaptureNode.scope] is subtree-wide like [ignored], and for the same reason: [autocaptureScope]
+ * says "taps under here carry this", so every node on the chain contributes, including one *below*
+ * the clickable that gets reported. Because the chain is a single ancestry path, its scopes are never
+ * ambiguous the way simultaneously-mounted `AutographScope` siblings are — they nest by construction,
+ * and merge outer→inner with the inner winning a key clash, exactly as nested scopes compose
+ * everywhere else.
  */
-internal fun resolveAutocaptureTarget(chain: Sequence<AutocaptureNode>): String? {
+internal fun resolveAutocaptureTarget(chain: Sequence<AutocaptureNode>): AutocaptureTarget? {
     val nodes = chain.toList()
     if (nodes.any { it.ignored }) return null
     val nearestClickable = nodes.firstOrNull { it.clickable } ?: return null
-    return if (nearestClickable.instrumented) null else nearestClickable.identifier
+    if (nearestClickable.instrumented) return null
+    val identifier = nearestClickable.identifier ?: return null
+    // asReversed() is root→hit node, so a deeper frame's entry lands later and wins the clash.
+    val scope = nodes.asReversed().fold(EmptyJsonObject) { acc, node ->
+        when {
+            node.scope.isEmpty() -> acc
+            acc.isEmpty() -> node.scope
+            else -> JsonObject(acc + node.scope)
+        }
+    }
+    return AutocaptureTarget(identifier, scope)
 }
 
 /**

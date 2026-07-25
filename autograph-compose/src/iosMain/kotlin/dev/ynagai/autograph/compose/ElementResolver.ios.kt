@@ -47,7 +47,14 @@ internal actual fun rememberElementResolver(): ElementResolver {
     val view = LocalUIView.current
     val claims = LocalAutocaptureClaims.current
     return remember(view, claims) {
-        ElementResolver { root, position -> resolveIosElement(view, claims, root.localToWindow(position)) }
+        ElementResolver { root, position ->
+            // No scope: the UIKit bridge carries none of the custom semantics [autocaptureScope]
+            // writes, so there is nothing to read back off the hit path here. An empty scope leaves
+            // the tap attributed exactly as it was before that modifier existed — the ambient
+            // `ScopeStack` still contributes, and simultaneously-mounted siblings there still drop
+            // rather than guess. Closing this gap needs its own measured design (#68).
+            resolveIosElement(view, claims, root.localToWindow(position))?.let { AutocaptureTarget(it) }
+        }
     }
 }
 

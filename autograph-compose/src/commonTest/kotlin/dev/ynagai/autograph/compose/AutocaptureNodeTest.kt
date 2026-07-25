@@ -2,11 +2,20 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import dev.ynagai.autograph.EmptyJsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNull
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonPrimitive
 
 private data class TestNode(val name: String, val bounds: Rect, val children: List<TestNode> = emptyList())
+
+private fun scope(vararg pairs: Pair<String, String>): JsonObject =
+    JsonObject(pairs.associate { (k, v) -> k to JsonPrimitive(v) })
+
+private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.content
 
 class AutocaptureNodeTest {
 
@@ -59,7 +68,7 @@ class AutocaptureNodeTest {
             AutocaptureNode(identifier = "share_button", clickable = true, ignored = false, instrumented = false),
             AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false),
         )
-        assertEquals("share_button", resolveAutocaptureTarget(chain))
+        assertEquals("share_button", resolveAutocaptureTarget(chain)?.identifier)
     }
 
     @Test
@@ -114,7 +123,83 @@ class AutocaptureNodeTest {
             AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = true),
             AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false),
         )
-        assertEquals("card", resolveAutocaptureTarget(chain))
+        assertEquals("card", resolveAutocaptureTarget(chain)?.identifier)
+    }
+
+    @Test
+    fun resolveAutocaptureTargetCarriesNoScopeWhenNothingOnTheChainDeclaresOne() {
+        val chain = sequenceOf(
+            AutocaptureNode(identifier = "button", clickable = true, ignored = false, instrumented = false),
+        )
+        assertEquals(EmptyJsonObject, resolveAutocaptureTarget(chain)?.scope)
+    }
+
+    @Test
+    fun resolveAutocaptureTargetMergesScopesAlongTheChainInnerWinningAClash() {
+        // The chain is a single ancestry path, so nested autocaptureScope()s are never ambiguous the
+        // way simultaneously-mounted AutographScope siblings are: they compose outer -> inner, and the
+        // inner value wins a shared key — the same rule nested scopes follow everywhere else.
+        val chain = sequenceOf(
+            AutocaptureNode(
+                identifier = "row",
+                clickable = true,
+                ignored = false,
+                instrumented = false,
+                scope = scope("article_id" to "42", "surface" to "row"),
+            ),
+            AutocaptureNode(
+                identifier = null,
+                clickable = false,
+                ignored = false,
+                instrumented = false,
+                scope = scope("section" to "for_you", "surface" to "list"),
+            ),
+        )
+
+        val resolved = resolveAutocaptureTarget(chain)
+
+        assertEquals("row", resolved?.identifier)
+        assertEquals("42", resolved?.scope?.str("article_id"))
+        assertEquals("for_you", resolved?.scope?.str("section"), "the enclosing scope must still contribute")
+        assertEquals("row", resolved?.scope?.str("surface"), "the inner scope must win a shared key")
+    }
+
+    @Test
+    fun resolveAutocaptureTargetCollectsAScopeDeclaredBelowTheReportedClickable() {
+        // autocaptureScope is subtree-wide like autographIgnore: "taps under here carry this". A
+        // scope on a non-clickable leaf inside a clickable row therefore still contributes, rather
+        // than being silently lost because the reported element sits above it.
+        val chain = sequenceOf(
+            AutocaptureNode(
+                identifier = null,
+                clickable = false,
+                ignored = false,
+                instrumented = false,
+                scope = scope("part" to "avatar"),
+            ),
+            AutocaptureNode(identifier = "row", clickable = true, ignored = false, instrumented = false),
+        )
+
+        val resolved = resolveAutocaptureTarget(chain)
+
+        assertEquals("row", resolved?.identifier)
+        assertEquals("avatar", resolved?.scope?.str("part"))
+    }
+
+    @Test
+    fun resolveAutocaptureTargetReportsNoScopeAtAllWhenTheChainIsIgnored() {
+        // A scope must never leak out of a subtree the caller excluded from autocapture: the veto is
+        // on the whole tap, not just on the identifier.
+        val chain = sequenceOf(
+            AutocaptureNode(
+                identifier = "row",
+                clickable = true,
+                ignored = true,
+                instrumented = false,
+                scope = scope("article_id" to "42"),
+            ),
+        )
+        assertNull(resolveAutocaptureTarget(chain))
     }
 
     @Test
