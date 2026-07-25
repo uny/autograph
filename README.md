@@ -214,7 +214,14 @@ There's a `JsonObject` overload for non-string values. Notes:
   — the same chain the tap's `target` is picked from, so the scope always describes the element that
   was actually hit rather than a neighbour. Mount order never enters it. Nesting composes exactly
   (inner wins a key clash), enclosing `AutographScope` frames still contribute underneath, and
-  screen/section still win over both. Two limits, both deliberate:
+  screen/section still win over both wherever they are actually set — with no screen resolved at
+  all, a scope key you named `screen` stands (and likewise `section` where no section is set),
+  exactly as it would on an explicit `track` call, so don't name a key either of those. Put it on
+  the clickable element rather than a wrapper: a wrapper joins the semantics tree, and a `clickable`
+  drawn outside its bounds then stops being captured ([#126](https://github.com/uny/autograph/issues/126)).
+  Declare it **once per element** — that composition is across
+  the ancestry, not within one modifier chain, so `.autocaptureScope(a).autocaptureScope(b)` drops
+  `b` rather than merging it, the same way a repeated `testTag` does. Two limits, both deliberate:
   - **Autocapture only.** A `Modifier` cannot install a `CompositionLocal` for its element's
     children, so `trackClick` / `trackImpression` / manual `track` calls inside the subtree do *not*
     pick these properties up. Pass them explicitly there, or wrap the content in `AutographScope`

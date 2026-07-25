@@ -49,6 +49,41 @@ class AutocaptureNodeTest {
     }
 
     @Test
+    fun findDeepestHitDoesNotDescendPastAParentWhoseBoundsMissThePoint() {
+        // Deliberate, and load-bearing. A child drawn outside its parent (offset/overhang) is NOT
+        // reachable, so a tap there resolves to nothing — even though Compose does route a real
+        // pointer to such a child. That is a known drop, tracked in #126.
+        //
+        // Descending anyway was measured and rejected: it makes the walk model DRAWING while
+        // resolveAutocaptureTarget then walks UP to a clickable, so an overhanging decoration inside
+        // row2 that visually covers row1 hands the tap to row2 — a WRONG target, where Compose
+        // itself fired row1. This library trades a missing attribution for a wrong one every time
+        // (see ScopeStack's kdoc), and the prune is what buys that here: every node on the returned
+        // chain contains the point, so the reported clickable is one the pointer really was inside.
+        val overflowing = TestNode("badge", Rect(40f, 0f, 50f, 10f))
+        val parent = TestNode("row", Rect(0f, 0f, 10f, 10f), children = listOf(overflowing))
+        val root = TestNode("screen", Rect(0f, 0f, 100f, 100f), children = listOf(parent))
+
+        val hit = findDeepestHit(root, Offset(45f, 5f), bounds = { it.bounds }, children = { it.children })
+
+        assertEquals("screen", hit?.name, "the overhanging child is out of reach; the walk stops above it")
+    }
+
+    @Test
+    fun findDeepestHitSkipsAClippedOutSiblingBecauseItsBoundsAreEmpty() {
+        // What keeps a scrolled-off row from taking a tap is its bounds: boundsInWindow is already
+        // clipped to Rect.Zero by the scrolling ancestor, and Rect.Zero contains no point at all —
+        // so it is skipped even though asReversed() tries it first.
+        val scrolledOff = TestNode("row2", Rect.Zero)
+        val visible = TestNode("row0", Rect(0f, 0f, 50f, 50f))
+        val root = TestNode("list", Rect(0f, 0f, 50f, 50f), children = listOf(visible, scrolledOff))
+
+        val hit = findDeepestHit(root, Offset(25f, 25f), bounds = { it.bounds }, children = { it.children })
+
+        assertEquals("row0", hit?.name)
+    }
+
+    @Test
     fun findDeepestHitPrefersTheLastOverlappingChild() {
         // Later children are visually on top when siblings overlap — asReversed() must check them first.
         val behind = TestNode("behind", Rect(0f, 0f, 50f, 50f))

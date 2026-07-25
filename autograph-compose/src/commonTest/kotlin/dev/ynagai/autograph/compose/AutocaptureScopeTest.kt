@@ -3,9 +3,11 @@ package dev.ynagai.autograph.compose
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
@@ -14,6 +16,7 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
@@ -21,9 +24,11 @@ import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 
@@ -45,11 +50,18 @@ private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.con
  * unmerged semantics tree with [findDeepestHit], then read the hit node's ancestry through
  * `selfAndAncestors()` / `toAutocaptureNode()` / [resolveAutocaptureTarget].
  *
- * Every line of that is the production path. The one substitution is where the root comes from —
- * `onRoot(useUnmergedTree = true)` instead of `RootForTest.semanticsOwner.unmergedRootSemanticsNode`,
- * which `compose.uiTest` cannot reach on the JVM these tests run on. It is the same node. In
- * particular the **hit test is real**: nothing here tells the resolver which element was meant, so a
- * scope collected off the wrong element's ancestry fails these tests rather than passing them.
+ * The hit test and the read path are the production code verbatim — in particular the **hit test is
+ * real**: nothing here tells the resolver which element was meant, so a scope collected off the
+ * wrong element's ancestry fails these tests rather than passing them.
+ *
+ * Three things around them are stood in for, and none of the three is covered anywhere else. The
+ * root comes from `onRoot(useUnmergedTree = true)` rather than
+ * `RootForTest.semanticsOwner.unmergedRootSemanticsNode` — the same node, but `compose.uiTest`
+ * cannot reach a `RootForTest` on the JVM these tests run on. The resolver's `view as? RootForTest`
+ * guard and its `localToWindow` conversion have no counterpart here, so callers pass window
+ * coordinates in directly. `autograph-compose` declares no Android host-test source set, so the
+ * Android `actual` of `rememberElementResolver` — the only place those two run — executes in no test
+ * at all; nothing here would notice if the position it hit-tests stopped being root-local.
  *
  * Unmerged matters twice over — on the merged tree a descendant's scope folds into its clickable
  * ancestor's config, and the sibling rows below would collapse into one node.
@@ -191,6 +203,141 @@ class AutocaptureScopeTest {
         val resolved = semanticsRoot().resolveTapAt(centreOf("share"))
         assertEquals("share", resolved?.identifier)
         assertEquals("42", resolved?.scope?.str("article_id"))
+    }
+
+    /**
+     * Composition happens across the *ancestry*, not within one modifier chain: two calls on the
+     * same chain collapse to the first, and the second is dropped entirely — not merged, and not
+     * last-wins. That is Compose's rule for every duplicate semantics property on one layout node
+     * (a repeated `testTag` or `contentDescription` behaves identically), so this pins the
+     * behaviour rather than claiming it is desirable. The kdoc says "once per element" because of
+     * exactly this; if that ever stops being true, this test is what notices.
+     */
+    @Test
+    fun twoScopesOnOneModifierChainCollapseToTheFirstRatherThanMerging() = runComposeUiTest {
+        setContent {
+            Box(
+                Modifier
+                    .testTag("row")
+                    .size(10.dp)
+                    .autocaptureScope("outer" to "1", "shared" to "outer")
+                    .autocaptureScope("inner" to "2", "shared" to "inner")
+                    .clickable {},
+            )
+        }
+        waitForIdle()
+
+        val scope = assertNotNull(semanticsRoot().resolveTapAt(centreOf("row"))).scope
+        assertEquals("1", scope.str("outer"))
+        assertEquals("outer", scope.str("shared"), "the first call on the chain wins")
+        assertNull(scope.str("inner"), "the second call is dropped whole — Compose collapses it away")
+    }
+
+    /**
+     * A limitation worth pinning rather than discovering: put the modifier on a **wrapper** and it
+     * materialises that wrapper into the semantics tree, where the hit test will not descend past a
+     * node whose bounds miss the tap. A `clickable` drawn *outside* the wrapper — an overhanging
+     * badge, an `offset` decoration — then stops being autocaptured, even though Compose still
+     * routes the real pointer to it and its `onClick` still fires.
+     *
+     * The tap is dropped, not misattributed, which is the trade this library takes everywhere. Not
+     * descending was measured and is worse: the walk would model drawing while
+     * [resolveAutocaptureTarget] walks up to a clickable, so an overhang belonging to one row but
+     * covering another hands that other row's tap to the wrong element. Tracked in
+     * [#126](https://github.com/uny/autograph/issues/126); until then, put the modifier on the
+     * clickable element itself, or on an ancestor that actually contains it.
+     */
+    @Test
+    fun aScopeOnAWrapperDropsAChildDrawnOutsideThatWrappersBounds() = runComposeUiTest {
+        var clicks = 0
+        setContent {
+            Box(Modifier.size(100.dp)) {
+                Box(Modifier.size(10.dp).autocaptureScope("row" to "1")) {
+                    Box(Modifier.offset(x = 40.dp).testTag("badge").size(10.dp).clickable { clicks++ })
+                }
+            }
+        }
+        waitForIdle()
+
+        // Compose really does deliver the tap — this is a genuine blind spot, not a non-event.
+        val centre = centreOf("badge")
+        onRoot().performTouchInput { down(centre); up() }
+        waitForIdle()
+        assertEquals(1, clicks, "precondition: the real pointer reaches the overflowing child")
+
+        assertNull(semanticsRoot().resolveTapAt(centre), "autocapture misses it — a drop, never a wrong target")
+    }
+
+    /**
+     * The reason that drop is the right side of the trade. An overhanging decoration inside `row2`
+     * visually covers part of `row1`; Compose fires **row1**. Because the walk refuses to descend
+     * into a subtree whose parent misses the point, autocapture agrees. Reaching the overhang
+     * instead would resolve up to `row2` — a wrong target carrying `row2`'s scope, which is exactly
+     * the failure [autocaptureScope] exists to make impossible.
+     */
+    @Test
+    fun anOverhangingDecorationNeverStealsATapFromTheRowItCovers() = runComposeUiTest {
+        var row1Clicks = 0
+        setContent {
+            Column(Modifier.size(200.dp)) {
+                Box(Modifier.testTag("row1").size(200.dp, 100.dp).autocaptureScope("row" to "1").clickable { row1Clicks++ })
+                Box(Modifier.testTag("row2").size(200.dp, 100.dp).autocaptureScope("row" to "2").clickable {}) {
+                    Box(Modifier.offset(y = (-60).dp).testTag("avatar").size(40.dp))
+                }
+            }
+        }
+        waitForIdle()
+
+        val overlap = Offset(20f, 60f)
+        onRoot().performTouchInput { down(overlap); up() }
+        waitForIdle()
+        assertEquals(1, row1Clicks, "precondition: Compose routes this tap to row1")
+
+        val resolved = assertNotNull(semanticsRoot().resolveTapAt(overlap))
+        assertEquals("row1", resolved.identifier)
+        assertEquals("1", resolved.scope.str("row"), "and row2's scope must not follow it")
+    }
+
+    /**
+     * Re-emitting the same scope must produce an *equal* modifier, so a recomposition that changes
+     * nothing costs nothing. `Modifier.semantics {}` cannot do this: it compares its lambda by
+     * reference, and a lambda capturing the properties is a fresh instance every call, so each
+     * recomposition would invalidate the row's semantics config. This is why [autocaptureScope]
+     * carries its own element — see its private kdoc.
+     */
+    @Test
+    fun rebuildingTheSameScopeProducesAnEqualModifier() {
+        val json = JsonObject(mapOf("article_id" to JsonPrimitive("42")))
+        assertEquals(Modifier.autocaptureScope(json), Modifier.autocaptureScope(json))
+        // ...including through the vararg overload, which assembles a fresh JsonObject each call.
+        assertEquals(
+            Modifier.autocaptureScope("article_id" to "42"),
+            Modifier.autocaptureScope("article_id" to "42"),
+        )
+        assertNotEquals(
+            Modifier.autocaptureScope("article_id" to "42"),
+            Modifier.autocaptureScope("article_id" to "43"),
+            "a genuinely different scope must still compare unequal, or an update would be skipped",
+        )
+    }
+
+    /**
+     * The other half of that: a scope that *does* change must reach the semantics tree. Skipping the
+     * update would leave a row reporting taps against its previous article — a wrong scope, which
+     * this library treats as strictly worse than none.
+     */
+    @Test
+    fun aChangedScopeReachesTheSemanticsTreeOnRecomposition() = runComposeUiTest {
+        val id = mutableStateOf("42")
+        setContent {
+            Box(Modifier.testTag("row").size(10.dp).autocaptureScope("article_id" to id.value).clickable {})
+        }
+        waitForIdle()
+        assertEquals("42", semanticsRoot().resolveTapAt(centreOf("row"))?.scope?.str("article_id"))
+
+        id.value = "99"
+        waitForIdle()
+        assertEquals("99", semanticsRoot().resolveTapAt(centreOf("row"))?.scope?.str("article_id"))
     }
 
     @Test

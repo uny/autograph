@@ -146,6 +146,7 @@ class ReportTapIfResolvableTest {
                         "article_id" to JsonPrimitive("42"),
                         "surface" to JsonPrimitive("row"),
                         "screen" to JsonPrimitive("hijacked"),
+                        "section" to JsonPrimitive("hijacked"),
                     ),
                 ),
             )
@@ -159,6 +160,26 @@ class ReportTapIfResolvableTest {
         // ...but screen/section stay reserved: an element scope cannot rename the screen it is on.
         assertEquals("Feed", props["screen"]?.jsonPrimitive?.content)
         assertEquals("For You", props["section"]?.jsonPrimitive?.content)
+    }
+
+    /**
+     * The edge of that reservation, pinned deliberately: `screen` is only reserved by a screen that
+     * exists. With none resolved anywhere — no ambient frame, no history — `enrich` writes nothing
+     * over the element scope, so a scope key named `screen` stands. That is not special to this
+     * path: the element scope occupies the slot an explicit call site's properties occupy, and those
+     * behave the same way. The kdoc says "don't name a scope key `screen`" because of exactly this.
+     */
+    @Test
+    fun anElementScopeKeyedScreenSurvivesWhenNoScreenIsResolvedAnywhere() {
+        val tracker = AutocaptureRecordingTracker()
+        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) {
+            AutocaptureTarget(
+                identifier = "row",
+                scope = JsonObject(mapOf("screen" to JsonPrimitive("hijacked"))),
+            )
+        }
+
+        assertEquals("hijacked", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
 }
 
