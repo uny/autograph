@@ -25,8 +25,11 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * `semantics { onClick { } }` publishes without any pointer input at all.
  * `Modifier.zIndex` is *not* in this category — the semantics children the walk descends are
  * z-sorted, so the visually topmost element takes the tap (pinned by `AutocaptureScopeTest`).
- * Neither is a `clickable` drawn outside its parent's bounds: the walk descends regardless of the
- * parent, and only requires the element it reports to contain the tap itself.
+ * Neither, **on Android**, is a `clickable` drawn outside its parent's bounds: the semantics walk
+ * descends regardless of the parent, and only requires the element it reports to contain the tap
+ * itself. iOS still stops above such an element, since the UIKit accessibility walk prunes by the
+ * parent's frame — so the same tap is captured on Android and dropped on iOS
+ * ([#130](https://github.com/uny/autograph/issues/130)).
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on
