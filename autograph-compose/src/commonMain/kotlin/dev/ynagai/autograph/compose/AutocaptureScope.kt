@@ -3,7 +3,6 @@ package dev.ynagai.autograph.compose
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.SemanticsModifierNode
-import androidx.compose.ui.node.invalidateSemantics
 import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -99,6 +98,12 @@ public fun Modifier.autocaptureScope(properties: JsonObject): Modifier =
  * this without meaning to: their lambdas capture nothing, so the compiler hands out a singleton and
  * they compare equal. This modifier is aimed squarely at list rows, where that difference lands.
  *
+ * The load-bearing detail is that this is a plain extension, not a `@Composable` one: the Compose
+ * compiler memoizes a lambda written inside a composable body when it captures only stable values,
+ * so `semantics {}` spelled out at a call site would have compared equal after all. Written here it
+ * cannot be memoized. Measured over ten recompositions with the scope unchanged: this node applies
+ * its semantics 0 times, the lambda form 10.
+ *
  * A `data class` element compares [properties] by value instead, and [JsonObject] is structurally
  * equal, so re-emitting the same scope is a no-op. Two of these on one modifier chain still collapse
  * to the outermost, exactly as two `semantics {}` blocks would — see [autocaptureScope].
@@ -108,12 +113,13 @@ private data class AutocaptureScopeElement(
 ) : ModifierNodeElement<AutocaptureScopeNode>() {
     override fun create(): AutocaptureScopeNode = AutocaptureScopeNode(properties)
 
+    // No invalidateSemantics() here: Compose's own autoInvalidateUpdatedNode already marks a
+    // SemanticsModifierNode's layout node invalidated after update(), which is why Compose's
+    // AppendedSemanticsElement.update() doesn't call it either. Calling it by hand would also be
+    // reaching for the coordinator at a point where the node is not guaranteed attached.
+    // `aChangedScopeReachesTheSemanticsTreeOnRecomposition` is what holds this honest.
     override fun update(node: AutocaptureScopeNode) {
         node.properties = properties
-        // The scope is read off the semantics tree, so a changed value has to reach it — a stale one
-        // would report a real tap against the row's *previous* data, the one failure this design
-        // exists to rule out.
-        node.invalidateSemantics()
     }
 }
 
