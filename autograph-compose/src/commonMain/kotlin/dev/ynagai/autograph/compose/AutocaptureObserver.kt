@@ -11,7 +11,6 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
-import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
@@ -78,16 +77,21 @@ internal fun reportTapIfResolvable(
     tracker: Tracker,
     scopeStack: ScopeStack,
     config: AutocaptureConfig,
-    resolve: () -> String?,
+    resolve: () -> AutocaptureTarget?,
 ) {
     try {
         val target = resolve() ?: return
         val ctx = scopeStack.current()
-        // Delegate the precedence to enrich itself — scope underneath (an autocaptured tap has no
-        // call-site properties), then screen/section on top as reserved keys — so this path cannot
-        // drift from the contract it claims to share. Re-implementing it here previously dropped an
-        // ambient section whenever no screen resolved, which enrich would have written.
-        var properties = ctx.enrich(EmptyJsonObject)
+        // Delegate the precedence to enrich itself — ambient scope underneath, then screen/section
+        // on top as reserved keys — so this path cannot drift from the contract it claims to share.
+        // Re-implementing it here previously dropped an ambient section whenever no screen resolved,
+        // which enrich would have written.
+        //
+        // The element's own scope goes in as enrich's argument, i.e. the slot an explicit call site's
+        // properties occupy, which lands it exactly where it belongs in that precedence: it refines
+        // the ambient scope (the tapped element is more specific than the screen it sits on) while
+        // the reserved screen/section keys still win over it.
+        var properties = ctx.enrich(target.scope)
         // The one addition enrich can't know about: a bare TrackScreenView pushes no frame, so fall
         // back to the most recently viewed screen. An ambient frame's screen always wins.
         if (ctx.screen == null) {
@@ -95,7 +99,7 @@ internal fun reportTapIfResolvable(
                 properties = JsonObject(properties + ("screen" to JsonPrimitive(it)))
             }
         }
-        tracker.track(config.eventName, properties, target)
+        tracker.track(config.eventName, properties, target.identifier)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.
     }

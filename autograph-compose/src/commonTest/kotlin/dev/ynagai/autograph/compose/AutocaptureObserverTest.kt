@@ -45,7 +45,7 @@ class ReportTapIfResolvableTest {
         // Deliberately the no-arg config: this pins the default all the way through to the tracked
         // event, so re-hardcoding a literal here instead of the shared constant fails the build.
         // Pinning the constant alone (AutocaptureDefaultsTest) leaves that wiring untested.
-        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) { "share_button" }
+        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) { AutocaptureTarget("share_button") }
         assertEquals(listOf<Pair<String, String?>>("Element Clicked" to "share_button"), tracker.tracked)
     }
 
@@ -67,7 +67,7 @@ class ReportTapIfResolvableTest {
     @Test
     fun swallowsAnExceptionFromTrackInsteadOfPropagatingIt() {
         // Must not throw — a throwing track() must not kill the caller's while(true) loop.
-        reportTapIfResolvable(ThrowingTracker(), ScopeStack(), AutocaptureConfig()) { "share_button" }
+        reportTapIfResolvable(ThrowingTracker(), ScopeStack(), AutocaptureConfig()) { AutocaptureTarget("share_button") }
     }
 
     @Test
@@ -76,7 +76,7 @@ class ReportTapIfResolvableTest {
         val stack = ScopeStack()
         stack.push(scope = JsonObject(mapOf("article_id" to JsonPrimitive("42"))))
         stack.push(screen = "Article", section = "Body")
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { "like_button" }
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("like_button") }
 
         val props = tracker.trackedProps.single()
         // The scope this tap happened under — the pre-existing blind spot where autocapture, sitting
@@ -91,7 +91,7 @@ class ReportTapIfResolvableTest {
         val tracker = AutocaptureRecordingTracker()
         // A bare TrackScreenView updates history but pushes no ambient frame.
         val stack = ScopeStack().apply { screenHistory.record("Feed") }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { "row" }
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
 
         val props = tracker.trackedProps.single()
         assertEquals("Feed", props["screen"]?.jsonPrimitive?.content)
@@ -105,7 +105,7 @@ class ReportTapIfResolvableTest {
             screenHistory.record("Feed")
             push(screen = "Article")
         }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { "x" }
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("x") }
 
         assertEquals("Article", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
@@ -118,11 +118,68 @@ class ReportTapIfResolvableTest {
         // to AmbientContext.enrich, which writes screen and section independently, so the section
         // must survive; hand-rolling the precedence here used to drop it.
         val stack = ScopeStack().apply { push(section = "Header") }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { "x" }
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("x") }
 
         val props = tracker.trackedProps.single()
         assertEquals("Header", props["section"]?.jsonPrimitive?.content)
         assertNull(props["screen"])
+    }
+
+    @Test
+    fun theResolvedElementsOwnScopeRefinesTheAmbientScopeButNotScreenOrSection() {
+        val tracker = AutocaptureRecordingTracker()
+        val stack = ScopeStack()
+        // An ambient route scope that also happens to name the same key the tapped row does, plus
+        // the reserved keys — which no scope of either kind may overwrite.
+        stack.push(
+            scope = JsonObject(
+                mapOf("surface" to JsonPrimitive("feed"), "experiment" to JsonPrimitive("b")),
+            ),
+        )
+        stack.push(screen = "Feed", section = "For You")
+
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) {
+            AutocaptureTarget(
+                identifier = "row",
+                scope = JsonObject(
+                    mapOf(
+                        "article_id" to JsonPrimitive("42"),
+                        "surface" to JsonPrimitive("row"),
+                        "screen" to JsonPrimitive("hijacked"),
+                        "section" to JsonPrimitive("hijacked"),
+                    ),
+                ),
+            )
+        }
+
+        val props = tracker.trackedProps.single()
+        assertEquals("42", props["article_id"]?.jsonPrimitive?.content, "the element's own scope must be attributed")
+        assertEquals("b", props["experiment"]?.jsonPrimitive?.content, "the ambient scope must still contribute")
+        // The tapped element is more specific than the screen it sits on, so it wins the shared key.
+        assertEquals("row", props["surface"]?.jsonPrimitive?.content)
+        // ...but screen/section stay reserved: an element scope cannot rename the screen it is on.
+        assertEquals("Feed", props["screen"]?.jsonPrimitive?.content)
+        assertEquals("For You", props["section"]?.jsonPrimitive?.content)
+    }
+
+    /**
+     * The edge of that reservation, pinned deliberately: `screen` is only reserved by a screen that
+     * exists. With none resolved anywhere — no ambient frame, no history — `enrich` writes nothing
+     * over the element scope, so a scope key named `screen` stands. That is not special to this
+     * path: the element scope occupies the slot an explicit call site's properties occupy, and those
+     * behave the same way. The kdoc says "don't name a scope key `screen`" because of exactly this.
+     */
+    @Test
+    fun anElementScopeKeyedScreenSurvivesWhenNoScreenIsResolvedAnywhere() {
+        val tracker = AutocaptureRecordingTracker()
+        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) {
+            AutocaptureTarget(
+                identifier = "row",
+                scope = JsonObject(mapOf("screen" to JsonPrimitive("hijacked"))),
+            )
+        }
+
+        assertEquals("hijacked", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
 }
 
