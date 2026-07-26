@@ -216,10 +216,9 @@ There's a `JsonObject` overload for non-string values. Notes:
   (inner wins a key clash), enclosing `AutographScope` frames still contribute underneath, and
   screen/section still win over both wherever they are actually set — with no screen resolved at
   all, a scope key you named `screen` stands (and likewise `section` where no section is set),
-  exactly as it would on an explicit `track` call, so don't name a key either of those. Put it on
-  the clickable element rather than a wrapper: a wrapper joins the semantics tree, and a `clickable`
-  drawn outside its bounds then stops being captured ([#126](https://github.com/uny/autograph/issues/126)).
-  Declare it **once per element** — that composition is across
+  exactly as it would on an explicit `track` call, so don't name a key either of those. A wrapper
+  works as well as the clickable element itself, including for a `clickable` drawn outside that
+  wrapper's own bounds. Declare it **once per element** — that composition is across
   the ancestry, not within one modifier chain, so `.autocaptureScope(a).autocaptureScope(b)` drops
   `b` rather than merging it, the same way a repeated `testTag` does. Two limits, both deliberate:
   - **Autocapture only.** A `Modifier` cannot install a `CompositionLocal` for its element's

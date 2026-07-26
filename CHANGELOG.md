@@ -45,6 +45,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- Android autocapture attributes a tap to the element Compose actually routed the pointer to when a
+  `clickable` is drawn outside its parent's bounds — an overhanging badge, a `Modifier.offset`
+  decoration ([#126]). The hit test no longer refuses to descend past a parent whose bounds miss the
+  tap; instead an element must contain the tap *itself* to be reported. Such taps were previously
+  dropped, and, where the overhanging element was itself clickable, attributed to whichever element
+  it happened to cover — so **some taps that reported nothing now report an event, and a few report
+  a different `target` than before.** A non-clickable decoration overhanging a neighbouring row
+  still cannot take that row's tap, which is the behaviour the prune existed to protect. iOS is
+  unchanged — its UIKit accessibility walk still prunes by the parent's frame, so the same tap is
+  captured on Android and dropped there ([#130]).
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
@@ -144,3 +154,5 @@ Initial release.
 [#94]: https://github.com/uny/autograph/issues/94
 [#102]: https://github.com/uny/autograph/issues/102
 [#122]: https://github.com/uny/autograph/pull/122
+[#126]: https://github.com/uny/autograph/issues/126
+[#130]: https://github.com/uny/autograph/issues/130

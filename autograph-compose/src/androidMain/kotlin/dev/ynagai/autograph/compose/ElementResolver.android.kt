@@ -9,7 +9,8 @@ import androidx.compose.ui.platform.LocalView
 /**
  * Hit-tests the semantics tree via `RootForTest` — the same opt-in public entry point Compose's
  * own `androidx.compose.ui.test` and third-party autocapture SDKs (PostHog, Embrace) use, so this
- * doesn't reach into any internal Compose type.
+ * doesn't reach into any internal Compose type. The walk itself is [resolveTapAt], in commonMain, so
+ * `compose.uiTest` on the JVM exercises this exact sequence against a live composition.
  *
  * Uses [androidx.compose.ui.semantics.SemanticsOwner.getUnmergedRootSemanticsNode], not the merged
  * tree ([androidx.compose.ui.semantics.SemanticsOwner.getRootSemanticsNode]): [resolveAutocaptureTarget]
@@ -25,14 +26,7 @@ internal actual fun rememberElementResolver(): ElementResolver {
     return remember(view) {
         ElementResolver { root, position ->
             val rootForTest = view as? RootForTest ?: return@ElementResolver null
-            val windowPosition = root.localToWindow(position)
-            val hit = findDeepestHit(
-                root = rootForTest.semanticsOwner.unmergedRootSemanticsNode,
-                point = windowPosition,
-                bounds = { it.boundsInWindow },
-                children = { it.children },
-            ) ?: return@ElementResolver null
-            resolveAutocaptureTarget(hit.selfAndAncestors().map { it.toAutocaptureNode() })
+            rootForTest.semanticsOwner.unmergedRootSemanticsNode.resolveTapAt(root.localToWindow(position))
         }
     }
 }

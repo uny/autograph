@@ -45,16 +45,22 @@ private class ScopeCaptureTracker : Tracker {
 
 private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.content
 
+/** The window-space centre of the element tagged [tag] — where a user tapping it would land. */
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.centreOf(tag: String): Offset =
+    onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow.center
+
+/** The unmerged semantics root, the node the Android resolver hit-tests from. */
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.semanticsRoot(): SemanticsNode = onRoot(useUnmergedTree = true).fetchSemanticsNode()
+
 /**
- * Resolves a tap at [windowPosition] exactly the way `ElementResolver.android.kt` does: hit-test the
- * unmerged semantics tree with [findDeepestHit], then read the hit node's ancestry through
- * `selfAndAncestors()` / `toAutocaptureNode()` / [resolveAutocaptureTarget].
+ * These tests call [resolveTapAt] — the production hit test itself, shared with
+ * `ElementResolver.android.kt` — against a live composition. In particular the **hit test is real**:
+ * nothing here tells the resolver which element was meant, so a scope collected off the wrong
+ * element's ancestry fails these tests rather than passing them.
  *
- * The hit test and the read path are the production code verbatim — in particular the **hit test is
- * real**: nothing here tells the resolver which element was meant, so a scope collected off the
- * wrong element's ancestry fails these tests rather than passing them.
- *
- * Three things around them are stood in for, and none of the three is covered anywhere else. The
+ * Three things around it are stood in for, and none of the three is covered anywhere else. The
  * root comes from `onRoot(useUnmergedTree = true)` rather than
  * `RootForTest.semanticsOwner.unmergedRootSemanticsNode` — the same node, but `compose.uiTest`
  * cannot reach a `RootForTest` on the JVM these tests run on. The resolver's `view as? RootForTest`
@@ -65,26 +71,11 @@ private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.con
  *
  * Unmerged matters twice over — on the merged tree a descendant's scope folds into its clickable
  * ancestor's config, and the sibling rows below would collapse into one node.
+ *
+ * Several tests below assert against the element whose `onClick` actually fired, as an oracle for
+ * what Compose itself routed the pointer to. That is the bar this hit test is held to: agreeing with
+ * Compose, not merely being self-consistent.
  */
-private fun SemanticsNode.resolveTapAt(windowPosition: Offset): AutocaptureTarget? {
-    val hit = findDeepestHit(
-        root = this,
-        point = windowPosition,
-        bounds = { it.boundsInWindow },
-        children = { it.children },
-    ) ?: return null
-    return resolveAutocaptureTarget(hit.selfAndAncestors().map { it.toAutocaptureNode() })
-}
-
-/** The window-space centre of the element tagged [tag] — where a user tapping it would land. */
-@OptIn(ExperimentalTestApi::class)
-private fun ComposeUiTest.centreOf(tag: String): Offset =
-    onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow.center
-
-/** The unmerged semantics root, the node the Android resolver hit-tests from. */
-@OptIn(ExperimentalTestApi::class)
-private fun ComposeUiTest.semanticsRoot(): SemanticsNode = onRoot(useUnmergedTree = true).fetchSemanticsNode()
-
 @OptIn(ExperimentalTestApi::class)
 class AutocaptureScopeTest {
 
@@ -234,21 +225,17 @@ class AutocaptureScopeTest {
     }
 
     /**
-     * A limitation worth pinning rather than discovering: put the modifier on a **wrapper** and it
-     * materialises that wrapper into the semantics tree, where the hit test will not descend past a
-     * node whose bounds miss the tap. A `clickable` drawn *outside* the wrapper — an overhanging
-     * badge, an `offset` decoration — then stops being autocaptured, even though Compose still
-     * routes the real pointer to it and its `onClick` still fires.
+     * A `clickable` drawn *outside* its parent — an overhanging badge, an `offset` decoration — is
+     * reached, and carries the scope its wrapper declared. Compose routes the real pointer to it, so
+     * anything else would be a drop; the wrapper is on the badge's own ancestry, so its scope
+     * describes the element that was hit.
      *
-     * The tap is dropped, not misattributed, which is the trade this library takes everywhere. Not
-     * descending was measured and is worse: the walk would model drawing while
-     * [resolveAutocaptureTarget] walks up to a clickable, so an overhang belonging to one row but
-     * covering another hands that other row's tap to the wrong element. Tracked in
-     * [#126](https://github.com/uny/autograph/issues/126); until then, put the modifier on the
-     * clickable element itself, or on an ancestor that actually contains it.
+     * This shape is why the modifier can go on a wrapper at all: putting it there materialises that
+     * wrapper into the semantics tree, and before [#126](https://github.com/uny/autograph/issues/126)
+     * the walk stopped above any child the wrapper's bounds missed.
      */
     @Test
-    fun aScopeOnAWrapperDropsAChildDrawnOutsideThatWrappersBounds() = runComposeUiTest {
+    fun aScopeOnAWrapperReachesAChildDrawnOutsideThatWrappersBounds() = runComposeUiTest {
         var clicks = 0
         setContent {
             Box(Modifier.size(100.dp)) {
@@ -259,21 +246,49 @@ class AutocaptureScopeTest {
         }
         waitForIdle()
 
-        // Compose really does deliver the tap — this is a genuine blind spot, not a non-event.
         val centre = centreOf("badge")
         onRoot().performTouchInput { down(centre); up() }
         waitForIdle()
         assertEquals(1, clicks, "precondition: the real pointer reaches the overflowing child")
 
-        assertNull(semanticsRoot().resolveTapAt(centre), "autocapture misses it — a drop, never a wrong target")
+        val resolved = assertNotNull(semanticsRoot().resolveTapAt(centre))
+        assertEquals("badge", resolved.identifier, "the element Compose actually fired")
+        assertEquals("1", resolved.scope.str("row"), "and the wrapper it hangs off still scopes it")
     }
 
     /**
-     * The reason that drop is the right side of the trade. An overhanging decoration inside `row2`
-     * visually covers part of `row1`; Compose fires **row1**. Because the walk refuses to descend
-     * into a subtree whose parent misses the point, autocapture agrees. Reaching the overhang
-     * instead would resolve up to `row2` — a wrong target carrying `row2`'s scope, which is exactly
-     * the failure [autocaptureScope] exists to make impossible.
+     * [autographIgnore] must reach that same overhanging child. It is subtree-wide, and hanging out
+     * of the wrapper's bounds does not take an element out of the wrapper's subtree — so a tap
+     * Compose really does deliver is still excluded, rather than escaping the exclusion by geometry.
+     */
+    @Test
+    fun anIgnoredWrapperStillExcludesAChildDrawnOutsideItsBounds() = runComposeUiTest {
+        var clicks = 0
+        setContent {
+            Box(Modifier.size(100.dp)) {
+                Box(Modifier.size(10.dp).autographIgnore()) {
+                    Box(Modifier.offset(x = 40.dp).testTag("badge").size(10.dp).clickable { clicks++ })
+                }
+            }
+        }
+        waitForIdle()
+
+        val centre = centreOf("badge")
+        onRoot().performTouchInput { down(centre); up() }
+        waitForIdle()
+        assertEquals(1, clicks, "precondition: the real pointer reaches the overflowing child")
+
+        assertNull(semanticsRoot().resolveTapAt(centre))
+    }
+
+    /**
+     * The counterpart, and the reason the walk cannot simply descend everywhere: an overhanging
+     * decoration inside `row2` visually covers part of `row1`, and Compose fires **row1**. The
+     * decoration is not clickable, so it never becomes the reported element and never drags `row2`
+     * up with it — a wrong target carrying `row2`'s scope, exactly the failure [autocaptureScope]
+     * exists to make impossible. (A plain deepest-node walk that then resolved *up* to a clickable
+     * would report `row2` here; that was measured, and is why the first stage requires the element
+     * itself to be clickable and to contain the point.)
      */
     @Test
     fun anOverhangingDecorationNeverStealsATapFromTheRowItCovers() = runComposeUiTest {
@@ -296,6 +311,98 @@ class AutocaptureScopeTest {
         val resolved = assertNotNull(semanticsRoot().resolveTapAt(overlap))
         assertEquals("row1", resolved.identifier)
         assertEquals("1", resolved.scope.str("row"), "and row2's scope must not follow it")
+    }
+
+    /**
+     * Make that same overhang **clickable** and the answer flips, because Compose's answer flips:
+     * the badge itself takes the pointer, so the tap belongs to the badge and carries `row2`'s
+     * scope — the row the badge really hangs off.
+     *
+     * This is the case a walk pruned by parent bounds gets actively *wrong* rather than merely
+     * missing: it cannot see the badge at all, so it reports `row1`, an element the pointer never
+     * reached. The stronger of the two regressions here — the oracle disagrees with the old
+     * behaviour, not just with a drop.
+     */
+    @Test
+    fun aClickableOverhangTakesTheTapFromTheRowItCovers() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Column(Modifier.size(200.dp)) {
+                Box(
+                    Modifier.testTag("row1").size(200.dp, 100.dp)
+                        .autocaptureScope("row" to "1").clickable { fired = "row1" },
+                )
+                Box(
+                    Modifier.testTag("row2").size(200.dp, 100.dp)
+                        .autocaptureScope("row" to "2").clickable { fired = "row2" },
+                ) {
+                    Box(Modifier.offset(y = (-60).dp).testTag("badge").size(40.dp).clickable { fired = "badge" })
+                }
+            }
+        }
+        waitForIdle()
+
+        val overlap = Offset(20f, 60f)
+        onRoot().performTouchInput { down(overlap); up() }
+        waitForIdle()
+        assertEquals("badge", fired, "precondition: Compose routes this tap to the overhanging badge")
+
+        val resolved = assertNotNull(semanticsRoot().resolveTapAt(overlap))
+        assertEquals("badge", resolved.identifier)
+        assertEquals("2", resolved.scope.str("row"), "the badge hangs off row2, so row2 scopes it")
+    }
+
+    /**
+     * A node that has semantics but no click action — a `testTag`ged decoration, a scoped wrapper —
+     * does not swallow the tap on a `clickable` underneath it. Compose passes the pointer straight
+     * through, since only a pointer-input node consumes; the walk agrees because a node has to be
+     * clickable itself before it can be the reported element.
+     */
+    @Test
+    fun aNonClickableOverlayDoesNotSwallowTheTapOnTheElementBelowIt() = runComposeUiTest {
+        var clicks = 0
+        setContent {
+            Box(Modifier.size(100.dp)) {
+                Box(Modifier.testTag("button").size(50.dp).clickable { clicks++ })
+                // Declared second, so drawn on top, and it carries semantics of its own.
+                Box(Modifier.testTag("overlay").size(50.dp).autocaptureScope("overlay" to "yes"))
+            }
+        }
+        waitForIdle()
+
+        val point = Offset(25f, 25f)
+        onRoot().performTouchInput { down(point); up() }
+        waitForIdle()
+        assertEquals(1, clicks, "precondition: Compose routes the tap through the overlay to the button")
+
+        val resolved = assertNotNull(semanticsRoot().resolveTapAt(point))
+        assertEquals("button", resolved.identifier)
+        assertNull(resolved.scope.str("overlay"), "the overlay is not on the button's ancestry")
+    }
+
+    /**
+     * A scope declared *below* the reported element still contributes, and only where the tap
+     * actually landed on it. That is what the hit test's second stage is for: having picked the
+     * element to report, it keeps descending as far as the point still lands, so the leaf's scope
+     * joins the chain — while a tap elsewhere in the same row carries only the row's own.
+     */
+    @Test
+    fun aScopeOnALeafInsideTheReportedElementContributesOnlyWhereTheTapLands() = runComposeUiTest {
+        setContent {
+            Box(Modifier.testTag("row").size(100.dp).autocaptureScope("row" to "1").clickable {}) {
+                Box(Modifier.testTag("part").size(20.dp).autocaptureScope("part" to "avatar"))
+            }
+        }
+        waitForIdle()
+
+        val onTheLeaf = assertNotNull(semanticsRoot().resolveTapAt(Offset(10f, 10f)))
+        assertEquals("row", onTheLeaf.identifier, "the leaf is not clickable, so the row is reported")
+        assertEquals("avatar", onTheLeaf.scope.str("part"), "but the leaf's own scope still reaches the tap")
+        assertEquals("1", onTheLeaf.scope.str("row"))
+
+        val elsewhere = assertNotNull(semanticsRoot().resolveTapAt(Offset(80f, 80f)))
+        assertEquals("row", elsewhere.identifier)
+        assertNull(elsewhere.scope.str("part"), "a tap outside the leaf must not pick its scope up")
     }
 
     /**
