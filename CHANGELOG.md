@@ -45,6 +45,26 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- Compose autocapture on iOS resolves taps on a device where nothing has connected to the accessibility
+  subsystem ([#135]). The UIKit accessibility-tree walk tested containment against its own *starting*
+  node before looking at any child, and in that cold state Compose Multiplatform's `OverlayInputView` —
+  the view the Compose resolver starts from — reports an empty `accessibilityFrame`, while every bridged
+  element beneath it already carries a correct frame. So the walk gave up immediately and **every**
+  Compose tap resolved to nothing, for the life of the process. Containment now gates the descent at
+  every node *except* the starting one, which is the caller's choice of where to search rather than a
+  candidate to filter on. **Compose taps that this dropped now report an event**, naming the element
+  whose handler actually fired; taps dropped for any of the other documented reasons (no `testTag`, no
+  button trait, a disabled element, an intermediate container that misses the tap, an exhausted walk
+  budget) still drop. No tap that already reported an event changes which element it names.
+  Misattribution is guarded on both sides: a starting node that does not contain the tap is never
+  reported on its own, and one that is itself clickable keeps its gate entirely, since it would
+  otherwise be attributed the tap whenever an inert child contained it. Anything that connects to the
+  accessibility subsystem — XCUITest, VoiceOver, the Accessibility Inspector — populates that frame and
+  hides the failure completely, which is why the `sample-ios` XCUITest suite passed throughout: its
+  runner is itself such a client. The contract is therefore pinned by `autograph-uikit`'s unit tests,
+  which drive the walk directly. The native (UIKit/SwiftUI) pipeline starts its walk from the window,
+  whose frame is valid even when cold, so this change does not explain or fix its own measured
+  cold-start failure, which stays open ([#135]).
 - Android autocapture attributes a tap to the element Compose actually routed the pointer to when a
   `clickable` is drawn outside its parent's bounds — an overhanging badge, a `Modifier.offset`
   decoration ([#126]). The hit test no longer refuses to descend past a parent whose bounds miss the
@@ -52,9 +72,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   dropped, and, where the overhanging element was itself clickable, attributed to whichever element
   it happened to cover — so **some taps that reported nothing now report an event, and a few report
   a different `target` than before.** A non-clickable decoration overhanging a neighbouring row
-  still cannot take that row's tap, which is the behaviour the prune existed to protect. iOS is
-  unchanged — its UIKit accessibility walk still prunes by the parent's frame, so the same tap is
-  captured on Android and dropped there ([#130]).
+  still cannot take that row's tap, which is the behaviour the prune existed to protect. iOS keeps its
+  per-level prune (only the walk's starting node is exempt, see above), but measurement showed the
+  divergence this note predicted does not arise for Compose content: the bridged accessibility tree is
+  flat, so an overhanging element is a *sibling* rather than a descendant and no parent frame excludes
+  it ([#134]).
 - Android autocapture attributes a tap in a small element's expanded touch target to that element
   ([#127]). Compose grows the touch target of anything measured below
   `ViewConfiguration.minimumTouchTargetSize` (48dp by default) past its drawn bounds, so a tap a few
@@ -72,8 +94,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `graphicsLayer` clip still takes taps in the corners of its bounding box that Compose routes
   underneath. An element that is both scaled and ancestor-clipped can newly report a tap Compose
   routed nowhere, or drop one it routed to that element; neither was observed to misattribute a tap
-  to a different element. iOS is unchanged — its UIKit accessibility walk has no notion of an
-  expanded touch target.
+  to a different element. iOS needs no counterpart: measurement showed Compose Multiplatform already
+  publishes the *expanded* touch target as an element's `accessibilityFrame` (a 16dp icon reports a
+  48pt frame centred on its drawn bounds), so a tap in that margin already resolved to the small
+  element there ([#134]).
 - Android autocapture no longer reports a tap on a disabled element as a click ([#128]).
   `Modifier.clickable(enabled = false)` publishes the click action alongside `Disabled`, so such an
   element was picked as the tap's target and **an event was emitted for a click that never fired** —
@@ -82,8 +106,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   the tap either (measured, including that a disabled child blocks its own enabled clickable
   ancestor). A disabled *ancestor* does not suppress an enabled clickable child. One shape this
   costs: a live `Modifier.clickable` whose semantics were hand-marked `disabled()` does fire and is
-  now dropped — semantics cannot tell it from a real `clickable(enabled = false)`. iOS is unchanged,
-  and what its UIKit accessibility bridge reports for a disabled element is unmeasured ([#132]).
+  now dropped — semantics cannot tell it from a real `clickable(enabled = false)`. iOS is unchanged and
+  still reports such a tap: measurement confirmed the bridge does carry `UIAccessibilityTraitNotEnabled`
+  on a disabled element, so the same veto is implementable there, and it is tracked as the remaining
+  half of ([#134]).
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
@@ -188,3 +214,5 @@ Initial release.
 [#128]: https://github.com/uny/autograph/issues/128
 [#130]: https://github.com/uny/autograph/issues/130
 [#132]: https://github.com/uny/autograph/issues/132
+[#134]: https://github.com/uny/autograph/issues/134
+[#135]: https://github.com/uny/autograph/issues/135

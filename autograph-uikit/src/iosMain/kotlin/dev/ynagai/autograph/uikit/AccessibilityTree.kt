@@ -50,11 +50,44 @@ import platform.darwin.NSObject
 
 /**
  * Returns the path from [node] down to the deepest descendant whose accessibility frame contains
- * [positionInWindowPx], or null if [node] itself doesn't contain it.
+ * [positionInWindowPx], or null when nothing in the tree does.
  *
  * The full root-to-leaf path is returned, not just the leaf, so callers can inspect ancestry — pick
  * the nearest clickable ancestor of the hit node, or detect that the path crosses a view owned by
  * another capture pipeline.
+ *
+ * **The starting node is not a filter.** Containment gates the descent at every node except [node]
+ * itself: [node] is the caller's choice of *where to search*, and its own frame says nothing about
+ * where its descendants are. This is not a hypothetical distinction — it is the difference between
+ * working and reporting nothing at all. Measured on a simulator created fresh, with no accessibility
+ * client ever connected to the process, Compose Multiplatform's `OverlayInputView` (the view
+ * `autograph-compose` starts this walk from, via `LocalUIView.current`) reports
+ * `accessibilityFrame = CGRectZero`, while every bridged element beneath it already carries a correct
+ * frame, identifier and traits. Gating on the starting node dropped **every** Compose tap in that
+ * state, for the life of the process — and the tap itself was never in doubt: the element's own
+ * `onClick` fired each time. Anything that connects to the accessibility subsystem (XCUITest,
+ * VoiceOver, the Accessibility Inspector) populates that frame and hides the whole failure, which is
+ * why the `sample-ios` XCUITest suite passed throughout: its runner is itself such a client. See #135.
+ *
+ * This exemption does **not** explain [resolveNativeTapTarget]'s own measured cold-start failure: that
+ * walk starts from a `UIWindow`, whose frame is valid even then, so its cause is elsewhere and still
+ * open (#135).
+ *
+ * **What the exemption does not loosen.** Two properties are preserved deliberately, because relaxing
+ * the descent could otherwise turn a dropped event into a misattributed one — the worse failure:
+ *
+ * - A [node] that does not contain the position is never returned *alone*; only as an ancestor of a
+ *   descendant that does. Every other element on a returned path contains the position.
+ * - A [node] that is itself clickable keeps its gate, so it is never on a path it doesn't contain.
+ *   It stays visible to ancestry checks on the paths it does contain, and there is no way to hold it
+ *   in the path for those while withholding it from [nearestAccessibilityClickable], which knows no
+ *   geometry. Measured: without that clause a clickable starting node whose frame missed the tap was
+ *   attributed the tap whenever any inert child contained it.
+ *
+ * One consequence is genuinely new: a tap outside [node]'s own frame can now resolve, where it
+ * previously always dropped. Both shipped callers pass a root that contains every tap they are asked
+ * about (a `UIWindow`, or the Compose host's overlay view), so this widens where the walk's documented
+ * overlap ambiguity below can be reached without changing which element any current tap names.
  *
  * **Overlap tie-break, and its limit.** Children are searched in reverse order, so among *subviews* a
  * later sibling — the one drawn on top — wins an overlap. That is only a true z-order tie-break within
@@ -182,8 +215,19 @@ private fun deepestAccessibilityHitPath(
     if (budget[0]-- <= 0) return null
     if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return null
     if (ancestors.any { it == node }) return null
-    val bounds = node.accessibilityBoundsInWindowPx(view, scale) ?: return null
-    if (!bounds.contains(positionInWindowPx)) return null
+    val bounds = node.accessibilityBoundsInWindowPx(view, scale)
+    val containsPosition = bounds != null && bounds.contains(positionInWindowPx)
+    // Containment gates the descent at every node EXCEPT the one the walk started from — see the
+    // kdoc's "The starting node is not a filter". `ancestors` is empty only at that starting node.
+    //
+    // A *clickable* starting node keeps its gate, though. It stays on every path this returns, so
+    // [nearestAccessibilityClickable] would happily attribute the tap to it, and there is no way to hold
+    // it in the path for ancestry (the exclusion vetoes need the whole chain) while withholding it from
+    // attribution. Measured: without this clause, a clickable starting node whose frame misses the tap
+    // is reported whenever any child resolves — a dropped event turned into a misattributed one, the
+    // wrong side of that trade. Neither pipeline's real starting node is clickable (Compose's
+    // `OverlayInputView`, the native path's `UIWindow`), so the cold-start fix is unaffected.
+    if (!containsPosition && (ancestors.isNotEmpty() || node.isAccessibilityButton())) return null
     val pathToNode = ancestors + node
     // Keep the first branch that resolved at all as a fallback and carry on looking for a clickable
     // one — see the kdoc for why clickability outranks the z-order tie-break. Walking on instead of
@@ -198,7 +242,10 @@ private fun deepestAccessibilityHitPath(
         if (branch.any { it.isAccessibilityButton() }) return listOf(node) + branch
         if (fallback == null) fallback = branch
     }
-    return fallback?.let { listOf(node) + it } ?: listOf(node)
+    // A bare starting node is returned only when it genuinely contains the position. Without that
+    // condition, ungating the descent above would also make a *clickable* starting node claim a tap
+    // that landed outside it — turning a drop into a misattribution, which is the worse failure.
+    return fallback?.let { listOf(node) + it } ?: if (containsPosition) listOf(node) else null
 }
 
 /**

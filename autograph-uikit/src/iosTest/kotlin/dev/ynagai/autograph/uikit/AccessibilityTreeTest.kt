@@ -66,6 +66,122 @@ class AccessibilityTreeTest {
         assertNull(path)
     }
 
+    /**
+     * The starting node is where to search, not a candidate to filter on. A search root reporting an
+     * empty `accessibilityFrame` is the state Compose Multiplatform's `OverlayInputView` is measured to
+     * be in until an accessibility client connects to the process, and gating the descent on it dropped
+     * every tap on both iOS pipelines (#135). Nothing but a unit test can pin this: the XCUITest suite's
+     * own runner is an accessibility client, so it never observes the cold tree.
+     */
+    @Test
+    fun resolvesADescendantWhenTheStartingNodeReportsAnEmptyFrame() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 0.0, 0.0)
+
+        val button = UIView()
+        button.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        root.addSubview(button)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(listOf(root, button), path)
+        assertEquals(button, path?.nearestAccessibilityClickable())
+    }
+
+    /**
+     * The same ungating, one level further out: a starting node whose frame is perfectly valid but
+     * simply doesn't contain the position must still be searched, since a descendant's frame is free to
+     * fall outside its ancestor's.
+     */
+    @Test
+    fun resolvesADescendantDrawnOutsideTheStartingNodesOwnFrame() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 10.0, 10.0)
+
+        val button = UIView()
+        button.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        root.addSubview(button)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(listOf(root, button), path)
+    }
+
+    /**
+     * The other half of the contract, and the reason the ungating is not simply "skip the check at the
+     * root": a starting node that is itself clickable must not be handed a tap that landed outside it.
+     * Ungating the descent without this turns a dropped event into a misattributed one.
+     */
+    @Test
+    fun doesNotReportAClickableStartingNodeForAPositionOutsideIt() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        root.setAccessibilityTraits(UIAccessibilityTraitButton)
+
+        val child = UIView()
+        child.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        root.addSubview(child)
+
+        val position = AxPoint(500f * scale, 500f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertNull(path)
+    }
+
+    /**
+     * The sharp version of the case above, and the one that actually broke while this was being written:
+     * a clickable starting node missing the tap, with a **non-clickable child that contains it**. The
+     * child resolves, so the starting node rides along on the returned path, and
+     * [nearestAccessibilityClickable] — which walks the whole chain and knows no geometry — picks the
+     * starting node. Measured before the guard: the root was reported for a tap 40pt outside it.
+     */
+    @Test
+    fun doesNotAttributeToAClickableStartingNodeWhenOnlyItsChildContainsThePosition() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        root.setAccessibilityTraits(UIAccessibilityTraitButton)
+
+        val child = UIView()
+        child.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        root.addSubview(child)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertNull(path)
+        assertNull(path?.nearestAccessibilityClickable())
+    }
+
+    /**
+     * Descent is ungated at the starting node *only*. An intermediate container that doesn't contain the
+     * position still prunes its whole subtree, so this change does not quietly become the general
+     * removal of the per-level prune (#134's separate concern).
+     */
+    @Test
+    fun stillPrunesAnIntermediateContainerThatDoesNotContainThePosition() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val container = UIView()
+        container.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        root.addSubview(container)
+
+        val button = UIView()
+        button.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        container.addSubview(button)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale)
+
+        assertEquals(listOf(root), path)
+        assertNull(path?.nearestAccessibilityClickable())
+    }
+
     @Test
     fun prefersTheLastChildWhenBoundsOverlap() {
         val root = UIView()
@@ -450,4 +566,5 @@ class AccessibilityTreeTest {
         assertFalse(rect.contains(AxPoint(20f, 40f)))
         assertFalse(rect.contains(AxPoint(9.9f, 30f)))
     }
+
 }
