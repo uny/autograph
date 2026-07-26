@@ -31,7 +31,8 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * semantics were hand-marked `disabled()`, in either modifier order — which does fire and is
  * dropped. iOS reads clickability from `UIAccessibilityTraitButton` alone and takes no account of a
  * disabled state, so the exclusion has no counterpart there; what the UIKit bridge publishes for a
- * disabled Compose element has not been measured.
+ * disabled Compose element has not been measured
+ * ([#132](https://github.com/uny/autograph/issues/132)).
  * `Modifier.zIndex` is *not* in this category — the semantics children the walk descends are
  * z-sorted, so the visually topmost element takes the tap (pinned by `AutocaptureScopeTest`).
  * Neither, **on Android**, is a `clickable` drawn outside its parent's bounds: the semantics walk
