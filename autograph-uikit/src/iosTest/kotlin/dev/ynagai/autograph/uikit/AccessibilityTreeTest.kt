@@ -70,8 +70,10 @@ class AccessibilityTreeTest {
      * The starting node is where to search, not a candidate to filter on. A search root reporting an
      * empty `accessibilityFrame` is the state Compose Multiplatform's `OverlayInputView` is measured to
      * be in until an accessibility client connects to the process, and gating the descent on it dropped
-     * every tap on both iOS pipelines (#135). Nothing but a unit test can pin this: the XCUITest suite's
-     * own runner is an accessibility client, so it never observes the cold tree.
+     * every Compose tap for the life of the process (#135) — the native pipeline starts from a
+     * `UIWindow` and its own cold-start failure has a separate, still-unmeasured cause. Nothing but a
+     * unit test can pin this: the XCUITest suite's own runner is an accessibility client, so it never
+     * observes the cold tree.
      */
     @Test
     fun resolvesADescendantWhenTheStartingNodeReportsAnEmptyFrame() {
