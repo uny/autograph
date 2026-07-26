@@ -20,9 +20,18 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * in the corner of a rounded or shaped clip can be attributed to an element it visually missed. Nor
  * does it see the touch target Compose expands past those bounds for anything below
  * `minimumInteractiveComponentSize` ([#127](https://github.com/uny/autograph/issues/127)), and it
- * reads an element as clickable from its click *action*, which `clickable(enabled = false)`
- * publishes too ([#128](https://github.com/uny/autograph/issues/128)) and a bare
- * `semantics { onClick { } }` publishes without any pointer input at all.
+ * reads an element as clickable from its click *action*, which a bare `semantics { onClick { } }`
+ * publishes without any pointer input at all — so such an overlay is reported for a tap Compose
+ * routes straight through it to the element underneath.
+ *
+ * A `clickable(enabled = false)` publishes that action too, but **on Android** is not a gap: it
+ * consumes the pointer like Compose does and is then excluded, so the tap is reported as nothing
+ * rather than as a click that never fired ([#128](https://github.com/uny/autograph/issues/128)). The
+ * one shape that costs is the inverse and self-contradictory one — a live `Modifier.clickable` whose
+ * semantics were hand-marked `disabled()`, in either modifier order — which does fire and is
+ * dropped. iOS reads clickability from `UIAccessibilityTraitButton` alone and takes no account of a
+ * disabled state, so the exclusion has no counterpart there; what the UIKit bridge publishes for a
+ * disabled Compose element has not been measured.
  * `Modifier.zIndex` is *not* in this category — the semantics children the walk descends are
  * z-sorted, so the visually topmost element takes the tap (pinned by `AutocaptureScopeTest`).
  * Neither, **on Android**, is a `clickable` drawn outside its parent's bounds: the semantics walk
