@@ -24,7 +24,7 @@ import kotlinx.serialization.json.JsonObject
  * row therefore yields nothing and the neighbour keeps its own tap.
  *
  * This approximates Compose's pointer routing over the unmerged semantics tree; it does not
- * reproduce it. Two known divergences, both pre-existing and neither introduced here: an element's
+ * reproduce it. Two known divergences in this walk, both pre-existing: an element's
  * touch target is expanded past its bounds below `minimumInteractiveComponentSize`
  * ([#127](https://github.com/uny/autograph/issues/127)), and a bare `semantics { onClick { } }`
  * carries no pointer input at all yet is indistinguishable from `Modifier.clickable` here, so it
@@ -76,7 +76,13 @@ internal fun <T> findDeepestHit(root: T, point: Offset, bounds: (T) -> Rect, chi
 /**
  * One node along the path from a tapped element up to the composition root — enough for
  * [resolveAutocaptureTarget] to decide whether/how to attribute a tap without depending on any
- * platform UI-tree type. Built by each platform's [ElementResolver] from its own hit-test result.
+ * platform UI-tree type.
+ *
+ * Built from a semantics hit test, which today means the Android [ElementResolver] and the
+ * `compose.uiTest` suite that shares its path. iOS resolves over the UIKit accessibility bridge and
+ * never builds one of these, so every statement here about what a node does — including the
+ * pointer-consumption reasoning behind [resolveAutocaptureTarget]'s vetoes — describes the Android
+ * read path, not autocapture on every platform.
  */
 internal data class AutocaptureNode(
     val identifier: String?,
@@ -117,6 +123,11 @@ internal data class AutocaptureTarget(
  * rather than skipping it in the walk is what keeps the answer a drop instead of naming an element
  * the tap never reached. Confining the veto to the returned node is equally deliberate: a disabled
  * *ancestor* does not block an enabled clickable child (measured), so it must not suppress one.
+ *
+ * The veto reads a semantics property, not the pointer input behind it, so it costs one shape it
+ * cannot tell apart: a live `Modifier.clickable` whose semantics were hand-marked `disabled()` does
+ * fire and is dropped here. That is the divergence from Compose this introduces, and the direction
+ * to err in — the alternative reports taps that never happened.
  *
  * [AutocaptureNode.scope] is subtree-wide like [ignored], and for the same reason: [autocaptureScope]
  * says "taps under here carry this", so every node on the chain contributes, including one *below*
