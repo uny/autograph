@@ -6,14 +6,25 @@ import dev.ynagai.autograph.EmptyJsonObject
 import kotlinx.serialization.json.JsonObject
 
 /**
- * The element a tap at [point] should be attributed to: the first node that is itself [clickable]
- * and whose OWN [bounds] contain the point, searched children-before-self and taking each sibling's
- * whole subtree in visual order, topmost first.
+ * The element a tap at [point] should be attributed to, ranking every [clickable] node the point can
+ * reach by the rules observed from Compose's own `HitTestResult`.
  *
- * So the topmost branch wins outright — even where a branch beneath it holds a *deeper* clickable —
- * and within the winning branch the innermost clickable takes the tap. Depth decides only inside one
- * branch; between branches, stacking does. That is the order Compose routes a pointer in, and it is
- * why an element covered by a clickable overlay does not receive the tap however deep it sits.
+ * A node can be reached two ways. Its OWN [bounds] may contain the point — a *definite* hit. Or the
+ * point may fall in the node's expanded minimum touch target, which Compose grows past the bounds of
+ * anything below `minimumInteractiveComponentSize`; [minTargetDistanceSquared] reports that, and how
+ * far outside the node the point landed. Both kinds are real: Compose fires a small icon button for a
+ * tap in its margin ([#127](https://github.com/uny/autograph/issues/127)).
+ *
+ * Three ranking rules. Each was checked against the element whose `onClick` actually fired, over the
+ * fixtures named below and the sweeps the tests carry — not proven for every tree:
+ * - **A descendant beats its ancestor**, whichever kind of hit either was. Tapping the margin of a
+ *   16dp icon inside a 200dp `clickable` sheet fires the icon, not the sheet.
+ * - **A definite hit anywhere in a branch settles that branch** and stops the scan of the siblings
+ *   below it, so the visually topmost branch wins. Note "anywhere": an ancestor's own definite hit
+ *   settles the branch even when the node reported from it is a deeper minimum-target hit.
+ * - **Between branches that only ever hit a minimum touch target**, the smallest distance wins, ties
+ *   going to the topmost. So a small element drawn on top does NOT steal a tap that landed squarely
+ *   inside a sibling underneath it, but it does win against one further away.
  *
  * Unlike [findDeepestHit] this does **not** stop at a subtree whose parent misses the point, because
  * Compose does not either: a `clickable` drawn outside its parent (an overhanging badge, a
@@ -24,16 +35,20 @@ import kotlinx.serialization.json.JsonObject
  * row therefore yields nothing and the neighbour keeps its own tap.
  *
  * This approximates Compose's pointer routing over the unmerged semantics tree; it does not
- * reproduce it. Two known divergences in this walk, both pre-existing: an element's
- * touch target is expanded past its bounds below `minimumInteractiveComponentSize`
- * ([#127](https://github.com/uny/autograph/issues/127)), and a bare `semantics { onClick { } }`
- * carries no pointer input at all yet is indistinguishable from `Modifier.clickable` here, so it
- * takes a tap that Compose routes straight through it.
+ * reproduce it. Known divergences, all pre-existing: a node is hit-tested as an axis-aligned
+ * rectangle, so a rotated element or a non-rectangular `graphicsLayer` clip takes taps in the corners
+ * of its bounding box that Compose routes underneath (measured: identical before and after this
+ * ranking was added); a bare `semantics { onClick { } }` carries no pointer input at all yet is
+ * indistinguishable from `Modifier.clickable` here, so it takes a tap that Compose routes straight
+ * through it; and a custom `PointerInputModifierNode` that returns true from
+ * `sharePointerInputWithSiblings` has no representation in semantics at all, so a settled branch
+ * still stops the scan here where Compose would admit the sibling underneath as well.
  *
  * A `clickable(enabled = false)` is deliberately still allowed to take the tap: it consumes the
  * pointer exactly as Compose does, so letting the walk fall through it would report an element the
  * tap never reached. [resolveAutocaptureTarget] vetoes it afterwards instead, so the tap resolves to
- * nothing ([#128](https://github.com/uny/autograph/issues/128)).
+ * nothing ([#128](https://github.com/uny/autograph/issues/128)). Its expanded target was observed to
+ * consume just as its bounds do, so this holds out there too.
  *
  * Generic over the platform's UI tree node type ([T]) — e.g. `SemanticsNode` — so the geometry is
  * testable without any platform tree.
@@ -42,13 +57,47 @@ internal fun <T> findClickableHit(
     root: T,
     point: Offset,
     bounds: (T) -> Rect,
+    minTargetDistanceSquared: (T, Offset) -> Float?,
     children: (T) -> List<T>,
     clickable: (T) -> Boolean,
-): T? {
-    for (child in children(root).asReversed()) {
-        findClickableHit(child, point, bounds, children, clickable)?.let { return it }
+): T? = rankClickableHit(root, point, bounds, minTargetDistanceSquared, children, clickable)?.node
+
+/**
+ * One branch's best candidate: the node to report, whether the branch was [settled] by a definite
+ * hit, and — when it was not — how far outside its target the point fell, for ranking against the
+ * branches below it. [distanceSquared] is squared like Compose's own `distanceInMinimumTouchTarget`;
+ * only the ordering is ever read, so the root is never taken.
+ */
+private class ClickableHit<T>(val node: T, val settled: Boolean, val distanceSquared: Float)
+
+private fun <T> rankClickableHit(
+    node: T,
+    point: Offset,
+    bounds: (T) -> Rect,
+    minTargetDistanceSquared: (T, Offset) -> Float?,
+    children: (T) -> List<T>,
+    clickable: (T) -> Boolean,
+): ClickableHit<T>? {
+    var best: ClickableHit<T>? = null
+    for (child in children(node).asReversed()) {
+        val hit = rankClickableHit(child, point, bounds, minTargetDistanceSquared, children, clickable)
+            ?: continue
+        if (hit.settled) {
+            best = hit
+            break
+        }
+        if (best == null || hit.distanceSquared < best.distanceSquared) best = hit
     }
-    return if (clickable(root) && bounds(root).contains(point)) root else null
+    val hittable = clickable(node)
+    val definite = hittable && bounds(node).contains(point)
+    // A descendant is reported ahead of this node, but this node's own definite hit still settles the
+    // branch — that is what keeps the siblings below it from being scanned at all.
+    if (best != null) {
+        return if (definite && !best.settled) ClickableHit(best.node, true, best.distanceSquared) else best
+    }
+    if (definite) return ClickableHit(node, true, 0f)
+    val distance = if (hittable) minTargetDistanceSquared(node, point) else null
+    return distance?.let { ClickableHit(node, false, it) }
 }
 
 /**

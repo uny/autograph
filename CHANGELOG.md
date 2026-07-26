@@ -55,6 +55,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   still cannot take that row's tap, which is the behaviour the prune existed to protect. iOS is
   unchanged — its UIKit accessibility walk still prunes by the parent's frame, so the same tap is
   captured on Android and dropped there ([#130]).
+- Android autocapture attributes a tap in a small element's expanded touch target to that element
+  ([#127]). Compose grows the touch target of anything measured below
+  `ViewConfiguration.minimumTouchTargetSize` (48dp by default) past its drawn bounds, so a tap a few
+  pixels outside a 16dp icon button fires the icon — while autocapture reported whatever was drawn
+  underneath, naming the wrong element in the `target` and in any scope read off it. Small icon
+  buttons inside a larger clickable surface (a row's trailing overflow icon, a card's favourite
+  toggle) are the common shape, so **taps near such an element now report a different `target` than
+  before, and any scope that differs between the two elements changes with it.** The hit test now
+  ranks candidates by the rules observed from Compose's own: a hit inside an element's real bounds
+  outranks an expanded-target hit in another branch whatever the stacking order, competing expanded
+  targets go to the nearest, and a descendant is still reported ahead of its ancestor. An element
+  already at the minimum on both axes is never reached outside its own bounds. The [#128] veto covers
+  the expanded margin too, so a disabled element still reports nothing out there. Unchanged: an
+  element is hit-tested as an axis-aligned rectangle, so a rotated element or a non-rectangular
+  `graphicsLayer` clip still takes taps in the corners of its bounding box that Compose routes
+  underneath. An element that is both scaled and ancestor-clipped can newly report a tap Compose
+  routed nowhere, or drop one it routed to that element; neither was observed to misattribute a tap
+  to a different element. iOS is unchanged — its UIKit accessibility walk has no notion of an
+  expanded touch target.
 - Android autocapture no longer reports a tap on a disabled element as a click ([#128]).
   `Modifier.clickable(enabled = false)` publishes the click action alongside `Disabled`, so such an
   element was picked as the tap's target and **an event was emitted for a click that never fired** —
@@ -165,6 +184,7 @@ Initial release.
 [#102]: https://github.com/uny/autograph/issues/102
 [#122]: https://github.com/uny/autograph/pull/122
 [#126]: https://github.com/uny/autograph/issues/126
+[#127]: https://github.com/uny/autograph/issues/127
 [#128]: https://github.com/uny/autograph/issues/128
 [#130]: https://github.com/uny/autograph/issues/130
 [#132]: https://github.com/uny/autograph/issues/132

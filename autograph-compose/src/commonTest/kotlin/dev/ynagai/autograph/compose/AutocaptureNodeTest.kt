@@ -15,10 +15,29 @@ private data class TestNode(
     val bounds: Rect,
     val children: List<TestNode> = emptyList(),
     val clickable: Boolean = false,
+    /** The expanded minimum touch target, when this node is small enough to have one. */
+    val touchTarget: Rect? = null,
 )
 
-private fun findClickableHit(root: TestNode, point: Offset): TestNode? =
-    findClickableHit(root, point, bounds = { it.bounds }, children = { it.children }, clickable = { it.clickable })
+/** Mirrors the Compose-side rule: inclusive edges, squared distance from the node's drawn rect. */
+private fun TestNode.minTargetDistanceSquared(point: Offset): Float? {
+    val target = touchTarget ?: return null
+    val inside = point.x >= target.left && point.x <= target.right &&
+        point.y >= target.top && point.y <= target.bottom
+    if (!inside) return null
+    val dx = maxOf(bounds.left - point.x, 0f, point.x - bounds.right)
+    val dy = maxOf(bounds.top - point.y, 0f, point.y - bounds.bottom)
+    return dx * dx + dy * dy
+}
+
+private fun findClickableHit(root: TestNode, point: Offset): TestNode? = findClickableHit(
+    root,
+    point,
+    bounds = { it.bounds },
+    minTargetDistanceSquared = { node, at -> node.minTargetDistanceSquared(at) },
+    children = { it.children },
+    clickable = { it.clickable },
+)
 
 private fun scope(vararg pairs: Pair<String, String>): JsonObject =
     JsonObject(pairs.associate { (k, v) -> k to JsonPrimitive(v) })
@@ -352,6 +371,91 @@ class AutocaptureNodeTest {
             ),
         )
         assertNull(resolveAutocaptureTarget(chain))
+    }
+
+    // ---- minimum touch target ranking (#127) ----
+
+    @Test
+    fun findClickableHitPrefersAMinimumTargetDescendantOverItsAncestorsDefiniteHit() {
+        // The #127 shape: a small icon inside a large clickable surface. Compose fires the icon for a
+        // tap in its expanded margin even though the sheet's own bounds contain the point.
+        val icon = TestNode(
+            "icon",
+            Rect(50f, 50f, 66f, 66f),
+            clickable = true,
+            touchTarget = Rect(34f, 34f, 82f, 82f),
+        )
+        val sheet = TestNode("sheet", Rect(0f, 0f, 200f, 200f), children = listOf(icon), clickable = true)
+
+        assertEquals("icon", findClickableHit(sheet, Offset(58f, 58f))?.name, "inside the icon")
+        assertEquals("icon", findClickableHit(sheet, Offset(42f, 58f))?.name, "8px outside, in its target")
+        assertEquals("sheet", findClickableHit(sheet, Offset(20f, 58f))?.name, "beyond the target, the sheet")
+    }
+
+    @Test
+    fun findClickableHitPrefersADefiniteHitBelowOverAMinimumTargetHitDrawnOnTop() {
+        // `small` is declared last, so it is drawn on top, and its expanded target covers the point.
+        // A definite hit outranks a minimum-target hit regardless of stacking, so `big` keeps the tap.
+        val big = TestNode("big", Rect(0f, 0f, 120f, 120f), clickable = true)
+        val small = TestNode(
+            "small",
+            Rect(120f, 40f, 136f, 56f),
+            clickable = true,
+            touchTarget = Rect(104f, 24f, 152f, 72f),
+        )
+        val stage = TestNode("stage", Rect(0f, 0f, 200f, 200f), children = listOf(big, small))
+
+        assertEquals("big", findClickableHit(stage, Offset(110f, 48f))?.name)
+        assertEquals("small", findClickableHit(stage, Offset(125f, 48f))?.name, "inside its own bounds")
+    }
+
+    @Test
+    fun findClickableHitLetsAnAncestorsDefiniteHitSettleTheBranchWhileReportingTheDeeperNode() {
+        // `parent` is drawn over `sibling`; both contain the point. The reported node is `child`,
+        // hit only through its expanded target — but `parent`'s own definite hit is what stops the
+        // scan before `sibling` is ever considered.
+        val child = TestNode(
+            "child",
+            Rect(100f, 40f, 116f, 56f),
+            clickable = true,
+            touchTarget = Rect(84f, 24f, 132f, 72f),
+        )
+        val parent = TestNode("parent", Rect(0f, 0f, 120f, 120f), children = listOf(child), clickable = true)
+        val sibling = TestNode("sibling", Rect(0f, 0f, 120f, 120f), clickable = true)
+        val settled = TestNode("stage", Rect(0f, 0f, 200f, 200f), children = listOf(sibling, parent))
+
+        assertEquals("child", findClickableHit(settled, Offset(90f, 48f))?.name)
+
+        // With the same parent non-clickable its branch never settles, so the scan reaches `sibling`
+        // and that definite hit outranks the child's minimum-target one.
+        val unsettled = settled.copy(
+            children = listOf(sibling, parent.copy(clickable = false)),
+        )
+        assertEquals("sibling", findClickableHit(unsettled, Offset(90f, 48f))?.name)
+    }
+
+    @Test
+    fun findClickableHitRanksCompetingMinimumTargetsByDistanceNotByStacking() {
+        // Expanded targets overlap between x 44 and 52. `b` is drawn on top, but at x 46 the point is
+        // nearer `a`, and Compose fires `a`. Stacking only breaks a tie.
+        val a = TestNode("a", Rect(20f, 50f, 36f, 66f), clickable = true, touchTarget = Rect(4f, 34f, 52f, 82f))
+        val b = TestNode("b", Rect(60f, 50f, 76f, 66f), clickable = true, touchTarget = Rect(44f, 34f, 92f, 82f))
+        val stage = TestNode("stage", Rect(0f, 0f, 200f, 200f), children = listOf(a, b))
+
+        assertEquals("a", findClickableHit(stage, Offset(46f, 58f))?.name, "10px from a, 14px from b")
+        assertEquals("b", findClickableHit(stage, Offset(50f, 58f))?.name, "14px from a, 10px from b")
+        assertEquals("b", findClickableHit(stage, Offset(48f, 58f))?.name, "equidistant — the topmost wins")
+    }
+
+    @Test
+    fun findClickableHitDoesNotReachANodeThatHasNoExpandedTarget() {
+        // Anything already at least the minimum touch target on both axes is never hit outside its
+        // own bounds, so a null target must not be read as an unbounded one.
+        val big = TestNode("big", Rect(0f, 0f, 120f, 120f), clickable = true)
+        val stage = TestNode("stage", Rect(0f, 0f, 200f, 200f), children = listOf(big))
+
+        assertEquals("big", findClickableHit(stage, Offset(119f, 60f))?.name)
+        assertNull(findClickableHit(stage, Offset(121f, 60f)))
     }
 
     @Test

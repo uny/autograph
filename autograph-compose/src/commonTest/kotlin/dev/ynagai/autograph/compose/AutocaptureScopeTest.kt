@@ -5,12 +5,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredSize
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
 import androidx.compose.ui.semantics.disabled
@@ -48,10 +51,10 @@ private class ScopeCaptureTracker : Tracker {
 
 private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.content
 
-/** The window-space centre of the element tagged [tag] — where a user tapping it would land. */
+/** The root-space centre of the element tagged [tag] — where a user tapping it would land. */
 @OptIn(ExperimentalTestApi::class)
 private fun ComposeUiTest.centreOf(tag: String): Offset =
-    onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInWindow.center
+    onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
 
 /** The unmerged semantics root, the node the Android resolver hit-tests from. */
 @OptIn(ExperimentalTestApi::class)
@@ -67,10 +70,11 @@ private fun ComposeUiTest.semanticsRoot(): SemanticsNode = onRoot(useUnmergedTre
  * root comes from `onRoot(useUnmergedTree = true)` rather than
  * `RootForTest.semanticsOwner.unmergedRootSemanticsNode` — the same node, but `compose.uiTest`
  * cannot reach a `RootForTest` on the JVM these tests run on. The resolver's `view as? RootForTest`
- * guard and its `localToWindow` conversion have no counterpart here, so callers pass window
- * coordinates in directly. `autograph-compose` declares no Android host-test source set, so the
- * Android `actual` of `rememberElementResolver` — the only place those two run — executes in no test
- * at all; nothing here would notice if the position it hit-tests stopped being root-local.
+ * guard and its `localToRoot` conversion have no counterpart here, so callers pass root coordinates
+ * in directly. `autograph-compose` declares no Android host-test source set, so the Android `actual`
+ * of `rememberElementResolver` — the only place those two run — executes in no test at all; nothing
+ * here would notice if the position it hit-tests stopped being root-local. The composition root sits
+ * at the window origin on the JVM, so these tests cannot tell root space from window space either.
  *
  * Unmerged matters twice over — on the merged tree a descendant's scope folds into its clickable
  * ancestor's config, and the sibling rows below would collapse into one node.
@@ -406,6 +410,358 @@ class AutocaptureScopeTest {
         val elsewhere = assertNotNull(semanticsRoot().resolveTapAt(Offset(80f, 80f)))
         assertEquals("row", elsewhere.identifier)
         assertNull(elsewhere.scope.str("part"), "a tap outside the leaf must not pick its scope up")
+    }
+
+    // ---- minimum touch target (#127) ----
+
+    /**
+     * The defect #127 reported, with the identifier AND the scope both checked. Compose expands the
+     * touch target of anything below `minimumInteractiveComponentSize`, so a tap 8px outside a 16dp
+     * icon fires the icon; before this walk ranked expanded targets the tap was attributed to the
+     * sheet drawn underneath — a wrong target, and a wrong scope with it.
+     */
+    @Test
+    fun aTapInASmallClickablesExpandedTargetResolvesToThatClickable() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(
+                Modifier.testTag("sheet").size(200.dp)
+                    .autocaptureScope("sheet" to "s").clickable { fired = "sheet" },
+            ) {
+                Box(
+                    Modifier.offset(x = 50.dp, y = 50.dp).testTag("icon").size(16.dp)
+                        .autocaptureScope("icon" to "i").clickable { fired = "icon" },
+                )
+            }
+        }
+        waitForIdle()
+
+        val besideTheIcon = Offset(42f, 58f)
+        onRoot().performTouchInput { down(besideTheIcon); up() }
+        waitForIdle()
+        assertEquals("icon", fired, "precondition: Compose routes this to the icon, not the sheet")
+
+        val resolved = assertNotNull(semanticsRoot().resolveTapAt(besideTheIcon))
+        assertEquals("icon", resolved.identifier)
+        assertEquals("i", resolved.scope.str("icon"), "and the icon's own scope travels with it")
+        assertEquals("s", resolved.scope.str("sheet"))
+    }
+
+    /**
+     * The edge of the expanded target, to the pixel. `Rect.contains` excludes the right and bottom
+     * edges while Compose's minimum-target test includes them, so an off-by-one here would silently
+     * hand the boundary column back to the element underneath.
+     */
+    @Test
+    fun theExpandedTargetIncludesItsFarEdgeAndStopsImmediatelyAfter() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp).clickable { fired = "stage" }) {
+                Box(Modifier.offset(x = 60.dp, y = 60.dp).testTag("b").size(16.dp).clickable { fired = "b" })
+            }
+        }
+        waitForIdle()
+
+        // Drawn 60..76, so the 48dp target runs 44..92 — inclusive at both ends.
+        for ((x, expected) in listOf(44f to "b", 92f to "b", 43.9f to "stage", 92.001f to "stage")) {
+            val point = Offset(x, 68f)
+            onRoot().performTouchInput { down(point); up() }
+            waitForIdle()
+            assertEquals(expected, fired, "precondition at x=$x")
+            assertEquals(expected, semanticsRoot().resolveTapAt(point)?.identifier, "at x=$x")
+        }
+    }
+
+    /**
+     * An element already at least the minimum touch target on both axes is never hit outside its own
+     * bounds — Compose gives up on the minimum-target path for it entirely. Without that rule a large
+     * element that is merely *scaled* or ancestor-clipped looks expanded and starts claiming taps
+     * beside it, because its drawn rect and its reported touch bounds differ for that reason too.
+     */
+    @Test
+    fun aClickableAtLeastTheMinimumSizeIsNeverHitOutsideItsOwnBounds() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            // Nothing clickable underneath, deliberately: a definite hit outranks a minimum-target
+            // one, so an element below would mask a wrongly-expanded target instead of exposing it.
+            Box(Modifier.testTag("stage").size(200.dp)) {
+                Box(Modifier.offset(x = 20.dp, y = 20.dp).size(100.dp).clipToBounds()) {
+                    Box(
+                        Modifier.testTag("scaled").size(80.dp)
+                            .graphicsLayer { scaleX = 2f; scaleY = 2f }
+                            .clickable { fired = "scaled" },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        // Scaling and the ancestor clip pull the drawn rect (20..120) and the reported touch bounds
+        // (-4..120) apart, so a rect-width comparison would call this expanded. Its measured size is
+        // 80dp, well past the minimum, so Compose never routes here at all.
+        val besideTheScaledElement = Offset(10f, 60f)
+        onRoot().performTouchInput { down(besideTheScaledElement); up() }
+        waitForIdle()
+        assertNull(fired, "precondition: too large to have an expanded target, so nothing fires")
+        assertNull(semanticsRoot().resolveTapAt(besideTheScaledElement))
+
+        val insideIt = Offset(60f, 60f)
+        onRoot().performTouchInput { down(insideIt); up() }
+        waitForIdle()
+        assertEquals("scaled", fired, "precondition: inside its own bounds it still takes the tap")
+        assertEquals("scaled", semanticsRoot().resolveTapAt(insideIt)?.identifier)
+    }
+
+    /**
+     * A definite hit outranks a minimum-target hit between branches, whatever the stacking order —
+     * so a small icon drawn on top does not steal a tap that landed squarely inside the surface
+     * beside it. This is the rule that keeps expanded targets from over-reaching.
+     */
+    @Test
+    fun aTapInsideOneElementIsNotStolenByASmallSiblingDrawnOnTopOfIt() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp)) {
+                Box(Modifier.testTag("big").size(120.dp).clickable { fired = "big" })
+                // Declared second, so drawn on top; its expanded target reaches back over `big`.
+                Box(
+                    Modifier.offset(x = 120.dp, y = 40.dp).testTag("small").size(16.dp)
+                        .clickable { fired = "small" },
+                )
+            }
+        }
+        waitForIdle()
+
+        val insideBigAndInSmallsTarget = Offset(110f, 48f)
+        onRoot().performTouchInput { down(insideBigAndInSmallsTarget); up() }
+        waitForIdle()
+        assertEquals("big", fired, "precondition: a definite hit outranks a minimum-target one")
+        assertEquals("big", semanticsRoot().resolveTapAt(insideBigAndInSmallsTarget)?.identifier)
+    }
+
+    /**
+     * Where two expanded targets overlap and neither element was really hit, the nearer one wins and
+     * stacking order only breaks a tie. Ranking these by depth or by stacking — the rule that governs
+     * definite hits — would give `b` the whole overlap.
+     */
+    @Test
+    fun overlappingExpandedTargetsAreRankedByDistanceNotByStacking() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp)) {
+                Box(Modifier.offset(x = 20.dp, y = 50.dp).testTag("a").size(16.dp).clickable { fired = "a" })
+                // Drawn on top of `a`, and their targets overlap between x 44 and 52.
+                Box(Modifier.offset(x = 60.dp, y = 50.dp).testTag("b").size(16.dp).clickable { fired = "b" })
+            }
+        }
+        waitForIdle()
+
+        for ((x, expected) in listOf(46f to "a", 50f to "b", 48f to "b")) {
+            val point = Offset(x, 58f)
+            onRoot().performTouchInput { down(point); up() }
+            waitForIdle()
+            assertEquals(expected, fired, "precondition at x=$x")
+            assertEquals(expected, semanticsRoot().resolveTapAt(point)?.identifier, "at x=$x")
+        }
+    }
+
+    /**
+     * Compose measures that distance in each candidate's OWN coordinate space, so two differently
+     * scaled elements cannot be ranked by their root-space distances — the winner inverts. Pins the
+     * conversion back through each axis's scale.
+     */
+    @Test
+    fun competingExpandedTargetsAreRankedInEachElementsOwnScale() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp)) {
+                Box(
+                    Modifier.offset(x = 40.dp, y = 90.dp).testTag("A").size(16.dp)
+                        .graphicsLayer { scaleX = 3f; scaleY = 3f }.clickable { fired = "A" },
+                )
+                Box(Modifier.offset(x = 90.dp, y = 90.dp).testTag("B").size(16.dp).clickable { fired = "B" })
+            }
+        }
+        waitForIdle()
+
+        // Swept in the spike: every point in this band agrees once the distance is scale-corrected.
+        for (x in 70..100) {
+            val point = Offset(x.toFloat(), 98f)
+            fired = null
+            onRoot().performTouchInput { down(point); up() }
+            waitForIdle()
+            assertEquals(fired, semanticsRoot().resolveTapAt(point)?.identifier, "at x=$x")
+        }
+    }
+
+    /**
+     * The ranking distance divides by the element's drawn extent, and an ancestor clip shrinks that
+     * extent without being a transform — so the conversion looks like it should over-count a clipped
+     * element's distance and hand it taps it should lose. It does not, because `touchBoundsInRoot` is
+     * itself grown from the *clipped* rect: measured here, the half-clipped element's drawn rect and
+     * its expanded target share a centre. Pins that the two stay consistent.
+     */
+    @Test
+    fun aPartiallyClippedSmallTargetIsRankedAgainstItsNeighbourCorrectly() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp)) {
+                // Cut to half its width by the ancestor, so drawn 30..38 while measured 16dp wide.
+                Box(Modifier.offset(x = 30.dp, y = 90.dp).size(width = 8.dp, height = 16.dp).clipToBounds()) {
+                    Box(Modifier.testTag("clipped").requiredSize(16.dp).clickable { fired = "clipped" })
+                }
+                Box(
+                    Modifier.offset(x = 70.dp, y = 90.dp).testTag("plain").requiredSize(16.dp)
+                        .clickable { fired = "plain" },
+                )
+            }
+        }
+        waitForIdle()
+
+        // Swept across the whole band where the two expanded targets meet and overlap.
+        for (x in 20..100) {
+            val point = Offset(x.toFloat(), 97f)
+            fired = null
+            onRoot().performTouchInput { down(point); up() }
+            waitForIdle()
+            assertEquals(fired, semanticsRoot().resolveTapAt(point)?.identifier, "at x=$x")
+        }
+    }
+
+    /**
+     * The distance is Euclidean, not per-axis. Every fixture above is effectively one-dimensional and
+     * would pass just as well against a Manhattan or largest-axis metric; this one places the
+     * candidates diagonally so those disagree.
+     */
+    @Test
+    fun competingExpandedTargetsAreRankedByEuclideanDistance() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp)) {
+                Box(
+                    Modifier.offset(x = 60.dp, y = 92.dp).testTag("near").requiredSize(16.dp)
+                        .clickable { fired = "near" },
+                )
+                Box(
+                    Modifier.offset(x = 58.dp, y = 108.dp).testTag("diag").requiredSize(16.dp)
+                        .clickable { fired = "diag" },
+                )
+            }
+        }
+        waitForIdle()
+
+        // (50,100) is 10 away from `near` on one axis and 8 away from `diag` on both: Euclidean picks
+        // `near` (10 < 11.3) where a largest-axis metric would pick `diag` (8 < 10).
+        val point = Offset(50f, 100f)
+        onRoot().performTouchInput { down(point); up() }
+        waitForIdle()
+        assertEquals("near", fired, "precondition")
+        assertEquals("near", semanticsRoot().resolveTapAt(point)?.identifier)
+
+        for (x in 30..90) {
+            for (y in listOf(96, 100, 104, 112)) {
+                val p = Offset(x.toFloat(), y.toFloat())
+                fired = null
+                onRoot().performTouchInput { down(p); up() }
+                waitForIdle()
+                assertEquals(fired, semanticsRoot().resolveTapAt(p)?.identifier, "at ($x,$y)")
+            }
+        }
+    }
+
+    /**
+     * The subtlest rule, and until now covered only against a hand-built tree: an ancestor's own hit
+     * inside its real bounds settles its branch — stopping the scan before the sibling underneath is
+     * considered — while the node actually reported is the deeper one, reached only through its
+     * expanded target. Reporting the ancestor instead, or letting the scan continue to the sibling,
+     * each names an element Compose did not route to.
+     */
+    @Test
+    fun anAncestorsOwnHitSettlesItsBranchWhileTheDeeperElementIsReported() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp)) {
+                Box(Modifier.testTag("sibling").size(120.dp).clickable { fired = "sibling" })
+                // Drawn over `sibling` and covering it exactly.
+                Box(Modifier.testTag("parent").size(120.dp).clickable { fired = "parent" }) {
+                    Box(
+                        Modifier.offset(x = 100.dp, y = 40.dp).testTag("child").size(16.dp)
+                            .clickable { fired = "child" },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        // Inside both `sibling` and `parent`, but only in `child`'s expanded target.
+        val point = Offset(90f, 48f)
+        onRoot().performTouchInput { down(point); up() }
+        waitForIdle()
+        assertEquals("child", fired, "precondition: the deepest element in the settled branch")
+        assertEquals("child", semanticsRoot().resolveTapAt(point)?.identifier)
+
+        // Beyond the child's target the parent keeps its own tap, so this is a settlement and not a
+        // subtree-wide handover.
+        val beyond = Offset(50f, 48f)
+        onRoot().performTouchInput { down(beyond); up() }
+        waitForIdle()
+        assertEquals("parent", fired, "precondition")
+        assertEquals("parent", semanticsRoot().resolveTapAt(beyond)?.identifier)
+    }
+
+    /**
+     * The [#128](https://github.com/uny/autograph/issues/128) veto has to cover the expanded margin
+     * too: a disabled element consumes the pointer out there exactly as it does inside its bounds, so
+     * the answer is still no event rather than the enabled sheet underneath.
+     */
+    @Test
+    fun aDisabledClickableSwallowsTapsInItsExpandedTargetAsWell() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("sheet").size(200.dp).clickable { fired = "sheet" }) {
+                Box(
+                    Modifier.offset(x = 50.dp, y = 50.dp).testTag("icon").requiredSize(16.dp)
+                        .clickable(enabled = false) { fired = "icon" },
+                )
+            }
+        }
+        waitForIdle()
+
+        val besideTheDisabledIcon = Offset(42f, 58f)
+        onRoot().performTouchInput { down(besideTheDisabledIcon); up() }
+        waitForIdle()
+        assertNull(fired, "precondition: the disabled icon consumes the tap out here too")
+        assertNull(semanticsRoot().resolveTapAt(besideTheDisabledIcon))
+
+        val beyondItsTarget = Offset(20f, 58f)
+        onRoot().performTouchInput { down(beyondItsTarget); up() }
+        waitForIdle()
+        assertEquals("sheet", fired, "precondition: past the target the sheet takes it")
+        assertEquals("sheet", semanticsRoot().resolveTapAt(beyondItsTarget)?.identifier)
+    }
+
+    /**
+     * `toggleable` publishes the same click action and gets the same expansion, so it is covered by
+     * the same rule — pinned because it reaches the walk through a different modifier.
+     */
+    @Test
+    fun aSmallToggleableIsReachedThroughItsExpandedTargetToo() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("stage").size(200.dp).clickable { fired = "stage" }) {
+                Box(
+                    Modifier.offset(x = 60.dp, y = 60.dp).testTag("toggle").size(16.dp)
+                        .toggleable(value = false, onValueChange = { fired = "toggle" }),
+                )
+            }
+        }
+        waitForIdle()
+
+        val besideTheToggle = Offset(52f, 68f)
+        onRoot().performTouchInput { down(besideTheToggle); up() }
+        waitForIdle()
+        assertEquals("toggle", fired, "precondition")
+        assertEquals("toggle", semanticsRoot().resolveTapAt(besideTheToggle)?.identifier)
     }
 
     /**
