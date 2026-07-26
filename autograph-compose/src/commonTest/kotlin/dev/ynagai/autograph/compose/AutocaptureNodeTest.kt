@@ -167,9 +167,9 @@ class AutocaptureNodeTest {
     fun resolveAutocaptureTargetReturnsTheNearestClickableAncestorsIdentifier() {
         // Hit node itself isn't clickable (e.g. an inner Text/Icon); its clickable ancestor is.
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
-            AutocaptureNode(identifier = "share_button", clickable = true, ignored = false, instrumented = false),
-            AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = "share_button", clickable = true, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false, disabled = false),
         )
         assertEquals("share_button", resolveAutocaptureTarget(chain)?.identifier)
     }
@@ -177,8 +177,8 @@ class AutocaptureNodeTest {
     @Test
     fun resolveAutocaptureTargetReturnsNullWhenNothingInTheChainIsClickable() {
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
-            AutocaptureNode(identifier = "card", clickable = false, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = "card", clickable = false, ignored = false, instrumented = false, disabled = false),
         )
         assertNull(resolveAutocaptureTarget(chain))
     }
@@ -186,9 +186,54 @@ class AutocaptureNodeTest {
     @Test
     fun resolveAutocaptureTargetReturnsNullWhenTheHitNodeItselfIsInstrumented() {
         val chain = sequenceOf(
-            AutocaptureNode(identifier = "inner", clickable = true, ignored = false, instrumented = true),
+            AutocaptureNode(identifier = "inner", clickable = true, ignored = false, instrumented = true, disabled = false),
         )
         assertNull(resolveAutocaptureTarget(chain))
+    }
+
+    @Test
+    fun resolveAutocaptureTargetReturnsNullWhenTheReturnedClickableIsDisabled() {
+        // clickable(enabled = false) publishes the click action too, so it is picked as the nearest
+        // clickable — and reporting it would be a click that never fired.
+        val chain = sequenceOf(
+            AutocaptureNode(identifier = "disabled", clickable = true, ignored = false, instrumented = false, disabled = true),
+        )
+        assertNull(resolveAutocaptureTarget(chain))
+    }
+
+    @Test
+    fun resolveAutocaptureTargetStopsAtADisabledClickableRatherThanWalkingUpToAnEnabledAncestor() {
+        // The veto must not degrade into "skip it and keep looking": a disabled element blocks its
+        // enabled clickable ancestor too (measured — Compose fires nothing), so reporting the
+        // ancestor would name an element the tap never reached.
+        val chain = sequenceOf(
+            AutocaptureNode(identifier = "disabled", clickable = true, ignored = false, instrumented = false, disabled = true),
+            AutocaptureNode(identifier = "outer", clickable = true, ignored = false, instrumented = false, disabled = false),
+        )
+        assertNull(resolveAutocaptureTarget(chain))
+    }
+
+    @Test
+    fun resolveAutocaptureTargetIgnoresADisabledAncestorAboveTheReturnedClickable() {
+        // The mirror image, and why the veto is confined to the returned node: a disabled container
+        // does NOT block an enabled clickable child (measured — Compose fires the child), so it must
+        // not suppress it either.
+        val chain = sequenceOf(
+            AutocaptureNode(identifier = "inner", clickable = true, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = "outer", clickable = true, ignored = false, instrumented = false, disabled = true),
+        )
+        assertEquals("inner", resolveAutocaptureTarget(chain)?.identifier)
+    }
+
+    @Test
+    fun resolveAutocaptureTargetIgnoresADisabledDescendantThatIsNotTheReturnedClickable() {
+        // A disabled non-clickable leaf inside a live row (a greyed-out label, say) must not take the
+        // row's tap away from it.
+        val chain = sequenceOf(
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false, disabled = true),
+            AutocaptureNode(identifier = "row", clickable = true, ignored = false, instrumented = false, disabled = false),
+        )
+        assertEquals("row", resolveAutocaptureTarget(chain)?.identifier)
     }
 
     @Test
@@ -196,9 +241,9 @@ class AutocaptureNodeTest {
         // autographIgnore()'s own marker on an intermediate node must veto the tap even though a
         // clickable ancestor exists further up.
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
-            AutocaptureNode(identifier = null, clickable = false, ignored = true, instrumented = false),
-            AutocaptureNode(identifier = "share_button", clickable = true, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = true, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = "share_button", clickable = true, ignored = false, instrumented = false, disabled = false),
         )
         assertNull(resolveAutocaptureTarget(chain))
     }
@@ -209,9 +254,9 @@ class AutocaptureNodeTest {
         // (e.g. Box(Modifier.autographIgnore()) { Button(...) }) must still suppress the tap, even
         // though the walk would otherwise return the clickable's identifier before reaching it.
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
-            AutocaptureNode(identifier = "button", clickable = true, ignored = false, instrumented = false),
-            AutocaptureNode(identifier = null, clickable = false, ignored = true, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = "button", clickable = true, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = true, instrumented = false, disabled = false),
         )
         assertNull(resolveAutocaptureTarget(chain))
     }
@@ -222,9 +267,9 @@ class AutocaptureNodeTest {
         // Image). It must NOT veto an outer plain Modifier.clickable that was never itself
         // instrumented -- only the node actually being returned should be checked.
         val chain = sequenceOf(
-            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false),
-            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = true),
-            AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false, disabled = false),
+            AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = true, disabled = false),
+            AutocaptureNode(identifier = "card", clickable = true, ignored = false, instrumented = false, disabled = false),
         )
         assertEquals("card", resolveAutocaptureTarget(chain)?.identifier)
     }
@@ -232,7 +277,7 @@ class AutocaptureNodeTest {
     @Test
     fun resolveAutocaptureTargetCarriesNoScopeWhenNothingOnTheChainDeclaresOne() {
         val chain = sequenceOf(
-            AutocaptureNode(identifier = "button", clickable = true, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = "button", clickable = true, ignored = false, instrumented = false, disabled = false),
         )
         assertEquals(EmptyJsonObject, resolveAutocaptureTarget(chain)?.scope)
     }
@@ -248,6 +293,7 @@ class AutocaptureNodeTest {
                 clickable = true,
                 ignored = false,
                 instrumented = false,
+                disabled = false,
                 scope = scope("article_id" to "42", "surface" to "row"),
             ),
             AutocaptureNode(
@@ -255,6 +301,7 @@ class AutocaptureNodeTest {
                 clickable = false,
                 ignored = false,
                 instrumented = false,
+                disabled = false,
                 scope = scope("section" to "for_you", "surface" to "list"),
             ),
         )
@@ -278,9 +325,10 @@ class AutocaptureNodeTest {
                 clickable = false,
                 ignored = false,
                 instrumented = false,
+                disabled = false,
                 scope = scope("part" to "avatar"),
             ),
-            AutocaptureNode(identifier = "row", clickable = true, ignored = false, instrumented = false),
+            AutocaptureNode(identifier = "row", clickable = true, ignored = false, instrumented = false, disabled = false),
         )
 
         val resolved = resolveAutocaptureTarget(chain)
@@ -299,6 +347,7 @@ class AutocaptureNodeTest {
                 clickable = true,
                 ignored = true,
                 instrumented = false,
+                disabled = false,
                 scope = scope("article_id" to "42"),
             ),
         )

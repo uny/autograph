@@ -24,14 +24,16 @@ import kotlinx.serialization.json.JsonObject
  * row therefore yields nothing and the neighbour keeps its own tap.
  *
  * This approximates Compose's pointer routing over the unmerged semantics tree; it does not
- * reproduce it. Three known divergences, all pre-existing and none introduced here: an element's
+ * reproduce it. Two known divergences in this walk, both pre-existing: an element's
  * touch target is expanded past its bounds below `minimumInteractiveComponentSize`
- * ([#127](https://github.com/uny/autograph/issues/127)); `clickable(enabled = false)` still publishes
- * the click action, so a disabled element takes the tap and is reported
- * ([#128](https://github.com/uny/autograph/issues/128)) — it is left taking it deliberately, since it
- * really does consume the pointer and skipping it would report an element the tap never reached; and
- * a bare `semantics { onClick { } }` carries no pointer input at all yet is indistinguishable from
- * `Modifier.clickable` here.
+ * ([#127](https://github.com/uny/autograph/issues/127)), and a bare `semantics { onClick { } }`
+ * carries no pointer input at all yet is indistinguishable from `Modifier.clickable` here, so it
+ * takes a tap that Compose routes straight through it.
+ *
+ * A `clickable(enabled = false)` is deliberately still allowed to take the tap: it consumes the
+ * pointer exactly as Compose does, so letting the walk fall through it would report an element the
+ * tap never reached. [resolveAutocaptureTarget] vetoes it afterwards instead, so the tap resolves to
+ * nothing ([#128](https://github.com/uny/autograph/issues/128)).
  *
  * Generic over the platform's UI tree node type ([T]) — e.g. `SemanticsNode` — so the geometry is
  * testable without any platform tree.
@@ -74,13 +76,20 @@ internal fun <T> findDeepestHit(root: T, point: Offset, bounds: (T) -> Rect, chi
 /**
  * One node along the path from a tapped element up to the composition root — enough for
  * [resolveAutocaptureTarget] to decide whether/how to attribute a tap without depending on any
- * platform UI-tree type. Built by each platform's [ElementResolver] from its own hit-test result.
+ * platform UI-tree type.
+ *
+ * Built from a semantics hit test, which today means the Android [ElementResolver] and the
+ * `compose.uiTest` suite that shares its path. iOS resolves over the UIKit accessibility bridge and
+ * never builds one of these, so every statement here about what a node does — including the
+ * pointer-consumption reasoning behind [resolveAutocaptureTarget]'s vetoes — describes the Android
+ * read path, not autocapture on every platform.
  */
 internal data class AutocaptureNode(
     val identifier: String?,
     val clickable: Boolean,
     val ignored: Boolean,
     val instrumented: Boolean,
+    val disabled: Boolean,
     val scope: JsonObject = EmptyJsonObject,
 )
 
@@ -105,6 +114,21 @@ internal data class AutocaptureTarget(
  * [instrumented] only vetoes the walk when it reaches the node it would otherwise return — already
  * instrumented via [trackClick] / [trackImpression] and would otherwise be double-reported.
  *
+ * [disabled] vetoes on the returned node only, like [instrumented] and for a measured reason.
+ * `clickable(enabled = false)` publishes the click action alongside `Disabled`, so a disabled
+ * element is picked as the nearest clickable and would otherwise be reported as a click that never
+ * fired. It still has to *take* the tap in the hit test — it consumes the pointer exactly as Compose
+ * does, blocking both the sibling beneath it and its own enabled clickable ancestor (measured: in
+ * `Box(clickable) { Box(clickable(enabled = false)) }` Compose fires nothing) — so vetoing here
+ * rather than skipping it in the walk is what keeps the answer a drop instead of naming an element
+ * the tap never reached. Confining the veto to the returned node is equally deliberate: a disabled
+ * *ancestor* does not block an enabled clickable child (measured), so it must not suppress one.
+ *
+ * The veto reads a semantics property, not the pointer input behind it, so it costs one shape it
+ * cannot tell apart: a live `Modifier.clickable` whose semantics were hand-marked `disabled()` does
+ * fire and is dropped here. That is the divergence from Compose this introduces, and the direction
+ * to err in — the alternative reports taps that never happened.
+ *
  * [AutocaptureNode.scope] is subtree-wide like [ignored], and for the same reason: [autocaptureScope]
  * says "taps under here carry this", so every node on the chain contributes, including one *below*
  * the clickable that gets reported. Because the chain is a single ancestry path, its scopes are never
@@ -116,7 +140,7 @@ internal fun resolveAutocaptureTarget(chain: Sequence<AutocaptureNode>): Autocap
     val nodes = chain.toList()
     if (nodes.any { it.ignored }) return null
     val nearestClickable = nodes.firstOrNull { it.clickable } ?: return null
-    if (nearestClickable.instrumented) return null
+    if (nearestClickable.instrumented || nearestClickable.disabled) return null
     val identifier = nearestClickable.identifier ?: return null
     // asReversed() is root→hit node, so a deeper frame's entry lands later and wins the clash.
     val scope = nodes.asReversed().fold(EmptyJsonObject) { acc, node ->

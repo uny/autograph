@@ -55,6 +55,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   still cannot take that row's tap, which is the behaviour the prune existed to protect. iOS is
   unchanged — its UIKit accessibility walk still prunes by the parent's frame, so the same tap is
   captured on Android and dropped there ([#130]).
+- Android autocapture no longer reports a tap on a disabled element as a click ([#128]).
+  `Modifier.clickable(enabled = false)` publishes the click action alongside `Disabled`, so such an
+  element was picked as the tap's target and **an event was emitted for a click that never fired** —
+  those taps now report nothing. It still takes the hit rather than being skipped, because it really
+  does consume the pointer: falling through would name the element underneath, which never received
+  the tap either (measured, including that a disabled child blocks its own enabled clickable
+  ancestor). A disabled *ancestor* does not suppress an enabled clickable child. One shape this
+  costs: a live `Modifier.clickable` whose semantics were hand-marked `disabled()` does fire and is
+  now dropped — semantics cannot tell it from a real `clickable(enabled = false)`. iOS is unchanged,
+  and what its UIKit accessibility bridge reports for a disabled element is unmeasured ([#132]).
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
@@ -155,4 +165,6 @@ Initial release.
 [#102]: https://github.com/uny/autograph/issues/102
 [#122]: https://github.com/uny/autograph/pull/122
 [#126]: https://github.com/uny/autograph/issues/126
+[#128]: https://github.com/uny/autograph/issues/128
 [#130]: https://github.com/uny/autograph/issues/130
+[#132]: https://github.com/uny/autograph/issues/132

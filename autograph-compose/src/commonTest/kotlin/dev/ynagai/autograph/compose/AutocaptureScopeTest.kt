@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -12,6 +13,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
@@ -403,6 +406,160 @@ class AutocaptureScopeTest {
         val elsewhere = assertNotNull(semanticsRoot().resolveTapAt(Offset(80f, 80f)))
         assertEquals("row", elsewhere.identifier)
         assertNull(elsewhere.scope.str("part"), "a tap outside the leaf must not pick its scope up")
+    }
+
+    /**
+     * A `clickable(enabled = false)` really does swallow the pointer — Compose fires nothing, not the
+     * enabled sibling underneath it — so the only honest answer is no event at all. Reporting the
+     * disabled element was a click that never happened; falling through to `button` would be worse
+     * still, naming an element the tap never reached.
+     */
+    @Test
+    fun aDisabledClickableSwallowsTheTapAndReportsNothing() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.size(100.dp)) {
+                Box(Modifier.testTag("button").size(50.dp).clickable { fired = "button" })
+                // Declared second, so drawn on top: it covers the enabled button entirely.
+                Box(
+                    Modifier.testTag("disabled").size(50.dp)
+                        .autocaptureScope("disabled" to "yes")
+                        .clickable(enabled = false) { fired = "disabled" },
+                )
+            }
+        }
+        waitForIdle()
+
+        val point = Offset(25f, 25f)
+        onRoot().performTouchInput { down(point); up() }
+        waitForIdle()
+        assertNull(fired, "precondition: Compose fires nothing — the disabled element consumed the pointer")
+
+        assertNull(semanticsRoot().resolveTapAt(point), "so neither the disabled element nor the button may be reported")
+    }
+
+    /**
+     * The case that decides the veto's *shape*: a disabled child blocks its enabled clickable
+     * ancestor as well, so the walk must stop at the disabled element rather than skip past it to
+     * the ancestor. Skipping would report `outer` for a tap that fired nothing — trading a phantom
+     * event for a wrong one, which this library treats as strictly worse.
+     */
+    @Test
+    fun aDisabledChildBlocksItsEnabledAncestorSoTheTapResolvesToNothing() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("outer").size(100.dp).clickable { fired = "outer" }) {
+                Box(Modifier.testTag("disabled").size(50.dp).clickable(enabled = false) { fired = "disabled" })
+            }
+        }
+        waitForIdle()
+
+        val onTheDisabledChild = Offset(25f, 25f)
+        onRoot().performTouchInput { down(onTheDisabledChild); up() }
+        waitForIdle()
+        assertNull(fired, "precondition: the disabled child swallows the tap, its enabled ancestor included")
+        assertNull(semanticsRoot().resolveTapAt(onTheDisabledChild))
+
+        // ...while the rest of the ancestor is unaffected, which is what makes the above a veto and
+        // not a subtree-wide exclusion.
+        val elsewhereOnTheAncestor = Offset(80f, 80f)
+        onRoot().performTouchInput { down(elsewhereOnTheAncestor); up() }
+        waitForIdle()
+        assertEquals("outer", fired, "precondition: Compose routes this one to the ancestor")
+        assertEquals("outer", semanticsRoot().resolveTapAt(elsewhereOnTheAncestor)?.identifier)
+    }
+
+    /**
+     * The mirror image, and why the veto is confined to the node being returned: a disabled
+     * *container* does not block an enabled clickable child. Compose fires the child, so a
+     * subtree-wide veto would drop a real click.
+     */
+    @Test
+    fun aDisabledAncestorDoesNotSuppressAnEnabledClickableChild() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Box(Modifier.testTag("outer").size(100.dp).clickable(enabled = false) { fired = "outer" }) {
+                Box(Modifier.testTag("inner").size(50.dp).clickable { fired = "inner" })
+            }
+        }
+        waitForIdle()
+
+        val point = Offset(25f, 25f)
+        onRoot().performTouchInput { down(point); up() }
+        waitForIdle()
+        assertEquals("inner", fired, "precondition: the enabled child still receives the tap")
+
+        assertEquals("inner", semanticsRoot().resolveTapAt(point)?.identifier)
+    }
+
+    /**
+     * A disabled `clickable` drawn outside its parent covers a neighbouring row and swallows its
+     * tap. Before [#126](https://github.com/uny/autograph/issues/126)'s walk the badge was invisible
+     * to the hit test and the tap was attributed to `row1`; now the badge is reached, and being
+     * disabled it resolves to nothing — which is what Compose does.
+     */
+    @Test
+    fun aDisabledOverhangSwallowsTheCoveredRowsTapWithoutBeingReported() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Column(Modifier.size(200.dp)) {
+                Box(Modifier.testTag("row1").size(200.dp, 100.dp).clickable { fired = "row1" })
+                Box(
+                    Modifier.testTag("row2").size(200.dp, 100.dp)
+                        .autocaptureScope("row" to "2").clickable { fired = "row2" },
+                ) {
+                    Box(
+                        Modifier.offset(y = (-60).dp).testTag("badge").requiredSize(40.dp)
+                            .clickable(enabled = false) { fired = "badge" },
+                    )
+                }
+            }
+        }
+        waitForIdle()
+
+        val overlap = Offset(20f, 60f)
+        onRoot().performTouchInput { down(overlap); up() }
+        waitForIdle()
+        assertNull(fired, "precondition: the disabled badge consumes the tap, so neither row fires")
+
+        assertNull(semanticsRoot().resolveTapAt(overlap), "neither the badge, nor row1 under it, nor row2 above it")
+    }
+
+    /**
+     * The one shape the veto costs, pinned so it stays a known gap rather than becoming a surprise:
+     * a live `Modifier.clickable` whose semantics were hand-marked `disabled()` does fire, and is
+     * dropped. The declaration contradicts itself — the accessibility tree says disabled while the
+     * pointer input is live — and semantics carries no way to tell that apart from a real
+     * `clickable(enabled = false)`, both keys landing on one node's config in either modifier order.
+     * A drop is the right side to err on; if this ever stops being a drop, this test says so.
+     */
+    @Test
+    fun anEnabledClickableHandMarkedDisabledIsDroppedInEitherModifierOrder() = runComposeUiTest {
+        var fired: String? = null
+        setContent {
+            Column {
+                Box(
+                    Modifier.testTag("clickThenDisabled").size(50.dp)
+                        .clickable { fired = "clickThenDisabled" }
+                        .semantics { disabled() },
+                )
+                Box(
+                    Modifier.testTag("disabledThenClick").size(50.dp)
+                        .semantics { disabled() }
+                        .clickable { fired = "disabledThenClick" },
+                )
+            }
+        }
+        waitForIdle()
+
+        for (tag in listOf("clickThenDisabled", "disabledThenClick")) {
+            val centre = centreOf(tag)
+            fired = null
+            onRoot().performTouchInput { down(centre); up() }
+            waitForIdle()
+            assertEquals(tag, fired, "precondition: the pointer input is live, so Compose does fire")
+            assertNull(semanticsRoot().resolveTapAt(centre), "but the hand-written disabled() drops it")
+        }
     }
 
     /**

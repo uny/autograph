@@ -75,5 +75,8 @@ internal fun SemanticsNode.toAutocaptureNode(): AutocaptureNode = AutocaptureNod
     clickable = isClickable(),
     ignored = config.isAutocaptureIgnored(),
     instrumented = config.isAutocaptureInstrumented(),
+    // `clickable(enabled = false)` publishes Disabled alongside the click action, which is what lets
+    // resolveAutocaptureTarget tell a real click from one that never fired.
+    disabled = config.getOrNull(SemanticsProperties.Disabled) != null,
     scope = config.autocaptureScopeOrEmpty(),
 )
