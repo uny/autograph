@@ -25,6 +25,12 @@ import platform.darwin.NSObjectProtocol
  * Opt-in, exactly as Compose autocapture is: observing every tap is a different privacy posture than
  * instrumenting individual elements, so nothing happens until an app calls this.
  *
+ * **Best-effort, and read [resolveNativeTapTarget] before relying on it.** Measured: until some
+ * accessibility client has run in the process (VoiceOver, Voice Control, the Accessibility Inspector, an
+ * XCUITest runner), UIKit and SwiftUI have not built the accessibility tree this resolves taps through,
+ * and every native tap is dropped silently. There is no fix available from public API, so anything that
+ * must not be lost needs explicit instrumentation. Compose autocapture does not share the limitation.
+ *
  * Pass the **same** [scopeStack] the app gives `AutographProvider` if it also renders Compose.
  * Sharing one stack is what lets a native tap carry the screen and scope a Compose screen pushed, and
  * vice versa; two stacks leave both sides attributing against half-empty context.

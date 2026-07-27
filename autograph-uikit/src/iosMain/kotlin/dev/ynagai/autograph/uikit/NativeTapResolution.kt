@@ -43,6 +43,27 @@ import platform.UIKit.UIView
  * the predicate to "anything with an identifier" would fix it and simultaneously start capturing
  * taps on ordinary labels, so the gap stands.
  *
+ * **Known limitation — nothing is reported until an accessibility client has run in the process.**
+ * This is the big one, and it is not a tuning problem: UIKit and SwiftUI build the accessibility element
+ * tree *on demand*, when an accessibility client asks for it. Until then this walk finds only plain
+ * `UIView`s reached through `subviews` — measured on a freshly created simulator: 88 nodes, every one
+ * reporting `accessibilityFrame = CGRectZero` and no traits at all, with no `SwiftUI.AccessibilityNode`
+ * and therefore no `UIAccessibilityTraitButton` anywhere in the tree. Step 1 and step 3 then both fail
+ * and **every native tap is dropped, silently, for the life of the process**. The moment anything
+ * connects — VoiceOver, Voice Control, Switch Control, the Accessibility Inspector, an XCUITest runner —
+ * the tree appears with real frames and traits and every tap resolves.
+ *
+ * There is no fix available here. Nothing public asks UIKit to populate that tree, and the private entry
+ * points that would are not something a published library can ship. This is a property of the mechanism,
+ * not of this code: any tap capture built on the accessibility tree inherits it. It is why
+ * `autograph-compose`'s pipeline is unaffected — Compose Multiplatform bridges its own semantics into
+ * accessibility elements unconditionally, without waiting to be asked (see #135, and
+ * [deepestAccessibilityHitPath]'s note on the starting node, which fixed the Compose half only).
+ *
+ * The practical consequence for a hybrid app: taps on native surfaces should not be assumed present in
+ * the data. Treat this pipeline as best-effort until #135 finds a mechanism that does not depend on an
+ * accessibility client, and instrument anything you must not lose explicitly.
+ *
  * [scale] must be `UIScreen.mainScreen.scale` — see [accessibilityBoundsInWindowPx], whose
  * precondition this inherits wholesale.
  *

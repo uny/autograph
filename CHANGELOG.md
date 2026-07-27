@@ -62,9 +62,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   accessibility subsystem — XCUITest, VoiceOver, the Accessibility Inspector — populates that frame and
   hides the failure completely, which is why the `sample-ios` XCUITest suite passed throughout: its
   runner is itself such a client. The contract is therefore pinned by `autograph-uikit`'s unit tests,
-  which drive the walk directly. The native (UIKit/SwiftUI) pipeline starts its walk from the window,
-  whose frame is valid even when cold, so this change does not explain or fix its own measured
-  cold-start failure, which stays open ([#135]).
+  which drive the walk directly. This does not fix the native (UIKit/SwiftUI) pipeline, whose own
+  cold-start failure has a deeper cause — see the known limitation below ([#135]).
 - Android autocapture attributes a tap to the element Compose actually routed the pointer to when a
   `clickable` is drawn outside its parent's bounds — an overhanging badge, a `Modifier.offset`
   decoration ([#126]). The hit test no longer refuses to descend past a parent whose bounds miss the
@@ -122,6 +121,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   the corrupt-file reset ([#54]).
 - A per-surface capture matrix (Compose/native × Android/iOS/desktop) and the dual-framework
   fail-open warning ([#102]); the iOS consumption model and the pure-Swift epic ([#94]).
+- **iOS native tap capture is documented as best-effort**, because it reports nothing until some
+  accessibility client has run in the process ([#135]). UIKit and SwiftUI build the accessibility element
+  tree only when asked for it — by VoiceOver, Voice Control, the Accessibility Inspector, an XCUITest
+  runner. Measured on a freshly created simulator: the walk finds only plain `UIView`s, every one
+  reporting an empty `accessibilityFrame` and no traits, with no button trait anywhere in the tree, so
+  **every native tap is dropped silently for the life of the process**; once any client connects, every
+  tap resolves. No public API asks UIKit to populate that tree, so this is a property of the mechanism
+  rather than a defect this library can fix, and any tap capture built on the accessibility tree inherits
+  it. Anything that must not be lost needs explicit instrumentation. The capture matrix now marks the
+  surface conditional, and `installAutographNativeTapCapture` / `resolveNativeTapTarget` say so on the
+  way in. Compose autocapture on iOS is unaffected: Compose Multiplatform bridges its own semantics into
+  accessibility elements unconditionally. This also corrects the note added with the fix above, which had
+  attributed the native failure to a valid-framed `UIWindow` — measured false, the window reports
+  `CGRectZero` when cold as well.
 
 ## [0.2.0] - 2026-07-13
 
