@@ -69,9 +69,15 @@ import platform.darwin.NSObject
  * VoiceOver, the Accessibility Inspector) populates that frame and hides the whole failure, which is
  * why the `sample-ios` XCUITest suite passed throughout: its runner is itself such a client. See #135.
  *
- * This exemption does **not** explain [resolveNativeTapTarget]'s own measured cold-start failure: that
- * walk starts from a `UIWindow`, whose frame is valid even then, so its cause is elsewhere and still
- * open (#135).
+ * This exemption does **not** rescue [resolveNativeTapTarget] in that state, and the reason is not the
+ * one an earlier version of this note gave (it claimed the native walk's `UIWindow` reports a valid
+ * frame when cold — measured false, it reports `CGRectZero` too). Cold, UIKit and SwiftUI have not built
+ * an accessibility tree at all: the walk reaches only plain `UIView`s through `subviews`, every one of
+ * them reporting an empty frame and no traits, with not a single `SwiftUI.AccessibilityNode` or button
+ * trait anywhere. So the exemption gets the walk past the root and every child then prunes on its own
+ * empty frame. Compose differs because Compose Multiplatform builds its bridged elements itself,
+ * unconditionally — those are present and correct while cold, which is why exempting the root is enough
+ * there and only there. See [resolveNativeTapTarget] for what that costs the native pipeline.
  *
  * **What the exemption does not loosen.** Two properties are preserved deliberately, because relaxing
  * the descent could otherwise turn a dropped event into a misattributed one — the worse failure:

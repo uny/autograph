@@ -265,13 +265,33 @@ table is the whole picture, because a gap here produces **no event at all** — 
 | Compose — Android | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
 | Compose — iOS | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
 | Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
-| iOS native — UIKit / SwiftUI | ✅ `installAutographNativeTapCapture` | ✅ `installAutographNativeScreenCapture` (UIKit) · [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) (SwiftUI) |
+| iOS native — UIKit / SwiftUI | ⚠️ `installAutographNativeTapCapture` — **conditional, see below** | ✅ `installAutographNativeScreenCapture` (UIKit) · [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) (SwiftUI) |
 | Android native — View / XML | ❌ **not captured** ([#63](https://github.com/uny/autograph/issues/63)) | ✅ `installAutographNativeScreenCapture` (Activity / Fragment) |
 
 The asymmetry worth stating plainly: **a hybrid Android app gets `Screen Viewed` for its non-Compose
 screens but no `Element Clicked` for taps on them**, while the same app on iOS gets both. If that gap
 matters to you, say so on [#63](https://github.com/uny/autograph/issues/63) — it is deferred for want of
 a demand signal, not for a technical reason.
+
+> [!WARNING]
+> **iOS native tap capture reports nothing until an accessibility client has run in the process**
+> ([#135](https://github.com/uny/autograph/issues/135)). UIKit and SwiftUI build the accessibility
+> element tree *on demand*, when something asks for it — VoiceOver, Voice Control, Switch Control, the
+> Accessibility Inspector, an XCUITest runner. Until then the tree this pipeline hit-tests does not
+> exist: measured on a freshly created simulator, the walk finds only plain `UIView`s, every one
+> reporting an empty frame and no traits, with no button trait anywhere. **Every native tap is dropped,
+> silently, for the life of the process.** Once any client connects, the tree appears and taps resolve
+> normally again — subject to the gaps listed below, which are unrelated to this and apply either way.
+>
+> There is no workaround in this library: nothing public asks UIKit to populate that tree, and any tap
+> capture built on the accessibility tree inherits this. So treat native tap capture as **best-effort**,
+> and instrument anything you must not lose with `Modifier.trackClick` or an explicit `track` call.
+> Note the consequence for your own testing: a simulator you have run UI tests against is already
+> warmed, so native capture will look reliable there while failing on a user's device.
+>
+> **Compose autocapture on iOS is not affected** — Compose Multiplatform bridges its own semantics into
+> accessibility elements unconditionally, so its tree is there from the first layout pass whether or not
+> anything is listening.
 
 Known gaps *within* iOS native tap capture, all tracked on
 [#86](https://github.com/uny/autograph/issues/86): `UIControl` target-action taps (the window-level
