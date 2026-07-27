@@ -51,7 +51,8 @@ import platform.UIKit.UIView
  * and therefore no `UIAccessibilityTraitButton` anywhere in the tree. Step 1 and step 3 then both fail
  * and **every native tap is dropped, silently, for the life of the process**. The moment anything
  * connects — VoiceOver, Voice Control, Switch Control, the Accessibility Inspector, an XCUITest runner —
- * the tree appears with real frames and traits and every tap resolves.
+ * the tree appears with real frames and traits, and any target this pipeline otherwise supports
+ * resolves — the gaps documented above still drop, warm or cold.
  *
  * There is no fix available here. Nothing public asks UIKit to populate that tree, and the private entry
  * points that would are not something a published library can ship. This is a property of the mechanism,

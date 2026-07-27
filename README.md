@@ -280,7 +280,8 @@ a demand signal, not for a technical reason.
 > Accessibility Inspector, an XCUITest runner. Until then the tree this pipeline hit-tests does not
 > exist: measured on a freshly created simulator, the walk finds only plain `UIView`s, every one
 > reporting an empty frame and no traits, with no button trait anywhere. **Every native tap is dropped,
-> silently, for the life of the process.** Once any client connects, every tap resolves normally.
+> silently, for the life of the process.** Once any client connects, the tree appears and taps resolve
+> normally again — subject to the gaps listed below, which are unrelated to this and apply either way.
 >
 > There is no workaround in this library: nothing public asks UIKit to populate that tree, and any tap
 > capture built on the accessibility tree inherits this. So treat native tap capture as **best-effort**,

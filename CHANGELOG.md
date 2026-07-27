@@ -126,8 +126,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   tree only when asked for it — by VoiceOver, Voice Control, the Accessibility Inspector, an XCUITest
   runner. Measured on a freshly created simulator: the walk finds only plain `UIView`s, every one
   reporting an empty `accessibilityFrame` and no traits, with no button trait anywhere in the tree, so
-  **every native tap is dropped silently for the life of the process**; once any client connects, every
-  tap resolves. No public API asks UIKit to populate that tree, so this is a property of the mechanism
+  **every native tap is dropped silently for the life of the process**; once any client connects, the
+  targets this pipeline otherwise supports resolve again (its pre-existing gaps still drop either way). No public API asks UIKit to populate that tree, so this is a property of the mechanism
   rather than a defect this library can fix, and any tap capture built on the accessibility tree inherits
   it. Anything that must not be lost needs explicit instrumentation. The capture matrix now marks the
   surface conditional, and `installAutographNativeTapCapture` / `resolveNativeTapTarget` say so on the
