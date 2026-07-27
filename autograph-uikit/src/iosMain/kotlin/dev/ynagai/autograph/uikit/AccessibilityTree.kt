@@ -6,6 +6,7 @@ import kotlinx.cinterop.useContents
 import platform.Foundation.NSSelectorFromString
 import platform.UIKit.UIAccessibilityIdentificationProtocol
 import platform.UIKit.UIAccessibilityTraitButton
+import platform.UIKit.UIAccessibilityTraitNotEnabled
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import platform.UIKit.accessibilityElements
@@ -346,6 +347,44 @@ public fun List<Any>.nearestAccessibilityClickable(): Any? =
 @AutographInternalApi
 public fun Any.isAccessibilityButton(): Boolean =
     (((this as? NSObject)?.accessibilityTraits() ?: 0uL) and UIAccessibilityTraitButton) != 0uL
+
+/**
+ * Whether this element exposes `UIAccessibilityTraitNotEnabled` — the iOS counterpart of Compose's
+ * `SemanticsProperties.Disabled`, and Autograph's signal that activating this element runs nothing.
+ * Measured: Compose Multiplatform bridges `Modifier.clickable(enabled = false)` as
+ * `Button|NotEnabled`, and so do a disabled `UIButton` and a SwiftUI `Button` under `.disabled(true)`.
+ *
+ * **Deliberately separate from [isAccessibilityButton], not folded into it.** That predicate decides
+ * which elements *take* a hit, and a disabled control still swallows the touch it is drawn over.
+ * Narrowing it would make the walk fall through to whatever sits beneath or around the disabled
+ * element — which never received the tap either, so a phantom event would be traded for a
+ * misattributed one, the worse failure. Measured for Compose Multiplatform: tapping a disabled
+ * clickable nested in an enabled clickable parent fires *nothing*, so the parent did not receive the
+ * tap. In UIKit the mechanism is `UIControl`'s: `isEnabled` is not `isUserInteractionEnabled`, so a
+ * disabled control can still be what `hitTest` returns while suppressing its own control action.
+ *
+ * So a disabled element keeps taking the hit and is vetoed at the point where a hit becomes an event:
+ * [resolveNativeTapTarget] and `autograph-compose`'s `resolveIosElement`. **Both must apply it** — the
+ * same element has to resolve the same way whichever pipeline observed the tap, or a hybrid app
+ * reports one control under two behaviours. Note that unlike [nearestAccessibilityClickable] the veto
+ * itself is not centralized, only this predicate is: a third resolution site would have to remember
+ * to ask. The veto is confined to the element the tap resolves to and is never made subtree-wide: on
+ * Android, whose `Disabled` semantics this mirrors, a disabled *ancestor* measurably does not block an
+ * enabled clickable descendant (#128).
+ *
+ * **What this trait does not prove, and the drop it therefore costs.** It is the best signal the
+ * accessibility tree carries, not a proof that nothing ran. It is the element's own claim about
+ * itself: an app is free to publish it on a view that still has a working `UITapGestureRecognizer`, or
+ * to mark a live `Modifier.clickable` disabled through `semantics { disabled() }`, and such a tap does
+ * fire while this drops it. That is the exact shape #128 documents on Android, and it is the same
+ * trade for the same reason — the alternative reading of the trait misattributes instead. Separately,
+ * a genuinely disabled control does not stop an *ancestor* gesture recognizer from seeing the touch,
+ * so an app that puts its own tap handler on a container around a disabled control loses that event
+ * here too.
+ */
+@AutographInternalApi
+public fun Any.isAccessibilityDisabled(): Boolean =
+    (((this as? NSObject)?.accessibilityTraits() ?: 0uL) and UIAccessibilityTraitNotEnabled) != 0uL
 
 /**
  * This element's developer-set `accessibilityIdentifier`, or null — including when the identifier is

@@ -163,6 +163,25 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String)
             )
         }
 
+        // A disabled clickable swallows the tap and fires nothing, so autocapture reports nothing —
+        // not a click that never happened. It still takes the hit rather than falling through to
+        // whatever is underneath, which never received the tap either. See #128 (Android) and #134
+        // (iOS, where this depends on Compose Multiplatform bridging the element as
+        // `UIAccessibilityTraitNotEnabled`, something only an on-device test can establish).
+        Box(
+            modifier = Modifier
+                .testTag("disabled_button")
+                .fillMaxWidth()
+                .height(56.dp)
+                .background(Color.LightGray)
+                .clickable(enabled = false) {},
+        ) {
+            Text(
+                "Not captured (clickable(enabled = false))",
+                modifier = Modifier.padding(16.dp),
+            )
+        }
+
         // Read by sample-iosUITests, which can't inspect Kotlin state directly — see LoggingTracker.
         // target: which element a tap resolved to. props: the full properties (screen/section/scope)
         // it was attributed with. screen views: the ordered log of Screen Viewed events.

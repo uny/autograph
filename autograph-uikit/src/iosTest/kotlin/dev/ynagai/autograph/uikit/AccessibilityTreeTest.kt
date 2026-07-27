@@ -11,6 +11,8 @@ import kotlin.time.TimeSource
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIAccessibilityTraitButton
+import platform.UIKit.UIAccessibilityTraitNotEnabled
+import platform.UIKit.UIAccessibilityTraitSelected
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import platform.UIKit.UIWindow
@@ -555,6 +557,72 @@ class AccessibilityTreeTest {
 
         assertNull(path.nearestAccessibilityClickable())
     }
+
+    /**
+     * A disabled element still *takes* the hit: it is clickable as far as the walk and the leaf-upward
+     * search are concerned, and only the resolution sites veto it (#134, mirroring #128). Pinned here
+     * because the tempting alternative — teaching [isAccessibilityButton] about
+     * `UIAccessibilityTraitNotEnabled` — reads as the smaller change and silently converts a phantom
+     * event into a misattributed one, by handing the tap to the enabled ancestor that never received
+     * it. See [isAccessibilityDisabled].
+     */
+    @Test
+    fun aDisabledClickableStillTakesTheHitAheadOfItsEnabledAncestor() {
+        val parent = UIView()
+        parent.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        parent.setAccessibilityTraits(UIAccessibilityTraitButton)
+
+        val disabledChild = UIView()
+        disabledChild.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        disabledChild.setAccessibilityTraits(UIAccessibilityTraitButton or UIAccessibilityTraitNotEnabled)
+        parent.addSubview(disabledChild)
+
+        val position = AxPoint(15f * scale, 15f * scale)
+        val path = deepestAccessibilityHitPath(parent, parent, position, scale)
+
+        assertEquals(listOf(parent, disabledChild), path)
+        assertEquals(disabledChild, path?.nearestAccessibilityClickable())
+        assertTrue(disabledChild.isAccessibilityButton(), "a disabled clickable must still be clickable")
+        assertTrue(disabledChild.isAccessibilityDisabled())
+        assertFalse(parent.isAccessibilityDisabled())
+    }
+
+    /**
+     * Both predicates test their own bit and nothing else. `accessibilityTraits` is a bit mask a real
+     * element carries several bits in at once, so an equality comparison against
+     * `Button or NotEnabled` would pass every other test here and then fail on the first disabled
+     * element that is also, say, selected — silently reporting a click that never fired.
+     */
+    @Test
+    fun theTraitPredicatesIgnoreUnrelatedTraits() {
+        val selectedDisabledButton = UIView()
+        selectedDisabledButton.setAccessibilityTraits(
+            UIAccessibilityTraitButton or UIAccessibilityTraitNotEnabled or UIAccessibilityTraitSelected,
+        )
+        assertTrue(selectedDisabledButton.isAccessibilityButton())
+        assertTrue(selectedDisabledButton.isAccessibilityDisabled())
+
+        // NotEnabled without Button: disabled-ness is read independently of clickability.
+        val disabledNonButton = UIView()
+        disabledNonButton.setAccessibilityTraits(UIAccessibilityTraitNotEnabled)
+        assertFalse(disabledNonButton.isAccessibilityButton())
+        assertTrue(disabledNonButton.isAccessibilityDisabled())
+
+        val plainButton = UIView()
+        plainButton.setAccessibilityTraits(UIAccessibilityTraitButton or UIAccessibilityTraitSelected)
+        assertTrue(plainButton.isAccessibilityButton())
+        assertFalse(plainButton.isAccessibilityDisabled())
+    }
+
+    // The premise underneath these predicates — that a real disabled control actually publishes
+    // `UIAccessibilityTraitNotEnabled` — deliberately has no unit test. Measured while writing this:
+    // a real `UIButton` in this headless test process reports `accessibilityTraits = 0`, plain or
+    // `.system` with a title, disabled or not; it carries no button trait either. That is the same
+    // on-demand population #135 documents, and it means the premise is unobservable here rather than
+    // merely untested. It is pinned in `sample-ios`'s XCUITest suite instead, whose runner is an
+    // accessibility client: `NativeScreensUITests.testNativeDisabledUIKitButtonIsNotReported` for
+    // UIKit, `NativeSampleUITests.testNativeDisabledButtonIsNotReported` for SwiftUI, and
+    // `iosAppUITests.testDisabledElementIsNotCaptured` for Compose Multiplatform.
 
     @Test
     fun containsIsLeftTopInclusiveAndRightBottomExclusive() {

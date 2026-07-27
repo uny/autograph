@@ -10,8 +10,10 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.setValue
 import platform.UIKit.UIAccessibilityTraitButton
+import platform.UIKit.UIAccessibilityTraitNotEnabled
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
+import platform.UIKit.accessibilityTraits
 import platform.UIKit.setAccessibilityFrame
 import platform.UIKit.setAccessibilityTraits
 import platform.darwin.NSObject
@@ -38,6 +40,10 @@ class NativeTapResolutionTest {
             setAccessibilityTraits(UIAccessibilityTraitButton)
             id?.let { (this as NSObject).setValue(it, forKey = "accessibilityIdentifier") }
         }
+
+    /** Adds `UIAccessibilityTraitNotEnabled` on top of whatever traits [view] already carries. */
+    private fun disabled(view: UIView): UIView =
+        view.apply { setAccessibilityTraits(accessibilityTraits() or UIAccessibilityTraitNotEnabled) }
 
     /** The registry is process-global, so a leaked entry would leak between tests. */
     @AfterTest
@@ -291,5 +297,57 @@ class NativeTapResolutionTest {
             resolveNativeTapTarget(root, position, scale),
             "a tap landing on Compose-owned content belongs to the Compose pipeline, not this one",
         )
+    }
+
+    @Test
+    fun dropsATapOnADisabledClickable() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(disabled(button("share_button", 10.0, 10.0, 20.0, 20.0)))
+
+        val position = AxPoint(15f * scale, 15f * scale)
+
+        assertNull(
+            resolveNativeTapTarget(root, position, scale),
+            "a disabled control runs no action, so reporting a click would invent an event",
+        )
+    }
+
+    /**
+     * The half that decides the veto's *shape* rather than its existence. A disabled element is
+     * vetoed, not skipped: it consumed the touch, so the enabled clickable ancestor whose frame also
+     * covers the tap did not receive it either, and naming that ancestor would trade a phantom event
+     * for a misattributed one (#134, mirroring the measurement behind #128).
+     */
+    @Test
+    fun dropsATapOnADisabledClickableRatherThanNamingItsEnabledAncestor() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val enabledParent = button("enabled_row", 0.0, 0.0, 100.0, 100.0)
+        root.addSubview(enabledParent)
+        enabledParent.addSubview(disabled(button("disabled_child", 10.0, 10.0, 20.0, 20.0)))
+
+        val position = AxPoint(15f * scale, 15f * scale)
+
+        assertNull(resolveNativeTapTarget(root, position, scale))
+        assertEquals(
+            "enabled_row",
+            resolveNativeTapTarget(root, AxPoint(50f * scale, 50f * scale), scale),
+            "the veto is confined to the disabled element; the rest of the parent still resolves",
+        )
+    }
+
+    /** The same confinement in the other direction: a disabled ancestor does not veto an enabled child. */
+    @Test
+    fun stillResolvesAnEnabledClickableInsideADisabledAncestor() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val disabledParent = disabled(button("disabled_row", 0.0, 0.0, 100.0, 100.0))
+        root.addSubview(disabledParent)
+        disabledParent.addSubview(button("enabled_child", 10.0, 10.0, 20.0, 20.0))
+
+        val position = AxPoint(15f * scale, 15f * scale)
+
+        assertEquals("enabled_child", resolveNativeTapTarget(root, position, scale))
     }
 }

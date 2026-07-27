@@ -105,10 +105,32 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   the tap either (measured, including that a disabled child blocks its own enabled clickable
   ancestor). A disabled *ancestor* does not suppress an enabled clickable child. One shape this
   costs: a live `Modifier.clickable` whose semantics were hand-marked `disabled()` does fire and is
-  now dropped — semantics cannot tell it from a real `clickable(enabled = false)`. iOS is unchanged and
-  still reports such a tap: measurement confirmed the bridge does carry `UIAccessibilityTraitNotEnabled`
-  on a disabled element, so the same veto is implementable there, and it is tracked as the remaining
-  half of ([#134]).
+  now dropped — semantics cannot tell it from a real `clickable(enabled = false)`. iOS now behaves the
+  same way — see the next entry.
+- iOS autocapture no longer reports a tap on a disabled element as a click ([#134]), matching the
+  Android behaviour above. Compose Multiplatform bridges `Modifier.clickable(enabled = false)` as
+  `Button|NotEnabled`, and UIKit and SwiftUI mark a disabled control the same way, so such an element
+  passed Autograph's clickability predicate and **an event was emitted for a click that never fired**
+  — those taps now report nothing, on both the Compose and the native (UIKit/SwiftUI) pipeline. As on
+  Android, the disabled element still *takes* the hit rather than being skipped during the walk,
+  because it really does swallow the touch: measured on-device, tapping a disabled clickable nested in
+  an enabled clickable parent fires nothing at all, so falling through would name an ancestor that
+  never received the tap either — trading a phantom event for a misattributed one. The veto applies
+  only to the element a tap resolves to, so a disabled *ancestor* still does not suppress an enabled
+  clickable descendant. It costs the same shape the Android entry above describes, for the same
+  reason: the trait is the element's own claim about itself, so a live handler behind a hand-published
+  `NotEnabled` — or an app's own tap handler on a container *around* a disabled control, which a
+  gesture recognizer does still see — is now dropped.
+  This closes the third of the three divergences from Android that [#134] tracks. The other two do
+  **not** reproduce on the accessibility tree as measured (Compose Multiplatform 1.11.1, iOS 26.2):
+  [#126]'s parent-bounds prune cannot arise, because the bridged tree is flat and an overhanging
+  element is a *sibling* rather than a descendant, and [#127] needs no port, because the bridge
+  already publishes the *expanded* minimum touch target as an element's `accessibilityFrame`
+  (measured: a 16dp icon reports a 48pt frame, and so does a 40dp one). [#134] stays open for a
+  divergence found while measuring this one and distinct from all three: among *overlapping siblings*
+  the walk resolves in reverse tree order, and the bridge orders siblings by reading position rather
+  than by what is drawn on top — so a tap in the overhanging part of a clickable drawn over a
+  lower neighbour is still attributed to the neighbour.
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
