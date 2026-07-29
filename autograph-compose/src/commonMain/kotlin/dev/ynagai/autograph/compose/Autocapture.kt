@@ -17,10 +17,8 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer
  * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing works on each
  * element's bounding rectangle, so it cannot express a `Modifier.clip` that isn't rectangular: a tap
- * in the corner of a rounded or shaped clip can be attributed to an element it visually missed. Nor
- * does it see the touch target Compose expands past those bounds for anything below
- * `minimumInteractiveComponentSize` ([#127](https://github.com/uny/autograph/issues/127)), and it
- * reads an element as clickable from its click *action*, which a bare `semantics { onClick { } }`
+ * in the corner of a rounded or shaped clip can be attributed to an element it visually missed. It
+ * also reads an element as clickable from its click *action*, which a bare `semantics { onClick { } }`
  * publishes without any pointer input at all — so such an overlay is reported for a tap Compose
  * routes straight through it to the element underneath.
  *
@@ -34,11 +32,20 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * `disabled()` (measured in either modifier order on Android) — which does fire and is dropped.
  * `Modifier.zIndex` is *not* in this category — the semantics children the walk descends are
  * z-sorted, so the visually topmost element takes the tap (pinned by `AutocaptureScopeTest`).
- * Neither, **on Android**, is a `clickable` drawn outside its parent's bounds: the semantics walk
- * descends regardless of the parent, and only requires the element it reports to contain the tap
- * itself. iOS still stops above such an element, since the UIKit accessibility walk prunes by the
- * parent's frame — so the same tap is captured on Android and dropped on iOS
- * ([#130](https://github.com/uny/autograph/issues/130)).
+ * Neither is the touch target Compose expands past an element's bounds for anything below
+ * `minimumInteractiveComponentSize`: Android ranks such a hit by Compose's own rules
+ * ([#127](https://github.com/uny/autograph/issues/127)), and iOS needs no counterpart because the
+ * UIKit bridge already publishes the *expanded* target as the element's `accessibilityFrame`.
+ * Neither, on either platform, is a `clickable` drawn outside its parent's bounds: on Android the
+ * semantics walk descends regardless of the parent and only requires the element it reports to
+ * contain the tap itself, and on iOS the question cannot arise, since the bridged accessibility tree
+ * is flat — such an element is a *sibling* rather than a descendant, so no parent frame excludes it.
+ *
+ * **One further gap, iOS only, and it is none of the above:** that same overhanging tap is still
+ * misreported there. The walk breaks an overlap between *siblings* that tie on clickability by reverse
+ * tree order, as a stand-in for z-order, while the bridge orders siblings by reading position rather
+ * than by what is drawn on top — so the overhanging element loses the tap to the neighbour it covers,
+ * while Android attributes it correctly ([#140](https://github.com/uny/autograph/issues/140)).
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on
