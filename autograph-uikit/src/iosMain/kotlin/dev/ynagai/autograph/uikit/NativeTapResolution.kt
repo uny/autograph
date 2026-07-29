@@ -50,6 +50,17 @@ import platform.UIKit.UIView
  * the predicate to "anything with an identifier" would fix it and simultaneously start capturing
  * taps on ordinary labels, so the gap stands.
  *
+ * **Known gap — overlapping siblings, and it bites harder here than on Compose.** Step 3 resolves an
+ * overlap through [deepestAccessibilityHitPath]'s tie-break, which is reverse emitted order standing in
+ * for z-order. On the Compose side that is partly rescued by the CMP bridge trimming a covered
+ * sibling's frame, which is a real z signal. **Measured: native trees do not trim** — a SwiftUI button
+ * covered by a full-width strip reports the same frame as an identical un-overlapped one — so no such
+ * rescue exists here and the tie-break decides every overlap on its own. Reproduced end to end: two
+ * overlapping SwiftUI buttons, the upper one overhanging upward, oracle fires the upper and this
+ * returns the lower. See #140 and [deepestAccessibilityHitPath]'s overlap section, which carries the
+ * fixtures and the refuted alternatives; the gap is documented rather than fixed because every ranking
+ * tried was measured wrong, and because a tie-break change would also move step 2's ownership check.
+ *
  * **Known limitation — nothing is reported until an accessibility client has run in the process.**
  * This is the big one, and it is not a tuning problem: UIKit and SwiftUI build the accessibility element
  * tree *on demand*, when an accessibility client asks for it. Until then this walk finds only plain

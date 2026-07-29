@@ -41,11 +41,23 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * contain the tap itself, and on iOS the question cannot arise, since the bridged accessibility tree
  * is flat — such an element is a *sibling* rather than a descendant, so no parent frame excludes it.
  *
- * **One further gap, iOS only, and it is none of the above:** that same overhanging tap is still
- * misreported there. The walk breaks an overlap between *siblings* that tie on clickability by reverse
- * tree order, as a stand-in for z-order, while the bridge orders siblings by reading position rather
- * than by what is drawn on top — so the overhanging element loses the tap to the neighbour it covers,
- * while Android attributes it correctly ([#140](https://github.com/uny/autograph/issues/140)).
+ * **One further gap, iOS only, and it is none of the above:** an overhanging tap can still be
+ * misreported there, where Android attributes it correctly
+ * ([#140](https://github.com/uny/autograph/issues/140)). The walk breaks an overlap between *siblings*
+ * that tie on clickability by reverse tree order, as a stand-in for z-order, but the bridge does not
+ * emit siblings in z-order — measured, the emitted order fits `(left, top)`, so an element further
+ * left comes first however it is drawn.
+ *
+ * Two things keep this narrow, both measured. The bridge trims a covered sibling's frame down to the
+ * part its neighbour does not cover, whenever what remains is still a rectangle; that is a z-order
+ * signal, and where it applies the ambiguity is gone before the tie-break is reached. What survives is
+ * an overlap whose remainder is *not* a rectangle — a corner overhang, or an occluder wholly inside
+ * the element beneath — combined with the element on top sorting earlier under that order. Measured to
+ * resolve correctly: a clickable nested in a clickable row, a badge overhanging to the top-right, a
+ * full-width banner or sheet, a horizontal overlap. The shape that fails is an element overhanging to
+ * the **left or straight up**. See `deepestAccessibilityHitPath`'s kdoc in `autograph-uikit` for the
+ * fixtures, and for why the obvious rankings (smallest-area, most-specific-frame, first-emitted) are
+ * each refuted rather than merely untried.
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on

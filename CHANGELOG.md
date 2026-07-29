@@ -75,9 +75,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   per-level prune (only the walk's starting node is exempt, see above), and measurement showed the
   *prune* cannot bite there: the bridged accessibility tree is flat, so an overhanging element is a
   *sibling* rather than a descendant and no parent frame excludes it ([#134]). The divergence itself
-  does survive on iOS, by a different mechanism — the bridge orders overlapping siblings by reading
-  position rather than by what is drawn on top, so the overhanging element loses the tap to the
-  neighbour it covers ([#140]).
+  does survive on iOS, by a different mechanism — the bridge does not emit overlapping siblings in
+  z-order, so an element overhanging to the left or straight up can lose the tap to the neighbour it
+  covers ([#140]).
 - Android autocapture attributes a tap in a small element's expanded touch target to that element
   ([#127]). Compose grows the touch target of anything measured below
   `ViewConfiguration.minimumTouchTargetSize` (48dp by default) past its drawn bounds, so a tap a few
@@ -130,9 +130,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   no port, because the bridge already publishes the *expanded* minimum touch target as an element's
   `accessibilityFrame` (measured: a 16dp icon reports a 48pt frame, and so does a 40dp one).
   Measuring this one turned up a fourth divergence, distinct from all three and now tracked by
-  [#140]: among *overlapping siblings* the walk resolves in reverse tree order, and the bridge orders
-  siblings by reading position rather than by what is drawn on top — so a tap in the overhanging part
-  of a clickable drawn over a lower neighbour is still attributed to the neighbour.
+  [#140]: among *overlapping siblings* the walk resolves in reverse emitted order, which is not
+  z-order — so a tap in the overhanging part of a clickable drawn over a neighbour can still be
+  attributed to the neighbour.
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
@@ -141,6 +141,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Documentation
 
+- **The iOS overlapping-sibling gap is documented per platform, at the precision measurement
+  supports** ([#140]). Two earlier descriptions of it were wrong and are corrected here and in the
+  kdoc. The bridged tree *does* carry a z-order signal: Compose Multiplatform trims a covered
+  sibling's `accessibilityFrame` down to the part its neighbour does not cover, whenever what remains
+  is still a rectangle — so the ambiguity is already gone for a full-width banner or sheet, a
+  horizontal overlap, a clickable nested in a clickable row, and a badge overhanging to the top-right.
+  What survives is an overlap whose remainder is *not* a rectangle (a corner overhang, or an occluder
+  wholly inside the element beneath) together with the element on top sorting earlier in the emitted
+  order — which is measured to fit `(left, top)`, x-primary, and is neither declaration order nor
+  reading order. **Native (UIKit/SwiftUI) trees do not trim at all**, so the gap is strictly broader
+  there; it is reproduced end to end through the native resolver. Documented rather than fixed:
+  recovering draw order from the view hierarchy is impossible (bridged elements are not view-backed —
+  Compose draws into a single Metal surface), and every candidate ranking was measured wrong against
+  the oracle, including the one in use.
 - Named the two boundaries of the sequence-uniqueness guarantee — the single-process assumption and
   the corrupt-file reset ([#54]).
 - A per-surface capture matrix (Compose/native × Android/iOS/desktop) and the dual-framework
