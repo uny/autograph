@@ -72,10 +72,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   it happened to cover — so **some taps that reported nothing now report an event, and a few report
   a different `target` than before.** A non-clickable decoration overhanging a neighbouring row
   still cannot take that row's tap, which is the behaviour the prune existed to protect. iOS keeps its
-  per-level prune (only the walk's starting node is exempt, see above), but measurement showed the
-  divergence this note predicted does not arise for Compose content: the bridged accessibility tree is
-  flat, so an overhanging element is a *sibling* rather than a descendant and no parent frame excludes
-  it ([#134]).
+  per-level prune (only the walk's starting node is exempt, see above), and measurement showed the
+  *prune* cannot bite there: the bridged accessibility tree is flat, so an overhanging element is a
+  *sibling* rather than a descendant and no parent frame excludes it ([#134]). The divergence itself
+  does survive on iOS, by a different mechanism — the bridge orders overlapping siblings by reading
+  position rather than by what is drawn on top, so the overhanging element loses the tap to the
+  neighbour it covers ([#140]).
 - Android autocapture attributes a tap in a small element's expanded touch target to that element
   ([#127]). Compose grows the touch target of anything measured below
   `ViewConfiguration.minimumTouchTargetSize` (48dp by default) past its drawn bounds, so a tap a few
@@ -247,8 +249,6 @@ Initial release.
 [#126]: https://github.com/uny/autograph/issues/126
 [#127]: https://github.com/uny/autograph/issues/127
 [#128]: https://github.com/uny/autograph/issues/128
-[#130]: https://github.com/uny/autograph/issues/130
-[#132]: https://github.com/uny/autograph/issues/132
 [#134]: https://github.com/uny/autograph/issues/134
 [#135]: https://github.com/uny/autograph/issues/135
 [#140]: https://github.com/uny/autograph/issues/140

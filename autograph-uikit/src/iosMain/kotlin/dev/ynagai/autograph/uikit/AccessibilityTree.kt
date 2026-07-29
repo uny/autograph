@@ -96,15 +96,25 @@ import platform.darwin.NSObject
  * about (a `UIWindow`, or the Compose host's overlay view), so this widens where the walk's documented
  * overlap ambiguity below can be reached without changing which element any current tap names.
  *
- * **Overlap tie-break, and its limit.** Children are searched in reverse order, so among *subviews* a
- * later sibling — the one drawn on top — wins an overlap. That is only a true z-order tie-break within
- * a single group: [accessibilityChildren] returns `accessibilityElements + subviews`, a concatenation
+ * **Overlap tie-break, and its limits.** Children are searched in reverse order, so among *subviews* a
+ * later sibling — the one drawn on top — wins an overlap. That is a true z-order tie-break only for
+ * subviews, and it fails in two measured ways.
+ *
+ * *Across groups*: [accessibilityChildren] returns `accessibilityElements + subviews`, a concatenation
  * whose across-group order has no relation to what is drawn on top, and reversing it searches every
  * subview before every accessibility element. So a node that exposes an on-top overlay through
  * `accessibilityElements` while the covered content is a plain subview resolves a tap to the covered
- * subview instead of the overlay. This is long-standing behavior, unchanged by the extraction —
- * documented rather than fixed, since this walk is now shared API and its callers should know the
- * edge of the contract they depend on.
+ * subview instead of the overlay.
+ *
+ * *Within `accessibilityElements`*: the order there is whatever the element's provider chose, and a
+ * provider is free to choose reading order. Compose Multiplatform does: measured, a badge drawn on top
+ * of the row below it was emitted *before* that row, so reversing put the row first and the badge —
+ * the element Compose actually routed the tap to — lost. The effect is that among overlapping bridged
+ * siblings the element **lower on screen** wins, not the topmost one. See #140; the tree carries no
+ * z-order signal to sort by, so this is not a change that can be made mechanically.
+ *
+ * Both are long-standing behavior, documented rather than fixed — this walk is shared API and its
+ * callers should know the edge of the contract they depend on.
  *
  * **Clickable branches win over the tie-break.** Before z-order is consulted at all, a branch that
  * yields a clickable ([isAccessibilityButton]) is preferred over one that yields none; the reverse
