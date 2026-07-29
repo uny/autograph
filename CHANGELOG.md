@@ -77,7 +77,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   *sibling* rather than a descendant and no parent frame excludes it ([#134]). The divergence itself
   does survive on iOS, by a different mechanism — the bridge does not emit overlapping siblings in
   z-order, so an element overhanging to the left or straight up can lose the tap to the neighbour it
-  covers ([#140]).
+  covers — where the overlap is not one the bridge trims away ([#140]).
 - Android autocapture attributes a tap in a small element's expanded touch target to that element
   ([#127]). Compose grows the touch target of anything measured below
   `ViewConfiguration.minimumTouchTargetSize` (48dp by default) past its drawn bounds, so a tap a few
@@ -145,13 +145,15 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   supports** ([#140]). Two earlier descriptions of it were wrong and are corrected here and in the
   kdoc. The bridged tree *does* carry a z-order signal: Compose Multiplatform trims a covered
   sibling's `accessibilityFrame` down to the part its neighbour does not cover, when what remains is
-  still a rectangle — measured in three fixtures, one per direction — so the ambiguity is already gone
-  before the tie-break for a full-width overlay, a horizontal overlap, and a badge overhanging to the
-  top-right. Misattribution needs *both* an overlap the trim cannot express (measured for corner
-  overhangs) *and* the element on top sorting earlier in the emitted order — which fit `(left, top)`,
-  x-primary, across nine fixtures, and is measurably neither declaration order nor reading order. On
-  **native (UIKit/SwiftUI)** no trim was observed in the one geometry Compose does trim, so that
-  protection is absent there; reproduced end to end through the native resolver, for SwiftUI only.
+  still a rectangle — measured in three fixtures, one per trimmed edge — so the ambiguity is already
+  gone before the tie-break for a full-width overlay and a horizontal overlap. Misattribution needs
+  *both* an overlap the trim cannot express (measured for corner overhangs) *and* the element on top
+  sorting earlier in the emitted order — which fit `(left, top)`, x-primary, across nine fixtures, and
+  is measurably neither declaration order nor reading order. A badge overhanging to the top-right is
+  spared by the second condition rather than the trim: its corner overlap is untrimmable, but the badge
+  sits further right and so sorts later. On **native** — measured on SwiftUI only, no UIKit hierarchy
+  run — no trim was observed in the one geometry Compose does trim, so that protection is absent there;
+  reproduced end to end through the native resolver.
   Documented rather than fixed: there is no view hierarchy to recover draw order from (bridged
   elements are not view-backed, and the view subtree under the Compose host is four zero-framed
   containers over one Metal surface), and each ranking tried — last-emitted, smallest-area,

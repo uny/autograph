@@ -47,11 +47,14 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * that tie on clickability by reverse tree order as a stand-in for z-order, and the bridge does not
  * emit siblings in z-order.
  *
- * What that costs is narrow, because Compose Multiplatform trims a covered sibling's reported bounds
- * where it can, which settles the overlap before the tie-break is reached. Measured: a badge
- * overhanging to the top-right, a full-width overlay and a horizontal overlap all attribute correctly;
- * the measured failure is a corner overhang up and to the left. The native (UIKit/SwiftUI) pipeline
- * gets no such trim and loses even that much protection.
+ * What that costs is narrow, because misattribution needs two things at once: an overlap Compose
+ * Multiplatform cannot trim away — it shrinks a covered sibling's reported bounds wherever the
+ * remainder is still a rectangle, settling the overlap before the tie-break is reached — *and* the
+ * element on top sorting earlier in the emitted order. Measured to attribute correctly: a full-width
+ * overlay and a horizontal overlap, because the trim settles them, and a badge overhanging to the
+ * top-right, because although its corner overlap is not trimmable the badge sorts later anyway. The
+ * measured failure is a corner overhang up and to the left. No such trim was observed on the native
+ * (UIKit/SwiftUI) pipeline — measured on SwiftUI only — which loses that much protection.
  *
  * `deepestAccessibilityHitPath`'s kdoc in `autograph-uikit` is the canonical account — the exact
  * conditions, the fixture behind each claim, and why the obvious rankings are refuted rather than

@@ -131,8 +131,10 @@ import platform.darwin.NSObject
  * - **Compose Multiplatform**: the overlap is not trimmable **and** the element on top sorts earlier
  *   under the order above (further left, or same left and higher). Both are required — a leftward or
  *   upward overhang whose overlap *is* trimmable resolves correctly, as three fixtures did. Measured
- *   to resolve correctly: a badge overhanging to the top-right, a full-width overlay over content, a
- *   horizontal overlap. The measured failure is a corner overhang up and to the left.
+ *   to resolve correctly: a full-width overlay over content and a horizontal overlap, because the trim
+ *   settles them; a badge overhanging to the top-right, because although its corner overlap is *not*
+ *   trimmable the badge sits further right, so it sorts later and wins the tie-break on its own. The
+ *   measured failure is a corner overhang up and to the left.
  * - **UIKit / SwiftUI**: no trim was observed. In the one geometry Compose *does* trim — a covered
  *   element under a full-width strip — a SwiftUI button reported the same frame as an identical
  *   un-overlapped one, so the rescue above is absent and the tie-break is left to decide alone. That
