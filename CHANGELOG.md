@@ -144,17 +144,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 - **The iOS overlapping-sibling gap is documented per platform, at the precision measurement
   supports** ([#140]). Two earlier descriptions of it were wrong and are corrected here and in the
   kdoc. The bridged tree *does* carry a z-order signal: Compose Multiplatform trims a covered
-  sibling's `accessibilityFrame` down to the part its neighbour does not cover, whenever what remains
-  is still a rectangle — so the ambiguity is already gone for a full-width banner or sheet, a
-  horizontal overlap, a clickable nested in a clickable row, and a badge overhanging to the top-right.
-  What survives is an overlap whose remainder is *not* a rectangle (a corner overhang, or an occluder
-  wholly inside the element beneath) together with the element on top sorting earlier in the emitted
-  order — which is measured to fit `(left, top)`, x-primary, and is neither declaration order nor
-  reading order. **Native (UIKit/SwiftUI) trees do not trim at all**, so the gap is strictly broader
-  there; it is reproduced end to end through the native resolver. Documented rather than fixed:
-  recovering draw order from the view hierarchy is impossible (bridged elements are not view-backed —
-  Compose draws into a single Metal surface), and every candidate ranking was measured wrong against
-  the oracle, including the one in use.
+  sibling's `accessibilityFrame` down to the part its neighbour does not cover, when what remains is
+  still a rectangle — measured in three fixtures, one per direction — so the ambiguity is already gone
+  before the tie-break for a full-width overlay, a horizontal overlap, and a badge overhanging to the
+  top-right. Misattribution needs *both* an overlap the trim cannot express (measured for corner
+  overhangs) *and* the element on top sorting earlier in the emitted order — which fit `(left, top)`,
+  x-primary, across nine fixtures, and is measurably neither declaration order nor reading order. On
+  **native (UIKit/SwiftUI)** no trim was observed in the one geometry Compose does trim, so that
+  protection is absent there; reproduced end to end through the native resolver, for SwiftUI only.
+  Documented rather than fixed: there is no view hierarchy to recover draw order from (bridged
+  elements are not view-backed, and the view subtree under the Compose host is four zero-framed
+  containers over one Metal surface), and each ranking tried — last-emitted, smallest-area,
+  first-emitted — was measured wrong against the oracle, the one in use included.
 - Named the two boundaries of the sequence-uniqueness guarantee — the single-process assumption and
   the corrupt-file reset ([#54]).
 - A per-surface capture matrix (Compose/native × Android/iOS/desktop) and the dual-framework

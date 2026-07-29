@@ -107,42 +107,47 @@ import platform.darwin.NSObject
  * subview instead of the overlay.
  *
  * *Within `accessibilityElements`*: the order there is whatever the element's provider chose, and
- * nothing obliges a provider to choose z-order. Measured for Compose Multiplatform across ten
- * fixtures, the emitted order fits `(left, top)` lexicographically — **x-primary**, so an element
- * further left is emitted first regardless of what is drawn on top. (Offered as a fit to what was
- * observed, not as a contract: it is neither declaration order — two fixtures differing only by
- * `Modifier.zIndex` are emitted alike — nor y-primary reading order, which one fixture refutes
- * outright.) Reversing that order therefore breaks an overlap in favour of whichever element sorts
- * *last*, which is unrelated to which one received the tap. See #140.
+ * nothing obliges a provider to choose z-order. Across nine Compose Multiplatform fixtures the emitted
+ * order fit `(left, top)` lexicographically — **x-primary**. That is a fit to those nine, not a
+ * contract; what the fixtures do establish is the two things it is *not*. It is not declaration order
+ * (one fixture declares its small element first and the bridge emits it second), and it is not
+ * y-primary reading order (one fixture emits the element with the *smaller* `top` second). Either way
+ * the order is unrelated to what is drawn on top, so reversing it breaks an overlap in favour of an
+ * element chosen for reasons that have nothing to do with which one received the tap. See #140.
  *
  * **What narrows this, and only on Compose.** The bridge subtracts an occluding sibling's rect from
- * the **covered** sibling's `accessibilityFrame` whenever the remainder is still an axis-aligned
- * rectangle — a full-width or full-height edge strip. Measured: a covered element lost exactly the
- * strip its neighbour covered, in all three of top, bottom and left. Since the trim lands on the
- * covered element it is itself a z-order signal, and where it applies the covered element stops
- * containing the tap, so the ambiguity is gone before this tie-break is ever consulted. It tracks real
- * draw order, not declaration order (the `zIndex` pair above). What it cannot express is an overlap
- * whose remainder is not one rectangle — a corner overhang, or an occluder sitting wholly inside the
- * element beneath — and there both siblings keep full frames and both contain the tap.
+ * the **covered** sibling's `accessibilityFrame` when the remainder is still an axis-aligned rectangle
+ * — an edge strip. Measured in three fixtures, one per direction (top, bottom, left): the covered
+ * element lost exactly the strip its neighbour covered, and no other fixture was trimmed. Since the
+ * trim lands on the covered element it is itself a z-order signal, and where it applies the covered
+ * element stops containing the tap, so the ambiguity is gone before this tie-break is consulted. It
+ * follows real draw order rather than declaration order: two fixtures with identical geometry *and*
+ * identical declaration order, differing only by `Modifier.zIndex`, trim differently. No trim was
+ * observed where the remainder would not be one rectangle — measured for corner overhangs, where both
+ * siblings kept full frames and both contained the tap.
  *
  * So the resulting misattribution takes two different shapes:
  *
  * - **Compose Multiplatform**: the overlap is not trimmable **and** the element on top sorts earlier
- *   under the order above (further left, or same left and higher). Measured to resolve *correctly*
- *   today: a clickable nested inside a clickable row, a badge overhanging to the top-right, a
- *   full-width banner or sheet over content, a horizontal overlap. The shape that fails is an element
- *   overhanging to the **left or straight up**.
- * - **UIKit / SwiftUI**: measured, native trees do **not** trim — an element covered by a full-width
- *   strip reports the same frame as an identical un-overlapped one. The first condition is therefore
- *   always satisfied and the failure reduces to the second alone, making this **strictly broader on
- *   the native path than on Compose**. Reproduced end to end through [resolveNativeTapTarget].
+ *   under the order above (further left, or same left and higher). Both are required — a leftward or
+ *   upward overhang whose overlap *is* trimmable resolves correctly, as three fixtures did. Measured
+ *   to resolve correctly: a badge overhanging to the top-right, a full-width overlay over content, a
+ *   horizontal overlap. The measured failure is a corner overhang up and to the left.
+ * - **UIKit / SwiftUI**: no trim was observed. In the one geometry Compose *does* trim — a covered
+ *   element under a full-width strip — a SwiftUI button reported the same frame as an identical
+ *   un-overlapped one, so the rescue above is absent and the tie-break is left to decide alone. That
+ *   makes the same overlap that Compose disambiguates a candidate for misattribution here.
+ *   Reproduced end to end through [resolveNativeTapTarget]. Measured for SwiftUI only; no UIKit
+ *   hierarchy was run, and one trimmable geometry is not a sweep.
  *
  * **Do not reach for the obvious rankings.** Scored against the oracle — which element's handler
- * actually fired — over every measured ambiguous case, all three are refuted: last-emitted (what this
- * walk does) by the overhang above; smallest-area and most-specific-frame by an overlap where the
- * *larger* element is on top; first-emitted by three separate fixtures. Smallest-area survived a first
- * round only because the fixture built to refute it had a trimmable overlap, so the trim removed the
- * covered element from the candidate set before the rule was tested.
+ * actually fired — over the five measured ambiguous cases, each is refuted: last-emitted (what this
+ * walk does) by the overhang above; smallest-area by two fixtures where the *larger* element is on
+ * top; first-emitted by four. Smallest-area survived a first round only because the fixture built to
+ * refute it had a trimmable overlap, so the trim removed the covered element from the candidate set
+ * before the rule was tested. ("Most-specific-frame", the other ranking #140 floated, coincides with
+ * smallest-area on every one of these fixtures and was not scored as a separate rule.) Three refuted
+ * rules are not the whole space, but they are the ones worth not re-deriving.
  *
  * All of this is documented rather than fixed — this walk is shared API and its callers should know
  * the edge of the contract they depend on. Note in particular that any change here moves

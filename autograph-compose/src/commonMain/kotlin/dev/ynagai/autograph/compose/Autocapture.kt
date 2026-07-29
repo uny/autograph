@@ -48,16 +48,16 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * emit siblings in z-order — measured, the emitted order fits `(left, top)`, so an element further
  * left comes first however it is drawn.
  *
- * Two things keep this narrow, both measured. The bridge trims a covered sibling's frame down to the
- * part its neighbour does not cover, whenever what remains is still a rectangle; that is a z-order
- * signal, and where it applies the ambiguity is gone before the tie-break is reached. What survives is
- * an overlap whose remainder is *not* a rectangle — a corner overhang, or an occluder wholly inside
- * the element beneath — combined with the element on top sorting earlier under that order. Measured to
- * resolve correctly: a clickable nested in a clickable row, a badge overhanging to the top-right, a
- * full-width banner or sheet, a horizontal overlap. The shape that fails is an element overhanging to
- * the **left or straight up**. See `deepestAccessibilityHitPath`'s kdoc in `autograph-uikit` for the
- * fixtures, and for why the obvious rankings (smallest-area, most-specific-frame, first-emitted) are
- * each refuted rather than merely untried.
+ * What keeps this narrow is that the bridge trims a covered sibling's frame down to the part its
+ * neighbour does not cover, when what remains is still a rectangle; that is a z-order signal, and
+ * where it applies the ambiguity is gone before the tie-break is reached. Misattribution needs *both*
+ * an overlap the trim cannot express — measured for corner overhangs — *and* the element on top
+ * sorting earlier under that order; a leftward overhang whose overlap is trimmable resolves correctly.
+ * Measured to resolve correctly: a badge overhanging to the top-right, a full-width overlay, a
+ * horizontal overlap. The measured failure is a corner overhang up and to the left. See
+ * `deepestAccessibilityHitPath`'s kdoc in `autograph-uikit` for the fixtures, for why smallest-area
+ * and first-emitted are refuted rather than merely untried, and for why the native path lacks the trim
+ * and so loses even this much protection.
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on
