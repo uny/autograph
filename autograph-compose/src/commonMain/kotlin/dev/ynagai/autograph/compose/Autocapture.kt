@@ -42,10 +42,10 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * is flat — such an element is a *sibling* rather than a descendant, so no parent frame excludes it.
  *
  * **One further gap, iOS only, and it is none of the above:** that same overhanging tap is still
- * misreported there. Among overlapping *siblings* the walk resolves in reverse tree order as its
- * z-order tie-break, while the bridge orders siblings by reading position rather than by what is drawn
- * on top — so the overhanging element loses the tap to the neighbour it covers, while Android
- * attributes it correctly ([#140](https://github.com/uny/autograph/issues/140)).
+ * misreported there. The walk breaks an overlap between *siblings* that tie on clickability by reverse
+ * tree order, as a stand-in for z-order, while the bridge orders siblings by reading position rather
+ * than by what is drawn on top — so the overhanging element loses the tap to the neighbour it covers,
+ * while Android attributes it correctly ([#140](https://github.com/uny/autograph/issues/140)).
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on

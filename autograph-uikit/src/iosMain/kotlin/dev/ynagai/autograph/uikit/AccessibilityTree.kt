@@ -110,8 +110,9 @@ import platform.darwin.NSObject
  * provider is free to choose reading order. Compose Multiplatform does: measured, a badge drawn on top
  * of the row below it was emitted *before* that row, so reversing put the row first and the badge —
  * the element Compose actually routed the tap to — lost. The effect is that among overlapping bridged
- * siblings the element **lower on screen** wins, not the topmost one. See #140; the tree carries no
- * z-order signal to sort by, so this is not a change that can be made mechanically.
+ * siblings the element **last in reading order** wins — lower on screen, for the vertical arrangement
+ * measured — not the one on top. See #140; the tree carries no z-order signal to sort by, so this is
+ * not a change that can be made mechanically.
  *
  * Both are long-standing behavior, documented rather than fixed — this walk is shared API and its
  * callers should know the edge of the contract they depend on.
