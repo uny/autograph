@@ -121,16 +121,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   reason: the trait is the element's own claim about itself, so a live handler behind a hand-published
   `NotEnabled` — or an app's own tap handler on a container *around* a disabled control, which a
   gesture recognizer does still see — is now dropped.
-  This closes the third of the three divergences from Android that [#134] tracks. The other two do
-  **not** reproduce on the accessibility tree as measured (Compose Multiplatform 1.11.1, iOS 26.2):
-  [#126]'s parent-bounds prune cannot arise, because the bridged tree is flat and an overhanging
-  element is a *sibling* rather than a descendant, and [#127] needs no port, because the bridge
-  already publishes the *expanded* minimum touch target as an element's `accessibilityFrame`
-  (measured: a 16dp icon reports a 48pt frame, and so does a 40dp one). [#134] stays open for a
-  divergence found while measuring this one and distinct from all three: among *overlapping siblings*
-  the walk resolves in reverse tree order, and the bridge orders siblings by reading position rather
-  than by what is drawn on top — so a tap in the overhanging part of a clickable drawn over a
-  lower neighbour is still attributed to the neighbour.
+  This closes the third of the three divergences from Android that [#134] tracked, and with it that
+  issue. The other two do **not** reproduce on the accessibility tree as measured (Compose
+  Multiplatform 1.11.1, iOS 26.2): [#126]'s parent-bounds prune cannot arise, because the bridged
+  tree is flat and an overhanging element is a *sibling* rather than a descendant, and [#127] needs
+  no port, because the bridge already publishes the *expanded* minimum touch target as an element's
+  `accessibilityFrame` (measured: a 16dp icon reports a 48pt frame, and so does a 40dp one).
+  Measuring this one turned up a fourth divergence, distinct from all three and now tracked by
+  [#140]: among *overlapping siblings* the walk resolves in reverse tree order, and the bridge orders
+  siblings by reading position rather than by what is drawn on top — so a tap in the overhanging part
+  of a clickable drawn over a lower neighbour is still attributed to the neighbour.
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
@@ -251,3 +251,4 @@ Initial release.
 [#132]: https://github.com/uny/autograph/issues/132
 [#134]: https://github.com/uny/autograph/issues/134
 [#135]: https://github.com/uny/autograph/issues/135
+[#140]: https://github.com/uny/autograph/issues/140
