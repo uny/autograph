@@ -56,6 +56,13 @@ struct NativeSampleView: View {
             // under, and identification must not fall back to the displayed text.
             Button("Unidentified") {}
 
+            // Disabled: it still swallows the touch (isEnabled is not isUserInteractionEnabled) but
+            // runs no action, so capture must report nothing rather than invent a click — and must
+            // not fall through to whatever sits underneath either. See #134.
+            Button("Disabled") {}
+                .disabled(true)
+                .accessibilityIdentifier("native_disabled_button")
+
             List(0..<40, id: \.self) { index in
                 Button("Row \(index)") {}
                     .accessibilityIdentifier("native_row_\(index)")
@@ -269,6 +276,14 @@ class NativeScreenBaseViewController: UIViewController {
         button.accessibilityIdentifier = id
         return button
     }
+
+    /// The same button, disabled. It keeps a primary action so that "nothing was reported" means the
+    /// action was suppressed rather than that there was none to run.
+    func disabledActionButton(_ label: String, id: String) -> UIButton {
+        let button = actionButton(label, id: id) {}
+        button.isEnabled = false
+        return button
+    }
 }
 
 /// The navigation root. Pushes a second screen, presents a page sheet, and presents a tab bar.
@@ -315,6 +330,11 @@ final class FirstScreen: NativeScreenBaseViewController {
             },
             // A plain button so a tap on this screen can be shown to carry screen = "First".
             actionButton("First tap target", id: "native_first_button") {},
+            // A real, disabled UIKit control. `UIButton.isEnabled = false` is what publishes
+            // `UIAccessibilityTraitNotEnabled`, and only a test with an accessibility client attached
+            // can observe that — measured, a `UIButton` in a headless unit-test process reports no
+            // traits at all. See #134.
+            disabledActionButton("Disabled UIKit target", id: "native_first_disabled_button"),
         ]
     }
 }

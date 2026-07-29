@@ -11,6 +11,7 @@ import dev.ynagai.autograph.uikit.AxRect
 import dev.ynagai.autograph.uikit.accessibilityBoundsInWindowPx
 import dev.ynagai.autograph.uikit.accessibilityIdentifierOrNull
 import dev.ynagai.autograph.uikit.deepestAccessibilityHitPath
+import dev.ynagai.autograph.uikit.isAccessibilityDisabled
 import dev.ynagai.autograph.uikit.nearestAccessibilityClickable
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
@@ -71,6 +72,11 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
     val scale = UIScreen.mainScreen.scale.toFloat()
     val path = deepestAccessibilityHitPath(view, view, AxPoint(position.x, position.y), scale) ?: return null
     val nearestClickable = path.nearestAccessibilityClickable() ?: return null
+    // A disabled element takes the hit and is vetoed here, exactly as Android's
+    // resolveAutocaptureTarget vetoes SemanticsProperties.Disabled (#128) — measured on-device,
+    // tapping one fires no handler at all, not even its enabled clickable parent's. Confined to the
+    // resolved element, never asked of its ancestry. See isAccessibilityDisabled for both halves.
+    if (nearestClickable.isAccessibilityDisabled()) return null
     // Unlike `ignored` (deliberately ancestor-wide, matching Android's resolveAutocaptureTarget,
     // which suppresses on ANY ancestor's ignored flag), `instrumented` on Android suppresses only
     // when the resolved nearestClickable ITSELF is instrumented — an instrumented ANCESTOR (e.g. a

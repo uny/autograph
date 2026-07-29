@@ -65,6 +65,35 @@ final class iosAppUITests: XCTestCase {
         XCTAssertEqual(lastEventLabel(app), beforeTap)
     }
 
+    /// A disabled clickable swallows the tap and fires nothing, so reporting a click would invent an
+    /// event (#134, the iOS counterpart of #128).
+    ///
+    /// Only an on-device test can pin this half. It rests on Compose Multiplatform actually bridging
+    /// `clickable(enabled = false)` as `UIAccessibilityTraitNotEnabled` — a property of the bridge,
+    /// which a unit test over a hand-built `UIView` tree cannot establish, because such a test sets
+    /// the trait itself.
+    func testDisabledElementIsNotCaptured() {
+        let app = XCUIApplication()
+        app.launch()
+        let beforeTap = lastEventLabel(app)
+
+        // A coordinate tap, not `.tap()`: XCUITest considers a disabled element non-hittable, while
+        // the element does still receive the touch — which is the whole state under test.
+        app.buttons["disabled_button"]
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .tap()
+
+        XCTAssertEqual(lastEventLabel(app), beforeTap)
+
+        // Without this the assertion above also passes on an app where autocapture never ran at all.
+        app.buttons["plain_button"].tap()
+        XCTAssertEqual(
+            lastEventLabel(app),
+            "Last event target: plain_button",
+            "autocapture reported nothing for a known-good tap either — the assertion above proved nothing"
+        )
+    }
+
     /// An autocaptured tap must carry the screen, section, and scope it happened under — not just its
     /// target. The sample wraps its content in `AutographScope("article_id" to "42")` +
     /// `TrackedScreen("Sample", section = "Main")`, all of which mirror into the ambient stack the
@@ -225,6 +254,24 @@ final class NativeSampleUITests: XCTestCase {
         let before = lastEventLabel(app)
 
         app.buttons["Unidentified"].tap()
+
+        XCTAssertEqual(lastEventLabel(app), before)
+        assertCaptureIsStillLive(app)
+    }
+
+    /// A disabled control swallows the touch and runs no action, so reporting a click would invent an
+    /// event (#134, the iOS counterpart of #128). It is vetoed where the hit becomes an event, not by
+    /// narrowing the clickability predicate — narrowing it would hand the tap to whatever sits
+    /// underneath, which never received it either.
+    func testNativeDisabledButtonIsNotReported() {
+        let app = launchNativeSample()
+        let before = lastEventLabel(app)
+
+        // A coordinate tap, not `.tap()`: XCUITest considers a disabled control non-hittable, while
+        // UIKit still delivers the touch to it — which is the whole state under test.
+        app.buttons["native_disabled_button"]
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .tap()
 
         XCTAssertEqual(lastEventLabel(app), before)
         assertCaptureIsStillLive(app)
@@ -522,6 +569,30 @@ final class NativeScreensUITests: XCTestCase {
         let props = lastProps(app)
         XCTAssertTrue(props.contains("\"screen\":\"FirstScreen\""), "screen missing from props: \(props)")
         XCTAssertFalse(props.contains("\"section\""), "a native screen must carry no section: \(props)")
+    }
+
+    /// A disabled **UIKit** control reports nothing (#134). The SwiftUI and Compose halves are pinned
+    /// by the other two suites; this is the one that exercises `UIButton.isEnabled = false` itself.
+    ///
+    /// It has to live in an XCUITest rather than in `autograph-uikit`'s unit tests: measured, a real
+    /// `UIButton` in the headless unit-test process reports `accessibilityTraits = 0` — no button
+    /// trait, no `NotEnabled` — because UIKit populates them only once an accessibility client asks.
+    /// An XCUITest runner is such a client, so the trait the veto reads exists only here (#135).
+    func testNativeDisabledUIKitButtonIsNotReported() {
+        let app = launch()
+        waitForScreenLog(app, "FirstScreen:(none)")
+        // A known-good tap first, so the baseline is a value this pipeline produced rather than the
+        // initial label — otherwise a dead pipeline would satisfy the assertion below.
+        app.buttons["native_first_button"].tap()
+        XCTAssertEqual(lastTarget(app), "Last event target: native_first_button")
+
+        // A coordinate tap, not `.tap()`: XCUITest considers a disabled control non-hittable, while
+        // UIKit still delivers the touch to it — which is the whole state under test.
+        app.buttons["native_first_disabled_button"]
+            .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+            .tap()
+
+        XCTAssertEqual(lastTarget(app), "Last event target: native_first_button")
     }
 
     /// A modal presented *over* its presenter (`.overFullScreen`) stacks on top and restores the

@@ -8,6 +8,7 @@ import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGRectZero
 import platform.UIKit.UIAccessibilityIdentificationProtocol
 import platform.UIKit.UIAccessibilityTraitButton
+import platform.UIKit.UIAccessibilityTraitNotEnabled
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import platform.UIKit.UIWindow
@@ -250,5 +251,80 @@ class ElementResolverIosTest {
         val result = resolveIosElement(root, claims, position)
 
         assertEquals("share_button", result)
+    }
+
+    /**
+     * `Modifier.clickable(enabled = false)` bridges to `Button|NotEnabled`, and tapping it fires no
+     * handler at all — so an event here would be one Compose never produced. This is the last of the
+     * three divergences from Android that #134 tracks; the other two do not reproduce on the bridged
+     * accessibility tree as measured (see the CHANGELOG entry). Android's counterpart is #128.
+     *
+     * That the bridge really does publish the trait is not something this test can establish — it
+     * sets the trait itself. `sample-ios`'s `testDisabledElementIsNotCaptured` is what pins that.
+     */
+    @Test
+    fun resolveIosElementReturnsNullWhenTheTappedElementIsDisabled() {
+        val (root, position) = buildRootWithButton()
+        val button = root.subviews.first() as UIView
+        button.setAccessibilityTraits(UIAccessibilityTraitButton or UIAccessibilityTraitNotEnabled)
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertNull(result)
+    }
+
+    /**
+     * The veto's shape, not just its existence: the disabled element keeps taking the hit, so a tap on
+     * it reports nothing rather than being handed to the enabled clickable ancestor whose bounds also
+     * cover it. Measured on-device for exactly this shape — Compose fires *nothing*, so the ancestor
+     * never received the tap either (#134). The parent still resolves everywhere else.
+     */
+    @Test
+    fun resolveIosElementDoesNotNameTheEnabledAncestorOfADisabledElement() {
+        val scale = UIScreen.mainScreen.scale
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val enabledParent = IdentifiableButtonView()
+        enabledParent.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        enabledParent.setAccessibilityTraits(UIAccessibilityTraitButton)
+        enabledParent.accessibilityIdentifier = "enabled_row"
+        root.addSubview(enabledParent)
+
+        val disabledChild = IdentifiableButtonView()
+        disabledChild.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        disabledChild.setAccessibilityTraits(UIAccessibilityTraitButton or UIAccessibilityTraitNotEnabled)
+        disabledChild.accessibilityIdentifier = "disabled_child"
+        enabledParent.addSubview(disabledChild)
+
+        val onChild = Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
+        val onParent = Offset((50.0 * scale).toFloat(), (50.0 * scale).toFloat())
+
+        assertNull(resolveIosElement(root, claims = null, onChild))
+        assertEquals("enabled_row", resolveIosElement(root, claims = null, onParent))
+    }
+
+    /** The confinement in the other direction: a disabled ancestor does not veto an enabled child. */
+    @Test
+    fun resolveIosElementStillResolvesAnEnabledElementInsideADisabledAncestor() {
+        val scale = UIScreen.mainScreen.scale
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val disabledParent = IdentifiableButtonView()
+        disabledParent.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        disabledParent.setAccessibilityTraits(UIAccessibilityTraitButton or UIAccessibilityTraitNotEnabled)
+        disabledParent.accessibilityIdentifier = "disabled_row"
+        root.addSubview(disabledParent)
+
+        val enabledChild = IdentifiableButtonView()
+        enabledChild.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        enabledChild.setAccessibilityTraits(UIAccessibilityTraitButton)
+        enabledChild.accessibilityIdentifier = "enabled_child"
+        disabledParent.addSubview(enabledChild)
+
+        val position = Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
+
+        assertEquals("enabled_child", resolveIosElement(root, claims = null, position))
     }
 }

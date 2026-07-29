@@ -30,7 +30,14 @@ import platform.UIKit.UIView
  *    `UIAccessibilityTraitButton` ([isAccessibilityButton]); a tap on inert background is not an
  *    interaction worth reporting. The search runs leaf-upward so the *innermost* clickable wins —
  *    a button inside a tappable row attributes to the button, matching the Compose path.
- * 4. **The clickable element has no `accessibilityIdentifier`** — or carries a blank one, which
+ * 4. **The clickable element is disabled** — it carries `UIAccessibilityTraitNotEnabled`
+ *    ([isAccessibilityDisabled]). It was tapped and it did take the touch, but a control in that
+ *    state runs no action, so reporting a click would emit an event for something that never
+ *    happened. It is vetoed here rather than skipped during the walk, because skipping it would name
+ *    whatever sits beneath or around it, which never received the tap either. The trait is the
+ *    element's own claim, so this also drops a tap that *did* run something behind a hand-published
+ *    one — see [isAccessibilityDisabled] for that trade and for the ancestor-recognizer case.
+ * 5. **The clickable element has no `accessibilityIdentifier`** — or carries a blank one, which
  *    [accessibilityIdentifierOrNull] treats as absent. There is no stable name to report
  *    it under, and this is where the privacy guarantee lives: identification never falls back to
  *    `accessibilityLabel`, which is user-facing display text. See [accessibilityIdentifierOrNull].
@@ -91,6 +98,10 @@ public fun resolveNativeTapTarget(
     val path = deepestAccessibilityHitPath(root, root, positionInWindowPx, scale) ?: return null
     if (path.crossesAnExcludedSubtree()) return null
     val nearestClickable = path.nearestAccessibilityClickable() ?: return null
+    // Asked of the resolved element only, never of its ancestry — see [isAccessibilityDisabled] for
+    // why this is a veto here rather than a narrowing of the clickability predicate, and why a
+    // disabled ancestor must not suppress an enabled descendant.
+    if (nearestClickable.isAccessibilityDisabled()) return null
     return nearestClickable.accessibilityIdentifierOrNull()
 }
 
