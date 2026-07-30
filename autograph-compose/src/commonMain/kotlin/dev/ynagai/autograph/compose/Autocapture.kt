@@ -53,8 +53,9 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * element on top sorting earlier in the emitted order. Measured to attribute correctly: a full-width
  * overlay and a horizontal overlap, because the trim settles them, and a badge overhanging to the
  * top-right, because although its corner overlap is not trimmable the badge sorts later anyway. The
- * measured failure is a corner overhang up and to the left. No such trim was observed on the native
- * (UIKit/SwiftUI) pipeline — measured on SwiftUI only — which loses that much protection.
+ * measured failure is a corner overhang straight up. On the native (UIKit/SwiftUI) pipeline no such
+ * trim was observed — measured on SwiftUI, with UIKit unmeasured — leaving the tie-break to decide
+ * overlaps that Compose disambiguates.
  *
  * `deepestAccessibilityHitPath`'s kdoc in `autograph-uikit` is the canonical account — the exact
  * conditions, the fixture behind each claim, and why the obvious rankings are refuted rather than

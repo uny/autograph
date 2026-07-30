@@ -76,8 +76,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   *prune* cannot bite there: the bridged accessibility tree is flat, so an overhanging element is a
   *sibling* rather than a descendant and no parent frame excludes it ([#134]). The divergence itself
   does survive on iOS, by a different mechanism — the bridge does not emit overlapping siblings in
-  z-order, so an element overhanging to the left or straight up can lose the tap to the neighbour it
-  covers — where the overlap is not one the bridge trims away ([#140]).
+  z-order, so where the overlap is not one the bridge trims away, an overhanging element can lose the
+  tap to the neighbour it covers. Measured for a corner overhang straight up ([#140]).
 - Android autocapture attributes a tap in a small element's expanded touch target to that element
   ([#127]). Compose grows the touch target of anything measured below
   `ViewConfiguration.minimumTouchTargetSize` (48dp by default) past its drawn bounds, so a tap a few
