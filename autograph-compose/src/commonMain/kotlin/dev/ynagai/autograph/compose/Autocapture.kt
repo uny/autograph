@@ -41,11 +41,27 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * contain the tap itself, and on iOS the question cannot arise, since the bridged accessibility tree
  * is flat — such an element is a *sibling* rather than a descendant, so no parent frame excludes it.
  *
- * **One further gap, iOS only, and it is none of the above:** that same overhanging tap is still
- * misreported there. The walk breaks an overlap between *siblings* that tie on clickability by reverse
- * tree order, as a stand-in for z-order, while the bridge orders siblings by reading position rather
- * than by what is drawn on top — so the overhanging element loses the tap to the neighbour it covers,
- * while Android attributes it correctly ([#140](https://github.com/uny/autograph/issues/140)).
+ * **One further gap, iOS only, and it is none of the above:** an overhanging tap can still be
+ * misreported there, where Android attributes it correctly
+ * ([#140](https://github.com/uny/autograph/issues/140)). The walk breaks an overlap between *siblings*
+ * that tie on clickability by reverse tree order as a stand-in for z-order, and the bridge does not
+ * emit siblings in z-order.
+ *
+ * What that costs is narrow, because misattribution needs two things at once: an overlap Compose
+ * Multiplatform cannot trim away — it shrinks a covered sibling's reported bounds wherever the
+ * remainder is still a rectangle, settling the overlap before the tie-break is reached — *and* the
+ * element on top sorting earlier in the emitted order. Measured to attribute correctly: a full-width
+ * overlay and a horizontal overlap, because the trim settles them, and a badge overhanging to the
+ * top-right, because although its corner overlap is not trimmable the badge sorts later anyway. The
+ * measured failure is a corner overhang straight up. On the native (UIKit/SwiftUI) pipeline no such
+ * trim was observed — measured on SwiftUI, with UIKit unmeasured — leaving the tie-break to decide
+ * overlaps that Compose disambiguates.
+ *
+ * `deepestAccessibilityHitPath`'s kdoc in `autograph-uikit` is the canonical account — the exact
+ * conditions, the fixture behind each claim, and why the obvious rankings are refuted rather than
+ * merely untried. Deliberately summarized rather than restated here: this description had drifted out
+ * of step with the implementation once already, and it did so because the same mechanism was spelled
+ * out in three places at once.
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on

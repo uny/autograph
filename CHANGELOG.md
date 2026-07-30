@@ -75,9 +75,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   per-level prune (only the walk's starting node is exempt, see above), and measurement showed the
   *prune* cannot bite there: the bridged accessibility tree is flat, so an overhanging element is a
   *sibling* rather than a descendant and no parent frame excludes it ([#134]). The divergence itself
-  does survive on iOS, by a different mechanism — the bridge orders overlapping siblings by reading
-  position rather than by what is drawn on top, so the overhanging element loses the tap to the
-  neighbour it covers ([#140]).
+  does survive on iOS, by a different mechanism — the bridge does not emit overlapping siblings in
+  z-order, so where the overlap is not one the bridge trims away, an overhanging element can lose the
+  tap to the neighbour it covers. Measured for a corner overhang straight up ([#140]).
 - Android autocapture attributes a tap in a small element's expanded touch target to that element
   ([#127]). Compose grows the touch target of anything measured below
   `ViewConfiguration.minimumTouchTargetSize` (48dp by default) past its drawn bounds, so a tap a few
@@ -130,9 +130,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   no port, because the bridge already publishes the *expanded* minimum touch target as an element's
   `accessibilityFrame` (measured: a 16dp icon reports a 48pt frame, and so does a 40dp one).
   Measuring this one turned up a fourth divergence, distinct from all three and now tracked by
-  [#140]: among *overlapping siblings* the walk resolves in reverse tree order, and the bridge orders
-  siblings by reading position rather than by what is drawn on top — so a tap in the overhanging part
-  of a clickable drawn over a lower neighbour is still attributed to the neighbour.
+  [#140]: among *overlapping siblings* the walk resolves in reverse emitted order, which is not
+  z-order — so a tap in the overhanging part of a clickable drawn over a neighbour can still be
+  attributed to the neighbour.
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
@@ -141,6 +141,23 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Documentation
 
+- **The iOS overlapping-sibling gap is documented per platform, at the precision measurement
+  supports** ([#140]). Two earlier descriptions of it were wrong and are corrected here and in the
+  kdoc. The bridged tree *does* carry a z-order signal: Compose Multiplatform trims a covered
+  sibling's `accessibilityFrame` down to the part its neighbour does not cover, when what remains is
+  still a rectangle — measured in three fixtures, one per trimmed edge — so the ambiguity is already
+  gone before the tie-break for a full-width overlay and a horizontal overlap. Misattribution needs
+  *both* an overlap the trim cannot express (measured for corner overhangs) *and* the element on top
+  sorting earlier in the emitted order — which fit `(left, top)`, x-primary, across nine fixtures, and
+  is measurably neither declaration order nor reading order. A badge overhanging to the top-right is
+  spared by the second condition rather than the trim: its corner overlap is untrimmable, but the badge
+  sits further right and so sorts later. On **native** — measured on SwiftUI only, no UIKit hierarchy
+  run — no trim was observed in the one geometry Compose does trim, so that protection is absent there;
+  reproduced end to end through the native resolver.
+  Documented rather than fixed: there is no view hierarchy to recover draw order from (bridged
+  elements are not view-backed, and the view subtree under the Compose host is four zero-framed
+  containers over one Metal surface), and each ranking tried — last-emitted, smallest-area,
+  first-emitted — was measured wrong against the oracle, the one in use included.
 - Named the two boundaries of the sequence-uniqueness guarantee — the single-process assumption and
   the corrupt-file reset ([#54]).
 - A per-surface capture matrix (Compose/native × Android/iOS/desktop) and the dual-framework
