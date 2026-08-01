@@ -6,7 +6,7 @@ plugins {
 group = "fixture"
 version = providers.gradleProperty("fixtureVersion").getOrElse("1.0")
 
-// Which generation of the API to compile. Published twice under different versions so the
+// Which generation of the API to compile. Published three times under different versions so the
 // consumer can form a diamond:
 //   v1 (as 1.0) — the baseline.
 //   v2 (as 1.1) — adds the three changes ADR 0001 permits without a major bump.

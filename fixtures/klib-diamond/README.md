@@ -13,10 +13,19 @@ Answers [#104](https://github.com/uny/autograph/issues/104).
 ./fixtures/klib-diamond/run.sh 2.2.20   # build the OLD half with an older Kotlin
 ```
 
+The unskewed version is read from `gradle/libs.versions.toml` rather than pinned here, so running
+this on a Kotlin bump — which is the whole instruction — measures the Kotlin you just bumped to
+and not the one that was current when it was written.
+
 Publishes to the local Maven repository under group `fixture`, which nothing else uses. Takes
-about a minute warm. **Not wired into per-PR CI on purpose**: Kotlin/Native link is already the
-CI critical path, and this answers a question that only moves when the toolchain does. Run it
-when bumping Kotlin, or before a release that relaxes an ADR 0001 rule.
+about a minute warm. If a run aborts with `FATAL: publishing …`, re-run it: Gradle will
+occasionally cache a miss on a coordinate an earlier step has only just published. That is a
+wasted run, never a wrong answer — the abort exists so the arms cannot quietly measure whatever
+a previous run left in Maven Local.
+
+**Not wired into per-PR CI on purpose**: Kotlin/Native link is already the CI critical path, and
+this answers a question that only moves when the toolchain does. Run it when bumping Kotlin, or
+before a release that relaxes an ADR 0001 rule.
 
 ## Shape
 
