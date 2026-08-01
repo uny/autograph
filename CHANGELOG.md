@@ -21,6 +21,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   app can share one `ScopeStack` and keep a continuous `previous_screen` chain across Compose and
   native ([#49], [#64], [#76]).
 - `TrackedScreen` can name a `section`, so autocaptured taps carry one ([#67]).
+- `Modifier.autocaptureScope(...)` attaches per-element properties to the autocaptured taps under one
+  element — the case `AutographScope` cannot serve, where sibling scopes are mounted at once (a
+  list's rows each carrying their own id). Read back off the tapped element's own ancestry, so it
+  describes the element actually hit. **Android only**, and not a gap awaiting work on this side:
+  Compose Multiplatform's iOS accessibility bridge carries no custom semantics, and nothing it does
+  carry identifies the tapped element's scope soundly, so an iOS tap carries none. Instrument such
+  elements explicitly with `Modifier.trackClick` there — see the modifier's kdoc for the full account
+  and the tradeoffs ([#68]).
 - New modules: `autograph-context` (the ambient stack), `autograph-uikit` (the iOS accessibility-tree
   hit-test), and `autograph-android` (native Android screen capture).
 - [ADR 0001](docs/adr/0001-public-api-evolution.md): how each public type may evolve after 1.0, with a
@@ -253,6 +261,7 @@ Initial release.
 [#64]: https://github.com/uny/autograph/issues/64
 [#65]: https://github.com/uny/autograph/issues/65
 [#67]: https://github.com/uny/autograph/issues/67
+[#68]: https://github.com/uny/autograph/issues/68
 [#74]: https://github.com/uny/autograph/issues/74
 [#76]: https://github.com/uny/autograph/issues/76
 [#77]: https://github.com/uny/autograph/issues/77

@@ -58,8 +58,8 @@ internal val AutographScopeKey: SemanticsPropertyKey<JsonObject> = SemanticsProp
  * ancestry either way. (Before [#126](https://github.com/uny/autograph/issues/126) it did not: the
  * walk stopped above any child whose parent's bounds missed the tap, so those taps were dropped.)
  *
- * **Android only, for now.** Resolution reads the marker back off the tapped element's ancestry in
- * the semantics tree — the same chain the tap's `target` is picked from. That is the guarantee worth
+ * **Android only.** Resolution reads the marker back off the tapped element's ancestry in the
+ * semantics tree — the same chain the tap's `target` is picked from. That is the guarantee worth
  * stating: the scope always describes *the element that was actually hit*, because the two are read
  * together. Where the hit test itself misattributes — `Modifier.clip` cannot be expressed as a rect,
  * so a tap in the corner of a rounded clip may land on the wrong element, see [AutocaptureConfig] —
@@ -68,13 +68,44 @@ internal val AutographScopeKey: SemanticsPropertyKey<JsonObject> = SemanticsProp
  * failure instead: a correct `target` carrying a *neighbouring* element's scope, silently, whenever
  * bounds go stale mid-animation.
  *
- * Compose Multiplatform's
- * iOS accessibility bridge carries none of the custom semantics an element declares, so on iOS this
- * modifier currently contributes nothing and taps keep resolving as they did before it
- * ([AutographScope] siblings there stay ambiguous and drop, per `ScopeStack`). The failure is a
- * missing property rather than a wrong one, which is the tradeoff this library takes deliberately
- * — see [#68](https://github.com/uny/autograph/issues/68). Expect an `article_id` on Android and no
- * `article_id` on iOS for the same tap until that gap closes.
+ * **On iOS this modifier contributes nothing, and that is a limit of Compose Multiplatform's current
+ * surface rather than unfinished work here.** The only supported route to a tapped element there is
+ * the UIKit accessibility tree Compose Multiplatform bridges its semantics into — no `SemanticsOwner`
+ * is reachable from application code — and that bridge carries just the fixed UIAccessibility
+ * properties: label, traits, identifier, frame. None of the custom semantics this modifier writes
+ * crosses it. So the scope would have to be correlated with the tapped element through one of those
+ * four instead, and each is either unsound or already occupied:
+ *
+ * - **Geometry** — a registry of each scope's on-screen bounds, matched against the tapped element's
+ *   — does not establish identity, however fresh the bounds are kept. Take two exactly coincident
+ *   clickables, an unscoped selection overlay over a scoped card. Compose routes the pointer to the
+ *   overlay, so naming the overlay is the *correct* answer for `target`; but the two rectangles are
+ *   equal, so the sole geometric match for the scope is the card's. The tap would report the right
+ *   element carrying its neighbour's scope — and the failure lands precisely when the hit test got
+ *   the target right, which leaves this library no signal of its own to catch it with. It needs no
+ *   stale bounds, no animation and no tolerance: it is simply what equal rectangles cannot prove.
+ *   The same blindness already applies to iOS [autographIgnore] / [trackClick] claims, where it costs
+ *   a *suppressed* event; here it would cost a wrong property, and this library treats a wrong scope
+ *   as worse than no scope precisely because it lands in analytics data as if it were true.
+ * - **The identifier** is the one bridged property that is both identity-bearing and never read out
+ *   to a VoiceOver user — but it is the same slot the tap's own `target` is picked from, and the
+ *   canonical usage above puts this modifier on the *clickable's own* chain. Two semantics values on
+ *   one layout node collapse to the first, exactly as described above, so either the scope is
+ *   dropped or the element's `target` is.
+ * - The **label** is read aloud, and the **traits** are a fixed bitmask with nowhere to put a value.
+ *
+ * So an autocaptured iOS tap carries no element scope, and [AutographScope] siblings there stay
+ * ambiguous and drop per `ScopeStack`: a *missing* property rather than a wrong one, which is the
+ * trade this library takes on purpose. Expect an `article_id` on Android and none on iOS for the
+ * same tap. **Where per-element properties are needed on iOS, instrument the element explicitly** —
+ * [trackClick] carries them on both platforms. It brings its own `clickable`, so it replaces the
+ * element's click handler rather than joining it: `Modifier.trackClick(name, properties) { open() }`
+ * in place of `Modifier.clickable { open() }`. The element is then reported under *that* name rather
+ * than autocaptured — explicit instrumentation replaces the autocaptured event, it does not add to
+ * it — and you name each element yourself, which is the cost. Reopening this needs Compose
+ * Multiplatform to grow one of: custom semantics that cross the bridge, a stable node identity
+ * readable from both sides, or a supported semantics hit-test on iOS. See
+ * [#68](https://github.com/uny/autograph/issues/68).
  */
 public fun Modifier.autocaptureScope(vararg properties: Pair<String, String>): Modifier =
     autocaptureScope(JsonObject(properties.associate { (k, v) -> k to JsonPrimitive(v) }))
