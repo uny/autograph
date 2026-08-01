@@ -9,9 +9,13 @@
 # Not wired into per-PR CI on purpose: Kotlin/Native link is already the CI critical path, and
 # this answers a question that only changes when the toolchain does. Run it when bumping Kotlin
 # or before a release that relaxes an ADR 0001 rule.
+# Not `set -e`: two of the three arms are *expected* to fail, and a non-zero gradle exit is the
+# measurement, not an error. Setup is a different matter — a failed publish would leave the
+# consumer resolving stale artifacts from a previous run and quietly measure the wrong thing, so
+# `publish` aborts explicitly below. That is not hypothetical: it happened while building this.
 set -uo pipefail
 
-cd "$(dirname "$0")"
+cd "$(dirname "$0")" || exit 1
 GRADLEW="$(cd ../.. && pwd)/gradlew"
 
 OLD_KOTLIN="${1:-2.4.10}"
@@ -21,7 +25,10 @@ say() { printf '\n=== %s\n' "$*"; }
 
 publish() { # <dir> <extra gradle args...>
     local dir="$1"; shift
-    "$GRADLEW" -p "$dir" publishAllPublicationsToMavenLocalRepository -q "$@" >/dev/null
+    if ! "$GRADLEW" -p "$dir" publishAllPublicationsToMavenLocalRepository -q "$@"; then
+        echo "FATAL: publishing '$dir' failed — aborting rather than measuring stale artifacts" >&2
+        exit 1
+    fi
 }
 
 say "old half built with Kotlin $OLD_KOTLIN; new core and consumer with $NEW_KOTLIN"

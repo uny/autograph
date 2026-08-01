@@ -9,6 +9,7 @@ import fixture.dependent.envelopeId
 import fixture.dependent.makeEnvelope
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFails
 import kotlin.test.assertTrue
 
 /**
@@ -37,17 +38,22 @@ class DiamondTest {
         assertEquals("extra-e1", e.extra) // the NEW property, read here
     }
 
-    /** ADR 0001 §2e: a new enum constant, met by an exhaustive `when` compiled without it. */
+    /**
+     * ADR 0001 §2e: a new enum constant, met by an exhaustive `when` compiled without it.
+     *
+     * Asserted rather than printed. The observed behaviour is the *reason* §2e freezes the case
+     * set, so if a toolchain bump ever changes it, this arm should go red and force someone to
+     * re-read the rule — a printed marker nobody reads would not.
+     */
     @Test
     fun enumConstantAdded() {
         assertEquals("a", describe(Kind.A))
         assertEquals("b", describe(Kind.B))
 
-        val outcome = try {
-            "returned:" + describe(Kind.C)
-        } catch (t: Throwable) {
-            "threw:" + t::class.simpleName
-        }
-        println("ENUM_C_OUTCOME=$outcome")
+        // The constant links and resolves; what fails is the old `when`, exactly as on the JVM.
+        // Matched by name because `NoWhenBranchMatchedException` is `internal` in the stdlib and
+        // cannot be named from here — so this cannot be an `assertFailsWith<...>`.
+        val thrown = assertFails { describe(Kind.C) }
+        assertEquals("NoWhenBranchMatchedException", thrown::class.simpleName)
     }
 }
