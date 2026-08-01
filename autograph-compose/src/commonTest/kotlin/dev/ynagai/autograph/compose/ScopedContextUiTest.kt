@@ -363,7 +363,9 @@ class ScopedContextUiTest {
      * nothing encloses the rows, so nothing survives the drop — see
      * [anEnclosingScopeSurvivesAmbiguousRowsBelowIt] for the case where something does. Scoping a
      * screen/route (one subtree at a time) still attributes exactly; only the genuinely-ambiguous
-     * sibling case drops. Position-aware disambiguation is a separate layer (#68).
+     * sibling case drops. Position-aware disambiguation is a separate layer — `autocaptureScope`,
+     * which resolves off the tapped element's ancestry on Android and cannot be carried across the
+     * iOS accessibility bridge at all, so this drop is the final answer there (#68).
      */
     @Test
     fun siblingScopesMountedAtOnceResolveToNoScope() = runComposeUiTest {

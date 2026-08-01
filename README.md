@@ -225,12 +225,20 @@ There's a `JsonObject` overload for non-string values. Notes:
     children, so `trackClick` / `trackImpression` / manual `track` calls inside the subtree do *not*
     pick these properties up. Pass them explicitly there, or wrap the content in `AutographScope`
     too. It is a companion to `AutographScope`, not a replacement.
-  - **Android only, for now.** Compose Multiplatform's iOS accessibility bridge carries none of the
-    custom semantics an element declares, so on iOS this modifier contributes nothing and taps
-    resolve as they did before it (sibling `AutographScope`s there still drop, as above). Expect an
-    `article_id` on Android and none on iOS for the same tap until
-    [#68](https://github.com/uny/autograph/issues/68) closes that gap — a missing property rather
-    than a wrong one, which is the trade this library takes on purpose.
+  - **Android only**, and that is a limit of Compose Multiplatform's current surface rather than
+    unfinished work here. Its iOS accessibility bridge — the only supported route to a tapped element
+    there — carries none of the custom semantics an element declares, and none of the properties it
+    *does* carry can stand in: geometry cannot tell two coincident elements apart, and the
+    accessibility identifier is the very slot the tap's own `target` is read from. So on iOS this
+    modifier contributes nothing and taps resolve as they did before it (sibling `AutographScope`s
+    there still drop, as above). Expect an `article_id` on Android and none on iOS for the same tap —
+    a missing property rather than a wrong one, which is the trade this library takes on purpose.
+    Where you need per-element properties on iOS, instrument the element explicitly:
+    `Modifier.trackClick("Article Opened", properties) { open(article) }` in place of its
+    `clickable`, which carries them on both platforms and reports the element under that name instead
+    of autocapturing it. The full account, and what Compose Multiplatform would have to expose for
+    this to change, is in the modifier's kdoc and
+    [#68](https://github.com/uny/autograph/issues/68).
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
   already receives, include it there explicitly.

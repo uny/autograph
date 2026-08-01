@@ -50,10 +50,12 @@ internal actual fun rememberElementResolver(): ElementResolver {
     return remember(view, claims) {
         ElementResolver { root, position ->
             // No scope: the UIKit bridge carries none of the custom semantics [autocaptureScope]
-            // writes, so there is nothing to read back off the hit path here. An empty scope leaves
-            // the tap attributed exactly as it was before that modifier existed — the ambient
+            // writes, so there is nothing to read back off the hit path here — and none of the
+            // properties it does carry can stand in for one soundly, which is why this is left empty
+            // rather than approximated. That modifier's kdoc is the canonical account (#68). An empty
+            // scope leaves the tap attributed exactly as it was before it existed — the ambient
             // `ScopeStack` still contributes, and simultaneously-mounted siblings there still drop
-            // rather than guess. Closing this gap needs its own measured design (#68).
+            // rather than guess.
             resolveIosElement(view, claims, root.localToWindow(position))?.let { AutocaptureTarget(it) }
         }
     }

@@ -12,7 +12,7 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * accessibility label — never its displayed text, to avoid capturing PII by default (on iOS, the
  * label step is skipped entirely; see the platform note below). Exclude a subtree entirely with
  * [autographIgnore]; attach per-element properties to the taps under one with [autocaptureScope]
- * (Android only, for now — see its kdoc).
+ * (Android only — see its kdoc for why the iOS bridge cannot carry it).
  *
  * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer
  * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing works on each
