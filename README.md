@@ -540,9 +540,11 @@ non-rectangular clipping is approximated by the axis-aligned bounding box.
 
 ## Requirements
 
-- Kotlin **2.4.0** (UUIDv7 generation comes from the standard library)
+- Kotlin **2.4.10** (UUIDv7 generation comes from the standard library)
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
+- Android `compileSdk` **37** or later, for consumers of `autograph-compose` — required by the
+  `androidx.lifecycle` 2.11.0 it depends on
 - Targets: **Android**, **JVM**, and **iOS** — device `iosArm64` and the Apple-Silicon simulator
   `iosSimulatorArm64`. The Intel-Mac simulator (`iosX64`) is intentionally not shipped: Apple-Silicon
   simulators cover current development, and adding a target costs a Kotlin/Native link on every CI run,
