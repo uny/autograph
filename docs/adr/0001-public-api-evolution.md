@@ -149,7 +149,7 @@ to `AutographConfig`, not to `SessionConfig`.
 
 #### 2c. Caller-implemented SPIs — additions must carry a safe default body
 
-`Transport`, `SeqStore`, `EventIdGenerator`, `EventValidator`, `SegmentBridge`.
+`Transport`, `SeqStore`, `EventIdGenerator`, `EventValidator`, `SegmentBridge`, `AutographLogger`.
 
 Every member added to one of these after 1.0 ships with a default body. The default must
 be **correct, not merely compiling**: `SeqStore.flush()`'s no-op default is acceptable only

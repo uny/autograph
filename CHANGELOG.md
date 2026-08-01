@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-08-02
+
 ### Added
 
 - Native (non-Compose) autocapture for hybrid apps: native iOS tap capture through a window-level
@@ -29,6 +31,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   carry identifies the tapped element's scope soundly, so an iOS tap carries none. Instrument such
   elements explicitly with `Modifier.trackClick` there — see the modifier's kdoc for the full account
   and the tradeoffs ([#68]).
+- `AutographLogger`: a caller-implemented sink for the library's own operational diagnostics — a
+  delivery that failed, an event dropped for failing validation — installed via
+  `AutographConfig.logger`, so a host can route them into Logcat / `os_log` / Timber or silence them
+  entirely. These previously went to `println`, unsilenceable and invisible in production; the default
+  logger still prints, so behaviour is unchanged unless one is set. A single `log(message)` line by
+  design (ADR 0001 §2c): anything richer — a severity, a structured payload — arrives as a separate
+  optional interface the core probes for, never as a new method here ([#56]).
 - New modules: `autograph-context` (the ambient stack), `autograph-uikit` (the iOS accessibility-tree
   hit-test), and `autograph-android` (native Android screen capture).
 - [ADR 0001](docs/adr/0001-public-api-evolution.md): how each public type may evolve after 1.0, with a
@@ -141,6 +150,15 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   [#140]: among *overlapping siblings* the walk resolves in reverse emitted order, which is not
   z-order — so a tap in the overhanging part of a clickable drawn over a neighbour can still be
   attributed to the neighbour.
+- A blank autocapture identifier is treated as absent instead of being reported as an empty `target`
+  ([#81]). `Modifier.testTag("")` short-circuited the identity chain, so the element reported
+  `target = ""` — a blank name presented as if it were deliberate — and the role/label fallback never
+  ran. A blank tag usually arrives from a template or a nil-coalesced binding (`testTag(id ?: "")`)
+  rather than a real choice. **On Android, an element with a blank tag and a usable role now reports
+  that role instead of an empty string, and one whose only identity is blank now emits no event at
+  all.** Non-blank values still pass through byte for byte — rejected when blank, never trimmed. The
+  check lives in `commonMain`, so it also removes the divergence created by dropping blank
+  `accessibilityIdentifier`s on the iOS side only.
 - iOS autocapture resolves taps correctly when the Compose root doesn't fill its window (coordinate
   space) ([#42]), reads `accessibilityIdentifier` off plain UIKit views ([#77]), backs out of
   empty passthrough overlays to reach the clickable beneath ([#82]), bounds the accessibility walk
@@ -166,6 +184,15 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   elements are not view-backed, and the view subtree under the Compose host is four zero-framed
   containers over one Metal surface), and each ranking tried — last-emitted, smallest-area,
   first-emitted — was measured wrong against the oracle, the one in use included.
+- An aggregated Dokka API reference across the published modules is built and deployed to GitHub
+  Pages on every push to `main`: <https://uny.github.io/autograph/> ([#58]).
+- The supported target matrix is stated outright, with the reasoning behind each omission ([#57]).
+  iOS ships `iosArm64` and `iosSimulatorArm64`; the Intel-Mac simulator target `iosX64` is
+  deliberately not published, because Apple-silicon simulators cover current development and every
+  added target costs a Kotlin/Native link on each CI run — open an issue if you need it. Compose Web
+  / `wasmJs` is out of scope by design rather than oversight: a browser target has no filesystem for
+  the sequence/session store and needs a different transport story, which makes it a design task, not
+  a target flag to flip.
 - Named the two boundaries of the sequence-uniqueness guarantee — the single-process assumption and
   the corrupt-file reset ([#54]).
 - A per-surface capture matrix (Compose/native × Android/iOS/desktop) and the dual-framework
@@ -227,7 +254,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/uny/autograph/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/uny/autograph/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/uny/autograph/compare/v0.1.0...v0.1.1
 [0.1.0]: https://github.com/uny/autograph/releases/tag/v0.1.0
@@ -256,6 +284,9 @@ Initial release.
 [#53]: https://github.com/uny/autograph/issues/53
 [#54]: https://github.com/uny/autograph/issues/54
 [#55]: https://github.com/uny/autograph/issues/55
+[#56]: https://github.com/uny/autograph/issues/56
+[#57]: https://github.com/uny/autograph/issues/57
+[#58]: https://github.com/uny/autograph/issues/58
 [#60]: https://github.com/uny/autograph/issues/60
 [#62]: https://github.com/uny/autograph/issues/62
 [#64]: https://github.com/uny/autograph/issues/64
@@ -265,6 +296,7 @@ Initial release.
 [#74]: https://github.com/uny/autograph/issues/74
 [#76]: https://github.com/uny/autograph/issues/76
 [#77]: https://github.com/uny/autograph/issues/77
+[#81]: https://github.com/uny/autograph/issues/81
 [#82]: https://github.com/uny/autograph/issues/82
 [#83]: https://github.com/uny/autograph/issues/83
 [#86]: https://github.com/uny/autograph/issues/86
