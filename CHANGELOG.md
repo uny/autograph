@@ -8,6 +8,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Documentation
+
+- [ADR 0001](docs/adr/0001-public-api-evolution.md) §4 now rests on a measurement instead of an
+  admitted guess ([#104]). The mixed-version klib diamond — an app resolving a newer
+  `autograph-core` than the `autograph-segment` klib in its graph was compiled against — was
+  reproduced for all three change kinds the ADR permits, and all three link and run on
+  Kotlin/Native, unchanged across a 2.2.20 → 2.4.10 compiler skew. So the §2 rules are trusted on
+  Kotlin/Native as well as the JVM, and lockstep release is no longer load-bearing. **No Gradle
+  version constraint is shipped**: the direction that does fail is a *downgrade*, which Gradle's
+  highest-wins conflict resolution never produces on its own. Worth knowing for reading a crash
+  report: version skew here surfaces as a runtime `IrLinkageError` at the first call, not as a
+  build failure. Fixture and full results in `fixtures/klib-diamond/`, re-runnable in about a
+  minute when Kotlin is bumped.
+
 ## [0.3.0] - 2026-08-02
 
 ### Added
@@ -303,6 +317,7 @@ Initial release.
 [#91]: https://github.com/uny/autograph/issues/91
 [#94]: https://github.com/uny/autograph/issues/94
 [#102]: https://github.com/uny/autograph/issues/102
+[#104]: https://github.com/uny/autograph/issues/104
 [#122]: https://github.com/uny/autograph/pull/122
 [#126]: https://github.com/uny/autograph/issues/126
 [#127]: https://github.com/uny/autograph/issues/127
