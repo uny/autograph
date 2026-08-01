@@ -9,7 +9,7 @@ Answers [#104](https://github.com/uny/autograph/issues/104).
 ## Running it
 
 ```bash
-./fixtures/klib-diamond/run.sh          # all three arms, single compiler (2.4.10)
+./fixtures/klib-diamond/run.sh          # no compiler skew: the repo's Kotlin throughout
 ./fixtures/klib-diamond/run.sh 2.2.20   # build the OLD half with an older Kotlin
 ```
 
@@ -40,7 +40,7 @@ question.
 
 ## Results
 
-Measured 2026-08-02, Kotlin 2.4.10 consumer, Xcode 26.3. Identical on both targets, and
+Measured 2026-08-02, Kotlin 2.4.10 consumer, Xcode 26.3. Verified on both targets separately, and
 unchanged with the old half built by Kotlin 2.2.20, 2.3.0, or 2.4.0.
 
 | Arm | Graph | Outcome |
@@ -97,7 +97,23 @@ changing it.
 - The XCFramework consumption path is unaffected either way: CD builds every module at one
   version into a single `Autograph.xcframework`, so a Swift consumer never links klibs and the
   diamond cannot arise there.
-- A false red is easy to produce here and looks exactly like a real one. While building this
-  fixture, the downgrade arm asked for an artifactId that had never been published, failed
-  resolution, and reported a perfectly satisfying red. `run.sh` now asserts that the coordinate
-  under test is actually in the resolved graph before believing any arm's result.
+- The consumer's Kotlin version is read from `gradle/libs.versions.toml`, not pinned in the
+  script. Pinning it would quietly defeat the instruction above: re-running after a Kotlin bump
+  would re-measure the old compiler and report a reassuring green about nothing.
+- **A false green is the standing hazard here, and it caught this fixture four times while it was
+  being built.** Two of the three arms *expect* a non-zero exit, so almost any breakage produces
+  the result they were looking for. Each guard in `run.sh` exists because the corresponding
+  mistake was actually made:
+  - The downgrade arm asked for an artifactId that had never been published, failed dependency
+    resolution, and reported `expected=fail actual=fail [OK]` while measuring nothing. Every
+    coordinate an arm rests on is now asserted to be in the resolved graph — *both* sides of the
+    diamond, since `break` would otherwise be satisfied by resolving the unbroken core.
+  - A failed publish let the run continue against stale artifacts from a previous run.
+    `publish()` now aborts.
+  - Both targets ran in one Gradle invocation, and Gradle stops at the first failing task — so
+    `iosSimulatorArm64Test` never ran on either failing arm, making "identical on both targets"
+    really "verified on macOS" for two of the three. One invocation per target now, reported per
+    target.
+  - A failing arm counts only if it failed *with* `IrLinkageError`. A compile error, an
+    unavailable simulator or a Gradle crash all exit non-zero and would otherwise pass for the
+    linkage failure the negative control rests on.
