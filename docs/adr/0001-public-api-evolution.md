@@ -228,15 +228,40 @@ on this contract.
   default body compiles to a real Java `default` method and an already-compiled implementor
   keeps working. The build does not set the flag explicitly; it is pinned here so that a
   future toolchain change flipping the default is recognized as the ABI event it would be.
-- **Kotlin/Native is the weak point, and we have not measured it.** Kotlin guarantees klib
-  *backward* compatibility from 1.9.20 and explicitly does not guarantee forward
-  compatibility, so the mixed-version diamond — an app resolving `autograph-core:1.1` while
-  linking an `autograph-segment:1.0` klib compiled against `1.0` — is not known to be safe
-  even for a change the JVM tolerates. Until it is measured, all modules are released in
-  lockstep at the same version and the multi-module rules above are trusted only on the
-  JVM. [#104](https://github.com/uny/autograph/issues/104) is the follow-up: build a fixture
-  that links an old dependent against a new core and see what actually happens, rather than
-  writing a constraint we guessed at.
+- **Kotlin/Native holds in the direction that matters, and this is measured**
+  ([#104](https://github.com/uny/autograph/issues/104); fixture and full results in
+  `fixtures/klib-diamond/`). The mixed-version diamond — an app resolving `autograph-core:1.1`
+  while linking an `autograph-segment:1.0` klib compiled against `1.0` — was reproduced for all
+  three permitted change kinds (default-bodied SPI member, property on an internal-constructor
+  class, enum constant). All three link and run, on `iosSimulatorArm64` and `macosArm64` alike,
+  and unchanged whether the old half was built by Kotlin 2.2.20, 2.3.0, or 2.4.0 against a
+  2.4.10 consumer. A deliberate ABI break in the same rig does fail, so the green result is not
+  an inert fixture.
+
+  The reason is that Kotlin/Native does not load a klib the way a JVM loads a class file: a klib
+  carries serialized IR, and the link step re-lowers the whole graph against whichever `core`
+  resolved. The dependent's compiled-against view of `core` is never baked into machine code, so
+  adding to `core` cannot invalidate it. **The multi-module rules in §2 are therefore trusted on
+  Kotlin/Native as well as the JVM, and lockstep release is no longer load-bearing** — it stays
+  the practice because it is simpler, not because the alternative was shown to be unsafe.
+
+- **No Gradle version constraint is warranted, and shipping one would be worse than the risk.**
+  What does fail is the *reverse* diamond — a module linked against an `autograph-core` older
+  than the one it was compiled against — which the same fixture confirms dies with an
+  `IrLinkageError`. Gradle's default conflict resolution picks the highest version, i.e. always
+  the safe direction; producing the unsafe one takes a deliberate `strictly` or `force` in the
+  consumer's own build. A `strictly` shipped from this side would not prevent that and would
+  break consumers doing legitimate alignment, so the honest tool here is documentation, not
+  resolution rules. Downgrading one Autograph module below another's version is unsupported.
+
+- **A klib version-skew failure is not a build failure.** Both failing arms above compile and
+  link cleanly and throw `IrLinkageError` at the first call. A CI job that builds without
+  executing the affected path will not catch it, and the crash names the missing symbol rather
+  than anything about the calling code. Worth recognizing on sight.
+
+- The measurement covers one Kotlin major (2.2.20 – 2.4.10); klib is not a frozen format.
+  `fixtures/klib-diamond/run.sh` re-runs the whole matrix in about a minute — run it on a Kotlin
+  bump, rather than assuming this bullet still holds.
 
 ## Consequences
 
