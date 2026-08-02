@@ -4,6 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
 import androidx.compose.ui.uikit.LocalUIView
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.uikit.AxPoint
@@ -16,6 +19,7 @@ import dev.ynagai.autograph.uikit.nearestAccessibilityClickable
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import kotlin.math.abs
+import kotlin.math.max
 
 /**
  * Resolves a Compose tap to an element identifier by hit-testing the UIKit accessibility tree that
@@ -47,7 +51,15 @@ import kotlin.math.abs
 internal actual fun rememberElementResolver(): ElementResolver {
     val view = LocalUIView.current
     val claims = LocalAutocaptureClaims.current
-    return remember(view, claims) {
+    // Compose expands a small element's touch target to this before publishing its accessibility
+    // frame, while the claim it registers stays the unexpanded layout bounds — so the match in
+    // [resolveIosElement] needs the size to reconcile the two. Read here rather than there because
+    // it is only reachable from a composition (#151).
+    val minimumTouchTargetPx = with(LocalDensity.current) {
+        val size = LocalViewConfiguration.current.minimumTouchTargetSize
+        Size(size.width.toPx(), size.height.toPx())
+    }
+    return remember(view, claims, minimumTouchTargetPx) {
         ElementResolver { root, position ->
             // No scope: the UIKit bridge carries none of the custom semantics [autocaptureScope]
             // writes, so there is nothing to read back off the hit path here — and none of the
@@ -56,7 +68,8 @@ internal actual fun rememberElementResolver(): ElementResolver {
             // scope leaves the tap attributed exactly as it was before it existed — the ambient
             // `ScopeStack` still contributes, and simultaneously-mounted siblings there still drop
             // rather than guess.
-            resolveIosElement(view, claims, root.localToWindow(position))?.let { AutocaptureTarget(it) }
+            resolveIosElement(view, claims, root.localToWindow(position), minimumTouchTargetPx)
+                ?.let { AutocaptureTarget(it) }
         }
     }
 }
@@ -69,7 +82,12 @@ internal actual fun rememberElementResolver(): ElementResolver {
  * [position] is window-relative and in pixels (see [rememberElementResolver]).
  */
 @OptIn(AutographInternalApi::class)
-internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, position: Offset): String? {
+internal fun resolveIosElement(
+    view: UIView,
+    claims: AutocaptureClaims?,
+    position: Offset,
+    minimumTouchTargetPx: Size = Size.Zero,
+): String? {
     if (claims != null && claims.ignored.values.any { it.contains(position) }) return null
     val scale = UIScreen.mainScreen.scale.toFloat()
     val path = deepestAccessibilityHitPath(view, view, AxPoint(position.x, position.y), scale) ?: return null
@@ -87,10 +105,15 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
     // element" by comparing an instrumented claim's rect against nearestClickable's own bounds
     // (self-registration via trackClick/trackImpression puts a claim keyed at the exact element's
     // own boundsInWindow()) rather than the raw tap position, which would also match any larger
-    // ancestor container overlapping the tap.
+    // ancestor container overlapping the tap. See isTheElementBehind for why that comparison also has
+    // to account for the minimum touch target.
     if (claims != null) {
         val nearestClickableBounds = nearestClickable.accessibilityBoundsInWindowPx(view, scale)
-        if (nearestClickableBounds != null && claims.instrumented.values.any { it.approximatelyEquals(nearestClickableBounds) }) return null
+        if (nearestClickableBounds != null &&
+            claims.instrumented.values.any { it.isTheElementBehind(nearestClickableBounds, minimumTouchTargetPx) }
+        ) {
+            return null
+        }
     }
     // No `label` argument: the accessibility label is never read — see accessibilityIdentifierOrNull's
     // kdoc in autograph-uikit for why falling back to it would defeat the "never read displayed text"
@@ -99,12 +122,48 @@ internal fun resolveIosElement(view: UIView, claims: AutocaptureClaims?, positio
 }
 
 /**
- * Bounds equality with tolerance, across the Compose/UIKit divide: [nearestClickable]'s own bounds
- * come from two different measurement paths for the same physical element — Compose's
- * `boundsInWindow()` (claim registration, a Compose [Rect]) vs the accessibility tree's
- * `accessibilityFrame` + `convertRect` + scale (an [AxRect]) — so exact equality is too strict, but a
- * real ancestor container's bounds differ by more than float noise. Both are window-space pixels, so
- * they're directly comparable.
+ * Whether [other] — the accessibility frame of the resolved element — is this instrumented claim's
+ * own element, rather than some other element that merely overlaps the tap.
+ *
+ * The two rects describe the same physical element by different routes: Compose's `boundsInWindow()`
+ * at claim registration vs the accessibility tree's `accessibilityFrame` + `convertRect` + scale. For
+ * an element at or above the minimum touch target they agree to float noise, so plain
+ * [approximatelyEquals] settles it.
+ *
+ * Below it they do not, and that was #151: Compose expands a small element's touch target — and with
+ * it the accessibility frame it publishes — to [minimumTouchTargetPx], **centred on the element**,
+ * while the registered claim stays the unexpanded layout bounds. Measured on device (iPhone 17 Pro,
+ * `scale = 3`), a natural-height `Text` carrying [trackClick] registered
+ * `(48, 1752, 1124, 1824)` — 72px tall — and published `(48, 1716, 1124, 1860)`: 144px, exactly
+ * 48dp, symmetric about the same centre, with the already-wide-enough horizontal axis untouched. So
+ * the claim is also compared against itself expanded that way.
+ *
+ * This stays rect *equality* against a second precisely-derived rect rather than becoming a
+ * containment or tolerance widening, both of which would start matching a merely-similar ancestor
+ * container — the failure the equality check exists to prevent (see the call site).
+ *
+ * Known residual: if an ancestor clips the expanded touch target, the published frame is neither the
+ * layout bounds nor the full expansion, and the element is double-reported as before. Unmeasured, and
+ * narrower than the case fixed here; [minimumTouchTargetPx] defaults to [Size.Zero] (no expansion)
+ * only so tests that predate this can state the unexpanded case directly.
+ */
+@OptIn(AutographInternalApi::class)
+private fun Rect.isTheElementBehind(other: AxRect, minimumTouchTargetPx: Size): Boolean =
+    approximatelyEquals(other) || expandedToAtLeast(minimumTouchTargetPx).approximatelyEquals(other)
+
+/** This rect grown about its own centre so that neither side is shorter than [size]. */
+private fun Rect.expandedToAtLeast(size: Size): Rect {
+    val halfWidth = max(width, size.width) / 2f
+    val halfHeight = max(height, size.height) / 2f
+    val centerX = (left + right) / 2f
+    val centerY = (top + bottom) / 2f
+    return Rect(centerX - halfWidth, centerY - halfHeight, centerX + halfWidth, centerY + halfHeight)
+}
+
+/**
+ * Bounds equality with tolerance, across the Compose/UIKit divide — exact equality is too strict for
+ * two independent measurement paths, but a real ancestor container's bounds differ by more than float
+ * noise. Both are window-space pixels, so they're directly comparable.
  */
 @OptIn(AutographInternalApi::class)
 private fun Rect.approximatelyEquals(other: AxRect, tolerance: Float = 1f): Boolean =

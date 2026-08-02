@@ -10,6 +10,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- Autocapture on iOS no longer double-reports a `Modifier.trackClick` / `Modifier.trackImpression`
+  element that is **smaller than the minimum touch target** ([#151]). The explicit event fired and an
+  `Element Clicked` fired alongside it, contradicting the README's "never double-reported" — Compose
+  expands such an element's touch target, and the accessibility frame it publishes with it, to 48dp
+  centred on the element, while the claim the modifier registers stays the unexpanded layout bounds,
+  so the rect-equality match iOS uses in place of a readable semantics key stopped applying. Measured
+  on device: a natural-height `Text` registered a 72px-tall claim and published a 144px-tall frame.
+  Android was never affected (it reads the marker off the semantics ancestry, with no geometry
+  involved). Nothing caught it because the sample's only explicitly instrumented element was a
+  56dp box, above the threshold — the sample now carries both shapes, and the XCUITest suite asserts
+  the ordered event-name log rather than the last target, which cannot tell a double report from a
+  single one since both entries carry the same target. Known residual: an ancestor clipping the
+  expanded touch target still double-reports.
+
 - `Package.swift` on `main` no longer names a stale binary target. CD's self-correcting checksum
   commit is pushed to `refs/tags/<tag>` only, so it landed on no branch and `main` still described
   v0.1.0's xcframework after three releases; CD now replays the same rewrite onto `main`, and this
@@ -340,3 +354,4 @@ Initial release.
 [#134]: https://github.com/uny/autograph/issues/134
 [#135]: https://github.com/uny/autograph/issues/135
 [#140]: https://github.com/uny/autograph/issues/140
+[#151]: https://github.com/uny/autograph/issues/151

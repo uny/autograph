@@ -19,14 +19,17 @@ import kotlinx.serialization.json.contentOrNull
  * `previous_screen`, in the right order) — the channel #65's native screen capture reports through.
  */
 internal class LoggingTracker(
-    private val onTrack: (properties: JsonObject, target: String?) -> Unit = { _, _ -> },
+    private val onTrack: (name: String, properties: JsonObject, target: String?) -> Unit = { _, _, _ -> },
     private val onScreen: (name: String, properties: JsonObject) -> Unit = { _, _ -> },
 ) : Tracker {
     override fun track(name: String, properties: JsonObject, target: String?) {
         sampleLog("track name=$name target=$target properties=$properties")
         // `target` stays a positional argument: the autocapture pipelines pass it alongside
         // `properties`, not merged into it, so a test observing the target reads it here directly.
-        onTrack(properties, target)
+        // `name` is handed over too — an explicitly instrumented element and an autocaptured tap on
+        // it report the SAME target, so the name is the only thing that tells a double report from a
+        // single one (#151).
+        onTrack(name, properties, target)
     }
 
     override fun screen(name: String, properties: JsonObject) {
@@ -53,6 +56,16 @@ internal fun JsonObject.reservedOrNone(key: String, none: String = "(none)"): St
  */
 internal fun appendScreenLog(current: String, name: String, previousScreen: String): String {
     val entry = "$name:$previousScreen"
+    return if (current == noEventYet) entry else "$current|$entry"
+}
+
+/**
+ * Appends one `track` entry (`name:target`) to a `|`-delimited log. A last-value label cannot state
+ * "fired exactly once" for explicit instrumentation, because the autocapture event that must NOT
+ * accompany it carries the very same target — so the ordered log is what makes #151 observable.
+ */
+internal fun appendTrackLog(current: String, name: String, target: String?): String {
+    val entry = "$name:${targetOrNoTarget(target)}"
     return if (current == noEventYet) entry else "$current|$entry"
 }
 

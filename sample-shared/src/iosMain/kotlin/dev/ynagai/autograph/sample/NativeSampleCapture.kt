@@ -37,7 +37,7 @@ public fun installNativeSampleCapture(onTap: (target: String, properties: String
     if (installed != null) return
     val scopeStack = ScopeStack()
     installed = installAutographNativeTapCapture(
-        tracker = LoggingTracker(onTrack = { props, target -> onTap(targetOrNoTarget(target), props.toString()) }),
+        tracker = LoggingTracker(onTrack = { _, props, target -> onTap(targetOrNoTarget(target), props.toString()) }),
         scopeStack = scopeStack,
     )
 }

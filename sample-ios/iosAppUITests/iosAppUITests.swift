@@ -47,12 +47,43 @@ final class iosAppUITests: XCTestCase {
         XCTAssertEqual(lastEventLabel(app), "Last event target: outer_container")
     }
 
+    /// The ordered `name:target` log of every `track` call. See `App.kt`'s `track_log_label`.
+    ///
+    /// `lastEventLabel` cannot state "fired exactly once" for explicit instrumentation: an
+    /// autocaptured duplicate carries the *same* target, so the two are indistinguishable by target
+    /// alone — which is precisely how #151 went unnoticed. The event name separates them.
+    private func trackLog(_ app: XCUIApplication) -> String {
+        app.staticTexts["track_log_label"].label
+    }
+
     /// Modifier.trackClick fires its own explicit event; autocapture must not also report it.
     func testExplicitTrackClickFiresExactlyOnce() {
         let app = XCUIApplication()
         app.launch()
         app.buttons["explicit_tracked_button"].tap()
         XCTAssertEqual(lastEventLabel(app), "Last event target: explicit_tracked_button")
+        // Recipe Viewed is the trackImpression that fires on launch; the tap must add exactly one
+        // more entry, and it must be the explicit event rather than an autocaptured Element Clicked.
+        XCTAssertEqual(
+            trackLog(app),
+            "Tracks: Recipe Viewed:recipe_card|Recipe Saved:explicit_tracked_button"
+        )
+    }
+
+    /// The same, on an element SHORTER than the minimum touch target — #151.
+    ///
+    /// Compose expands such an element's touch target, and the accessibility frame it publishes with
+    /// it, while the claim `trackClick` registers stays the unexpanded layout bounds; iOS matches the
+    /// two by rect equality, so the suppression silently stopped applying and the element was
+    /// reported twice. The 56.dp box above is above the threshold and never showed it.
+    func testExplicitTrackClickOnASmallElementFiresExactlyOnce() {
+        let app = XCUIApplication()
+        app.launch()
+        app.buttons["explicit_tracked_small"].tap()
+        XCTAssertEqual(
+            trackLog(app),
+            "Tracks: Recipe Viewed:recipe_card|Recipe Saved:explicit_tracked_small"
+        )
     }
 
     /// Modifier.autographIgnore excludes a subtree from autocapture entirely — the label (last set

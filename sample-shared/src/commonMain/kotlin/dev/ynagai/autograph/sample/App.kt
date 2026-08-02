@@ -43,13 +43,15 @@ public fun App() {
     var lastTarget by remember { mutableStateOf(noEventYet) }
     var lastProps by remember { mutableStateOf(noEventYet) }
     var screenLog by remember { mutableStateOf(noEventYet) }
+    var trackLog by remember { mutableStateOf(noEventYet) }
     val tracker = remember {
         LoggingTracker(
-            onTrack = { props, target ->
+            onTrack = { name, props, target ->
                 lastTarget = targetOrNoTarget(target)
                 // The whole properties object, so a UI test can observe the screen/section/scope an
                 // autocaptured tap was attributed with — not just its target.
                 lastProps = props.toString()
+                trackLog = appendTrackLog(trackLog, name, target)
             },
             onScreen = { name, props ->
                 screenLog = appendScreenLog(screenLog, name, props.reservedOrNone("previous_screen"))
@@ -71,7 +73,7 @@ public fun App() {
                     // ambient stack, so every autocaptured tap below also carries screen=Sample and
                     // section=Main. The section is screen-wide (a tab/variant label), not a region.
                     TrackedScreen("Sample", section = "Main") {
-                        DemoScreen(lastTarget, lastProps, screenLog)
+                        DemoScreen(lastTarget, lastProps, screenLog, trackLog)
                     }
                 }
             }
@@ -80,7 +82,7 @@ public fun App() {
 }
 
 @Composable
-private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String) {
+private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String, trackLog: String) {
     Column(
         // systemBarsPadding, not the host relying on `.ignoresSafeArea()`: on iOS this is also
         // what exercises ElementResolver.ios.kt's real-world case, a Compose root that doesn't
@@ -146,6 +148,19 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String)
             )
         }
 
+        // The same explicit instrumentation on an element SHORTER than the minimum touch target.
+        // Deliberately a plain Text at its natural height: iOS resolves "already instrumented" by
+        // comparing the claim's boundsInWindow() against the accessibility frame, and Compose
+        // expands the latter to the minimum touch target for an element this small — so this is the
+        // shape that regressed in #151 while the 56.dp box above kept passing. It is also the shape
+        // the README's own quick start uses.
+        Text(
+            "Explicitly tracked, small (Modifier.trackClick)",
+            modifier = Modifier
+                .testTag("explicit_tracked_small")
+                .trackClick("Recipe Saved", target = "explicit_tracked_small") {},
+        )
+
         // Modifier.autographIgnore excludes a subtree from autocapture entirely.
         Box(
             modifier = Modifier
@@ -188,5 +203,8 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String)
         Text("Last event target: $lastTarget", modifier = Modifier.testTag("last_event_label"))
         Text("Last event props: $lastProps", modifier = Modifier.testTag("last_event_props_label"))
         Text("Screen views: $screenLog", modifier = Modifier.testTag("screen_view_log_label"))
+        // The ordered `name:target` log — the only channel that distinguishes one explicit
+        // event from an explicit event plus an autocaptured duplicate of it (#151).
+        Text("Tracks: $trackLog", modifier = Modifier.testTag("track_log_label"))
     }
 }
