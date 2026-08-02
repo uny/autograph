@@ -86,6 +86,14 @@ jobs:
           tag="${GITHUB_REF#refs/tags/}"
           version="${tag#v}"
 
+          # An unset step output is the empty string, and the rewrite below would happily commit
+          # releaseChecksum = "" onto main and call it a success. Rewiring this input is exactly
+          # the mistake that produces that, so check it before touching anything.
+          if [ -z "$CHECKSUM" ]; then
+            echo "::error::The binary target step exported no checksum; refusing to sync an empty one onto main."
+            exit 1
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
@@ -96,8 +104,27 @@ jobs:
             git fetch --no-tags origin main
             git checkout -B main-sync origin/main
 
+            # Two tags in flight means two of these steps run, and last-writer-wins would let the
+            # slower, older release leave main naming a binary target older than it found. Order
+            # the write by version instead of by arrival, so either interleaving ends the same way.
+            current=$(sed -nE 's/.*private let releaseVersion = "([^"]*)".*/\1/p' Package.swift)
+            if [ "$current" != "$version" ] &&
+               [ "$(printf '%s\n%s\n' "$current" "$version" | sort -V | tail -1)" = "$current" ]; then
+              echo "main names $current, newer than $tag; leaving it alone."
+              exit 0
+            fi
+
             sed -i '' -E "s/private let releaseVersion = \"[^\"]*\"/private let releaseVersion = \"$version\"/" Package.swift
             sed -i '' -E "s/private let releaseChecksum = \"[^\"]*\"/private let releaseChecksum = \"$CHECKSUM\"/" Package.swift
+
+            # sed exits 0 when it matches nothing, so renaming or reformatting either declaration
+            # would otherwise read as "already in sync" — or commit half a rewrite if only one
+            # matched. Assert the values landed rather than inferring it from a clean diff.
+            if ! grep -qF "private let releaseVersion = \"$version\"" Package.swift ||
+               ! grep -qF "private let releaseChecksum = \"$CHECKSUM\"" Package.swift; then
+              echo "::error::Package.swift on main no longer has the declarations this step rewrites."
+              exit 1
+            fi
 
             if git diff --quiet -- Package.swift; then
               echo "main already carries $tag's binary target; nothing to sync."
