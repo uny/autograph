@@ -21,12 +21,28 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   involved). Nothing caught it because the sample's only explicitly instrumented element was a
   56dp box, above the threshold — the sample now carries both shapes, and the XCUITest suite asserts
   the ordered event-name log rather than the last target, which cannot tell a double report from a
-  single one since both entries carry the same target. Known residual: an ancestor clipping the
-  expanded touch target still double-reports. Expanding is not reversible, so an instrumented element
-  whose expansion lands exactly on an enclosing clickable — a 24dp icon centred in its own 48dp
-  button — could in principle suppress that clickable's own tap; measured on device, it does not,
-  because the inner element's expanded touch target covers the outer one and Compose routes the tap to
-  the inner, so the outer never receives a tap to suppress.
+  single one since both entries carry the same target. Known residual: a **scaled** element still
+  double-reports, because Compose qualifies the touch target on the measured size while the claim
+  carries the drawn rect (measured: `scale(0.5f)` publishes the expanded measured rect halved, which
+  the drawn rect's own expansion does not match).
+
+- Autocapture on iOS no longer drops a tap on an **uninstrumented clickable** that merely contains a
+  small `Modifier.trackImpression` element ([#153]). Expanding a claim to the minimum touch target is
+  not injective, so a sub-minimum instrumented element centred in a clickable exactly at the minimum
+  expands onto that clickable's accessibility frame precisely — and the fix above then read the
+  clickable as already-instrumented and suppressed an event nothing else reported. Measured on device:
+  an inner frame of `(16, 636, 370x24)` expanding onto a host at `(16, 624, 370x48)`, to the point.
+  `trackImpression` is what makes this reachable where a `trackClick` inner element cannot — it adds
+  no `clickable`, so Compose leaves the tap with the enclosing element instead of routing it inward,
+  which is the premise the previous entry's reassurance rested on. Claims now record which modifier
+  registered them: a `trackClick` claim's element is clickable by construction and its expansion match
+  is taken at face value, while a `trackImpression` claim's expansion match is honoured only when no
+  accessibility descendant of the resolved clickable publishes that claim unexpanded — how Compose
+  Multiplatform publishes such an element. The distinction is load-bearing in both directions, since
+  Compose Multiplatform publishes child `Text`s as their own accessibility descendants even inside a
+  merged clickable: applying the descendant check to click claims too would stop suppressing a
+  sub-minimum `trackClick` container whose child exactly fills it, reopening the defect above. Android
+  was never affected, on either count. Introduced by the fix above and never released.
 
 - `Package.swift` on `main` no longer names a stale binary target. CD's self-correcting checksum
   commit is pushed to `refs/tags/<tag>` only, so it landed on no branch and `main` still described
@@ -359,3 +375,4 @@ Initial release.
 [#135]: https://github.com/uny/autograph/issues/135
 [#140]: https://github.com/uny/autograph/issues/140
 [#151]: https://github.com/uny/autograph/issues/151
+[#153]: https://github.com/uny/autograph/issues/153

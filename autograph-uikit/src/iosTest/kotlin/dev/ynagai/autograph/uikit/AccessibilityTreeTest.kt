@@ -625,6 +625,47 @@ class AccessibilityTreeTest {
     // `iosAppUITests.testDisabledElementIsNotCaptured` for Compose Multiplatform.
 
     @Test
+    fun anyAccessibilityDescendantFindsAMatchAtAnyDepthAndExcludesTheElementItself() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val middle = UIView()
+        middle.setPointFrame(10.0, 10.0, 40.0, 40.0)
+        root.addSubview(middle)
+        val leaf = UIView()
+        leaf.setPointFrame(20.0, 20.0, 5.0, 5.0)
+        middle.addSubview(leaf)
+
+        assertTrue(root.anyAccessibilityDescendant(root, scale) { it == middle.boundsRelativeTo(root) })
+        assertTrue(root.anyAccessibilityDescendant(root, scale) { it == leaf.boundsRelativeTo(root) })
+        // Strict: the caller in `autograph-compose` is asking "does this claim describe something
+        // BELOW the resolved clickable", so matching the clickable itself would defeat the question.
+        assertFalse(root.anyAccessibilityDescendant(root, scale) { it == root.boundsRelativeTo(root) })
+    }
+
+    @Test
+    fun anyAccessibilityDescendantTerminatesOnACycle() {
+        // The tree is the host app's, and nothing in the UIAccessibility contract stops an element
+        // from listing an ancestor among its accessibilityElements — the same hazard
+        // deepestAccessibilityHitPath guards against, and this walk is not position-gated so it
+        // reaches further.
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val child = UIView()
+        child.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        root.addSubview(child)
+        child.setAccessibilityElements(listOf(root))
+
+        val start = TimeSource.Monotonic.markNow()
+        val found = root.anyAccessibilityDescendant(root, scale) { false }
+
+        assertFalse(found)
+        assertTrue(start.elapsedNow() < 5.seconds, "a cyclic tree must terminate, not spin")
+    }
+
+    /** Resolved against the same coordinate view the walk under test uses, so the two are comparable. */
+    private fun UIView.boundsRelativeTo(view: UIView): AxRect = accessibilityBoundsInWindowPx(view, scale)!!
+
+    @Test
     fun containsIsLeftTopInclusiveAndRightBottomExclusive() {
         // Pins the boundary semantics against Compose's Rect.contains, which the Compose adapter's
         // tap positions are produced by and which this walk must not silently diverge from.

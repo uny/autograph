@@ -178,7 +178,7 @@ class ElementResolverIosTest {
             (30.0 * scale).toFloat(),
             (30.0 * scale).toFloat(),
         )
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, buttonBounds)
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, buttonBounds)
 
         val result = resolveIosElement(root, claims, position)
 
@@ -200,7 +200,7 @@ class ElementResolverIosTest {
             (30.0 * scale).toFloat() + 0.5f,
             (30.0 * scale).toFloat() + 0.5f,
         )
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, driftedButtonBounds)
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, driftedButtonBounds)
 
         val result = resolveIosElement(root, claims, position)
 
@@ -218,7 +218,7 @@ class ElementResolverIosTest {
             (30.0 * scale).toFloat() + 1.5f,
             (30.0 * scale).toFloat() + 1.5f,
         )
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, farDriftedButtonBounds)
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, farDriftedButtonBounds)
 
         val result = resolveIosElement(root, claims, position)
 
@@ -254,7 +254,7 @@ class ElementResolverIosTest {
         // stays the unexpanded layout bounds. The two must still be recognised as one element.
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, unexpandedClaimBoundsOfAShortButton())
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, unexpandedClaimBoundsOfAShortButton())
 
         val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
 
@@ -268,11 +268,74 @@ class ElementResolverIosTest {
         // an explicitly instrumented element reported a second time by autocapture.
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, unexpandedClaimBoundsOfAShortButton())
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, unexpandedClaimBoundsOfAShortButton())
 
         val result = resolveIosElement(root, claims, position, minimumTouchTargetPx = Size.Zero)
 
         assertEquals("share_button", result)
+    }
+
+    /**
+     * The fixture's button with one non-clickable child, sized so the child's own accessibility
+     * frame is exactly [unexpandedClaimBoundsOfAShortButton] — the shape Compose Multiplatform
+     * publishes for a sub-minimum `trackImpression` element centred in a clickable at the minimum
+     * touch target. Measured on device at `(16, 636, 370x24)` inside a host at `(16, 624, 370x48)`;
+     * here 20x8pt inside 20x20pt, the same relationship at the fixture's scale.
+     */
+    private fun buildRootWithButtonContainingAShortChild(): Pair<UIView, Offset> {
+        val (root, position) = buildRootWithButton()
+        val button = root.subviews.first() as UIView
+        val child = UIView()
+        child.setPointFrame(10.0, 16.0, 20.0, 8.0)
+        button.addSubview(child)
+        return root to position
+    }
+
+    @Test
+    fun resolveIosElementSuppressesAShortImpressionInstrumentedElementThatIsItselfTheClickable() {
+        // trackImpression brings no clickable of its own, but the caller can add one — and then the
+        // element IS the resolved clickable, with no descendant of its own, so the #151 expansion
+        // match is the correct read and the veto must still apply.
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_IMPRESSION, unexpandedClaimBoundsOfAShortButton())
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
+
+        assertNull(result)
+    }
+
+    @Test
+    fun resolveIosElementDoesNotSuppressAClickableWhoseShortImpressionDescendantExpandsOntoIt() {
+        // #153. The claim belongs to a non-clickable trackImpression DESCENDANT whose expansion lands
+        // exactly on the enclosing clickable — expansion is not injective, so the rect match alone
+        // cannot tell that apart from the element self-registering (#151). Vetoing here drops an event
+        // the clickable was entitled to, which is worse than the duplicate #151 fixed. The descendant
+        // publishing the claim unexpanded is what settles it.
+        val (root, position) = buildRootWithButtonContainingAShortChild()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_IMPRESSION, unexpandedClaimBoundsOfAShortButton())
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
+
+        assertEquals("share_button", result)
+    }
+
+    @Test
+    fun resolveIosElementStillSuppressesAShortTrackClickElementThatHasAChildFillingIt() {
+        // The same tree, with the claim registered by trackClick instead. Compose Multiplatform
+        // publishes child Texts as their own accessibility descendants even inside a merged clickable
+        // (measured), so applying #153's descendant check to click claims too would stop vetoing a
+        // sub-minimum trackClick CONTAINER whose child exactly fills it — reopening #151 for that
+        // shape. A trackClick claim's element is clickable by construction, so the expansion match
+        // needs no disambiguation and the check is deliberately not applied to it.
+        val (root, position) = buildRootWithButtonContainingAShortChild()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, unexpandedClaimBoundsOfAShortButton())
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
+
+        assertNull(result)
     }
 
     @Test
@@ -282,7 +345,7 @@ class ElementResolverIosTest {
         // suppress a button inside it (the invariant the test below states without expansion).
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, Rect(0f, 0f, 100f, 100f))
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_IMPRESSION, Rect(0f, 0f, 100f, 100f))
 
         val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
 
@@ -300,7 +363,7 @@ class ElementResolverIosTest {
         val claims = AutocaptureClaims()
         // A container claim covering the whole root — much larger than the button's own (10,10)-(30,30)
         // point bounds — simulating a trackImpression ancestor, not the button self-registering.
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, Rect(0f, 0f, 100f, 100f))
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_IMPRESSION, Rect(0f, 0f, 100f, 100f))
 
         val result = resolveIosElement(root, claims, position)
 

@@ -13,6 +13,7 @@ import dev.ynagai.autograph.uikit.AxPoint
 import dev.ynagai.autograph.uikit.AxRect
 import dev.ynagai.autograph.uikit.accessibilityBoundsInWindowPx
 import dev.ynagai.autograph.uikit.accessibilityIdentifierOrNull
+import dev.ynagai.autograph.uikit.anyAccessibilityDescendant
 import dev.ynagai.autograph.uikit.deepestAccessibilityHitPath
 import dev.ynagai.autograph.uikit.isAccessibilityDisabled
 import dev.ynagai.autograph.uikit.nearestAccessibilityClickable
@@ -105,12 +106,12 @@ internal fun resolveIosElement(
     // element" by comparing an instrumented claim's rect against nearestClickable's own bounds
     // (self-registration via trackClick/trackImpression puts a claim keyed at the exact element's
     // own boundsInWindow()) rather than the raw tap position, which would also match any larger
-    // ancestor container overlapping the tap. See isTheElementBehind for why that comparison also has
-    // to account for the minimum touch target.
+    // ancestor container overlapping the tap. See instrumentedElementIs for how that comparison
+    // accounts for the minimum touch target, and why the two claim kinds read it differently.
     if (claims != null) {
         val nearestClickableBounds = nearestClickable.accessibilityBoundsInWindowPx(view, scale)
         if (nearestClickableBounds != null &&
-            claims.instrumented.values.any { it.isTheElementBehind(nearestClickableBounds, minimumTouchTargetPx) }
+            claims.instrumentedElementIs(nearestClickable, nearestClickableBounds, minimumTouchTargetPx, view, scale)
         ) {
             return null
         }
@@ -119,6 +120,62 @@ internal fun resolveIosElement(
     // kdoc in autograph-uikit for why falling back to it would defeat the "never read displayed text"
     // guarantee that Android's resolveAutocaptureTarget honors by only ever reading ContentDescription.
     return identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = null)
+}
+
+/**
+ * Whether the element resolved for this tap — [nearestClickable], whose accessibility frame is
+ * [nearestClickableBounds] — is itself explicitly instrumented, and so must not be autocaptured on
+ * top of the event its own modifier already fires.
+ *
+ * Both claim kinds answer this with [isTheElementBehind], which has to reconcile the touch-target
+ * expansion (see its kdoc). The expanded half of that comparison is not a proof of identity —
+ * expansion is not injective, so a claim can expand onto a rect belonging to a different element —
+ * and the two kinds differ in whether that ambiguity is reachable:
+ *
+ * - [AutocaptureClaims.instrumentedClick] comes from [trackClick], which supplies the `clickable`
+ *   itself. Its element is therefore clickable by construction, so a claim whose expansion lands on
+ *   the resolved clickable describes that clickable. Taken at face value.
+ * - [AutocaptureClaims.instrumentedImpression] comes from [trackImpression], which supplies no
+ *   `clickable` at all. Its element is usually *not* interactive, and Compose Multiplatform publishes
+ *   such an element as its own accessibility node nested inside whatever clickable encloses it. A
+ *   sub-minimum one centred in a clickable exactly at the minimum touch target then expands onto that
+ *   clickable's frame exactly, and vetoing on it drops an event the clickable was entitled to
+ *   (#153 — measured: `(16, 636, 370x24)` expanding onto a host at `(16, 624, 370x48)`, to the point).
+ *   So an expanded match is only honoured once no strict descendant of [nearestClickable] is found
+ *   publishing the claim *unexpanded*, which is how such an element appears.
+ *
+ * The descendant search is deliberately confined to the impression kind. Compose Multiplatform
+ * publishes child `Text`s as separate accessibility descendants **even inside a merged clickable**
+ * (measured: an uninstrumented `Text` inside a `clickable` Box is published in its own right), so
+ * applying it to click claims would stop vetoing a sub-minimum [trackClick] *container* whose child
+ * exactly fills it — reopening #151 for that shape.
+ *
+ * Residual, unmeasured: [trackImpression] on a small element that the caller separately made
+ * clickable *and* that has a descendant exactly filling it. The descendant search suppresses the veto
+ * and the element double-reports. The plain sub-minimum `trackImpression` + `clickable` shape, with
+ * no such descendant, is measured and covered.
+ */
+@OptIn(AutographInternalApi::class)
+private fun AutocaptureClaims.instrumentedElementIs(
+    nearestClickable: Any,
+    nearestClickableBounds: AxRect,
+    minimumTouchTargetPx: Size,
+    view: UIView,
+    scale: Float,
+): Boolean {
+    if (instrumentedClick.values.any { it.isTheElementBehind(nearestClickableBounds, minimumTouchTargetPx) }) {
+        return true
+    }
+    return instrumentedImpression.values.any { claim ->
+        when {
+            // Proof of identity on its own: no expansion was involved, so there is nothing to
+            // disambiguate — this is the same comparison [isTheElementBehind]'s first half makes.
+            claim.approximatelyEquals(nearestClickableBounds) -> true
+            !claim.expandedToAtLeast(minimumTouchTargetPx).approximatelyEquals(nearestClickableBounds) -> false
+            // Only reached when the match came from the expansion, which is the ambiguous case.
+            else -> !nearestClickable.anyAccessibilityDescendant(view, scale) { claim.approximatelyEquals(it) }
+        }
+    }
 }
 
 /**
@@ -142,20 +199,29 @@ internal fun resolveIosElement(
  * containment or tolerance widening, both of which would start matching a merely-similar ancestor
  * container — the failure the equality check exists to prevent (see the call site).
  *
- * Known residuals, both unmeasured and narrower than the case fixed here; each leaves a double report
- * standing, because the expansion derived here isn't the one Compose published. An ancestor clipping
- * the expanded touch target publishes neither the layout bounds nor the full expansion; and for a
- * scaled or clipped element Compose qualifies on the MEASURED size while the claim carries the drawn
- * rect — the distinction `SemanticsHitPath.kt`'s `minTargetDistanceSquared` calls load-bearing.
+ * Known residual, narrower than the case fixed here, leaving a double report standing because the
+ * expansion derived here isn't the one Compose published: a **scaled** element, for which Compose
+ * qualifies the touch target on the MEASURED size while the claim carries the drawn rect — the
+ * distinction `SemanticsHitPath.kt`'s `minTargetDistanceSquared` calls load-bearing. Measured
+ * (iPhone 17 Pro): a `trackClick` `Text` under `scale(0.5f)` published `(62.7, 664, 93x24)` — the
+ * expanded measured rect halved — while its claim was the drawn rect, whose own expansion is
+ * `93x48`. No match, so both the explicit event and an `Element Clicked` fire.
  *
- * The obvious third one — expansion is not injective, so two concentric elements both below the
- * minimum expand to the SAME rect, and instrumenting the inner would suppress a tap on the outer —
- * was **measured and does not occur**. In the canonical shape (a 24dp `trackClick` box centred in its
- * own 48dp `clickable`, what Material builds by construction), tapping the outer ring fired exactly
- * one event, the inner's explicit one: the inner's expanded touch target covers the whole outer box,
- * so Compose routes the tap to the inner and the outer never receives it. There is no outer tap for
- * the suppression to be wrong about. Configurations beyond that one — both elements below the
- * minimum, or non-concentric — were not measured.
+ * A second residual was documented here and is **refuted by measurement**: an ancestor clipping the
+ * expanded touch target does *not* break the match. `clipToBounds` is a draw-time clip and does not
+ * clip the published accessibility frame — a `trackClick` `Text` inside a 24dp `clipToBounds` host
+ * (host `(16, 624, 370x24)`) published the full expansion at `(16, 612, 193.7x48)`, overflowing its
+ * clipping parent, and reported exactly once.
+ *
+ * The third — expansion is not injective, so an element below the minimum can expand onto a rect
+ * belonging to something else — **does occur**, and [instrumentedElementIs] is what confines it. It
+ * does not arise when the instrumented element is itself clickable: in the canonical shape (a 24dp
+ * `trackClick` box centred in its own 48dp `clickable`, what Material builds by construction),
+ * tapping the outer ring fired exactly one event, the inner's explicit one, because the inner's
+ * expanded touch target covers the whole outer box, so Compose routes the tap to the inner and the
+ * outer never receives it. That argument needs the inner to be clickable, and [trackImpression]
+ * instruments without making it so — which is #153. Configurations beyond these — both elements
+ * below the minimum, or non-concentric — were not measured.
  *
  * [minimumTouchTargetPx] defaults to [Size.Zero] (no expansion) only so tests that predate this can
  * state the unexpanded case directly.

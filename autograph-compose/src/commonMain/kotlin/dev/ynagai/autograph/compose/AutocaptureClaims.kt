@@ -10,7 +10,20 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 
-internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED }
+/**
+ * Which modifier registered a claim.
+ *
+ * The two INSTRUMENTED kinds behave identically on Android, which reads
+ * [AutographInstrumentedKey] off the semantics ancestry and never consults these bounds at all. They
+ * differ only for [ElementResolver.ios.kt], and only in one respect: whether the claim's element is
+ * *known to be clickable*. [INSTRUMENTED_CLICK] is registered by [trackClick], which supplies the
+ * `clickable` itself, so its element always is. [INSTRUMENTED_IMPRESSION] is registered by
+ * [trackImpression], which supplies none — its element is clickable only if the caller separately
+ * made it so, and usually isn't. That distinction is what lets the resolver tell a claim that
+ * describes the tapped clickable from one that describes a non-interactive descendant of it; see
+ * `isTheElementBehind` for why geometry alone cannot (#153).
+ */
+internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED_CLICK, INSTRUMENTED_IMPRESSION }
 
 /**
  * On-screen bounds of [autographIgnore]/[trackClick]/[trackImpression] elements, tracked positionally
@@ -29,11 +42,17 @@ internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED }
  */
 internal class AutocaptureClaims {
     val ignored = mutableStateMapOf<Any, Rect>()
-    val instrumented = mutableStateMapOf<Any, Rect>()
+
+    /** Claims from [trackClick] — see [AutocaptureClaimKind] for why these are kept apart. */
+    val instrumentedClick = mutableStateMapOf<Any, Rect>()
+
+    /** Claims from [trackImpression] — see [AutocaptureClaimKind] for why these are kept apart. */
+    val instrumentedImpression = mutableStateMapOf<Any, Rect>()
 
     private fun mapFor(kind: AutocaptureClaimKind) = when (kind) {
         AutocaptureClaimKind.IGNORED -> ignored
-        AutocaptureClaimKind.INSTRUMENTED -> instrumented
+        AutocaptureClaimKind.INSTRUMENTED_CLICK -> instrumentedClick
+        AutocaptureClaimKind.INSTRUMENTED_IMPRESSION -> instrumentedImpression
     }
 
     fun put(key: Any, kind: AutocaptureClaimKind, bounds: Rect) {
