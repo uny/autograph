@@ -142,16 +142,20 @@ internal fun resolveIosElement(
  * containment or tolerance widening, both of which would start matching a merely-similar ancestor
  * container — the failure the equality check exists to prevent (see the call site).
  *
- * Known residuals, all unmeasured and narrower than the case fixed here. Two leave a double report
- * standing, because the expansion derived here isn't the one Compose published: an ancestor clipping
+ * Known residuals, both unmeasured and narrower than the case fixed here; each leaves a double report
+ * standing, because the expansion derived here isn't the one Compose published. An ancestor clipping
  * the expanded touch target publishes neither the layout bounds nor the full expansion; and for a
  * scaled or clipped element Compose qualifies on the MEASURED size while the claim carries the drawn
- * rect — the distinction `SemanticsHitPath.kt`'s `minTargetDistanceSquared` calls load-bearing. One
- * goes the other way: expansion is not injective, so two concentric elements both below the minimum
- * expand to the SAME rect — a 24dp icon centred in its own 48dp clickable is the shape Material
- * builds by construction — and instrumenting the inner one suppresses a tap on the outer, which was
- * never the instrumented element. No rect-only discriminator separates that from a real match, and
- * containment or a wider tolerance would widen it rather than close it.
+ * rect — the distinction `SemanticsHitPath.kt`'s `minTargetDistanceSquared` calls load-bearing.
+ *
+ * The obvious third one — expansion is not injective, so two concentric elements both below the
+ * minimum expand to the SAME rect, and instrumenting the inner would suppress a tap on the outer —
+ * was **measured and does not occur**. In the canonical shape (a 24dp `trackClick` box centred in its
+ * own 48dp `clickable`, what Material builds by construction), tapping the outer ring fired exactly
+ * one event, the inner's explicit one: the inner's expanded touch target covers the whole outer box,
+ * so Compose routes the tap to the inner and the outer never receives it. There is no outer tap for
+ * the suppression to be wrong about. Configurations beyond that one — both elements below the
+ * minimum, or non-concentric — were not measured.
  *
  * [minimumTouchTargetPx] defaults to [Size.Zero] (no expansion) only so tests that predate this can
  * state the unexpanded case directly.

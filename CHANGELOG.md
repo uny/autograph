@@ -21,10 +21,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   involved). Nothing caught it because the sample's only explicitly instrumented element was a
   56dp box, above the threshold — the sample now carries both shapes, and the XCUITest suite asserts
   the ordered event-name log rather than the last target, which cannot tell a double report from a
-  single one since both entries carry the same target. Known residuals: an ancestor clipping the
-  expanded touch target still double-reports; and because expanding is not reversible, an instrumented
-  element whose expansion lands exactly on an enclosing clickable — a 24dp icon centred in its own
-  48dp button — now suppresses that clickable's own tap.
+  single one since both entries carry the same target. Known residual: an ancestor clipping the
+  expanded touch target still double-reports. Expanding is not reversible, so an instrumented element
+  whose expansion lands exactly on an enclosing clickable — a 24dp icon centred in its own 48dp
+  button — could in principle suppress that clickable's own tap; measured on device, it does not,
+  because the inner element's expanded touch target covers the outer one and Compose routes the tap to
+  the inner, so the outer never receives a tap to suppress.
 
 - `Package.swift` on `main` no longer names a stale binary target. CD's self-correcting checksum
   commit is pushed to `refs/tags/<tag>` only, so it landed on no branch and `main` still described
