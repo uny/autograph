@@ -8,7 +8,21 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Fixed
+
+- `Package.swift` on `main` no longer names a stale binary target. CD's self-correcting checksum
+  commit is pushed to `refs/tags/<tag>` only, so it landed on no branch and `main` still described
+  v0.1.0's xcframework after three releases; CD now replays the same rewrite onto `main`, and this
+  release backfills the v0.3.0 values by hand. Tagged consumers (`from: "…"`) were never affected —
+  they resolve the manifest at the tag, where the values have always been correct.
+
 ### Documentation
+
+- `Package.swift`'s comment above `releaseVersion`/`releaseChecksum` no longer describes a
+  mechanism that was removed in [#34]. It told maintainers to bump both by hand before tagging and
+  claimed CD "fails the release if it doesn't match" — that pre-verify design was replaced with the
+  self-correcting one precisely because Kotlin/Native checksums can't be pre-computed, and #34
+  updated `cd.yml`, `ci.yml` and the README but not this comment.
 
 - [ADR 0001](docs/adr/0001-public-api-evolution.md) §4 now rests on a measurement instead of an
   admitted guess ([#104]). The mixed-version klib diamond — an app resolving a newer
@@ -283,6 +297,7 @@ Initial release.
 [#27]: https://github.com/uny/autograph/issues/27
 [#30]: https://github.com/uny/autograph/issues/30
 [#31]: https://github.com/uny/autograph/issues/31
+[#34]: https://github.com/uny/autograph/issues/34
 [#35]: https://github.com/uny/autograph/issues/35
 [#36]: https://github.com/uny/autograph/issues/36
 [#37]: https://github.com/uny/autograph/issues/37
