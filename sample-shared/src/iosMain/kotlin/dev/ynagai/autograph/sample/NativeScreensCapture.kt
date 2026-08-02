@@ -35,7 +35,7 @@ public fun installNativeScreensCapture(
     screensInstalled = true
     val scopeStack = ScopeStack()
     val tracker = LoggingTracker(
-        onTrack = { properties, target -> onTap(targetOrNoTarget(target), properties.toString()) },
+        onTrack = { _, properties, target -> onTap(targetOrNoTarget(target), properties.toString()) },
         onScreen = { name, properties ->
             screenLog = appendScreenLog(screenLog, name, properties.reservedOrNone("previous_screen"))
             onScreenLog(screenLog)

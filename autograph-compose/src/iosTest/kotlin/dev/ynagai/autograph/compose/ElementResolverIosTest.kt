@@ -2,6 +2,7 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
 import platform.CoreGraphics.CGRectMake
@@ -220,6 +221,70 @@ class ElementResolverIosTest {
         claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, farDriftedButtonBounds)
 
         val result = resolveIosElement(root, claims, position)
+
+        assertEquals("share_button", result)
+    }
+
+    /**
+     * The claim a `trackClick`ed element registers when it is SHORTER than the minimum touch
+     * target: its unexpanded layout bounds, centred on the same point as the accessibility frame
+     * the fixture's button publishes (20x20pt). Here 20x8pt, so only the vertical axis is expanded —
+     * matching what was measured on device for a natural-height `Text` (#151).
+     */
+    private fun unexpandedClaimBoundsOfAShortButton(): Rect {
+        val scale = UIScreen.mainScreen.scale
+        return Rect(
+            (10.0 * scale).toFloat(),
+            (16.0 * scale).toFloat(),
+            (30.0 * scale).toFloat(),
+            (24.0 * scale).toFloat(),
+        )
+    }
+
+    /** The fixture button's own 20x20pt size — what Compose would have expanded that claim to. */
+    private fun minimumTouchTargetPxOfTheFixture(): Size {
+        val side = (20.0 * UIScreen.mainScreen.scale).toFloat()
+        return Size(side, side)
+    }
+
+    @Test
+    fun resolveIosElementSuppressesAnInstrumentedElementShorterThanTheMinimumTouchTarget() {
+        // #151: Compose expands a small element's touch target — and the accessibility frame it
+        // publishes with it — to the minimum touch target, centred, while the claim it registers
+        // stays the unexpanded layout bounds. The two must still be recognised as one element.
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, unexpandedClaimBoundsOfAShortButton())
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
+
+        assertNull(result)
+    }
+
+    @Test
+    fun resolveIosElementDoesNotSuppressAShortInstrumentedElementWithoutAMinimumTouchTarget() {
+        // The negative of the test above, pinning that reconciling the expansion is what does the
+        // work: with no minimum touch target to expand to, the same claim is the #151 defect —
+        // an explicitly instrumented element reported a second time by autocapture.
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, unexpandedClaimBoundsOfAShortButton())
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPx = Size.Zero)
+
+        assertEquals("share_button", result)
+    }
+
+    @Test
+    fun resolveIosElementStillDoesNotSuppressAnAncestorContainerWhenExpandingToTheMinimumTouchTarget() {
+        // Expansion must not widen what counts as a match: a claim ALREADY larger than the minimum
+        // touch target is left alone by it, so an instrumented ancestor container still doesn't
+        // suppress a button inside it (the invariant the test below states without expansion).
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED, Rect(0f, 0f, 100f, 100f))
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
 
         assertEquals("share_button", result)
     }
