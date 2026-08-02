@@ -591,6 +591,15 @@ the GitHub Release — so the committed checksum and the uploaded artifact can n
 means pushing a `vX.Y.Z` tag almost always results in that tag pointing one commit further than
 where it was originally pushed; that's expected, not a sign anything went wrong.
 
+Because that self-correcting commit is pushed to `refs/tags/<tag>` and nowhere else, it used to
+land on no branch at all — `main`'s copy of those values stayed at v0.1.0 for three releases. A
+final CD step now replays the same rewrite onto `main` (retrying if `main` moves mid-release), so
+reading `Package.swift` on `main` describes the most recent release rather than an ancient one. It
+runs after the release assets are uploaded, so a failure there can't leave a half-published tag.
+Note this does not make `.package(url: …, branch: "main")` a supported way to consume the package:
+`Sources/` would be at `main`'s HEAD while the binary target is the last *released* Kotlin build,
+so the Swift and Kotlin halves can be out of step. Depend on a version.
+
 ## License
 
 ```text

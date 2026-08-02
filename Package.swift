@@ -16,10 +16,18 @@ import PackageDescription
 //    Release asset.
 private let localXCFrameworkPath = "autograph-apple/build/XCFrameworks/release/Autograph.xcframework"
 
-// Bump both together before tagging a release: the CD workflow re-derives the checksum from the
-// zip it builds and fails the release if it doesn't match this value, so the two can't drift.
-private let releaseVersion = "0.1.0"
-private let releaseChecksum = "f8ced5ae5d97e08b848b61a1705fb7e85fd675d8372e48495fc4918cb5939c44"
+// Don't hand-edit these ahead of a release — CD owns them. Kotlin/Native's build output isn't
+// reproducible across separate builds, so a release's checksum is only knowable from the build
+// that produces the zip actually being released; there is nothing to pre-compute and no mismatch
+// to fail on. Instead cd.yml rewrites both values with what it just built, moves the tag onto
+// that commit, and pushes the same rewrite to main. On a tag they therefore describe that tag's
+// own release asset; on main they describe the most recent release.
+//
+// That main-side sync is a freshness fix, not an endorsement of `branch: "main"` as a way to
+// consume this package: Sources/ would come from main's HEAD while this binary target is the last
+// *released* Kotlin build, so the Swift and Kotlin halves can be out of step. Depend on a version.
+private let releaseVersion = "0.3.0"
+private let releaseChecksum = "24889d3a1996c06b2091308d7e29755697ebccbe20f68c12aca6c22b5c4df173"
 
 private let autographTarget: Target = FileManager.default.fileExists(atPath: localXCFrameworkPath)
     ? .binaryTarget(name: "Autograph", path: localXCFrameworkPath)

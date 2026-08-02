@@ -46,6 +46,7 @@ jobs:
       # checksum this build actually produced, commit it, and move the tag to point at that
       # commit — the same zip built above is what gets uploaded, so they can never disagree.
       - name: Publish Autograph.xcframework binary target
+        id: binary_target
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -55,6 +56,7 @@ jobs:
 
           (cd autograph-apple/build/XCFrameworks/release && zip -ry Autograph.xcframework.zip Autograph.xcframework)
           checksum=$(swift package compute-checksum "$zip_path")
+          echo "CHECKSUM=$checksum" >> "$GITHUB_OUTPUT"
 
           sed -i '' -E "s/private let releaseVersion = \"[^\"]*\"/private let releaseVersion = \"$version\"/" Package.swift
           sed -i '' -E "s/private let releaseChecksum = \"[^\"]*\"/private let releaseChecksum = \"$checksum\"/" Package.swift
@@ -70,3 +72,46 @@ jobs:
 
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --generate-notes
           gh release upload "$tag" "$zip_path" --clobber
+
+      # The rewrite above is pushed to refs/tags/<tag> only, so it lands on no branch: main's copy
+      # of those two values sat at v0.1.0 through v0.1.1, v0.2.0 and v0.3.0. Replay it onto main so
+      # reading Package.swift there doesn't describe a three-releases-old binary. Deliberately the
+      # last step in the job — main being briefly stale is cosmetic, whereas failing here before
+      # the release assets are up would leave a half-published tag behind.
+      - name: Sync Package.swift's binary target onto main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CHECKSUM: ${{ steps.binary_target.outputs.CHECKSUM }}
+        run: |
+          tag="${GITHUB_REF#refs/tags/}"
+          version="${tag#v}"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+          # main can advance between the fetch and the push (a PR merging mid-release), which is a
+          # lost race rather than an error — rebuild the commit on the new tip and try again.
+          for attempt in 1 2 3; do
+            git fetch --no-tags origin main
+            git checkout -B main-sync origin/main
+
+            sed -i '' -E "s/private let releaseVersion = \"[^\"]*\"/private let releaseVersion = \"$version\"/" Package.swift
+            sed -i '' -E "s/private let releaseChecksum = \"[^\"]*\"/private let releaseChecksum = \"$CHECKSUM\"/" Package.swift
+
+            if git diff --quiet -- Package.swift; then
+              echo "main already carries $tag's binary target; nothing to sync."
+              exit 0
+            fi
+
+            git add Package.swift
+            git commit -m "chore: sync Autograph binary target on main for $tag"
+            if git push origin HEAD:main; then
+              echo "Synced $tag's binary target onto main."
+              exit 0
+            fi
+            echo "main moved while syncing (attempt $attempt of 3); retrying."
+          done
+
+          echo "::error::Could not sync Package.swift onto main after 3 attempts. The $tag release itself is complete; main just still names an older release's binary target."
+          exit 1
