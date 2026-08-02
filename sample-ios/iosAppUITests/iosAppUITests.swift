@@ -56,14 +56,30 @@ final class iosAppUITests: XCTestCase {
         app.staticTexts["track_log_label"].label
     }
 
+    /// Blocks until the launch-time `Recipe Viewed` impression is in the log.
+    ///
+    /// `trackImpression` only fires after its 500 ms dwell (`minDurationMs`), which `app.launch()`
+    /// does not wait for — so a test that asserts the WHOLE ordered log has to establish that
+    /// baseline before it taps, or the tap's own entry can land first and the assertion fails on
+    /// ordering rather than on the behaviour under test.
+    private func waitForImpressionBaseline(_ app: XCUIApplication) {
+        expectation(
+            for: NSPredicate(format: "label == %@", "Tracks: Recipe Viewed:recipe_card"),
+            evaluatedWith: app.staticTexts["track_log_label"]
+        )
+        waitForExpectations(timeout: 5)
+    }
+
     /// Modifier.trackClick fires its own explicit event; autocapture must not also report it.
     func testExplicitTrackClickFiresExactlyOnce() {
         let app = XCUIApplication()
         app.launch()
+        waitForImpressionBaseline(app)
         app.buttons["explicit_tracked_button"].tap()
         XCTAssertEqual(lastEventLabel(app), "Last event target: explicit_tracked_button")
-        // Recipe Viewed is the trackImpression that fires on launch; the tap must add exactly one
-        // more entry, and it must be the explicit event rather than an autocaptured Element Clicked.
+        // The tap must add exactly one more entry, and it must be the explicit event rather than an
+        // autocaptured Element Clicked. Read eagerly, not awaited: a wait for this exact string would
+        // pass on a duplicate that had not been appended yet.
         XCTAssertEqual(
             trackLog(app),
             "Tracks: Recipe Viewed:recipe_card|Recipe Saved:explicit_tracked_button"
@@ -79,6 +95,7 @@ final class iosAppUITests: XCTestCase {
     func testExplicitTrackClickOnASmallElementFiresExactlyOnce() {
         let app = XCUIApplication()
         app.launch()
+        waitForImpressionBaseline(app)
         app.buttons["explicit_tracked_small"].tap()
         XCTAssertEqual(
             trackLog(app),

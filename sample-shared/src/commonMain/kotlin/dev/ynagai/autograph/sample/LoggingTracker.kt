@@ -26,9 +26,8 @@ internal class LoggingTracker(
         sampleLog("track name=$name target=$target properties=$properties")
         // `target` stays a positional argument: the autocapture pipelines pass it alongside
         // `properties`, not merged into it, so a test observing the target reads it here directly.
-        // `name` is handed over too — an explicitly instrumented element and an autocaptured tap on
-        // it report the SAME target, so the name is the only thing that tells a double report from a
-        // single one (#151).
+        // `name` is handed over too — see [appendTrackLog] for why the target alone cannot tell a
+        // double report from a single one (#151).
         onTrack(name, properties, target)
     }
 

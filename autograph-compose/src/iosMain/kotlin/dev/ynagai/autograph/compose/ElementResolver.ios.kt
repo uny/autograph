@@ -142,10 +142,19 @@ internal fun resolveIosElement(
  * containment or tolerance widening, both of which would start matching a merely-similar ancestor
  * container — the failure the equality check exists to prevent (see the call site).
  *
- * Known residual: if an ancestor clips the expanded touch target, the published frame is neither the
- * layout bounds nor the full expansion, and the element is double-reported as before. Unmeasured, and
- * narrower than the case fixed here; [minimumTouchTargetPx] defaults to [Size.Zero] (no expansion)
- * only so tests that predate this can state the unexpanded case directly.
+ * Known residuals, all unmeasured and narrower than the case fixed here. Two leave a double report
+ * standing, because the expansion derived here isn't the one Compose published: an ancestor clipping
+ * the expanded touch target publishes neither the layout bounds nor the full expansion; and for a
+ * scaled or clipped element Compose qualifies on the MEASURED size while the claim carries the drawn
+ * rect — the distinction `SemanticsHitPath.kt`'s `minTargetDistanceSquared` calls load-bearing. One
+ * goes the other way: expansion is not injective, so two concentric elements both below the minimum
+ * expand to the SAME rect — a 24dp icon centred in its own 48dp clickable is the shape Material
+ * builds by construction — and instrumenting the inner one suppresses a tap on the outer, which was
+ * never the instrumented element. No rect-only discriminator separates that from a real match, and
+ * containment or a wider tolerance would widen it rather than close it.
+ *
+ * [minimumTouchTargetPx] defaults to [Size.Zero] (no expansion) only so tests that predate this can
+ * state the unexpanded case directly.
  */
 @OptIn(AutographInternalApi::class)
 private fun Rect.isTheElementBehind(other: AxRect, minimumTouchTargetPx: Size): Boolean =
