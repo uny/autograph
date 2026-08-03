@@ -217,7 +217,9 @@ private fun AutocaptureClaims.instrumentedElementIs(
  * distinction `SemanticsHitPath.kt`'s `minTargetDistanceSquared` calls load-bearing. Measured
  * (iPhone 17 Pro): a `trackClick` `Text` under `scale(0.5f)` published `(62.7, 664, 93x24)` — the
  * expanded measured rect halved — while its claim was the drawn rect, whose own expansion is
- * `93x48`. No match, so both the explicit event and an `Element Clicked` fire.
+ * `93x48`. No match, so both the explicit event and an `Element Clicked` fire. Tracked as #159, and
+ * best decided together with #158 — qualifying the unexpanded branch to close that one trades a drop
+ * for a duplicate on exactly this shape.
  *
  * A second residual was documented here and is **refuted by measurement**: an ancestor clipping the
  * expanded touch target does *not* break the match. `clipToBounds` is a draw-time clip and does not

@@ -24,7 +24,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   single one since both entries carry the same target. Known residual: a **scaled** element still
   double-reports, because Compose qualifies the touch target on the measured size while the claim
   carries the drawn rect (measured: `scale(0.5f)` publishes the expanded measured rect halved, which
-  the drawn rect's own expansion does not match).
+  the drawn rect's own expansion does not match) ([#159]).
 
 - Autocapture on iOS no longer drops a tap on an **uninstrumented clickable** that merely contains a
   small `Modifier.trackImpression` element ([#153]). Expanding a claim to the minimum touch target is
@@ -380,3 +380,4 @@ Initial release.
 [#151]: https://github.com/uny/autograph/issues/151
 [#153]: https://github.com/uny/autograph/issues/153
 [#158]: https://github.com/uny/autograph/issues/158
+[#159]: https://github.com/uny/autograph/issues/159
