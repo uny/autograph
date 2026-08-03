@@ -42,7 +42,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Compose Multiplatform publishes child `Text`s as their own accessibility descendants even inside a
   merged clickable: applying the descendant check to click claims too would stop suppressing a
   sub-minimum `trackClick` container whose child exactly fills it, reopening the defect above. Android
-  was never affected, on either count. Introduced by the fix above and never released.
+  was never affected, on either count. Introduced by the fix above and never released. Known residual,
+  unmeasured and older than either fix: a `trackImpression` element *coincident* with the clickable
+  enclosing it matches without any expansion, so the descendant check never runs and that clickable's
+  tap is still dropped ([#158]).
 
 - `Package.swift` on `main` no longer names a stale binary target. CD's self-correcting checksum
   commit is pushed to `refs/tags/<tag>` only, so it landed on no branch and `main` still described
@@ -376,3 +379,4 @@ Initial release.
 [#140]: https://github.com/uny/autograph/issues/140
 [#151]: https://github.com/uny/autograph/issues/151
 [#153]: https://github.com/uny/autograph/issues/153
+[#158]: https://github.com/uny/autograph/issues/158

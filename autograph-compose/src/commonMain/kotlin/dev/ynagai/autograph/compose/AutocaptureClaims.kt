@@ -21,7 +21,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
  * [trackImpression], which supplies none — its element is clickable only if the caller separately
  * made it so, and usually isn't. That distinction is what lets the resolver tell a claim that
  * describes the tapped clickable from one that describes a non-interactive descendant of it; see
- * `isTheElementBehind` for why geometry alone cannot (#153).
+ * `instrumentedElementIs` for why geometry alone cannot (#153), and what it still does not settle.
  */
 internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED_CLICK, INSTRUMENTED_IMPRESSION }
 

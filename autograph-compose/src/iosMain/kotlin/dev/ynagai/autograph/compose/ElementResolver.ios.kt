@@ -127,10 +127,10 @@ internal fun resolveIosElement(
  * [nearestClickableBounds] — is itself explicitly instrumented, and so must not be autocaptured on
  * top of the event its own modifier already fires.
  *
- * Both claim kinds answer this with [isTheElementBehind], which has to reconcile the touch-target
- * expansion (see its kdoc). The expanded half of that comparison is not a proof of identity —
- * expansion is not injective, so a claim can expand onto a rect belonging to a different element —
- * and the two kinds differ in whether that ambiguity is reachable:
+ * Both claim kinds answer this with the two comparisons [isTheElementBehind] makes — the click kind
+ * by calling it, the impression kind by spelling them out so the ambiguous one can be qualified. The
+ * expanded half is not a proof of identity: expansion is not injective, so a claim can expand onto a
+ * rect belonging to a different element, and the two kinds differ in whether that is reachable:
  *
  * - [AutocaptureClaims.instrumentedClick] comes from [trackClick], which supplies the `clickable`
  *   itself. Its element is therefore clickable by construction, so a claim whose expansion lands on
@@ -150,10 +150,20 @@ internal fun resolveIosElement(
  * applying it to click claims would stop vetoing a sub-minimum [trackClick] *container* whose child
  * exactly fills it — reopening #151 for that shape.
  *
- * Residual, unmeasured: [trackImpression] on a small element that the caller separately made
- * clickable *and* that has a descendant exactly filling it. The descendant search suppresses the veto
- * and the element double-reports. The plain sub-minimum `trackImpression` + `clickable` shape, with
- * no such descendant, is measured and covered.
+ * Two residuals, both unmeasured and both confined to the impression kind:
+ *
+ * - [trackImpression] on a small element that the caller separately made clickable *and* that has a
+ *   descendant exactly filling it. The descendant search suppresses the veto and the element
+ *   double-reports. The plain sub-minimum `trackImpression` + `clickable` shape, with no such
+ *   descendant, is measured and covered.
+ * - The unexpanded branch below is left at face value, and it is **not** proof of identity either: a
+ *   non-interactive [trackImpression] element coincident with the clickable enclosing it (a `Box`
+ *   wrapping a single `trackImpression` `Text` with no padding, say) publishes the same frame as that
+ *   clickable, so the claim equals [nearestClickableBounds] with no expansion involved and the veto
+ *   drops the host's tap — #153's failure by a route the descendant search never sees. This predates
+ *   #151, which only added the expanded half; qualifying it the same way would trade the drop for a
+ *   duplicate on the first residual above, and which trade is right is a question for a device, not
+ *   for this comment. Tracked separately (#158); the shapes measured for #153 are unaffected.
  */
 @OptIn(AutographInternalApi::class)
 private fun AutocaptureClaims.instrumentedElementIs(
@@ -168,8 +178,10 @@ private fun AutocaptureClaims.instrumentedElementIs(
     }
     return instrumentedImpression.values.any { claim ->
         when {
-            // Proof of identity on its own: no expansion was involved, so there is nothing to
-            // disambiguate — this is the same comparison [isTheElementBehind]'s first half makes.
+            // [isTheElementBehind]'s first half, deliberately unqualified: expansion is not involved,
+            // so #153's non-injectivity cannot be what produced this match. It is still not proof of
+            // identity — a coincident descendant publishes the same rect and is vetoed wrongly. See
+            // the kdoc's second residual (#158) for why that is left standing rather than fixed here.
             claim.approximatelyEquals(nearestClickableBounds) -> true
             !claim.expandedToAtLeast(minimumTouchTargetPx).approximatelyEquals(nearestClickableBounds) -> false
             // Only reached when the match came from the expansion, which is the ambiguous case.
