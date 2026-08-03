@@ -625,6 +625,86 @@ class AccessibilityTreeTest {
     // `iosAppUITests.testDisabledElementIsNotCaptured` for Compose Multiplatform.
 
     @Test
+    fun anyAccessibilityDescendantFindsAMatchAtAnyDepthAndExcludesTheElementItself() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val middle = UIView()
+        middle.setPointFrame(10.0, 10.0, 40.0, 40.0)
+        root.addSubview(middle)
+        val leaf = UIView()
+        leaf.setPointFrame(20.0, 20.0, 5.0, 5.0)
+        middle.addSubview(leaf)
+
+        assertTrue(root.anyAccessibilityDescendant(root, scale) { it == middle.boundsRelativeTo(root) })
+        assertTrue(root.anyAccessibilityDescendant(root, scale) { it == leaf.boundsRelativeTo(root) })
+        // Strict: the caller in `autograph-compose` is asking "does this claim describe something
+        // BELOW the resolved clickable", so matching the clickable itself would defeat the question.
+        assertFalse(root.anyAccessibilityDescendant(root, scale) { it == root.boundsRelativeTo(root) })
+    }
+
+    @Test
+    fun anyAccessibilityDescendantTerminatesOnACycle() {
+        // The tree is the host app's, and nothing in the UIAccessibility contract stops an element
+        // from listing an ancestor among its accessibilityElements — the same hazard
+        // deepestAccessibilityHitPath guards against, and this walk is not position-gated so it
+        // reaches further.
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val child = UIView()
+        child.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        root.addSubview(child)
+        child.setAccessibilityElements(listOf(root))
+
+        val start = TimeSource.Monotonic.markNow()
+        val found = root.anyAccessibilityDescendant(root, scale) { false }
+
+        assertFalse(found)
+        assertTrue(start.elapsedNow() < 5.seconds, "a cyclic tree must terminate, not spin")
+    }
+
+    /**
+     * The breadth bound, which the cycle test above cannot reach: there no branch survives past
+     * depth two, so the ancestor check alone ends the walk and [MAX_ACCESSIBILITY_NODE_VISITS] is
+     * never consulted. A branching DAG has no cycle for that check to catch — every root-to-leaf
+     * path is made of distinct nodes — while the *number* of such paths doubles per level, so the
+     * visit budget is the only thing standing between this shape and minutes on the main thread.
+     * [boundsTotalWorkWhenABranchingDagWouldExplode] pins the same guarantee for
+     * [deepestAccessibilityHitPath]; this walk needs its own, since it is not position-gated and so
+     * prunes even less.
+     *
+     * Wall-clock for the same reason that test gives: the failure mode is time, not a wrong answer.
+     */
+    @Test
+    fun anyAccessibilityDescendantBoundsTotalWorkWhenABranchingDagWouldExplode() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        var level = listOf<UIView>(root)
+        repeat(26) {
+            val left = UIView()
+            left.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            val right = UIView()
+            right.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            level.forEach { it.setAccessibilityElements(listOf(left, right)) }
+            level = listOf(left, right)
+        }
+
+        val started = TimeSource.Monotonic.markNow()
+        // A predicate that never matches, so nothing short-circuits the walk before the budget does.
+        val found = root.anyAccessibilityDescendant(root, scale) { false }
+        val elapsed = started.elapsedNow()
+
+        assertFalse(found)
+        assertTrue(
+            elapsed < 5.seconds,
+            "expected the visit budget to bound the walk, but it took $elapsed",
+        )
+    }
+
+    /** Resolved against the same coordinate view the walk under test uses, so the two are comparable. */
+    private fun UIView.boundsRelativeTo(view: UIView): AxRect = accessibilityBoundsInWindowPx(view, scale)!!
+
+    @Test
     fun containsIsLeftTopInclusiveAndRightBottomExclusive() {
         // Pins the boundary semantics against Compose's Rect.contains, which the Compose adapter's
         // tap positions are produced by and which this walk must not silently diverge from.

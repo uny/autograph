@@ -375,6 +375,59 @@ public fun Any.accessibilityChildren(): List<Any> {
 }
 
 /**
+ * Whether any **strict** descendant of this element publishes an accessibility frame satisfying
+ * [predicate]. This element itself is never offered to [predicate].
+ *
+ * Unlike [deepestAccessibilityHitPath] this does not gate the descent on containing a position: the
+ * caller is asking about the subtree as a whole, not about one tap. `autograph-compose` uses it to
+ * ask whether an instrumented claim describes a descendant of the resolved clickable rather than the
+ * clickable itself (#153) — a question that has to hold for taps anywhere on the clickable, including
+ * the margin outside the descendant, so a position-gated walk would answer it correctly only for some
+ * of them.
+ *
+ * **Threading.** Main thread only, for the same reason [deepestAccessibilityHitPath] is.
+ *
+ * **Termination.** Bounded exactly as [deepestAccessibilityHitPath] is, against the same
+ * host-supplied and possibly cyclic tree: a branch revisiting a node already on the path is
+ * abandoned, descent stops at [MAX_ACCESSIBILITY_TREE_DEPTH], and the walk stops after
+ * [MAX_ACCESSIBILITY_NODE_VISITS] nodes. Exhausting any of them returns false — for the caller above
+ * that degrades to keeping the veto, i.e. a dropped event rather than a wedged main thread, matching
+ * how the rest of this file resolves the same trade.
+ */
+@AutographInternalApi
+public fun Any.anyAccessibilityDescendant(
+    view: UIView,
+    scale: Float,
+    predicate: (AxRect) -> Boolean,
+): Boolean = anyAccessibilityDescendant(
+    view,
+    scale,
+    predicate,
+    ancestors = listOf(this),
+    budget = intArrayOf(MAX_ACCESSIBILITY_NODE_VISITS),
+)
+
+@OptIn(AutographInternalApi::class)
+private fun Any.anyAccessibilityDescendant(
+    view: UIView,
+    scale: Float,
+    predicate: (AxRect) -> Boolean,
+    ancestors: List<Any>,
+    budget: IntArray,
+): Boolean {
+    if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return false
+    for (child in accessibilityChildren()) {
+        if (budget[0]-- <= 0) return false
+        // `==`, not `===`, for the reason deepestAccessibilityHitPath's cycle guard documents.
+        if (ancestors.any { it == child }) continue
+        val bounds = child.accessibilityBoundsInWindowPx(view, scale)
+        if (bounds != null && predicate(bounds)) return true
+        if (child.anyAccessibilityDescendant(view, scale, predicate, ancestors + child, budget)) return true
+    }
+    return false
+}
+
+/**
  * The innermost element on this hit path that is clickable, or null if none is.
  *
  * Both iOS capture pipelines attribute a tap this way — `autograph-compose` for Compose

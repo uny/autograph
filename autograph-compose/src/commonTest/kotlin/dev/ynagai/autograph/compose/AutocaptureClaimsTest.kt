@@ -32,7 +32,8 @@ class AutocaptureClaimsTest {
         claims.put(key, AutocaptureClaimKind.IGNORED, bounds)
 
         assertEquals(bounds, claims.ignored[key])
-        assertTrue(claims.instrumented.isEmpty())
+        assertTrue(claims.instrumentedClick.isEmpty())
+        assertTrue(claims.instrumentedImpression.isEmpty())
     }
 
     @Test
@@ -41,12 +42,12 @@ class AutocaptureClaimsTest {
         val key = Any()
         val ignoredBounds = Rect(0f, 0f, 10f, 10f)
         claims.put(key, AutocaptureClaimKind.IGNORED, ignoredBounds)
-        claims.put(key, AutocaptureClaimKind.INSTRUMENTED, Rect(0f, 0f, 10f, 10f))
+        claims.put(key, AutocaptureClaimKind.INSTRUMENTED_CLICK, Rect(0f, 0f, 10f, 10f))
 
-        claims.remove(key, AutocaptureClaimKind.INSTRUMENTED)
+        claims.remove(key, AutocaptureClaimKind.INSTRUMENTED_CLICK)
 
-        assertTrue(claims.instrumented.isEmpty())
-        assertEquals(ignoredBounds, claims.ignored[key], "IGNORED entry for the same key should survive INSTRUMENTED removal")
+        assertTrue(claims.instrumentedClick.isEmpty())
+        assertEquals(ignoredBounds, claims.ignored[key], "IGNORED entry for the same key should survive INSTRUMENTED_CLICK removal")
     }
 
     @Test
@@ -71,10 +72,10 @@ class AutocaptureClaimsTest {
         val instrumentedBounds = Rect(50f, 50f, 60f, 60f)
 
         claims.put(key, AutocaptureClaimKind.IGNORED, ignoredBounds)
-        claims.put(key, AutocaptureClaimKind.INSTRUMENTED, instrumentedBounds)
+        claims.put(key, AutocaptureClaimKind.INSTRUMENTED_CLICK, instrumentedBounds)
 
         assertEquals(ignoredBounds, claims.ignored[key])
-        assertEquals(instrumentedBounds, claims.instrumented[key])
+        assertEquals(instrumentedBounds, claims.instrumentedClick[key])
     }
 }
 
@@ -161,12 +162,13 @@ class AutocaptureClaimDisposalTest {
             }
         }
         waitForIdle()
-        assertTrue(claims?.instrumented?.isNotEmpty() == true, "expected trackClick to register an instrumented claim while composed")
+        assertTrue(claims?.instrumentedClick?.isNotEmpty() == true, "expected trackClick to register an INSTRUMENTED_CLICK claim while composed")
+        assertTrue(claims?.instrumentedImpression?.isEmpty() == true, "trackClick must not register an impression-kind claim — the two are what iOS tells apart (#153)")
 
         visible = false
         waitForIdle()
 
-        assertTrue(claims?.instrumented?.isEmpty() == true, "expected the instrumented claim to be removed once trackClick left the composition")
+        assertTrue(claims?.instrumentedClick?.isEmpty() == true, "expected the instrumented claim to be removed once trackClick left the composition")
     }
 
     /** [trackImpression]'s own `registerAutocaptureClaim` call site, distinct from [trackClick]'s. */
@@ -185,12 +187,13 @@ class AutocaptureClaimDisposalTest {
             }
         }
         waitForIdle()
-        assertTrue(claims?.instrumented?.isNotEmpty() == true, "expected trackImpression to register an instrumented claim while composed")
+        assertTrue(claims?.instrumentedImpression?.isNotEmpty() == true, "expected trackImpression to register an INSTRUMENTED_IMPRESSION claim while composed")
+        assertTrue(claims?.instrumentedClick?.isEmpty() == true, "trackImpression must not register a click-kind claim — the two are what iOS tells apart (#153)")
 
         visible = false
         waitForIdle()
 
-        assertTrue(claims?.instrumented?.isEmpty() == true, "expected the instrumented claim to be removed once trackImpression left the composition")
+        assertTrue(claims?.instrumentedImpression?.isEmpty() == true, "expected the instrumented claim to be removed once trackImpression left the composition")
     }
 
     /**

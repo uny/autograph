@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
@@ -160,6 +161,28 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
                 .testTag("explicit_tracked_small")
                 .trackClick("Recipe Saved", target = "explicit_tracked_small") {},
         )
+
+        // A trackImpression element SHORTER than the minimum touch target, not clickable itself,
+        // centred in a clickable that is exactly at the minimum. Its claim expands onto the outer's
+        // accessibility frame exactly, so iOS's rect match reads it as "the outer is instrumented"
+        // and drops the outer's own tap — #153, the false-veto direction of #151's fix. The outer is
+        // deliberately NOT instrumented: autocapture owns its taps and must keep reporting them.
+        Box(
+            modifier = Modifier
+                .testTag("impression_inner_host")
+                .fillMaxWidth()
+                .height(48.dp)
+                .background(MaterialTheme.colorScheme.tertiaryContainer)
+                .clickable {},
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                "Impression inside a plain 48dp clickable",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .trackImpression("Recipe Viewed", target = "impression_inner"),
+            )
+        }
 
         // Modifier.autographIgnore excludes a subtree from autocapture entirely.
         Box(
