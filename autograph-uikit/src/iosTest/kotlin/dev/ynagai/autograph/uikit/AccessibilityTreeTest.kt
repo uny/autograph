@@ -662,6 +662,45 @@ class AccessibilityTreeTest {
         assertTrue(start.elapsedNow() < 5.seconds, "a cyclic tree must terminate, not spin")
     }
 
+    /**
+     * The breadth bound, which the cycle test above cannot reach: there no branch survives past
+     * depth two, so the ancestor check alone ends the walk and [MAX_ACCESSIBILITY_NODE_VISITS] is
+     * never consulted. A branching DAG has no cycle for that check to catch — every root-to-leaf
+     * path is made of distinct nodes — while the *number* of such paths doubles per level, so the
+     * visit budget is the only thing standing between this shape and minutes on the main thread.
+     * [boundsTotalWorkWhenABranchingDagWouldExplode] pins the same guarantee for
+     * [deepestAccessibilityHitPath]; this walk needs its own, since it is not position-gated and so
+     * prunes even less.
+     *
+     * Wall-clock for the same reason that test gives: the failure mode is time, not a wrong answer.
+     */
+    @Test
+    fun anyAccessibilityDescendantBoundsTotalWorkWhenABranchingDagWouldExplode() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        var level = listOf<UIView>(root)
+        repeat(26) {
+            val left = UIView()
+            left.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            val right = UIView()
+            right.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            level.forEach { it.setAccessibilityElements(listOf(left, right)) }
+            level = listOf(left, right)
+        }
+
+        val started = TimeSource.Monotonic.markNow()
+        // A predicate that never matches, so nothing short-circuits the walk before the budget does.
+        val found = root.anyAccessibilityDescendant(root, scale) { false }
+        val elapsed = started.elapsedNow()
+
+        assertFalse(found)
+        assertTrue(
+            elapsed < 5.seconds,
+            "expected the visit budget to bound the walk, but it took $elapsed",
+        )
+    }
+
     /** Resolved against the same coordinate view the walk under test uses, so the two are comparable. */
     private fun UIView.boundsRelativeTo(view: UIView): AxRect = accessibilityBoundsInWindowPx(view, scale)!!
 
