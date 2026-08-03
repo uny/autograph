@@ -20,9 +20,28 @@ final class iosAppUITests: XCTestCase {
         app.staticTexts["last_event_props_label"].label
     }
 
-    func testPlainButtonAttribution() {
+    /// Launches and blocks until both launch-time impressions have landed.
+    ///
+    /// Every assertion in this class reads `last_event_label` or the ordered `track_log_label`, and an
+    /// impression that fires *after* the tap corrupts both — `trackImpression`'s 500 ms dwell
+    /// (`minDurationMs`) outlives `app.launch()`, which does not wait for it. Tapping before the
+    /// baseline is established therefore races the impression, and the label ends up naming the
+    /// impression instead of the tap.
+    ///
+    /// This lives in the shared launch path rather than in the tests that happened to fail: the race
+    /// was latent from the moment the sample had one launch-time impression, and only widened when it
+    /// gained a second (#153's `impression_inner`). A fast machine wins it every time, which is why it
+    /// surfaced on CI and never locally — so "the test passes here" is not evidence any individual
+    /// test is safe without the wait.
+    private func launchSettled() -> XCUIApplication {
         let app = XCUIApplication()
         app.launch()
+        waitForImpressionBaseline(app)
+        return app
+    }
+
+    func testPlainButtonAttribution() {
+        let app = launchSettled()
         app.buttons["plain_button"].tap()
         XCTAssertEqual(lastEventLabel(app), "Last event target: plain_button")
     }
@@ -30,8 +49,7 @@ final class iosAppUITests: XCTestCase {
     /// A tap on the inner element of a clickable-inside-clickable pair must attribute to the
     /// inner element, not the outer ancestor it's nested in.
     func testNestedClickableAttributesToInnerElement() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSettled()
         app.buttons["inner_button"].tap()
         XCTAssertEqual(lastEventLabel(app), "Last event target: inner_button")
     }
@@ -39,8 +57,7 @@ final class iosAppUITests: XCTestCase {
     /// A tap on the outer container, outside the inner element's bounds, must attribute to the
     /// outer element, not always default to whichever is nested deepest.
     func testOuterContainerAttributesToOuterElement() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSettled()
         // Coordinate well outside inner_button's bounds but inside outer_container's.
         let outer = app.buttons["outer_container"]
         outer.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
@@ -76,14 +93,16 @@ final class iosAppUITests: XCTestCase {
             for: NSPredicate(format: "label == %@", Self.impressionBaseline),
             evaluatedWith: app.staticTexts["track_log_label"]
         )
-        waitForExpectations(timeout: 5)
+        // Generous, and costs nothing when the impressions are prompt — the wait returns as soon as
+        // the predicate holds. CI's simulator is roughly 3x slower than a developer machine here, and
+        // the failure this guards against is the whole reason for the wait, so a timeout that is
+        // merely "usually enough" would trade one flake for another.
+        waitForExpectations(timeout: 15)
     }
 
     /// Modifier.trackClick fires its own explicit event; autocapture must not also report it.
     func testExplicitTrackClickFiresExactlyOnce() {
-        let app = XCUIApplication()
-        app.launch()
-        waitForImpressionBaseline(app)
+        let app = launchSettled()
         app.buttons["explicit_tracked_button"].tap()
         XCTAssertEqual(lastEventLabel(app), "Last event target: explicit_tracked_button")
         // The tap must add exactly one more entry, and it must be the explicit event rather than an
@@ -102,9 +121,7 @@ final class iosAppUITests: XCTestCase {
     /// two by rect equality, so the suppression silently stopped applying and the element was
     /// reported twice. The 56.dp box above is above the threshold and never showed it.
     func testExplicitTrackClickOnASmallElementFiresExactlyOnce() {
-        let app = XCUIApplication()
-        app.launch()
-        waitForImpressionBaseline(app)
+        let app = launchSettled()
         app.buttons["explicit_tracked_small"].tap()
         XCTAssertEqual(
             trackLog(app),
@@ -126,9 +143,7 @@ final class iosAppUITests: XCTestCase {
     /// descendant of the host, and a test that constructs the tree itself assumes exactly the bridge
     /// behaviour in question (the same reason #134/#135 are pinned here).
     func testClickableHostingASmallImpressionElementIsStillAutocaptured() {
-        let app = XCUIApplication()
-        app.launch()
-        waitForImpressionBaseline(app)
+        let app = launchSettled()
         app.buttons["impression_inner_host"].tap()
         XCTAssertEqual(
             trackLog(app),
@@ -142,9 +157,7 @@ final class iosAppUITests: XCTestCase {
     /// searches the host's whole subtree rather than the hit path, and a hit-path-only fix would pass
     /// the test above while still dropping this tap.
     func testClickableHostingASmallImpressionElementIsAutocapturedOnItsMarginToo() {
-        let app = XCUIApplication()
-        app.launch()
-        waitForImpressionBaseline(app)
+        let app = launchSettled()
         let host = app.buttons["impression_inner_host"]
         host.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
         XCTAssertEqual(
@@ -154,10 +167,10 @@ final class iosAppUITests: XCTestCase {
     }
 
     /// Modifier.autographIgnore excludes a subtree from autocapture entirely — the label (last set
-    /// by the initial trackImpression on launch) must stay unchanged.
+    /// by the launch-time impressions, which [launchSettled] has already waited out) must stay
+    /// unchanged.
     func testIgnoredElementIsNotCaptured() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSettled()
         let beforeTap = lastEventLabel(app)
         app.buttons["ignored_button"].tap()
         XCTAssertEqual(lastEventLabel(app), beforeTap)
@@ -171,8 +184,7 @@ final class iosAppUITests: XCTestCase {
     /// which a unit test over a hand-built `UIView` tree cannot establish, because such a test sets
     /// the trait itself.
     func testDisabledElementIsNotCaptured() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSettled()
         let beforeTap = lastEventLabel(app)
 
         // A coordinate tap, not `.tap()`: XCUITest considers a disabled element non-hittable, while
@@ -198,10 +210,9 @@ final class iosAppUITests: XCTestCase {
     /// autocapture observer reads. Before the harness widening, this context was surfaced nowhere and
     /// the swizzle work (#65) would have had no way to verify its output on-device.
     func testAutocapturedTapCarriesScreenSectionAndScope() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSettled()
         app.buttons["plain_button"].tap()
-        // Pin the props to the TAP's own event. The launch-time trackImpression is itself enriched
+        // Pin the props to the TAP's own event. The launch-time impressions are themselves enriched
         // with the same screen/section/scope, so `last_event_props_label` already satisfies the
         // assertions below before any tap — asserting the last event was the plain_button tap
         // (target label, whose value only the tap produces) is what makes this observe the tap and
@@ -218,8 +229,7 @@ final class iosAppUITests: XCTestCase {
     /// (it is the first screen). The ordered log — not a last-value label — is what will later let a
     /// test see a screen was not double-emitted.
     func testScreenViewIsObservableAndFiresOnce() {
-        let app = XCUIApplication()
-        app.launch()
+        let app = launchSettled()
         // TrackedScreen fires its Screen Viewed from a composition effect, so the label recomposes
         // from "(none yet)" a beat after launch. Wait for the value rather than reading it eagerly.
         let label = app.staticTexts["screen_view_log_label"]
