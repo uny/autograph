@@ -8,6 +8,28 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Changed
+
+- `Modifier.trackImpression` no longer suppresses autocapture on the element it marks ([#158]).
+  It reports a **visibility** event and never a click, so there was no click of its own for
+  autocapture to double-report — and marking it cost an event rather than saving one: a tappable
+  element that also reported an impression fired no click event at all, on either platform. An
+  element that should report neither is what `Modifier.autographIgnore()` is for. `trackClick`, which
+  does fire a click, is unchanged.
+
+  On iOS this also removes a whole class of defect rather than picking a side of it. The UIKit
+  accessibility bridge carries no custom semantics key, so the resolver compared a registered rect
+  against the resolved clickable's frame — and a `trackImpression` element coincident with the
+  clickable enclosing it publishes that clickable's frame exactly, so the host's real tap was
+  silently dropped. Measured on device (iPhone 17 Pro, iOS 26.2, CMP 1.11.1): tapping a 48dp
+  `clickable` containing a `trackImpression` `Text` that fills it fired the `clickable`'s own
+  `onClick` and reported nothing. Qualifying the match to save that tap would have double-reported
+  the opposite shape — an element that is itself both `trackImpression` and `clickable`, with a
+  descendant filling it — and the two were measured **byte-identical** from the accessibility tree
+  (same clickable frame, same claim rect, one descendant publishing the same rect in each), so no
+  geometry could have told them apart. Removing the claim removes the ambiguity. Android read the
+  marker off the semantics ancestry and was never ambiguous, but changes behaviour the same way.
+
 ### Fixed
 
 - Autocapture on iOS no longer double-reports a `Modifier.trackClick` / `Modifier.trackImpression`
@@ -35,17 +57,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `trackImpression` is what makes this reachable where a `trackClick` inner element cannot — it adds
   no `clickable`, so Compose leaves the tap with the enclosing element instead of routing it inward,
   which is the premise the previous entry's reassurance rested on. Claims now record which modifier
-  registered them: a `trackClick` claim's element is clickable by construction and its expansion match
-  is taken at face value, while a `trackImpression` claim's expansion match is honoured only when no
-  accessibility descendant of the resolved clickable publishes that claim unexpanded — how Compose
-  Multiplatform publishes such an element. The distinction is load-bearing in both directions, since
-  Compose Multiplatform publishes child `Text`s as their own accessibility descendants even inside a
-  merged clickable: applying the descendant check to click claims too would stop suppressing a
-  sub-minimum `trackClick` container whose child exactly fills it, reopening the defect above. Android
-  was never affected, on either count. Introduced by the fix above and never released. Known residual,
-  unmeasured and older than either fix: a `trackImpression` element *coincident* with the clickable
-  enclosing it matches without any expansion, so the descendant check never runs and that clickable's
-  tap is still dropped ([#158]).
+  registered them, and a `trackImpression` claim's expansion match was honoured only when no
+  accessibility descendant of the resolved clickable published that claim unexpanded. Android was
+  never affected, on either count. Introduced by the fix above and never released. That qualification
+  is itself superseded below: it narrowed the ambiguity rather than removing it, and the residual it
+  left — a `trackImpression` element *coincident* with the clickable enclosing it, which matches with
+  no expansion at all — is what [#158] turned out to be.
 
 - `Package.swift` on `main` no longer names a stale binary target. CD's self-correcting checksum
   commit is pushed to `refs/tags/<tag>` only, so it landed on no branch and `main` still described

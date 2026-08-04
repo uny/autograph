@@ -282,9 +282,9 @@ class AutocaptureNodeTest {
 
     @Test
     fun resolveAutocaptureTargetIgnoresAnInstrumentedDescendantThatIsNotTheReturnedClickable() {
-        // trackImpression() sets `instrumented` on a non-clickable descendant (e.g. an inner
-        // Image). It must NOT veto an outer plain Modifier.clickable that was never itself
-        // instrumented -- only the node actually being returned should be checked.
+        // A non-clickable descendant carrying `instrumented` must NOT veto an outer plain
+        // Modifier.clickable that was never itself instrumented -- only the node actually being
+        // returned should be checked.
         val chain = sequenceOf(
             AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = false, disabled = false),
             AutocaptureNode(identifier = null, clickable = false, ignored = false, instrumented = true, disabled = false),

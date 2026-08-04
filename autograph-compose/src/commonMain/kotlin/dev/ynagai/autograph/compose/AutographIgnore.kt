@@ -19,7 +19,7 @@ public fun Modifier.autographIgnore(): Modifier = composed {
     semantics { this[AutographIgnoredKey] = true }.registerAutocaptureClaim(AutocaptureClaimKind.IGNORED)
 }
 
-/** Marks an element as already instrumented via [trackClick]/[trackImpression], so the ambient
+/** Marks an element as already instrumented via [trackClick], so the ambient
  * tap observer doesn't double-report it. Internal — set automatically by those modifiers. */
 internal val AutographInstrumentedKey: SemanticsPropertyKey<Boolean> = SemanticsPropertyKey("AutographInstrumented")
 

@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.compose
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -10,8 +11,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.semantics.SemanticsNode
+import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.v2.runComposeUiTest
@@ -36,6 +41,18 @@ private class ElementRecordingTracker : Tracker {
     override fun screen(name: String, properties: JsonObject) {}
     override fun identify(userId: String, traits: JsonObject) {}
 }
+
+/** The root-space centre of the element tagged [tag] — where a user tapping it would land. */
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.centreOfNode(tag: String): Offset =
+    onNodeWithTag(tag, useUnmergedTree = true).fetchSemanticsNode().boundsInRoot.center
+
+/**
+ * The unmerged semantics root, the node `ElementResolver.android.kt` hit-tests from. Unmerged
+ * matters: on the merged tree a descendant's marker folds into its clickable ancestor's config.
+ */
+@OptIn(ExperimentalTestApi::class)
+private fun ComposeUiTest.unmergedRoot(): SemanticsNode = onRoot(useUnmergedTree = true).fetchSemanticsNode()
 
 /** Provides [tracker] (and, when given, a [screenContext]) — the ambient wiring these composables read. */
 @Composable
@@ -163,5 +180,59 @@ class ElementTrackingUiTest {
         val properties = tracker.tracked.single().second
         assertEquals("Home", properties["screen"]?.jsonPrimitive?.content)
         assertNull(properties["section"], "no section was provided in the ambient context")
+    }
+
+    /**
+     * [trackImpression] must not suppress autocapture on the element carrying it (#158).
+     *
+     * It reports a visibility event and never a click, so suppressing left a tappable element that
+     * also reported an impression firing **no** click event at all. Asserted through [resolveTapAt] —
+     * the production hit test `ElementResolver.android.kt` runs — rather than through a tracker,
+     * because the JVM `rememberElementResolver` resolves nothing (autocapture is Android/iOS only),
+     * so an end-to-end assertion here would pass vacuously.
+     */
+    @Test
+    fun trackImpressionDoesNotSuppressAutocaptureOnItsOwnElement() = runComposeUiTest {
+        setContent {
+            WithElementTracker(ElementRecordingTracker()) {
+                Box(Modifier.testTag("row").size(48.dp).trackImpression("Card Viewed").clickable {})
+            }
+        }
+        waitForIdle()
+
+        assertEquals("row", unmergedRoot().resolveTapAt(centreOfNode("row"))?.identifier)
+    }
+
+    /**
+     * The shape #158 was reported as: a `trackImpression` child exactly coincident with the clickable
+     * enclosing it. On iOS that coincidence was indistinguishable from the element self-registering,
+     * and the host's real tap vanished; here the marker is read off the ancestry, so this states the
+     * behaviour both platforms now agree on.
+     */
+    @Test
+    fun trackImpressionDoesNotSuppressAutocaptureOnTheClickableEnclosingIt() = runComposeUiTest {
+        setContent {
+            WithElementTracker(ElementRecordingTracker()) {
+                Box(Modifier.testTag("host").size(48.dp).clickable {}) {
+                    Box(Modifier.testTag("inner").fillMaxSize().trackImpression("Card Viewed"))
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals("host", unmergedRoot().resolveTapAt(centreOfNode("inner"))?.identifier)
+    }
+
+    /** The contrast: [trackClick] does fire a click, so autocapture must still stand down for it. */
+    @Test
+    fun trackClickStillSuppressesAutocaptureOnItsOwnElement() = runComposeUiTest {
+        setContent {
+            WithElementTracker(ElementRecordingTracker()) {
+                Box(Modifier.testTag("row").size(48.dp).trackClick("Item Clicked") {})
+            }
+        }
+        waitForIdle()
+
+        assertNull(unmergedRoot().resolveTapAt(centreOfNode("row")))
     }
 }

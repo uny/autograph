@@ -33,7 +33,6 @@ class AutocaptureClaimsTest {
 
         assertEquals(bounds, claims.ignored[key])
         assertTrue(claims.instrumentedClick.isEmpty())
-        assertTrue(claims.instrumentedImpression.isEmpty())
     }
 
     @Test
@@ -141,7 +140,7 @@ class AutocaptureClaimDisposalTest {
     }
 
     /**
-     * [autographIgnore]'s IGNORED-kind registration is covered above; [trackClick]/[trackImpression]'s
+     * [autographIgnore]'s IGNORED-kind registration is covered above; [trackClick]'s
      * INSTRUMENTED-kind registration is otherwise only ever exercised via directly-constructed
      * [AutocaptureClaims] fixtures in resolver tests, never through the real composable wiring — a
      * regression in [registerAutocaptureClaim]'s call site inside [Modifier.trackClick] specifically
@@ -163,7 +162,6 @@ class AutocaptureClaimDisposalTest {
         }
         waitForIdle()
         assertTrue(claims?.instrumentedClick?.isNotEmpty() == true, "expected trackClick to register an INSTRUMENTED_CLICK claim while composed")
-        assertTrue(claims?.instrumentedImpression?.isEmpty() == true, "trackClick must not register an impression-kind claim — the two are what iOS tells apart (#153)")
 
         visible = false
         waitForIdle()
@@ -171,29 +169,31 @@ class AutocaptureClaimDisposalTest {
         assertTrue(claims?.instrumentedClick?.isEmpty() == true, "expected the instrumented claim to be removed once trackClick left the composition")
     }
 
-    /** [trackImpression]'s own `registerAutocaptureClaim` call site, distinct from [trackClick]'s. */
+    /**
+     * [trackImpression] registers NO claim — the counterpart to [trackClick]'s above.
+     *
+     * It reports a visibility event and never a click, so there is nothing for autocapture to
+     * double-report and nothing to suppress. It used to register an `INSTRUMENTED_IMPRESSION` claim,
+     * and on iOS geometry could not tell that claim apart from the clickable enclosing it: a
+     * coincident impression element silently dropped its host's real tap (#158), while qualifying the
+     * match to save that tap double-reported the opposite shape. Both were measured byte-identical
+     * from the accessibility tree, so the ambiguity was removed rather than resolved.
+     */
     @Test
-    fun trackImpressionRegistersAnInstrumentedClaimWhileComposed() = runComposeUiTest {
-        var visible by mutableStateOf(true)
+    fun trackImpressionRegistersNoClaim() = runComposeUiTest {
         var claims: AutocaptureClaims? = null
         setContent {
             PlatformAutocaptureTestHost {
                 AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
                     claims = LocalAutocaptureClaims.current
-                    if (visible) {
-                        Box(Modifier.testTag("tracked").size(10.dp).trackImpression("Card Viewed"))
-                    }
+                    Box(Modifier.testTag("tracked").size(10.dp).trackImpression("Card Viewed"))
                 }
             }
         }
         waitForIdle()
-        assertTrue(claims?.instrumentedImpression?.isNotEmpty() == true, "expected trackImpression to register an INSTRUMENTED_IMPRESSION claim while composed")
-        assertTrue(claims?.instrumentedClick?.isEmpty() == true, "trackImpression must not register a click-kind claim — the two are what iOS tells apart (#153)")
 
-        visible = false
-        waitForIdle()
-
-        assertTrue(claims?.instrumentedImpression?.isEmpty() == true, "expected the instrumented claim to be removed once trackImpression left the composition")
+        assertTrue(claims?.instrumentedClick?.isEmpty() == true, "trackImpression must register no claim (#158)")
+        assertTrue(claims?.ignored?.isEmpty() == true, "trackImpression must register no claim (#158)")
     }
 
     /**

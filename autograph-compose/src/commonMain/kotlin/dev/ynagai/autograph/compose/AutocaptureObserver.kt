@@ -21,8 +21,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * to consume them in the main pass — and reports the tapped element via [Tracker.track] as
  * [AutocaptureConfig.eventName]. Never consumes anything itself, and only reports a tap that a
  * descendant actually consumed (so taps on non-interactive background are ignored); [resolver]
- * separately vetoes elements marked [autographIgnore] or already instrumented via [trackClick]/
- * [trackImpression].
+ * separately vetoes elements marked [autographIgnore] or already instrumented via [trackClick].
  *
  * Scope, screen, and section are read from the ambient [scopeStack] at tap time — the non-Compose
  * home that [AutographScope] and [TrackedScreen] mirror into. This observer sits at the provider
