@@ -32,6 +32,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- Autocapture on iOS no longer double-reports a `Modifier.trackClick` element under a **scale
+  transform** ([#159]). Compose qualifies the touch target on the element's *measured* size and then
+  draws the result through the transform, while the claim the modifier registers is
+  `boundsInWindow()` — already transformed. Deriving the plain minimum from it therefore matched
+  nothing and both the explicit event and an `Element Clicked` fired. Claims now carry the measured
+  size alongside the drawn bounds, so the scale is recoverable as the ratio of the two and the
+  minimum is scaled before the expansion — the identity whenever there is no transform. Measured on
+  device: a `scale(0.5f)` `Text` drawn at `246x36px` from a measured `492x72px` publishes its frame
+  at `246x72px`, the 144px minimum halved on the axis that needed expanding, to the pixel. Android
+  reads the marker off the semantics ancestry and is unaffected. Only a scale is recovered, and only
+  an axis-aligned one: a rotated element's drawn bounds are its bounding box, so the ratio overstates
+  the scale and such an element still double-reports — the same axis-aligned assumption the Android
+  hit test already documents.
+
 - Autocapture on iOS no longer double-reports a `Modifier.trackClick` / `Modifier.trackImpression`
   element that is **smaller than the minimum touch target** ([#151]). The explicit event fired and an
   `Element Clicked` fired alongside it, contradicting the README's "never double-reported" — Compose
@@ -43,10 +57,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   involved). Nothing caught it because the sample's only explicitly instrumented element was a
   56dp box, above the threshold — the sample now carries both shapes, and the XCUITest suite asserts
   the ordered event-name log rather than the last target, which cannot tell a double report from a
-  single one since both entries carry the same target. Known residual: a **scaled** element still
-  double-reports, because Compose qualifies the touch target on the measured size while the claim
-  carries the drawn rect (measured: `scale(0.5f)` publishes the expanded measured rect halved, which
-  the drawn rect's own expansion does not match) ([#159]).
+  single one since both entries carry the same target. The residual this left for a **scaled**
+  element is fixed below ([#159]).
 
 - Autocapture on iOS no longer drops a tap on an **uninstrumented clickable** that merely contains a
   small `Modifier.trackImpression` element ([#153]). Expanding a claim to the minimum touch target is

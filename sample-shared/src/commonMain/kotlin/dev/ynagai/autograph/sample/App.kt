@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -89,7 +90,10 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
         // what exercises ElementResolver.ios.kt's real-world case, a Compose root that doesn't
         // fill its window — see the resolver's own kdoc for why that used to misattribute taps.
         modifier = Modifier.fillMaxSize().systemBarsPadding().padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        // 12.dp, not 16: every fixture below has to stay hittable by `XCUIElement.tap()`, and this
+        // Column does not scroll, so the screen's height is the budget for adding one. The four
+        // observation labels at the bottom are already past it and are only ever read, never tapped.
+        verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text("Autograph sample", style = MaterialTheme.typography.headlineSmall)
         Text(
@@ -187,6 +191,19 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
                     .trackImpression("Recipe Viewed", target = "impression_inner"),
             )
         }
+
+        // The same explicit instrumentation as explicit_tracked_small, under a scale transform.
+        // Compose qualifies the touch target on the MEASURED size and then draws the result through
+        // the transform, so the accessibility frame is neither the drawn rect nor the drawn rect
+        // expanded to the plain minimum — and the claim, being boundsInWindow(), is already scaled.
+        // The element was reported twice until the claim carried its measured size too (#159).
+        Text(
+            "Scaled trackClick",
+            modifier = Modifier
+                .testTag("scaled_tracked_small")
+                .scale(0.5f)
+                .trackClick("Recipe Saved", target = "scaled_tracked_small") {},
+        )
 
         // Modifier.autographIgnore excludes a subtree from autocapture entirely.
         Box(

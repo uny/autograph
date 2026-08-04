@@ -7,6 +7,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -23,15 +24,18 @@ import kotlin.test.assertTrue
 
 class AutocaptureClaimsTest {
 
+    /** A claim for an element drawn at exactly the size it was measured at — no transform (#159). */
+    private fun claim(drawn: Rect) = AutocaptureClaimBounds(drawn, drawn.size)
+
     @Test
     fun putRegistersBoundsUnderTheGivenKind() {
         val claims = AutocaptureClaims()
         val key = Any()
         val bounds = Rect(0f, 0f, 10f, 10f)
 
-        claims.put(key, AutocaptureClaimKind.IGNORED, bounds)
+        claims.put(key, AutocaptureClaimKind.IGNORED, claim(bounds))
 
-        assertEquals(bounds, claims.ignored[key])
+        assertEquals(bounds, claims.ignored[key]?.drawn)
         assertTrue(claims.instrumentedClick.isEmpty())
     }
 
@@ -40,13 +44,13 @@ class AutocaptureClaimsTest {
         val claims = AutocaptureClaims()
         val key = Any()
         val ignoredBounds = Rect(0f, 0f, 10f, 10f)
-        claims.put(key, AutocaptureClaimKind.IGNORED, ignoredBounds)
-        claims.put(key, AutocaptureClaimKind.INSTRUMENTED_CLICK, Rect(0f, 0f, 10f, 10f))
+        claims.put(key, AutocaptureClaimKind.IGNORED, claim(ignoredBounds))
+        claims.put(key, AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(Rect(0f, 0f, 10f, 10f)))
 
         claims.remove(key, AutocaptureClaimKind.INSTRUMENTED_CLICK)
 
         assertTrue(claims.instrumentedClick.isEmpty())
-        assertEquals(ignoredBounds, claims.ignored[key], "IGNORED entry for the same key should survive INSTRUMENTED_CLICK removal")
+        assertEquals(ignoredBounds, claims.ignored[key]?.drawn, "IGNORED entry for the same key should survive INSTRUMENTED_CLICK removal")
     }
 
     @Test
@@ -55,12 +59,12 @@ class AutocaptureClaimsTest {
         val keyA = Any()
         val keyB = Any()
         val boundsB = Rect(20f, 20f, 30f, 30f)
-        claims.put(keyA, AutocaptureClaimKind.IGNORED, Rect(0f, 0f, 10f, 10f))
-        claims.put(keyB, AutocaptureClaimKind.IGNORED, boundsB)
+        claims.put(keyA, AutocaptureClaimKind.IGNORED, claim(Rect(0f, 0f, 10f, 10f)))
+        claims.put(keyB, AutocaptureClaimKind.IGNORED, claim(boundsB))
 
         claims.remove(keyA, AutocaptureClaimKind.IGNORED)
 
-        assertEquals(boundsB, claims.ignored[keyB])
+        assertEquals(boundsB, claims.ignored[keyB]?.drawn)
     }
 
     @Test
@@ -70,11 +74,11 @@ class AutocaptureClaimsTest {
         val ignoredBounds = Rect(0f, 0f, 10f, 10f)
         val instrumentedBounds = Rect(50f, 50f, 60f, 60f)
 
-        claims.put(key, AutocaptureClaimKind.IGNORED, ignoredBounds)
-        claims.put(key, AutocaptureClaimKind.INSTRUMENTED_CLICK, instrumentedBounds)
+        claims.put(key, AutocaptureClaimKind.IGNORED, claim(ignoredBounds))
+        claims.put(key, AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(instrumentedBounds))
 
-        assertEquals(ignoredBounds, claims.ignored[key])
-        assertEquals(instrumentedBounds, claims.instrumentedClick[key])
+        assertEquals(ignoredBounds, claims.ignored[key]?.drawn)
+        assertEquals(instrumentedBounds, claims.instrumentedClick[key]?.drawn)
     }
 }
 
@@ -197,7 +201,8 @@ class AutocaptureClaimDisposalTest {
     }
 
     /**
-     * Asserts registerAutocaptureClaim stores the element's actual `boundsInWindow()` value.
+     * Asserts registerAutocaptureClaim stores the element's actual `boundsInWindow()` value as the
+     * claim's [AutocaptureClaimBounds.drawn] half.
      * **Known harness limitation** (confirmed empirically): `runComposeUiTest`'s root composition IS
      * its own window, so `boundsInRoot()` and `boundsInWindow()` are numerically identical here even
      * with this test's padding offset — this assertion alone can't discriminate the two coordinate
@@ -229,7 +234,41 @@ class AutocaptureClaimDisposalTest {
         }
         waitForIdle()
 
-        assertEquals(actualBoundsInWindow, claims?.ignored?.values?.singleOrNull())
+        assertEquals(actualBoundsInWindow, claims?.ignored?.values?.singleOrNull()?.drawn)
+    }
+
+    /**
+     * A claim also stores the size the element was MEASURED at, which a transform does not touch —
+     * the other half of the pair `ElementResolver.ios.kt` needs to recover that transform (#159).
+     * Stated against a scaled element, since it is the only case where the two halves differ.
+     */
+    @Test
+    fun registerAutocaptureClaimStoresTheMeasuredSizeUnaffectedByAScaleTransform() = runComposeUiTest {
+        var claims: AutocaptureClaims? = null
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    claims = LocalAutocaptureClaims.current
+                    Box(Modifier.testTag("ignored").size(40.dp).scale(0.5f).autographIgnore())
+                }
+            }
+        }
+        waitForIdle()
+
+        val stored = claims?.ignored?.values?.singleOrNull()
+        assertTrue(stored != null, "expected exactly one ignored claim")
+        assertEquals(
+            0.5f,
+            stored.drawn.width / stored.measured.width,
+            0.01f,
+            "drawn / measured must recover the scale the element was drawn through",
+        )
+        assertEquals(
+            0.5f,
+            stored.drawn.height / stored.measured.height,
+            0.01f,
+            "drawn / measured must recover the scale the element was drawn through",
+        )
     }
 
     /**

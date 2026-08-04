@@ -7,8 +7,10 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.unit.toSize
 
 /**
  * Which modifier registered a claim.
@@ -39,17 +41,17 @@ internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED_CLICK }
  * window (safe-area insets, nested embedding, etc.).
  */
 internal class AutocaptureClaims {
-    val ignored = mutableStateMapOf<Any, Rect>()
+    val ignored = mutableStateMapOf<Any, AutocaptureClaimBounds>()
 
     /** Claims from [trackClick] — see [AutocaptureClaimKind] for why [trackImpression] registers none. */
-    val instrumentedClick = mutableStateMapOf<Any, Rect>()
+    val instrumentedClick = mutableStateMapOf<Any, AutocaptureClaimBounds>()
 
     private fun mapFor(kind: AutocaptureClaimKind) = when (kind) {
         AutocaptureClaimKind.IGNORED -> ignored
         AutocaptureClaimKind.INSTRUMENTED_CLICK -> instrumentedClick
     }
 
-    fun put(key: Any, kind: AutocaptureClaimKind, bounds: Rect) {
+    fun put(key: Any, kind: AutocaptureClaimKind, bounds: AutocaptureClaimBounds) {
         mapFor(kind)[key] = bounds
     }
 
@@ -57,6 +59,27 @@ internal class AutocaptureClaims {
         mapFor(kind).remove(key)
     }
 }
+
+/**
+ * One claim's geometry: where the element was [drawn] in window space, and the size it was
+ * [measured] at.
+ *
+ * [drawn] is `boundsInWindow()`, which carries every transform the element sits under; [measured] is
+ * `LayoutCoordinates.size`, which carries none. The pair is only read by `ElementResolver.ios.kt`,
+ * which has to reconcile a claim with the accessibility frame Compose Multiplatform publishes for the
+ * same element — and for an element below the minimum touch target that frame is the *measured* rect
+ * expanded to the minimum and then drawn through the transform. So the resolver needs the transform,
+ * and `boundsInWindow()` alone cannot recover it after the fact: [drawn] divided by [measured] is
+ * exactly the scale Compose drew through (measured on device — a `scale(0.5f)` `Text` reported
+ * `drawn = 246x36px` against `measured = 492x72px`, and published its frame at `246x72px`, the
+ * minimum halved on the axis that needed expanding). Android reads a semantics marker off the
+ * ancestry and consults neither ([#159](https://github.com/uny/autograph/issues/159)).
+ *
+ * [drawn] stays `boundsInWindow()`, which an ancestor's clip shrinks. A claim whose element is
+ * partly clipped therefore still carries a rect the published frame will not match — unchanged by
+ * this pair, since such a claim already failed to match before it existed.
+ */
+internal data class AutocaptureClaimBounds(val drawn: Rect, val measured: Size)
 
 /** The ambient [AutocaptureClaims], or null outside [AutographProvider] / when autocapture is disabled. */
 internal val LocalAutocaptureClaims = staticCompositionLocalOf<AutocaptureClaims?> { null }
@@ -72,5 +95,7 @@ internal fun Modifier.registerAutocaptureClaim(kind: AutocaptureClaimKind): Modi
     val claims = LocalAutocaptureClaims.current ?: return this
     val key = remember { Any() }
     DisposableEffect(claims, key, kind) { onDispose { claims.remove(key, kind) } }
-    return onGloballyPositioned { claims.put(key, kind, it.boundsInWindow()) }
+    return onGloballyPositioned {
+        claims.put(key, kind, AutocaptureClaimBounds(it.boundsInWindow(), it.size.toSize()))
+    }
 }
