@@ -32,15 +32,34 @@ import platform.darwin.NSObject
  * hatch, and it uses only public, documented UIKit API.
  *
  * Confirmed on-device (`ComposeUIViewController` hosted in a real `.app`, installed and launched via
- * `xcrun simctl`, Compose Multiplatform 1.11.1) that this tree is populated on the very first layout
- * pass, **VoiceOver on or off**. An earlier attempt concluded otherwise because it read
+ * `xcrun simctl`, Compose Multiplatform 1.11.1) that this walk reaches Compose's bridged elements
+ * **without requiring an accessibility client** — VoiceOver off, no Inspector, no test runner attached.
+ * The reason is not that the bridge is built eagerly: since CMP 1.8 (compose-multiplatform-core#1780)
+ * it is built on demand. It is that the activation call site cannot distinguish one caller from
+ * another — `AccessibilityRoot.accessibilityElements()` calls `activateAccessibilityIfNeeded()` for
+ * whoever asks, and this walk asks. Two gates sit in front of that, neither of them tied to assistive
+ * technology: `AccessibilityMediator.isEnabled`, driven by `ComposeSceneMediator.isFocusEnabled` — a
+ * layer walk run at scene setup marks a scene focus-enabled unless a `focusable` layer sits above it,
+ * i.e. it disables only a scene that could not receive the tap anyway — and the traversal itself.
+ * (The other two entry points, `focusItemsInRect` and `accessibilityHitTest`, activate the same way
+ * behind the same gate.) The old opt-out config `AccessibilitySyncOptions`, whose
+ * `WhenRequiredByAccessibilityServices` default would have gated the bridge behind a running screen
+ * reader, was removed by that same change and is absent from the 1.11.1 klib, so consumers can no
+ * longer turn it off. Do not restate this as unconditional: it is a dependency on CMP's activation
+ * path, which is what makes the cold-device check on a CMP bump (#154) more than superstition.
+ *
+ * The trajectory is favourable, not fragile: compose-multiplatform-core#2416 (2025-09) added, in so
+ * many words, support for **UI Automation** reaching child elements inside accessibility elements —
+ * non-screen-reader clients, deliberately — and #2760 (2026-02) added `accessibilityHitTest` as a
+ * third activation entry point. In the 18 months since #1780 nothing has narrowed activation; the
+ * entry points went from one to three.
+ *
+ * An earlier attempt concluded the tree was absent because it read
  * `LocalUIView.current.accessibilityElements()` directly, which is empty: Compose attaches the real
  * accessibility root to a *sibling* subview several levels down (`ComposeContainerView.subviews[2]` —
  * `OverlayInputView` — in the traced case, though that index isn't a contract worth hard-coding), not
  * to the view `LocalUIView` itself returns. Walking `subviews` alongside `accessibilityElements` at
  * every `UIView` node ([accessibilityChildren]) finds it regardless of which subview it lives under.
- * `AccessibilitySyncOptions` (the old opt-out config) was removed in CMP 1.8 — the bridge is
- * unconditionally on, not gated behind an active screen reader.
  *
  * **What is NOT reachable this way: custom semantics keys.** The bridge only carries the fixed
  * UIAccessibility properties — label, traits, identifier, frame. Anything a caller needs to know
@@ -76,9 +95,10 @@ import platform.darwin.NSObject
  * an accessibility tree at all: the walk reaches only plain `UIView`s through `subviews`, every one of
  * them reporting an empty frame and no traits, with not a single `SwiftUI.AccessibilityNode` or button
  * trait anywhere. So the exemption gets the walk past the root and every child then prunes on its own
- * empty frame. Compose differs because Compose Multiplatform builds its bridged elements itself,
- * unconditionally — those are present and correct while cold, which is why exempting the root is enough
- * there and only there. See [resolveNativeTapTarget] for what that costs the native pipeline.
+ * empty frame. Compose differs because Compose Multiplatform builds its bridged elements itself, on an
+ * activation path that reading the tree is enough to trigger (see the note at the top of this file) —
+ * those are present and correct while cold, which is why exempting the root is enough there and only
+ * there. See [resolveNativeTapTarget] for what that costs the native pipeline.
  *
  * **What the exemption does not loosen.** Two properties are preserved deliberately, because relaxing
  * the descent could otherwise turn a dropped event into a misattributed one — the worse failure:

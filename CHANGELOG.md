@@ -73,6 +73,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   build failure. Fixture and full results in `fixtures/klib-diamond/`, re-runnable in about a
   minute when Kotlin is bumped.
 
+- The reason given for why iOS Compose autocapture survives a cold process is corrected ([#157]).
+  `AccessibilityTree.kt`, `NativeTapResolution.kt` and the README said Compose Multiplatform bridges
+  its semantics "unconditionally", so the tree is there "from the first layout pass". Since CMP 1.8
+  (compose-multiplatform-core#1780) it is built *on demand*, and "populated at layout" was never
+  observable from application code in the first place — reading the tree is what populates it. What
+  actually holds is narrower: the activation call site cannot distinguish one caller from another, so
+  this library's own walk triggers it, and the two gates in front of it (whether the scene is the
+  focused one, and the traversal itself) are neither of them tied to assistive technology. The
+  measured evidence is unchanged and still load-bearing — on a freshly created simulator no
+  accessibility client had touched, CMP's bridged elements carry correct frames, identifiers and
+  traits while UIKit and SwiftUI supply nothing at all in the same process. Naming the dependency is
+  the point: it is what makes the cold-device check on a Compose Multiplatform bump ([#154]) more
+  than superstition. The shipped `0.3.0` entry below is left as released history.
+
 ## [0.3.0] - 2026-08-02
 
 ### Added
@@ -379,5 +393,7 @@ Initial release.
 [#140]: https://github.com/uny/autograph/issues/140
 [#151]: https://github.com/uny/autograph/issues/151
 [#153]: https://github.com/uny/autograph/issues/153
+[#154]: https://github.com/uny/autograph/issues/154
+[#157]: https://github.com/uny/autograph/issues/157
 [#158]: https://github.com/uny/autograph/issues/158
 [#159]: https://github.com/uny/autograph/issues/159
