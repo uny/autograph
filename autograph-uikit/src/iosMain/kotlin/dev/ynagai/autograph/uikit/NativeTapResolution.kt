@@ -78,9 +78,11 @@ import platform.UIKit.UIView
  * There is no fix available here. Nothing public asks UIKit to populate that tree, and the private entry
  * points that would are not something a published library can ship. This is a property of the mechanism,
  * not of this code: any tap capture built on the accessibility tree inherits it. It is why
- * `autograph-compose`'s pipeline is unaffected — Compose Multiplatform bridges its own semantics into
- * accessibility elements unconditionally, without waiting to be asked (see #135, and
- * [deepestAccessibilityHitPath]'s note on the starting node, which fixed the Compose half only).
+ * `autograph-compose`'s pipeline is unaffected — Compose Multiplatform builds its bridged elements on
+ * demand too, but its activation path does not require an accessibility client: reading the tree is
+ * itself enough to trigger it (see #135, the note at the top of `AccessibilityTree.kt` for the two
+ * gates and neither being assistive tech, and [deepestAccessibilityHitPath]'s note on the starting
+ * node, which fixed the Compose half only).
  *
  * The practical consequence for a hybrid app: taps on native surfaces should not be assumed present in
  * the data. Treat this pipeline as best-effort until #135 finds a mechanism that does not depend on an

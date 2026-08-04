@@ -297,9 +297,13 @@ a demand signal, not for a technical reason.
 > Note the consequence for your own testing: a simulator you have run UI tests against is already
 > warmed, so native capture will look reliable there while failing on a user's device.
 >
-> **Compose autocapture on iOS is not affected** — Compose Multiplatform bridges its own semantics into
-> accessibility elements unconditionally, so its tree is there from the first layout pass whether or not
-> anything is listening.
+> **Compose autocapture on iOS is not affected** — Compose Multiplatform builds its bridged
+> accessibility elements *on demand* too, but its activation path does not require an accessibility
+> client: reading the tree is what triggers it, and this library's walk is such a reader. The gates in
+> front of that are about which scene is live, not about assistive technology — `AccessibilityTree.kt`
+> names them. So Compose taps resolve in a cold process. That is a dependency on CMP's activation rather
+> than a guarantee, which is why a CMP bump gets a cold-device check
+> ([#154](https://github.com/uny/autograph/issues/154)).
 
 Known gaps *within* iOS native tap capture, all tracked on
 [#86](https://github.com/uny/autograph/issues/86): `UIControl` target-action taps (the window-level
