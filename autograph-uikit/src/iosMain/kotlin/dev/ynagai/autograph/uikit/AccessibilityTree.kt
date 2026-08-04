@@ -38,21 +38,28 @@ import platform.darwin.NSObject
  * it is built on demand. It is that the activation call site cannot distinguish one caller from
  * another — `AccessibilityRoot.accessibilityElements()` calls `activateAccessibilityIfNeeded()` for
  * whoever asks, and this walk asks. Two gates sit in front of that, neither of them tied to assistive
- * technology: `AccessibilityMediator.isEnabled`, driven by `ComposeSceneMediator.isFocusEnabled` — a
- * layer walk run at scene setup marks a scene focus-enabled unless a `focusable` layer sits above it,
+ * technology: `AccessibilityMediator.isEnabled` — set from `ComposeSceneMediator.isAccessibilityEnabled`,
+ * which a reversed layer walk at scene setup leaves on unless a `focusable` layer sits above the scene,
  * i.e. it disables only a scene that could not receive the tap anyway — and the traversal itself.
  * (The other two entry points, `focusItemsInRect` and `accessibilityHitTest`, activate the same way
  * behind the same gate.) The old opt-out config `AccessibilitySyncOptions`, whose
  * `WhenRequiredByAccessibilityServices` default would have gated the bridge behind a running screen
- * reader, was removed by that same change and is absent from the 1.11.1 klib, so consumers can no
- * longer turn it off. Do not restate this as unconditional: it is a dependency on CMP's activation
- * path, which is what makes the cold-device check on a CMP bump (#154) more than superstition.
+ * reader, was removed by #1780 as well, so consumers can no longer turn it off. Do not restate this as
+ * unconditional: it is a dependency on CMP's activation path, which is what makes the cold-device check
+ * on a CMP bump (#154) more than superstition.
+ *
+ * Those names were read out of the **1.11.1 klib this project resolves**, not out of a development
+ * branch — `AccessibilityRoot`, `activateAccessibilityIfNeeded`, all three entry points and
+ * `isAccessibilityEnabled` are present in it; `AccessibilitySyncOptions` and
+ * `WhenRequiredByAccessibilityServices` are absent from it. They are Compose-internal and free to move,
+ * so re-read them on a CMP bump rather than trusting this paragraph.
  *
  * The trajectory is favourable, not fragile: compose-multiplatform-core#2416 (2025-09) added, in so
  * many words, support for **UI Automation** reaching child elements inside accessibility elements —
  * non-screen-reader clients, deliberately — and #2760 (2026-02) added `accessibilityHitTest` as a
- * third activation entry point. In the 18 months since #1780 nothing has narrowed activation; the
- * entry points went from one to three.
+ * third activation entry point. Those are the endpoints, not a survey of the eighteen months between
+ * them: from #1780 to the 1.11.1 klib above, the opt-out knob is gone and the entry points went from
+ * one to three.
  *
  * An earlier attempt concluded the tree was absent because it read
  * `LocalUIView.current.accessibilityElements()` directly, which is empty: Compose attaches the real

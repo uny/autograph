@@ -79,8 +79,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   (compose-multiplatform-core#1780) it is built *on demand*, and "populated at layout" was never
   observable from application code in the first place — reading the tree is what populates it. What
   actually holds is narrower: the activation call site cannot distinguish one caller from another, so
-  this library's own walk triggers it, and the two gates in front of it (whether the scene is the
-  focused one, and the traversal itself) are neither of them tied to assistive technology. The
+  this library's own walk triggers it, and the two gates in front of it (whether a `focusable` layer
+  sits above this scene, and the traversal itself) are neither of them tied to assistive technology. The
   measured evidence is unchanged and still load-bearing — on a freshly created simulator no
   accessibility client had touched, CMP's bridged elements carry correct frames, identifiers and
   traits while UIKit and SwiftUI supply nothing at all in the same process. Naming the dependency is
