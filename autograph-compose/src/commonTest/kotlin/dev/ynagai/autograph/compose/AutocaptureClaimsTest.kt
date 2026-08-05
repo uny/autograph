@@ -277,12 +277,18 @@ class AutocaptureClaimDisposalTest {
     @Test
     fun registerAutocaptureClaimDoesNotReportAnAncestorsClipAsAScale() = runComposeUiTest {
         var claims: AutocaptureClaims? = null
+        var measuredHeight = 0
         setContent {
             PlatformAutocaptureTestHost {
                 AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
                     claims = LocalAutocaptureClaims.current
                     Box(Modifier.size(40.dp, 10.dp).clipToBounds(), contentAlignment = Alignment.Center) {
-                        Box(Modifier.testTag("ignored").requiredSize(40.dp, 20.dp).autographIgnore())
+                        Box(
+                            Modifier.testTag("ignored")
+                                .requiredSize(40.dp, 20.dp)
+                                .onGloballyPositioned { measuredHeight = it.size.height }
+                                .autographIgnore(),
+                        )
                     }
                 }
             }
@@ -292,8 +298,9 @@ class AutocaptureClaimDisposalTest {
         val stored = claims?.ignored?.values?.singleOrNull()
         assertTrue(stored != null, "expected exactly one ignored claim")
         assertTrue(
-            stored.drawn.height < stored.drawn.width / 2f,
-            "fixture must actually be clipped, or this test proves nothing: drawn = ${stored.drawn}",
+            stored.drawn.height < measuredHeight.toFloat(),
+            "fixture must actually be clipped, or this test proves nothing: " +
+                "drawn ${stored.drawn.height} vs measured $measuredHeight",
         )
         assertEquals(1f, stored.drawScale.width, 0.01f, "a clip is not a scale")
         assertEquals(1f, stored.drawScale.height, 0.01f, "a clip is not a scale")

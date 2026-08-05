@@ -47,8 +47,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   clipped element's derived touch target below the plain minimum it matches on today. Android reads
   the marker off the semantics ancestry and is unaffected. Only a scale is recovered, and only an
   axis-aligned one: under a rotation the corners span the rotated diagonal, so the ratio is not the
-  scale and such an element still double-reports — the same axis-aligned assumption the Android hit
-  test already documents.
+  scale — the same axis-aligned assumption the Android hit test already documents. That costs the
+  expansion alone, leaving a rotated element *below* the minimum touch target double-reporting
+  exactly as it did before.
 
 - Autocapture on iOS no longer double-reports a `Modifier.trackClick` / `Modifier.trackImpression`
   element that is **smaller than the minimum touch target** ([#151]). The explicit event fired and an

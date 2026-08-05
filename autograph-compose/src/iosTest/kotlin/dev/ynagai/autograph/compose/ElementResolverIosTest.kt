@@ -333,10 +333,13 @@ class ElementResolverIosTest {
         // other expands — and the two axes are scaled by different factors.
         //
         // It is the discriminating case for how the scale and the expansion compose. Scaling the
-        // minimum first (correct) gives max(drawn, scale x minimum): width max(20, 12) = 20pt,
+        // minimum first (correct) gives max(drawn, scale x minimum): width max(20, 15) = 20pt,
         // untouched, and height max(10, 20) = 20pt, expanded — the fixture's 20x20pt frame.
-        // Expanding to the plain minimum and scaling the RESULT instead would shrink the already
-        // long-enough width to 12pt and miss, as it would on a wide `Text` on device.
+        //
+        // The numbers are chosen so every nearby wrong derivation misses it. Expanding to the plain
+        // minimum and scaling the RESULT gives 15x20pt, shrinking the already long-enough width as
+        // it would on a wide `Text` on device. Applying ONE of the two scales to both axes misses
+        // whichever one is borrowed: 0.25 leaves the height at 10pt, 0.5 stretches the width to 30pt.
         val (root, position) = buildRootWithButton()
         val scale = UIScreen.mainScreen.scale
         val drawn = Rect(
@@ -346,8 +349,8 @@ class ElementResolverIosTest {
             (25.0 * scale).toFloat(),
         )
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.5f, 0.25f)))
-        val nominalMinimum = Size((24.0 * scale).toFloat(), (80.0 * scale).toFloat())
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.25f, 0.5f)))
+        val nominalMinimum = Size((60.0 * scale).toFloat(), (40.0 * scale).toFloat())
 
         val result = resolveIosElement(root, claims, position, nominalMinimum)
 

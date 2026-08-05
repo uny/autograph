@@ -192,8 +192,8 @@ private fun AutocaptureClaimBounds.isTheElementBehind(other: AxRect, minimumTouc
  * touch target below the one it matched on before #159).
  *
  * Only a scale is recovered, and only an axis-aligned one — see [AutocaptureClaimBounds.drawScale]
- * for the rotation case, which misses the match here exactly as it did before any scale was
- * recovered (a double report).
+ * for the rotation case, which leaves this branch's derived rect wrong exactly as it was before any
+ * scale was recovered (a double report, for an element below the minimum).
  */
 private fun Size.drawnLike(claim: AutocaptureClaimBounds): Size =
     Size(width * claim.drawScale.width, height * claim.drawScale.height)

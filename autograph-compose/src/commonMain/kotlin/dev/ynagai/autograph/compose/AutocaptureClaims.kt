@@ -119,8 +119,9 @@ internal fun Modifier.registerAutocaptureClaim(kind: AutocaptureClaimKind): Modi
  *
  * Only a scale is recovered, and only an axis-aligned one: under a rotation the two corners span the
  * rotated diagonal rather than the element, so the ratio is not the scale — the same axis-aligned
- * assumption `AutocaptureNode.kt` documents for the Android hit test, and a rotated element misses
- * the resolver's match either way.
+ * assumption `AutocaptureNode.kt` documents for the Android hit test. That costs the resolver's
+ * expansion branch alone, leaving a rotated element below the minimum touch target double-reporting
+ * exactly as it did before any scale was recovered.
  */
 private fun LayoutCoordinates.drawScale(): Size {
     val topLeft = localToWindow(Offset.Zero)
