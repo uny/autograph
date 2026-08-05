@@ -13,20 +13,18 @@ import androidx.compose.ui.layout.onGloballyPositioned
 /**
  * Which modifier registered a claim.
  *
- * The two INSTRUMENTED kinds behave identically on Android, which reads
- * [AutographInstrumentedKey] off the semantics ancestry and never consults these bounds at all. They
- * differ only for [ElementResolver.ios.kt], and only in one respect: whether the claim's element is
- * *known to be clickable*. [INSTRUMENTED_CLICK] is registered by [trackClick], which supplies the
- * `clickable` itself, so its element always is. [INSTRUMENTED_IMPRESSION] is registered by
- * [trackImpression], which supplies none — its element is clickable only if the caller separately
- * made it so, and usually isn't. That distinction is what lets the resolver tell a claim that
- * describes the tapped clickable from one that describes a non-interactive descendant of it; see
- * `instrumentedElementIs` for why geometry alone cannot (#153), and what it still does not settle.
+ * [INSTRUMENTED_CLICK] is registered by [trackClick] alone. [trackImpression] deliberately registers
+ * none: it reports a visibility event, never a click, so there is no click for autocapture to
+ * duplicate and nothing to suppress. It used to register one, and geometry could not tell that claim
+ * apart from the clickable enclosing it — the resolver either dropped the host's real tap or
+ * double-reported, depending on which way the ambiguity was resolved (#153, #158; both shapes
+ * measured byte-identical from the accessibility tree). Removing the claim removes the ambiguity
+ * rather than picking a side of it.
  */
-internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED_CLICK, INSTRUMENTED_IMPRESSION }
+internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED_CLICK }
 
 /**
- * On-screen bounds of [autographIgnore]/[trackClick]/[trackImpression] elements, tracked positionally
+ * On-screen bounds of [autographIgnore]/[trackClick] elements, tracked positionally
  * rather than via the semantics tree.
  *
  * Android's [ElementResolver] doesn't need this — it hit-tests the semantics tree directly and reads
@@ -43,16 +41,12 @@ internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED_CLICK, INSTRUME
 internal class AutocaptureClaims {
     val ignored = mutableStateMapOf<Any, Rect>()
 
-    /** Claims from [trackClick] — see [AutocaptureClaimKind] for why these are kept apart. */
+    /** Claims from [trackClick] — see [AutocaptureClaimKind] for why [trackImpression] registers none. */
     val instrumentedClick = mutableStateMapOf<Any, Rect>()
-
-    /** Claims from [trackImpression] — see [AutocaptureClaimKind] for why these are kept apart. */
-    val instrumentedImpression = mutableStateMapOf<Any, Rect>()
 
     private fun mapFor(kind: AutocaptureClaimKind) = when (kind) {
         AutocaptureClaimKind.IGNORED -> ignored
         AutocaptureClaimKind.INSTRUMENTED_CLICK -> instrumentedClick
-        AutocaptureClaimKind.INSTRUMENTED_IMPRESSION -> instrumentedImpression
     }
 
     fun put(key: Any, kind: AutocaptureClaimKind, bounds: Rect) {
@@ -71,8 +65,7 @@ internal val LocalAutocaptureClaims = staticCompositionLocalOf<AutocaptureClaims
  * Registers this element's on-screen bounds into the ambient [AutocaptureClaims] as [kind], keyed by
  * a per-call-site-instance identity so the entry is removed on disposal without disturbing other
  * elements' entries. No-op when there's no ambient [AutocaptureClaims] (autocapture disabled, or
- * outside [AutographProvider]) — cheap to call unconditionally from [autographIgnore]/[trackClick]/
- * [trackImpression].
+ * outside [AutographProvider]) — cheap to call unconditionally from [autographIgnore]/[trackClick].
  */
 @Composable
 internal fun Modifier.registerAutocaptureClaim(kind: AutocaptureClaimKind): Modifier {

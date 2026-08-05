@@ -249,10 +249,14 @@ There's a `JsonObject` overload for non-string values. Notes:
 element's identifier as `target` on a configurable event name (`"Element Clicked"` by default) —
 without needing `Modifier.trackClick` on every element. It's opt-in: observing every tap is a
 meaningfully different privacy posture than explicit instrumentation, so it's off unless you ask
-for it. Elements already instrumented with `trackClick` / `trackImpression` are never
-double-reported, `Modifier.autographIgnore()` excludes a subtree entirely, and
+for it. Elements already instrumented with `trackClick` are never double-reported,
+`Modifier.autographIgnore()` excludes a subtree entirely, and
 [`Modifier.autocaptureScope(...)`](#scoped-context) attaches per-element properties to the taps
 under it.
+
+`trackImpression` deliberately does **not** suppress autocapture: it reports a visibility event and
+never a click, so a tap on the element it marks is one autocapture owns. Use `autographIgnore()` for
+an element that should report neither.
 
 Implemented on Android (hit-testing the semantics tree via the same opt-in `RootForTest` entry
 point other autocapture SDKs use) and iOS (walking the native accessibility tree Compose

@@ -23,6 +23,13 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * Screen/section from the ambient [ScreenContext] (see [TrackedScreen]) are merged into
  * [properties] automatically when this element is nested inside one.
+ *
+ * **Does not suppress autocapture.** Unlike [trackClick], this marks nothing as instrumented: it
+ * reports a *visibility* event and never reports a click, so autocapture reporting a tap on this
+ * element duplicates nothing. Marking it was the original design and it cost an event rather than
+ * saving one — a tappable element that also reported an impression produced no click event at all,
+ * on either platform ([#158](https://github.com/uny/autograph/issues/158)). An element that should
+ * report neither is what [autographIgnore] is for.
  */
 public fun Modifier.trackImpression(
     name: String,
@@ -39,8 +46,7 @@ public fun Modifier.trackImpression(
             fired = true
             tracker.track(name, withScreenContext(properties, screenContext), target)
         }
-    }.semantics { this[AutographInstrumentedKey] = true }
-        .registerAutocaptureClaim(AutocaptureClaimKind.INSTRUMENTED_IMPRESSION)
+    }
 }
 
 /**

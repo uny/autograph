@@ -162,11 +162,15 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
                 .trackClick("Recipe Saved", target = "explicit_tracked_small") {},
         )
 
-        // A trackImpression element SHORTER than the minimum touch target, not clickable itself,
-        // centred in a clickable that is exactly at the minimum. Its claim expands onto the outer's
-        // accessibility frame exactly, so iOS's rect match reads it as "the outer is instrumented"
-        // and drops the outer's own tap — #153, the false-veto direction of #151's fix. The outer is
-        // deliberately NOT instrumented: autocapture owns its taps and must keep reporting them.
+        // A trackImpression element that is not clickable itself, inside a clickable that IS. The
+        // outer is deliberately NOT instrumented: autocapture owns its taps and must keep reporting
+        // them. iOS cannot read the marker off the ancestry and used to consult a registered rect
+        // instead, which the inner element's own frame was indistinguishable from — so the outer's
+        // real tap silently vanished (#153, #158). trackImpression now registers nothing at all.
+        //
+        // The inner fillMaxSize()es deliberately: coincident bounds are the shape that failed
+        // whichever way the old rect match was qualified, so it is the stronger fixture of the two
+        // geometries — a centred sub-minimum inner (#153's own) only failed against pre-#155 code.
         Box(
             modifier = Modifier
                 .testTag("impression_inner_host")
@@ -177,9 +181,9 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                "Impression inside a plain 48dp clickable",
+                "Impression filling a plain 48dp clickable",
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .trackImpression("Recipe Viewed", target = "impression_inner"),
             )
         }

@@ -161,7 +161,8 @@ internal data class AutocaptureTarget(
  * [ignored] is subtree-wide ([autographIgnore] on ANY node from the hit node up to the composition
  * root excludes the whole tap, even above the clickable that would otherwise be picked), whereas
  * [instrumented] only vetoes the walk when it reaches the node it would otherwise return — already
- * instrumented via [trackClick] / [trackImpression] and would otherwise be double-reported.
+ * instrumented via [trackClick] and would otherwise be double-reported. [trackImpression] does not
+ * set it: it reports a visibility event, never a click, so there is nothing to double-report (#158).
  *
  * [disabled] vetoes on the returned node only, like [instrumented] and for a measured reason.
  * `clickable(enabled = false)` publishes the click action alongside `Disabled`, so a disabled

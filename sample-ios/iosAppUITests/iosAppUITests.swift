@@ -109,6 +109,15 @@ final class iosAppUITests: XCTestCase {
 
     /// The log every test below starts from: both of the sample's launch-time impressions, in
     /// composition order. Written out once so the ordered-log assertions state only their own tap.
+    ///
+    /// Every assertion against this log is preceded by [waitForLastEventTarget]. The two are not
+    /// redundant and neither replaces the other: the wait establishes that the tap's event *arrived*
+    /// (a positive claim, where late and never are the same failure), and the eager read that
+    /// follows is what states nothing arrived *besides* it. Waiting on the log string itself would
+    /// destroy the second half — it would pass on a duplicate that simply had not been appended yet.
+    /// Measured on CI, which runs this suite roughly twice as slowly as a developer machine:
+    /// `testClickableHostingAnImpressionElementIsAutocapturedNearItsEdgeToo` read the log before its
+    /// tap's entry landed and reported the tap as dropped when it was merely late.
     private static let impressionBaseline =
         "Tracks: Recipe Viewed:recipe_card|Recipe Viewed:impression_inner"
 
@@ -157,43 +166,45 @@ final class iosAppUITests: XCTestCase {
     func testExplicitTrackClickOnASmallElementFiresExactlyOnce() {
         let app = launchSettled()
         app.buttons["explicit_tracked_small"].tap()
+        waitForLastEventTarget(app, "explicit_tracked_small")
         XCTAssertEqual(
             trackLog(app),
             Self.impressionBaseline + "|Recipe Saved:explicit_tracked_small"
         )
     }
 
-    /// The false-veto direction of the same expansion — #153.
+    /// A `trackImpression` element must not suppress the clickable enclosing it — #153, #158.
     ///
-    /// The 48dp host is NOT instrumented, so autocapture owns its taps. The sub-minimum
-    /// `trackImpression` `Text` centred inside it is, and its claim expands onto the host's
-    /// accessibility frame exactly, so the rect match reads the host as already-instrumented and
-    /// drops a tap that nothing else reports. `trackImpression` is what makes this reachable where a
-    /// `trackClick` inner element cannot: it adds no clickable, so Compose leaves the tap with the
-    /// host instead of routing it inward.
+    /// The 48dp host is NOT instrumented, so autocapture owns its taps. The `trackImpression` `Text`
+    /// filling it is, and iOS cannot read that marker off the ancestry: it consulted a registered
+    /// rect instead, which for a coincident inner element is the host's frame exactly, so the host
+    /// was read as already-instrumented and its tap vanished with nothing reporting it.
+    /// `trackImpression` now registers no rect at all, since it reports a visibility event and never
+    /// a click — there was never a click of its own for autocapture to duplicate.
     ///
     /// On-device rather than only in `ElementResolverIosTest`, which hand-builds its `UIView` tree:
-    /// the fix rests on Compose Multiplatform publishing the inner element as its own accessibility
-    /// descendant of the host, and a test that constructs the tree itself assumes exactly the bridge
-    /// behaviour in question (the same reason #134/#135 are pinned here).
-    func testClickableHostingASmallImpressionElementIsStillAutocaptured() {
+    /// what the old veto turned on was Compose Multiplatform's own bridging of these two elements,
+    /// and a test that constructs the tree itself assumes exactly the bridge behaviour in question
+    /// (the same reason #134/#135 are pinned here).
+    func testClickableHostingAnImpressionElementIsStillAutocaptured() {
         let app = launchSettled()
         app.buttons["impression_inner_host"].tap()
+        waitForLastEventTarget(app, "impression_inner_host")
         XCTAssertEqual(
             trackLog(app),
             Self.impressionBaseline + "|Element Clicked:impression_inner_host"
         )
     }
 
-    /// The same host tapped on the margin OUTSIDE the inner element's own frame — the 12pt strip
-    /// above it. The veto is decided from the claim and the host's frame, neither of which depends on
-    /// where the tap landed, so this must behave identically; it is a separate test because the fix
-    /// searches the host's whole subtree rather than the hit path, and a hit-path-only fix would pass
-    /// the test above while still dropping this tap.
-    func testClickableHostingASmallImpressionElementIsAutocapturedOnItsMarginToo() {
+    /// The same host tapped near its top edge rather than its centre. Nothing about the suppression
+    /// ever depended on where the tap landed, so this must behave identically — it is a separate test
+    /// because an implementation that consulted only the hit path would pass the centre tap above
+    /// while still dropping a tap that resolves through a different branch.
+    func testClickableHostingAnImpressionElementIsAutocapturedNearItsEdgeToo() {
         let app = launchSettled()
         let host = app.buttons["impression_inner_host"]
         host.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        waitForLastEventTarget(app, "impression_inner_host")
         XCTAssertEqual(
             trackLog(app),
             Self.impressionBaseline + "|Element Clicked:impression_inner_host"
