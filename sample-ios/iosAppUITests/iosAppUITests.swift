@@ -109,6 +109,15 @@ final class iosAppUITests: XCTestCase {
 
     /// The log every test below starts from: both of the sample's launch-time impressions, in
     /// composition order. Written out once so the ordered-log assertions state only their own tap.
+    ///
+    /// Every assertion against this log is preceded by [waitForLastEventTarget]. The two are not
+    /// redundant and neither replaces the other: the wait establishes that the tap's event *arrived*
+    /// (a positive claim, where late and never are the same failure), and the eager read that
+    /// follows is what states nothing arrived *besides* it. Waiting on the log string itself would
+    /// destroy the second half — it would pass on a duplicate that simply had not been appended yet.
+    /// Measured on CI, which runs this suite roughly twice as slowly as a developer machine:
+    /// `testClickableHostingAnImpressionElementIsAutocapturedNearItsEdgeToo` read the log before its
+    /// tap's entry landed and reported the tap as dropped when it was merely late.
     private static let impressionBaseline =
         "Tracks: Recipe Viewed:recipe_card|Recipe Viewed:impression_inner"
 
@@ -157,6 +166,7 @@ final class iosAppUITests: XCTestCase {
     func testExplicitTrackClickOnASmallElementFiresExactlyOnce() {
         let app = launchSettled()
         app.buttons["explicit_tracked_small"].tap()
+        waitForLastEventTarget(app, "explicit_tracked_small")
         XCTAssertEqual(
             trackLog(app),
             Self.impressionBaseline + "|Recipe Saved:explicit_tracked_small"
@@ -179,6 +189,7 @@ final class iosAppUITests: XCTestCase {
     func testClickableHostingAnImpressionElementIsStillAutocaptured() {
         let app = launchSettled()
         app.buttons["impression_inner_host"].tap()
+        waitForLastEventTarget(app, "impression_inner_host")
         XCTAssertEqual(
             trackLog(app),
             Self.impressionBaseline + "|Element Clicked:impression_inner_host"
@@ -193,6 +204,7 @@ final class iosAppUITests: XCTestCase {
         let app = launchSettled()
         let host = app.buttons["impression_inner_host"]
         host.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08)).tap()
+        waitForLastEventTarget(app, "impression_inner_host")
         XCTAssertEqual(
             trackLog(app),
             Self.impressionBaseline + "|Element Clicked:impression_inner_host"
