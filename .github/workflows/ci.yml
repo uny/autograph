@@ -31,7 +31,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       # Diagnostic only (see issue #23): linkDebugTestIosSimulatorArm64 intermittently fails
       # with "framework 'UIUtilities' not found" / undefined symbols, which looks like it
@@ -67,7 +67,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       # AutographSegmentSwift (root Package.swift) consumes Autograph.xcframework as a local
       # binaryTarget when present (see Package.swift), so it must be built before `xcodebuild test`
@@ -93,7 +93,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       # xcodebuild exercises sample-shared's embedAndSignAppleFrameworkForXcode path, which Gradle's
       # `build` does not. `test` also runs iosAppUITests for autocapture hit-testing behavior that
@@ -122,7 +122,7 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       - name: Enable KVM
         run: |
