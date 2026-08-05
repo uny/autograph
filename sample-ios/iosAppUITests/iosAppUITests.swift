@@ -216,12 +216,16 @@ final class iosAppUITests: XCTestCase {
     /// Compose qualifies the touch target on the element's MEASURED size and draws the result through
     /// the transform, so the published accessibility frame is the minimum *scaled*, while the claim —
     /// `boundsInWindow()` — is already scaled. Deriving the plain minimum from it matched nothing and
-    /// the element reported twice; the claim now carries its measured size so the ratio is
-    /// recoverable. Only an on-device test can pin that relationship: it is what Compose
-    /// Multiplatform publishes, not something this code decides.
+    /// the element reported twice; the claim now carries the scale it was drawn through. Only an
+    /// on-device test can pin that relationship: it is what Compose Multiplatform publishes, not
+    /// something this code decides.
     func testScaledTrackClickFiresExactlyOnce() {
         let app = launchSettled()
         app.buttons["scaled_tracked_small"].tap()
+        waitForLastEventTarget(app, "scaled_tracked_small")
+        // Read eagerly after the wait, exactly as testExplicitTrackClickFiresExactlyOnce does: the
+        // wait keeps CI's slower simulator from reading the log before the tap lands, while the
+        // eager read still fails on a duplicate rather than waiting one out.
         XCTAssertEqual(
             trackLog(app),
             Self.impressionBaseline + "|Recipe Saved:scaled_tracked_small"

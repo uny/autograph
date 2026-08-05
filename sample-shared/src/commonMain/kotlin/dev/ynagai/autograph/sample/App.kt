@@ -196,7 +196,7 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
         // Compose qualifies the touch target on the MEASURED size and then draws the result through
         // the transform, so the accessibility frame is neither the drawn rect nor the drawn rect
         // expanded to the plain minimum — and the claim, being boundsInWindow(), is already scaled.
-        // The element was reported twice until the claim carried its measured size too (#159).
+        // The element was reported twice until the claim carried that scale too (#159).
         Text(
             "Scaled trackClick",
             modifier = Modifier

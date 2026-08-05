@@ -2,13 +2,17 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
@@ -25,7 +29,7 @@ import kotlin.test.assertTrue
 class AutocaptureClaimsTest {
 
     /** A claim for an element drawn at exactly the size it was measured at — no transform (#159). */
-    private fun claim(drawn: Rect) = AutocaptureClaimBounds(drawn, drawn.size)
+    private fun claim(drawn: Rect) = AutocaptureClaimBounds(drawn, Size(1f, 1f))
 
     @Test
     fun putRegistersBoundsUnderTheGivenKind() {
@@ -238,12 +242,11 @@ class AutocaptureClaimDisposalTest {
     }
 
     /**
-     * A claim also stores the size the element was MEASURED at, which a transform does not touch —
-     * the other half of the pair `ElementResolver.ios.kt` needs to recover that transform (#159).
-     * Stated against a scaled element, since it is the only case where the two halves differ.
+     * A claim also stores the per-axis scale the element was drawn through — the other half of the
+     * pair `ElementResolver.ios.kt` needs to derive the touch target Compose published (#159).
      */
     @Test
-    fun registerAutocaptureClaimStoresTheMeasuredSizeUnaffectedByAScaleTransform() = runComposeUiTest {
+    fun registerAutocaptureClaimStoresTheScaleAnElementIsDrawnThrough() = runComposeUiTest {
         var claims: AutocaptureClaims? = null
         setContent {
             PlatformAutocaptureTestHost {
@@ -257,18 +260,43 @@ class AutocaptureClaimDisposalTest {
 
         val stored = claims?.ignored?.values?.singleOrNull()
         assertTrue(stored != null, "expected exactly one ignored claim")
-        assertEquals(
-            0.5f,
-            stored.drawn.width / stored.measured.width,
-            0.01f,
-            "drawn / measured must recover the scale the element was drawn through",
+        assertEquals(0.5f, stored.drawScale.width, 0.01f, "must recover the scale the element was drawn through")
+        assertEquals(0.5f, stored.drawScale.height, 0.01f, "must recover the scale the element was drawn through")
+    }
+
+    /**
+     * ...and an ancestor's clip is NOT a scale. This is the discriminating half: `boundsInWindow()`
+     * is clipped, so deriving the scale from it instead of from the element's own corners reports
+     * this fixture as `0.5` — indistinguishable from the genuine `scale(0.5f)` above — and the
+     * resolver would then shrink a clipped element's derived touch target below the plain minimum it
+     * matched on before #159, reopening #151 for it.
+     *
+     * The fixture overflows its clipping host symmetrically, so `boundsInWindow()` reports half the
+     * measured height (verified: 20dp measured, 10dp drawn) while nothing is scaled at all.
+     */
+    @Test
+    fun registerAutocaptureClaimDoesNotReportAnAncestorsClipAsAScale() = runComposeUiTest {
+        var claims: AutocaptureClaims? = null
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    claims = LocalAutocaptureClaims.current
+                    Box(Modifier.size(40.dp, 10.dp).clipToBounds(), contentAlignment = Alignment.Center) {
+                        Box(Modifier.testTag("ignored").requiredSize(40.dp, 20.dp).autographIgnore())
+                    }
+                }
+            }
+        }
+        waitForIdle()
+
+        val stored = claims?.ignored?.values?.singleOrNull()
+        assertTrue(stored != null, "expected exactly one ignored claim")
+        assertTrue(
+            stored.drawn.height < stored.drawn.width / 2f,
+            "fixture must actually be clipped, or this test proves nothing: drawn = ${stored.drawn}",
         )
-        assertEquals(
-            0.5f,
-            stored.drawn.height / stored.measured.height,
-            0.01f,
-            "drawn / measured must recover the scale the element was drawn through",
-        )
+        assertEquals(1f, stored.drawScale.width, 0.01f, "a clip is not a scale")
+        assertEquals(1f, stored.drawScale.height, 0.01f, "a clip is not a scale")
     }
 
     /**

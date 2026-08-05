@@ -151,11 +151,11 @@ internal fun resolveIosElement(
  * target on the element's MEASURED size — the distinction `SemanticsHitPath.kt`'s
  * `minTargetDistanceSquared` calls load-bearing — and then draws the result through whatever
  * transform the element sits under, while [AutocaptureClaimBounds.drawn] is already transformed. So
- * the minimum is scaled by the claim's own drawn/measured ratio before the expansion, which reduces
- * to the plain minimum whenever there is no transform. Measured (iPhone 17 Pro): a `trackClick`
+ * the minimum is scaled by the claim's own [AutocaptureClaimBounds.drawScale] before the expansion,
+ * which is the identity whenever there is no transform. Measured (iPhone 17 Pro): a `trackClick`
  * `Text` under `scale(0.5f)` drawn at `246x36px` from a measured `492x72px` published
  * `(171, 1236, 417, 1308)` — 246x72px, the 144px minimum halved on the axis that needed expanding,
- * to the pixel; before the ratio, the derived `246x144` matched nothing and the element reported
+ * to the pixel; before the scale, the derived `246x144` matched nothing and the element reported
  * twice.
  *
  * A residual was documented here and is **refuted by measurement**: an ancestor clipping the
@@ -164,7 +164,7 @@ internal fun resolveIosElement(
  * (host `(16, 624, 370x24)`) published the full expansion at `(16, 612, 193.7x48)`, overflowing its
  * clipping parent, and reported exactly once.
  *
- * The second — expansion is not injective, so an element below the minimum can expand onto a rect
+ * The other — expansion is not injective, so an element below the minimum can expand onto a rect
  * belonging to something else — does **not** arise for the claims that reach here, because
  * [trackClick] makes its element a `clickable`. In the canonical shape (a 24dp `trackClick` box
  * centred in its own 48dp `clickable`, what Material builds by construction) tapping the outer ring
@@ -184,19 +184,19 @@ private fun AutocaptureClaimBounds.isTheElementBehind(other: AxRect, minimumTouc
         drawn.expandedToAtLeast(minimumTouchTargetPx.drawnLike(this)).approximatelyEquals(other)
 
 /**
- * This size mapped through the transform [claim]'s element was drawn under — its drawn extent over
- * its measured extent, per axis. The identity whenever the element carries no transform, which is
- * every claim but #159's; an axis whose measured extent is zero is left alone, having no ratio.
+ * This size mapped through the transform [claim]'s element was drawn under. The identity whenever the
+ * element carries no transform, which is every claim but #159's — including a clipped one, since
+ * [AutocaptureClaimBounds.drawScale] is measured off the element's corners rather than off its
+ * clipped [AutocaptureClaimBounds.drawn] rect (that KDoc has the measurement, and why deriving the
+ * scale from `drawn` instead would read a clip as a scale and shrink a clipped element's derived
+ * touch target below the one it matched on before #159).
  *
- * Only a scale is recovered, and only an axis-aligned one. A rotated element's drawn bounds are its
- * bounding box, so the ratio overstates the scale and the derived rect misses — the same outcome as
- * before any ratio existed (a double report), and the same axis-aligned assumption
- * `AutocaptureNode.kt` already documents for the Android hit test.
+ * Only a scale is recovered, and only an axis-aligned one — see [AutocaptureClaimBounds.drawScale]
+ * for the rotation case, which misses the match here exactly as it did before any scale was
+ * recovered (a double report).
  */
-private fun Size.drawnLike(claim: AutocaptureClaimBounds): Size = Size(
-    if (claim.measured.width > 0f) width * claim.drawn.width / claim.measured.width else width,
-    if (claim.measured.height > 0f) height * claim.drawn.height / claim.measured.height else height,
-)
+private fun Size.drawnLike(claim: AutocaptureClaimBounds): Size =
+    Size(width * claim.drawScale.width, height * claim.drawScale.height)
 
 /** This rect grown about its own centre so that neither side is shorter than [size]. */
 private fun Rect.expandedToAtLeast(size: Size): Rect {

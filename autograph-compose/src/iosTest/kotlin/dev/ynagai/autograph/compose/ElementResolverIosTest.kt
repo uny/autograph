@@ -47,9 +47,9 @@ class ElementResolverIosTest {
 
     /**
      * A claim for an element drawn at exactly the size it was measured at — no transform, which is
-     * every case but [resolveIosElementSuppressesAScaledTrackClickElement]'s.
+     * every case but the two scaled ones below.
      */
-    private fun claim(drawn: Rect) = AutocaptureClaimBounds(drawn, drawn.size)
+    private fun claim(drawn: Rect) = AutocaptureClaimBounds(drawn, Size(1f, 1f))
 
     private fun UIView.setPointFrame(x: Double, y: Double, width: Double, height: Double) {
         setAccessibilityFrame(CGRectMake(x, y, width, height))
@@ -286,8 +286,8 @@ class ElementResolverIosTest {
         // #159. The element is drawn at half the size it was measured at, so Compose expands the
         // touch target on the MEASURED size and then draws the result through the transform: the
         // published frame is the minimum HALVED, not the plain minimum. Here the button's frame is
-        // the fixture's 20x20pt and the claim is drawn 10x10pt from a measured 20x20pt, so the
-        // minimum has to be halved to 20x20pt of a 40x40pt nominal before it lands on the frame.
+        // the fixture's 20x20pt and the claim is drawn 10x10pt through a 0.5 scale, so the minimum
+        // has to be halved to 20x20pt of a 40x40pt nominal before it lands on the frame.
         val (root, position) = buildRootWithButton()
         val scale = UIScreen.mainScreen.scale
         val drawn = Rect(
@@ -297,11 +297,7 @@ class ElementResolverIosTest {
             (25.0 * scale).toFloat(),
         )
         val claims = AutocaptureClaims()
-        claims.put(
-            Any(),
-            AutocaptureClaimKind.INSTRUMENTED_CLICK,
-            AutocaptureClaimBounds(drawn, Size(drawn.width * 2f, drawn.height * 2f)),
-        )
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.5f, 0.5f)))
         val nominalMinimum = (40.0 * scale).toFloat()
 
         val result = resolveIosElement(root, claims, position, Size(nominalMinimum, nominalMinimum))
@@ -311,9 +307,9 @@ class ElementResolverIosTest {
 
     @Test
     fun resolveIosElementDoesNotSuppressAScaledClaimWhoseUnscaledExpansionWouldHaveMatched() {
-        // The negative of the test above: taking the claim's measured size as its drawn size — what
-        // the code did before #159 — expands this claim onto the button's frame and vetoes. The
-        // element really is drawn at half size, so that match describes no element on screen.
+        // The negative of the test above: ignoring the claim's scale — what the code did before
+        // #159 — expands this claim onto the button's frame and vetoes. The element really is drawn
+        // at a fifth of its measured size, so that match describes no element on screen.
         val (root, position) = buildRootWithButton()
         val scale = UIScreen.mainScreen.scale
         val drawn = Rect(
@@ -323,15 +319,39 @@ class ElementResolverIosTest {
             (22.0 * scale).toFloat(),
         )
         val claims = AutocaptureClaims()
-        claims.put(
-            Any(),
-            AutocaptureClaimKind.INSTRUMENTED_CLICK,
-            AutocaptureClaimBounds(drawn, Size(drawn.width * 5f, drawn.height * 5f)),
-        )
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.2f, 0.2f)))
 
         val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
 
         assertEquals("share_button", result)
+    }
+
+    @Test
+    fun resolveIosElementScalesTheMinimumPerAxisAndOnlyWhereTheClaimFallsShort() {
+        // The shape of the real on-device case, which the two square fixtures above cannot state:
+        // one axis is ALREADY longer than the scaled minimum and must be left alone, while the
+        // other expands — and the two axes are scaled by different factors.
+        //
+        // It is the discriminating case for how the scale and the expansion compose. Scaling the
+        // minimum first (correct) gives max(drawn, scale x minimum): width max(20, 12) = 20pt,
+        // untouched, and height max(10, 20) = 20pt, expanded — the fixture's 20x20pt frame.
+        // Expanding to the plain minimum and scaling the RESULT instead would shrink the already
+        // long-enough width to 12pt and miss, as it would on a wide `Text` on device.
+        val (root, position) = buildRootWithButton()
+        val scale = UIScreen.mainScreen.scale
+        val drawn = Rect(
+            (10.0 * scale).toFloat(),
+            (15.0 * scale).toFloat(),
+            (30.0 * scale).toFloat(),
+            (25.0 * scale).toFloat(),
+        )
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.5f, 0.25f)))
+        val nominalMinimum = Size((24.0 * scale).toFloat(), (80.0 * scale).toFloat())
+
+        val result = resolveIosElement(root, claims, position, nominalMinimum)
+
+        assertNull(result)
     }
 
     /**
