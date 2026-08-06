@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-08-06
+
 ### Changed
 
 - `Modifier.trackImpression` no longer suppresses autocapture on the element it marks ([#158]).
@@ -367,7 +369,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/uny/autograph/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/uny/autograph/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/uny/autograph/compare/v0.1.1...v0.2.0
 [0.1.1]: https://github.com/uny/autograph/compare/v0.1.0...v0.1.1
