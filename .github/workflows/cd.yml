@@ -71,21 +71,11 @@ jobs:
           fi
 
           # --generate-notes with no explicit start tag has been observed picking v0.1.0 as the
-          # "previous" release for every tag pushed so far (v0.2.0, v0.3.0), not the actual
-          # preceding release — so derive it ourselves from the sorted tag list instead of trusting
-          # GitHub's own resolution.
-          prev_tag=$(gh api "repos/${{ github.repository }}/tags" --paginate --jq '.[].name' \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | sort -V \
-            | awk -v cur="$tag" '$0==cur{exit} {prev=$0} END{print prev}')
-
-          if gh release view "$tag" >/dev/null 2>&1; then
-            :
-          elif [ -n "$prev_tag" ]; then
-            gh release create "$tag" --notes-start-tag "$prev_tag" --generate-notes
-          else
-            gh release create "$tag" --generate-notes
-          fi
+          # "previous" release for every tag pushed so far (v0.2.0, v0.3.0, v0.4.0), not the actual
+          # preceding release. The maintainer generates and edits release notes by hand after the
+          # asset is up (`gh release edit "$tag" --notes-start-tag <prev> --generate-notes` or
+          # similar), so this step only needs to get a release object to attach the zip to.
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes ""
           gh release upload "$tag" "$zip_path" --clobber
 
       # The rewrite above is pushed to refs/tags/<tag> only, so it lands on no branch: main's copy
