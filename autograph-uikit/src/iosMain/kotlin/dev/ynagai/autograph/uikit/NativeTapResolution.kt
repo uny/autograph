@@ -86,7 +86,11 @@ import platform.UIKit.UIView
  *
  * The practical consequence for a hybrid app: taps on native surfaces should not be assumed present in
  * the data. Treat this pipeline as best-effort until #135 finds a mechanism that does not depend on an
- * accessibility client, and instrument anything you must not lose explicitly.
+ * accessibility client, and instrument anything you must not lose explicitly. This function itself
+ * stays silent either way — it only resolves or drops — but its caller,
+ * [installAutographNativeTapCapture], surfaces the cold case once via `NSLog` the first time it happens
+ * (see [warnOnceIfAccessibilityTreeIsCold], #170), so this is discoverable during integration rather
+ * than only in this doc.
  *
  * [scale] must be `UIScreen.mainScreen.scale` — see [accessibilityBoundsInWindowPx], whose
  * precondition this inherits wholesale.

@@ -8,6 +8,7 @@ import dev.ynagai.autograph.context.ScopeStack
 import platform.Foundation.NSHashTable
 import platform.Foundation.NSHashTableObjectPointerPersonality
 import platform.Foundation.NSHashTableWeakMemory
+import platform.Foundation.NSLog
 import platform.Foundation.NSNotificationCenter
 import platform.Foundation.NSOperationQueue
 import platform.UIKit.UIApplication
@@ -30,6 +31,9 @@ import platform.darwin.NSObjectProtocol
  * XCUITest runner), UIKit and SwiftUI have not built the accessibility tree this resolves taps through,
  * and every native tap is dropped silently. There is no fix available from public API, so anything that
  * must not be lost needs explicit instrumentation. Compose autocapture does not share the limitation.
+ * **Not silent any more, though**: the first time this happens, an `NSLog` line names it — see
+ * [warnOnceIfAccessibilityTreeIsCold] (#170) — so a developer running the app during integration has
+ * something in the console instead of nothing.
  *
  * **A hybrid app's own Compose autocapture does not warm this pipeline either (#135, measured).**
  * `autograph-compose`'s iOS resolver activates CMP's accessibility bridge on tap (see
@@ -183,10 +187,73 @@ public class AutographNativeTapCapture internal constructor(
             // accessibilityBoundsInWindowPx, whose precondition this inherits.
             val scale = UIScreen.mainScreen.scale.toFloat()
             val positionInWindowPx = AxPoint(positionInWindowPoints.x * scale, positionInWindowPoints.y * scale)
-            val target = resolveNativeTapTarget(window, positionInWindowPx, scale) ?: return
+            val target = resolveNativeTapTarget(window, positionInWindowPx, scale)
+            if (target == null) {
+                warnOnceIfAccessibilityTreeIsCold(window)
+                return
+            }
             tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject), target)
         } catch (e: Exception) {
             // Swallowed: see kdoc above.
         }
     }
+}
+
+/**
+ * Set the first time [warnOnceIfAccessibilityTreeIsCold] runs, so the check it can trigger — and the
+ * log that check can in turn trigger — both happen at most once per process. See #170: the underlying
+ * cause is a one-time process state (whether an accessibility client has ever run), not something that
+ * flips back and forth, so nothing is gained by asking twice.
+ *
+ * Global rather than per [AutographNativeTapCapture] instance: `NSLog` itself is process-wide, and an
+ * app that installs, uninstalls and reinstalls this capture (e.g. around a tracker replaced on logout)
+ * must not see the warning repeat just because a new instance runs the check for the first time again.
+ *
+ * Main-thread-only, like the rest of this file, so no synchronization guards it.
+ *
+ * Internal rather than private only so tests can observe that a check happened — the same reasoning as
+ * [AutographNativeTapCapture.attach]: nothing else in this file needs to read it.
+ */
+internal var checkedAccessibilityTreeColdness = false
+
+/**
+ * The first time any native tap resolves to nothing, checks whether the accessibility tree is cold
+ * ([isAccessibilityTreeCold]) and, if so, logs once via `NSLog` — loud enough that a developer running
+ * the app during integration sees it in the console instead of silent nothing. Never checks or logs
+ * again after the first call, whatever the outcome.
+ *
+ * Deliberately not gated on *which* of [resolveNativeTapTarget]'s five drop reasons produced the null.
+ * [isAccessibilityTreeCold] answers the tree-wide question directly, and when the tree genuinely is
+ * cold every native tap drops for [resolveNativeTapTarget]'s reason 1 (the walk finds nothing on the
+ * whole tree) — so checking on any drop and gating the log on tree-wide coldness reaches the same
+ * answer without [resolveNativeTapTarget] having to expose which of the five cases fired. A drop on a
+ * *warm* tree, whichever reason produced it, correctly finds real elements elsewhere in the tree and
+ * stays silent — this is what keeps an ordinary tap-missed-everything from logging on every miss.
+ *
+ * [root] is the same [UIView] [resolveNativeTapTarget] was just asked to search — passing anything else
+ * would check a different tree than the one that just dropped the tap.
+ *
+ * Internal rather than private only so tests can drive it directly. What a headless test cannot reach:
+ * whether the `NSLog` line itself is emitted — the same limitation [NativeTapCaptureTest]'s kdoc
+ * already documents for a recognized tap. Tests instead pin the two things that *are* verifiable
+ * without a device: that the coldness question is answered correctly, and that it is asked at most once.
+ */
+internal fun warnOnceIfAccessibilityTreeIsCold(root: UIView) {
+    if (checkedAccessibilityTreeColdness) return
+    checkedAccessibilityTreeColdness = true
+    if (!isAccessibilityTreeCold(root)) return
+    // A single format-string argument, no varargs: passing an interpolated message as a `%@` vararg
+    // crashed with EXC_BAD_ACCESS inside NSLog's own formatting machinery when built into an exported
+    // framework (see sample-shared's SampleLog.ios.kt) — interpolating the whole line up front and
+    // passing it as NSLog's sole argument sidesteps that interop path entirely.
+    NSLog(
+        "Autograph: a native tap was dropped because the accessibility tree looks cold — UIKit/SwiftUI " +
+            "have not built it yet in this process, so installAutographNativeTapCapture cannot resolve " +
+            "any native tap until an accessibility client (VoiceOver, Voice Control, the Accessibility " +
+            "Inspector, or an XCUITest runner) has run once. This is expected, not a bug in your " +
+            "integration — see installAutographNativeTapCapture's kdoc for the full explanation. Taps " +
+            "you cannot afford to lose should be instrumented explicitly (Modifier.trackClick on " +
+            "Compose content, or an explicit tracker.track() call on native content) rather than relying " +
+            "on this capture alone.",
+    )
 }

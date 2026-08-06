@@ -418,6 +418,57 @@ public fun Any.accessibilityChildren(): List<Any> {
 }
 
 /**
+ * Whether every node reachable from [root] (via [accessibilityChildren]) reports a zero
+ * `accessibilityFrame` and no traits — the cold-process signature [resolveNativeTapTarget]'s "Known
+ * limitation" section measures: UIKit/SwiftUI have not built the accessibility tree at all yet, so the
+ * walk reaches only plain `UIView`s with nothing populated on them. See #170.
+ *
+ * Deliberately whole-tree, not tied to any one tap's position. A tap can resolve to nothing on a
+ * *warm* tree too, simply by landing on genuinely empty background, and that is a different, far more
+ * common case that should never produce a warning. Telling the two apart needs a question about the
+ * tree as a whole — "has anything on it ever been populated" — which is what this answers and a
+ * position-gated hit-test walk cannot.
+ *
+ * `accessibilityFrame` is read directly here, not through [accessibilityBoundsInWindowPx]: that
+ * conversion can move a zero-size rect's origin away from zero when the source and destination
+ * coordinate spaces differ, which would mask the exact all-zero signature this is checking for. The
+ * raw, unconverted frame is what was measured cold.
+ *
+ * Bounded exactly as [deepestAccessibilityHitPath] is (depth ceiling, node budget, cycle guard),
+ * against the same host-supplied and possibly cyclic tree, for the same termination reasons. Exhausting
+ * a bound answers `true` (cold) rather than `false`: this only ever runs after a tap has already
+ * resolved to nothing, so understating coldness costs a missed one-time warning while overstating it
+ * costs one extra console line — the cheaper mistake, and the caller only makes this call once per
+ * process regardless of the answer.
+ *
+ * **Threading.** Main thread only, for the same reason [deepestAccessibilityHitPath] is.
+ */
+@OptIn(AutographInternalApi::class, ExperimentalForeignApi::class)
+internal fun isAccessibilityTreeCold(root: Any): Boolean =
+    isAccessibilityTreeCold(root, ancestors = emptyList(), budget = intArrayOf(MAX_ACCESSIBILITY_NODE_VISITS))
+
+@OptIn(AutographInternalApi::class, ExperimentalForeignApi::class)
+private fun isAccessibilityTreeCold(node: Any, ancestors: List<Any>, budget: IntArray): Boolean {
+    if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return true
+    // `==`, not `===`, for the reason deepestAccessibilityHitPath's cycle guard documents.
+    if (ancestors.any { it == node }) return true
+    val obj = node as? NSObject
+    if (obj != null) {
+        if (obj.accessibilityTraits() != 0uL) return false
+        val isZeroFrame = obj.accessibilityFrame().useContents {
+            origin.x == 0.0 && origin.y == 0.0 && size.width == 0.0 && size.height == 0.0
+        }
+        if (!isZeroFrame) return false
+    }
+    val pathToNode = ancestors + node
+    for (child in node.accessibilityChildren()) {
+        if (budget[0]-- <= 0) return true
+        if (!isAccessibilityTreeCold(child, pathToNode, budget)) return false
+    }
+    return true
+}
+
+/**
  * Whether any **strict** descendant of this element publishes an accessibility frame satisfying
  * [predicate]. This element itself is never offered to [predicate].
  *

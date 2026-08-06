@@ -3,16 +3,20 @@ package dev.ynagai.autograph.uikit
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeStack
+import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.serialization.json.JsonObject
+import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIWindow
 import platform.UIKit.UIWindowLevelAlert
 import platform.UIKit.UIWindowLevelNormal
+import platform.UIKit.setAccessibilityFrame
 
 /**
  * Covers the parts of the native tap capture that a headless test can reach: which windows get
@@ -23,8 +27,14 @@ import platform.UIKit.UIWindowLevelNormal
  * touch, which cannot be fabricated — `UITouch` has no constructible form — so it is verified
  * on-device instead (see the class kdocs for the measured results).
  */
-@OptIn(AutographInternalApi::class)
+@OptIn(AutographInternalApi::class, ExperimentalForeignApi::class)
 class NativeTapCaptureTest {
+
+    /** [warnOnceIfAccessibilityTreeIsCold] spends its one-per-process check exactly once — reset it. */
+    @AfterTest
+    fun resetAccessibilityTreeColdnessCheck() {
+        checkedAccessibilityTreeColdness = false
+    }
 
     private fun observer() = NativeTapObserver { _, _ -> }
 
@@ -261,6 +271,35 @@ class NativeTapCaptureTest {
         capture.attach(window)
 
         assertTrue(window.captureRecognizers().isEmpty())
+    }
+
+    // --- #170: the one-time cold-accessibility-tree warning ---
+
+    @Test
+    fun theColdnessCheckRunsOnTheFirstDrop() {
+        assertFalse(checkedAccessibilityTreeColdness, "precondition: nothing has run it yet this test")
+
+        warnOnceIfAccessibilityTreeIsCold(UIWindow())
+
+        assertTrue(checkedAccessibilityTreeColdness)
+    }
+
+    /**
+     * The check itself is idempotent once spent: calling it again after the flag is already set must
+     * not throw or otherwise misbehave, whatever the second window looks like. This is what makes it
+     * safe for every dropped tap to call [warnOnceIfAccessibilityTreeIsCold] unconditionally, as
+     * [AutographNativeTapCapture.report] does, rather than every caller having to check the flag first.
+     */
+    @Test
+    fun aSecondCallAfterTheFlagIsSetIsHarmless() {
+        warnOnceIfAccessibilityTreeIsCold(UIWindow())
+        assertTrue(checkedAccessibilityTreeColdness)
+
+        val warmWindow = UIWindow()
+        warmWindow.setAccessibilityFrame(CGRectMake(0.0, 0.0, 10.0, 10.0))
+        warnOnceIfAccessibilityTreeIsCold(warmWindow)
+
+        assertTrue(checkedAccessibilityTreeColdness, "the flag stays set; a second call is a no-op")
     }
 }
 
