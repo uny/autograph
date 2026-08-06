@@ -73,8 +73,9 @@ jobs:
           # --generate-notes with no explicit start tag has been observed picking v0.1.0 as the
           # "previous" release for every tag pushed so far (v0.2.0, v0.3.0, v0.4.0), not the actual
           # preceding release. The maintainer generates and edits release notes by hand after the
-          # asset is up (`gh release edit "$tag" --notes-start-tag <prev> --generate-notes` or
-          # similar), so this step only needs to get a release object to attach the zip to.
+          # asset is up (`gh api repos/.../releases/generate-notes -f tag_name=<tag>
+          # -f previous_tag_name=<prev> --jq .body` piped into `gh release edit "$tag"
+          # --notes-file -`), so this step only needs to get a release object to attach the zip to.
           gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --notes ""
           gh release upload "$tag" "$zip_path" --clobber
 
