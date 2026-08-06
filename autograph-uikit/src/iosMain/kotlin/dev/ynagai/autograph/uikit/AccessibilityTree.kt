@@ -73,6 +73,22 @@ import platform.darwin.NSObject
  * beyond those (which subtree is excluded from capture, which element is already instrumented) has to
  * be tracked outside the tree; `autograph-compose` keeps a positional registry for exactly this
  * reason.
+ *
+ * **Measured (#156): this walk also flips CMP's internal "a screen reader is active" belief**
+ * (`LocalPlatformScreenReader.current.isActive`, set from `AccessibilityRoot`'s `element` setter on
+ * tree sync). Cold-device A/B, one activation each: a tap that runs this walk flips it `false → true`;
+ * an identical tap through plain Compose with no walk of ours leaves it `false`, unchanged across
+ * repeats. Expected, not a new failure mode — the activation call site this file already documents
+ * cannot distinguish an app from a screen reader, and that is exactly what this flag records. Its only
+ * confirmed consumer is `isScreenReaderFocusable` (present in the same klib, read inside CMP's own
+ * focus-traversal code), and the flag is `@InternalComposeUiApi` with no supported read path from
+ * application code, so nothing downstream of Compose can observe it either. Whether it perturbs actual
+ * screen-reader traversal order was not independently measurable: the only way to observe
+ * AT-facing behaviour is to attach a real AT, and attaching one sets this same flag by itself — so a
+ * differential test would compare "AT plus our walk" against "AT alone," not against a walk-free
+ * baseline. Autograph's walk cannot manufacture a state a genuine AT visit wouldn't already produce; it
+ * can only make CMP believe that arrival happened somewhat earlier and more often than it otherwise
+ * would. Closed as a measured non-issue.
  */
 
 /**
