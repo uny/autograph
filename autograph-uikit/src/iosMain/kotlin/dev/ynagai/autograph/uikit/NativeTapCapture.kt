@@ -31,6 +31,15 @@ import platform.darwin.NSObjectProtocol
  * and every native tap is dropped silently. There is no fix available from public API, so anything that
  * must not be lost needs explicit instrumentation. Compose autocapture does not share the limitation.
  *
+ * **A hybrid app's own Compose autocapture does not warm this pipeline either (#135, measured).**
+ * `autograph-compose`'s iOS resolver activates CMP's accessibility bridge on tap (see
+ * `AccessibilityTree.kt`), which is a *separate* on-demand activation from the one UIKit/SwiftUI gate
+ * behind. In sequence, one process: a real Compose tap confirmed via `Element Clicked` in the same
+ * process, immediately followed by a tap on an unrelated SwiftUI element, still resolved to nothing —
+ * identical to a process no client had ever touched. So this pipeline's cold-inertness is not narrowed
+ * to "pure-native apps with no Compose anywhere"; it applies to every hybrid app too, until a genuine
+ * accessibility client has run in the process.
+ *
  * Pass the **same** [scopeStack] the app gives `AutographProvider` if it also renders Compose.
  * Sharing one stack is what lets a native tap carry the screen and scope a Compose screen pushed, and
  * vice versa; two stacks leave both sides attributing against half-empty context.
