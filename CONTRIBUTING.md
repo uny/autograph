@@ -64,15 +64,16 @@ green (see [#135](https://github.com/uny/autograph/issues/135)).
 
 Before merging a `composeMultiplatform` bump:
 
-1. Create a fresh simulator (`xcrun simctl create`, not an existing one — `shutdown`+`boot` does not
-   reset the accessibility subsystem, only a genuinely new device does) and never attach VoiceOver,
-   Voice Control, the Accessibility Inspector, XCUITest, or any other accessibility client to it before
-   the check below.
-2. Build and install `sample-ios` on it, launch, and tap an autocaptured element (e.g. the README
-   quick-start sample) as the very first interaction. Confirm the tap is reported (read the log via
-   `xcrun simctl spawn <udid> log stream`, filtering for `AutographSample:`).
-3. Delete the simulator afterward — once warmed, it no longer exercises the cold path and cannot be
-   reused for this check.
+1. Create a fresh simulator, not an existing one — `shutdown`+`boot` does not reset the accessibility
+   subsystem, only a genuinely new device does (`xcrun simctl create cold-check "iPhone 17 Pro"`, then
+   note the returned `<udid>`). Never attach VoiceOver, Voice Control, the Accessibility Inspector,
+   XCUITest, or any other accessibility client to it before the check below.
+2. Start log capture first so you don't race the tap: `xcrun simctl spawn <udid> log stream --style
+   compact --predicate 'eventMessage CONTAINS "AutographSample:"'`. Then build and install `sample-ios`
+   on the simulator, launch it, and tap an autocaptured element (e.g. the README quick-start sample) as
+   the very first interaction. Confirm the tap shows up in the log.
+3. Delete the simulator afterward (`xcrun simctl delete <udid>`) — once warmed, it no longer exercises
+   the cold path and cannot be reused for this check.
 
 This is a manual step, not something a script in this repo currently automates.
 
