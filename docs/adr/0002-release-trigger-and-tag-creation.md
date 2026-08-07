@@ -197,12 +197,23 @@ Both reviewers put these first, and none of them depends on the trigger question
 
 ## What A must carry before it can replace the current pipeline
 
-1. **Publish through a draft release, so the tag never exists without its asset.** GitHub does not
-   create the git tag for a *draft* release until it is published. So: push the checksum commit to
-   `main` → create a **draft** release with `--target <that commit's SHA>` → upload the asset to
-   the draft → publish. At the instant `vX.Y.Z` becomes visible, the asset it names is already
-   there. The naive order (tag → release → upload) reopens a resolution window of exactly the kind
-   §Context describes.
+1. **Close the window between the tag appearing and its asset existing.** The naive order
+   (tag → release → upload) reopens a resolution window of exactly the kind §Context describes:
+   for as long as the upload takes, `vX.Y.Z` resolves to a manifest naming an asset that is not
+   there yet.
+
+   The intended shape is: push the checksum commit to `main` → create a **draft** release with
+   `--target <that commit's SHA>` → upload the asset to the draft → publish, on the premise that
+   a draft release does not create its git tag until it is published.
+
+   **That premise is contested and must be measured before it is designed against.** CodeRabbit's
+   review of this document asserts the opposite — that `gh release create` creates the tag
+   whenever it does not exist, drafts included — and GitHub's REST documentation for releases does
+   not state either way. If the draft does create the tag immediately, this ordering buys nothing
+   and the window has to be closed differently: upload the asset to a release created against a
+   tag that is pushed only after the upload succeeds, or accept the window and document it. **This
+   is the single most important thing for the dry run of point 7 to settle**, because the rest of
+   this section's ordering depends on the answer.
 2. **Maven publish goes last, and the claim about what that buys must be stated accurately.**
    Today it runs first, so a later failure leaves a version on Maven Central that cannot be
    re-published and cannot be reproduced. Moving it last means the *unrecoverable* step
@@ -228,13 +239,14 @@ Both reviewers put these first, and none of them depends on the trigger question
    release. Keep #166's explicit `--notes-start-tag`: ancestry-based resolution stays wrong until
    the orphaned `v0.1.1`–`v0.4.0` fall out of range.
 
-   **`--verify-tag` and the draft flow of point 1 are mutually exclusive, and point 1 wins.**
-   `--verify-tag` aborts unless the tag already exists, whereas the whole point of the draft flow
-   is that the tag does not exist until publish. The protection `--verify-tag` was there to give —
-   that the release cannot silently attach itself to the default-branch tip — is supplied instead
-   by `--target <the built commit's SHA>` on the draft, and by asserting after publish that the
-   tag now exists and points at that SHA. Use `--verify-tag` only in a design that pushes the tag
-   itself before creating the release.
+   The threat `--verify-tag` guards against is real and documented: GitHub's release API says of
+   `target_commitish` that it is "Unused if the Git tag already exists", with the default being
+   the repository's default branch — so a release call that does not pin the commit can silently
+   attach itself to `main`'s tip. But **`--verify-tag` is mutually exclusive with the draft flow
+   of point 1**, since it aborts unless the tag already exists. In that flow the same protection
+   comes from `--target <the built commit's SHA>` plus an assertion after publish that the tag now
+   exists and points at that SHA. Use `--verify-tag` only in a design that pushes the tag itself
+   before creating the release — and note that point 1's shape is not settled yet.
 5. **A written manual recovery path** for "Maven published, everything else failed", produced
    before cutover rather than during one.
 6. **A merge freeze during a release run.** The fast-forward-only push is fail-closed, which is
@@ -243,11 +255,17 @@ Both reviewers put these first, and none of them depends on the trigger question
 7. **Validate on a dry run first** — build, checksum, and the fast-forward check against a scratch
    ref, end to end, before the first real cutover release.
 
-**Two premises above are GitHub's behavior, not this repository's, and are unverified here.** That
-a draft release defers git tag creation until publish (point 1), and that `target_commitish` is
-ignored once the tag exists (the reason for `--verify-tag` in point 4). Both are widely-reported
-behavior and neither could be confirmed against a documentation statement while writing this. The
-dry run of point 7 is where they get measured; do not treat either as settled before then.
+**One premise above is GitHub's behavior rather than this repository's, and it is unverified and
+actively contested:** whether a draft release defers git tag creation until publish (point 1).
+GitHub's release documentation does not say, and a review of this document asserted the opposite.
+The dry run of point 7 is where it gets measured; do not design against it before then. The other
+external premise, that `target_commitish` is unused once the tag exists, *is* documented, and is
+quoted at point 4.
+
+Both are cheap to settle, and settling them does not require a real release — creating a draft
+release against a throwaway tag name and checking whether `refs/tags/<name>` appears answers point
+1 in one call, and deleting the draft afterwards leaves nothing behind. That was not done here
+because it writes to the repository's releases, which is the owner's call, not a reviewer's.
 
 ## Consequences
 
