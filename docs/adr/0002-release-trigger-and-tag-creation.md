@@ -14,15 +14,15 @@ publishes, as a string literal (`private let releaseChecksum`, `Package.swift:30
 resolves the manifest **as it exists in the tree the tag points at**, so the checksum has to be
 in the tagged tree.
 
-Kotlin/Native's output is not reproducible across builds — the comment at `cd.yml:42-47` records
+Kotlin/Native's output is not reproducible across builds — the comment at `cd.yml:119-124` records
 rebuilding the same source on the same machine and getting a different zip checksum each time. So
 the checksum is only knowable *after* the build, and the build only happens after the tag is
 pushed, because the tag push is the trigger (`cd.yml:3-6`).
 
 The current workflow resolves this circle by moving the tag: it rewrites `Package.swift` with the
 checksum it just built, commits, and `git push origin "HEAD:refs/tags/$tag" --force`
-(`cd.yml:61-71`). Then a second step replays the same rewrite onto `main` as a *different* commit
-(`cd.yml:98-161`), because the force-pushed commit lands on no branch.
+(`cd.yml:138-148`). Then a second step replays the same rewrite onto `main` as a *different* commit
+(`cd.yml:175-238`), because the force-pushed commit lands on no branch.
 
 ### What that costs, measured
 
@@ -47,13 +47,17 @@ What remains broken is not a symptom with a workaround:
 - `git describe` on `main` finds no tag, so nothing can derive a version from the checkout.
 - **A consumer resolving between the tag push and the force-push silently gets the wrong binary.**
   This is worse than the first draft of this ADR said, and worth stating precisely. In that window
-  `Package.swift` at the tag still carries the *previous* release's `releaseVersion` and
-  `releaseChecksum` — and `releaseVersion` is interpolated into the download URL
-  (`Package.swift:36`). So the two values are mutually consistent and point at an asset that
-  **exists**. SwiftPM does not error; it resolves the new tag's Swift sources against the previous
-  release's Kotlin binary and caches the result. There is no 404 and no self-recovery. No incident
-  has been reported across five releases, but the failure is silent, so absence of reports is weak
-  evidence.
+  `Package.swift` at the tag still carries whatever `releaseVersion` and `releaseChecksum` the
+  commit being tagged inherited — and `releaseVersion` is interpolated into the download URL
+  (`Package.swift:36`). So the two stale values are mutually consistent and point at an asset that
+  **exists**. SwiftPM does not error; it resolves the new tag's Swift sources against an older
+  release's Kotlin binary and caches the result. There is no 404 and no self-recovery.
+
+  Not "the previous release", either — measured at each tag's parent commit, the window served
+  `v0.1.0` for `v0.1.1`, `v0.2.0` **and** `v0.3.0`, and `v0.3.0` for `v0.4.0`. The first three are
+  three releases stale, because until the main-sync step existed nothing advanced `main`'s copy of
+  those values at all. No incident has been reported across five releases, but the failure is
+  silent, so absence of reports is weak evidence.
 
 ### The blast radius of changing it
 
@@ -62,10 +66,15 @@ What remains broken is not a symptom with a workaround:
 - The `release` environment has `protection_rules: []` and `deployment_branch_policy: null`
   (checked via the API on 2026-08-08). No approval gate, no ref restriction.
 - `main` has no branch protection and no rulesets — the bot pushes to it directly today.
-- `cd.yml` has no `concurrency:` block, unlike `ci.yml` and `docs.yml`.
+- `cd.yml` had no `concurrency:` block and nothing validated the pushed tag. Both are fixed by the
+  change that lands with this document (§"Do this regardless"), so they describe the situation this
+  ADR was written against, not the current one.
 
 So this is a change to an irreversible pipeline with no dry-run path and no human gate. That is
 the reason for this document rather than a PR.
+
+**Line references throughout are against `cd.yml` as this change leaves it**, not as it was when
+the investigation ran.
 
 ## The options
 
@@ -92,7 +101,7 @@ Reorder to: build → compute checksum → commit `Package.swift` on `main` → 
 commit, once, never moved → publish the release with its asset already attached.
 
 This makes the tag an ordinary commit on `main`, restores ancestry, and **deletes the entire
-main-sync step** (`cd.yml:98-161`, its three-attempt race loop, and its version-ordering
+main-sync step** (`cd.yml:175-238`, its three-attempt race loop, and its version-ordering
 tie-break) because the tag commit *is* the main commit. That deletion is the largest single
 simplification available here.
 
@@ -154,10 +163,12 @@ means `main` moved and the run must stop. This is fail-closed and replaces the t
 Note what it does *not* recover: A2's prep tag is a durable ref and an audit record of the attempt,
 and A1 has no equivalent.
 
-**The typo risk of A1's free-text input is closable**, so it is not a discriminator either. Four
-cheap assertions run before anything irreversible: semver regex; `CHANGELOG.md` contains a
-`## [X.Y.Z]` heading (the released-section format, `CHANGELOG.md:31`); the tag does not exist; the
-version sorts above every existing `v*` tag. A2 needs the same four.
+**The typo risk of A1's free-text input is closable**, so it is not a discriminator either. Three
+of the four cheap assertions below already run today: semver regex; `CHANGELOG.md` contains a
+`## [X.Y.Z] - <date>` heading (the released-section format `CHANGELOG.md` already uses); the version sorts
+above every existing `v*` tag. A design that creates the tag itself adds a fourth — the tag must
+not already exist — which is structurally meaningless under the current trigger, where the tag's
+existence is what started the run. A2 needs all four too.
 
 **Conclusion: this is close, and this ADR does not claim otherwise.** A1 is preferred by a narrow
 margin — one tag namespace instead of two, and no stray `release/v*` refs to garbage-collect —
@@ -174,9 +185,15 @@ Both reviewers put these first, and none of them depends on the trigger question
    deployment.
 2. **`deployment_branch_policy`** on the `release` environment, currently `null`, meaning any ref
    can deploy.
-3. **`concurrency: { group: release, cancel-in-progress: false }`** in `cd.yml`, which `ci.yml`
-   and `docs.yml` already have and `cd.yml` does not.
-4. **The four version assertions**, which are useful under the current trigger too.
+3. **`concurrency: { group: release, cancel-in-progress: false }`** in `cd.yml`. `docs.yml` is the
+   existing precedent for serializing this way; `ci.yml` has a concurrency block too but a
+   different one (per-ref, `cancel-in-progress: true`), which supersedes rather than serializes.
+   Note what this trades: a group holds one running plus one pending run, so a third tag arriving
+   cancels the pending second one and that release never publishes. It fails visibly and re-running
+   is safe because nothing was published, but the rule that avoids it is operational — one release
+   tag at a time.
+4. **The three version assertions** — shape, changelog section, ordering. All three are useful
+   under the current trigger, which is why they land now rather than with the redesign.
 
 ## What A must carry before it can replace the current pipeline
 
@@ -187,7 +204,7 @@ Both reviewers put these first, and none of them depends on the trigger question
    there. The naive order (tag → release → upload) reopens a resolution window of exactly the kind
    §Context describes.
 2. **Maven publish goes last, and the claim about what that buys must be stated accurately.**
-   Today it runs first (`cd.yml:30`), so a later failure leaves a version on Maven Central that
+   Today it runs first (`cd.yml:107`), so a later failure leaves a version on Maven Central that
    cannot be re-published and cannot be reproduced. Moving it last means the *unrecoverable* step
    is last. It does **not** mean earlier failures publish nothing — by then the commit, tag,
    release and asset are all public. It means an earlier failure is recoverable by cutting the
@@ -205,9 +222,8 @@ Both reviewers put these first, and none of them depends on the trigger question
    exists *and points at the expected commit*, and fails otherwise. Never re-upload an existing
    asset: a rebuild's zip has a different checksum, and `--clobber` would break a previously-good
    release. Use `--verify-tag` on the release call so it can never silently create a tag at the
-   default-branch tip (`target_commitish` is ignored once a tag exists). Keep #166's explicit
-   `--notes-start-tag`: ancestry-based resolution stays wrong until the orphaned `v0.1.1`–`v0.4.0`
-   fall out of range.
+   default-branch tip. Keep #166's explicit `--notes-start-tag`: ancestry-based resolution stays
+   wrong until the orphaned `v0.1.1`–`v0.4.0` fall out of range.
 5. **A written manual recovery path** for "Maven published, everything else failed", produced
    before cutover rather than during one.
 6. **A merge freeze during a release run.** The fast-forward-only push is fail-closed, which is
@@ -216,12 +232,18 @@ Both reviewers put these first, and none of them depends on the trigger question
 7. **Validate on a dry run first** — build, checksum, and the fast-forward check against a scratch
    ref, end to end, before the first real cutover release.
 
+**Two premises above are GitHub's behavior, not this repository's, and are unverified here.** That
+a draft release defers git tag creation until publish (point 1), and that `target_commitish` is
+ignored once the tag exists (the reason for `--verify-tag` in point 4). Both are widely-reported
+behavior and neither could be confirmed against a documentation statement while writing this. The
+dry run of point 7 is where they get measured; do not treat either as settled before then.
+
 ## Consequences
 
-- `cd.yml:98-161` — the main-sync step, its retry loop, and its version-ordering tie-break — is
+- `cd.yml:175-238` — the main-sync step, its retry loop, and its version-ordering tie-break — is
   deleted, not modified. The class of bug it defends against stops existing.
-- `Package.swift:21-27`'s comment, which currently explains the tag-move to readers as intended
-  behavior, is rewritten. So is `cd.yml:42-47`.
+- `Package.swift:19-28`'s comment, which currently explains the tag-move to readers as intended
+  behavior, is rewritten. So is `cd.yml:119-124`.
 - Releases stop being "push a tag" and become "run a workflow". A real ergonomic loss.
 - **Two capabilities are lost, and this is irreversible without another redesign.** The current
   trigger can tag *any* commit, including one on a hotfix branch; fast-forward-only-onto-`main`
