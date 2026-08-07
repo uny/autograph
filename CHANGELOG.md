@@ -28,6 +28,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   hand-publishes accessibility elements can still read as warm and never see the line. It is a
   diagnostic, not a guarantee: taps you cannot afford to lose still need explicit instrumentation.
 
+- The release workflow validates the pushed tag before publishing anything ([#167]). Publishing runs
+  with `automaticRelease = true` and therefore has no staging repository to inspect or drop, so the
+  tag push was already irreversible with nothing checking it. A tag now has to be `vMAJOR.MINOR.PATCH`,
+  have a matching `## [X.Y.Z] - <date>` section in this file, and sort above every existing release
+  tag. The middle one catches the transposition a regex cannot — `v0.41.0` for `v0.4.1` is
+  well-formed, and only the changelog knows which was meant.
+
+- The release workflow is serialized with `concurrency: release` ([#167]), which `ci.yml` and
+  `docs.yml` already were. Two tags pushed close together could otherwise run two publishes at once;
+  `cancel-in-progress` stays false because an in-flight run may already have published to Maven
+  Central.
+
+- [ADR 0002](docs/adr/0002-release-trigger-and-tag-creation.md) records why the release tag is
+  force-pushed to a new commit today, what that costs, and the two candidate redesigns ([#167]). The
+  trigger choice is left open on purpose. Documented rather than fixed for now: a consumer resolving
+  the package in the window between the tag push and the force-push gets the *previous* release's
+  binary with no error, because `Package.swift` interpolates `releaseVersion` into the download URL,
+  so the stale version and stale checksum agree with each other.
+
 ## [0.4.0] - 2026-08-06
 
 ### Changed
@@ -454,4 +473,5 @@ Initial release.
 [#157]: https://github.com/uny/autograph/issues/157
 [#158]: https://github.com/uny/autograph/issues/158
 [#159]: https://github.com/uny/autograph/issues/159
+[#167]: https://github.com/uny/autograph/issues/167
 [#170]: https://github.com/uny/autograph/issues/170
