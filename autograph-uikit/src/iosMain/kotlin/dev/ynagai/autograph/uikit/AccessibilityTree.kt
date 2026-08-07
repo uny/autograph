@@ -264,7 +264,8 @@ public fun deepestAccessibilityHitPath(
 )
 
 /**
- * Depth ceiling for [deepestAccessibilityHitPath]. Far above any real accessibility tree (UIKit
+ * Depth ceiling for the walks over this tree — [deepestAccessibilityHitPath] and
+ * [isAccessibilityTreeCold]. Far above any real accessibility tree (UIKit
  * hierarchies run tens of levels, not hundreds), so it never truncates a genuine walk — it exists
  * only to bound a pathological or adversarial one that the cycle check can't catch, such as a chain
  * that generates a fresh element at every level.
@@ -272,7 +273,8 @@ public fun deepestAccessibilityHitPath(
 private const val MAX_ACCESSIBILITY_TREE_DEPTH = 256
 
 /**
- * Total-work ceiling for one [deepestAccessibilityHitPath] call, counted in nodes examined.
+ * Total-work ceiling for one [deepestAccessibilityHitPath] or [isAccessibilityTreeCold] call, counted
+ * in nodes examined.
  *
  * [MAX_ACCESSIBILITY_TREE_DEPTH] bounds how *deep* the walk goes; this bounds how *wide*. The two
  * became different questions once the walk started exploring every branch of a clickable-free
@@ -434,16 +436,40 @@ public fun Any.accessibilityChildren(): List<Any> {
  * coordinate spaces differ, which would mask the exact all-zero signature this is checking for. The
  * raw, unconverted frame is what was measured cold.
  *
- * Bounded exactly as [deepestAccessibilityHitPath] is (depth ceiling, node budget, cycle guard),
- * against the same host-supplied and possibly cyclic tree, for the same termination reasons. Exhausting
- * a bound answers `true` (cold) rather than `false`: this only ever runs after a tap has already
- * resolved to nothing, so understating coldness costs a missed one-time warning while overstating it
- * costs one extra console line — the cheaper mistake, and the caller only makes this call once per
- * process regardless of the answer.
+ * **The rule for every uncertain case is "evidence found, never evidence assumed".** Warmth has to be
+ * *seen* on a node the walk actually reached and actually counts; everything else — a node it never
+ * reached, a subtree it deliberately skips — contributes nothing and leaves the answer `true`. That one
+ * rule decides all three cases below, and it is worth stating as a rule because the cases resolve in
+ * directions that look inconsistent if each is argued from cost alone.
+ *
+ * **Fail-closed on the signature, which was measured against one app's 88-node cold tree.** A single
+ * node anywhere publishing a trait bit or a non-zero frame answers `false`. An app — or a third-party
+ * SDK inside it — that hand-publishes a `UIAccessibilityElement`, or calls
+ * `setAccessibilityFrame`/`setAccessibilityTraits` on any view, therefore reads as warm in a genuinely
+ * cold process, and since the caller spends its one-per-process check either way that suppresses the
+ * warning for good. That is the rule applied honestly rather than an exception to it: the evidence was
+ * found, and this check cannot tell who published it.
+ *
+ * **Compose-host subtrees are not evidence and are skipped** ([AutographComposeHosts]). This is what
+ * makes the check correct in a *hybrid* app, which is the case the caller's kdoc calls out as equally
+ * affected. The coldness this answers is UIKit/SwiftUI's, and CMP's bridged elements do not share it:
+ * this very walk activates CMP's accessibility bridge on demand with no accessibility client running
+ * (see this file's header, measured), so a Compose host publishes real frames and traits in a process
+ * whose native half is stone cold. Descending into one would find that warmth and answer `false`,
+ * suppressing the warning in exactly the app the warning is for. Compose's warmth is not evidence
+ * *about this question*, so a host contributes none.
+ *
+ * Bounded the same way [deepestAccessibilityHitPath] is — same depth ceiling, same node budget, same
+ * cycle guard — against the same host-supplied and possibly cyclic tree, for the same termination
+ * reasons. (The budget is charged per child rather than on entry, so the starting node itself is not
+ * counted; nothing downstream depends on the difference.) Exhausting a bound answers `true` (cold)
+ * rather than `false` — the opposite of [anyAccessibilityDescendant]'s convention below, and again the
+ * rule rather than an exception: a branch the walk never reached is not evidence of anything, so it
+ * cannot be counted as warmth. Do not "fix" the inconsistency with the walk below;
+ * `warmthHiddenPastTheDepthCeilingAnswersColdNotWarm` exists to catch that.
  *
  * **Threading.** Main thread only, for the same reason [deepestAccessibilityHitPath] is.
  */
-@OptIn(AutographInternalApi::class, ExperimentalForeignApi::class)
 internal fun isAccessibilityTreeCold(root: Any): Boolean =
     isAccessibilityTreeCold(root, ancestors = emptyList(), budget = intArrayOf(MAX_ACCESSIBILITY_NODE_VISITS))
 
@@ -452,6 +478,9 @@ private fun isAccessibilityTreeCold(node: Any, ancestors: List<Any>, budget: Int
     if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return true
     // `==`, not `===`, for the reason deepestAccessibilityHitPath's cycle guard documents.
     if (ancestors.any { it == node }) return true
+    // Compose-owned content answers a different question — see the kdoc. Skipped whole, not just
+    // unexamined: everything under a host is CMP's too, and CMP publishes real frames while cold.
+    if (AutographComposeHosts.containsAny(listOf(node))) return true
     val obj = node as? NSObject
     if (obj != null) {
         if (obj.accessibilityTraits() != 0uL) return false
