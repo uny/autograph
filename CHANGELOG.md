@@ -8,6 +8,26 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- iOS native tap capture warns once via `NSLog` when it drops a tap because the accessibility tree is
+  cold ([#170]). `installAutographNativeTapCapture` resolves nothing until some accessibility client
+  (VoiceOver, Voice Control, the Accessibility Inspector, an XCUITest runner) has run in the process —
+  a platform limit with no fix available from public API — and until now the drop was indistinguishable
+  from "nothing was tapped". The first native tap that resolves to nothing now checks whether the whole
+  tree still carries the measured cold signature (every node a zero `accessibilityFrame`, no traits) and,
+  if so, names the limitation in the console once per process. An ordinary tap on empty background, on a
+  warm tree, stays silent: the question is asked of the tree, not of the tap's position.
+
+  Compose-host subtrees are excluded from that question, which is what makes it correct in a hybrid app.
+  The same walk activates Compose Multiplatform's accessibility bridge on demand, so a
+  `ComposeUIViewController` publishes real frames in a process whose UIKit/SwiftUI half is stone cold —
+  counting them would answer "warm" and suppress the warning in exactly the app that needs it.
+
+  The check is fail-closed on a signature measured against one app's cold tree, so an app that
+  hand-publishes accessibility elements can still read as warm and never see the line. It is a
+  diagnostic, not a guarantee: taps you cannot afford to lose still need explicit instrumentation.
+
 ## [0.4.0] - 2026-08-06
 
 ### Changed
@@ -434,3 +454,4 @@ Initial release.
 [#157]: https://github.com/uny/autograph/issues/157
 [#158]: https://github.com/uny/autograph/issues/158
 [#159]: https://github.com/uny/autograph/issues/159
+[#170]: https://github.com/uny/autograph/issues/170
