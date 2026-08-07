@@ -41,8 +41,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   (`ci.yml` also has a concurrency block, but a per-ref superseding one rather than a serializing
   one). Two tags pushed close together could otherwise run two publishes at once.
   `cancel-in-progress` stays false because an in-flight run may already have published to Maven
-  Central — with the consequence that a *third* tag cancels the pending second run, so release tags
-  want pushing one at a time.
+  Central, and `queue: max` is set alongside it because that flag protects only the *running*
+  release: the default `queue: single` holds one pending run and cancels it when another arrives,
+  so a third tag would have silently dropped the second release entirely.
 
 - [ADR 0002](docs/adr/0002-release-trigger-and-tag-creation.md) records why the release tag is
   force-pushed to a new commit today, what that costs, and the two candidate redesigns ([#167]). The

@@ -8,20 +8,25 @@ on:
 # Two tags pushed close together would otherwise run two of these concurrently, and the
 # Package.swift sync at the end of the job is written to defend against exactly that
 # interleaving (see the version-ordering tie-break below). Serializing means the tie-break no
-# longer has to be load-bearing — it stays anyway, because this trades one failure mode for
-# another rather than removing one:
+# longer has to be load-bearing — it stays anyway, as defence in depth.
 #
-# `cancel-in-progress: false` protects the *running* release only. A concurrency group holds at
-# most one running plus one pending run, so a third tag arriving cancels the pending second one,
-# and that release never publishes at all. It fails visibly — no release, no Maven artifact, a
-# run marked cancelled — and re-running it is safe precisely because nothing was published. The
-# rule that avoids it is operational: push one release tag at a time and let its run finish.
+# All three keys are load-bearing, and two of them guard different runs:
 #
-# False is still right for the running one: it may already have published to Maven Central, and
-# `automaticRelease = true` leaves nothing to roll back.
+#  - `cancel-in-progress: false` protects the *running* release. It may already have published to
+#    Maven Central, and `automaticRelease = true` leaves nothing to roll back.
+#  - `queue: max` protects the *pending* ones, which that flag does not. The default `single`
+#    holds one pending run and cancels it when another arrives, so a third tag would silently drop
+#    the second release entirely. `max` queues up to 100 and runs them in order. It cannot be
+#    combined with `cancel-in-progress: true`, which is not a constraint here.
+#
+# actionlint 1.7.12 rejects `queue` as an unknown key for `concurrency` — its schema predates the
+# feature, and it is wrong. Verified by having GitHub itself run a throwaway workflow carrying this
+# exact block; it was accepted. Worth knowing because this workflow only runs on a release tag, so
+# a genuine syntax error here would not surface until a release failed to start.
 concurrency:
   group: release
   cancel-in-progress: false
+  queue: max
 
 jobs:
   publish:

@@ -14,15 +14,15 @@ publishes, as a string literal (`private let releaseChecksum`, `Package.swift:30
 resolves the manifest **as it exists in the tree the tag points at**, so the checksum has to be
 in the tagged tree.
 
-Kotlin/Native's output is not reproducible across builds — the comment at `cd.yml:119-124` records
-rebuilding the same source on the same machine and getting a different zip checksum each time. So
-the checksum is only knowable *after* the build, and the build only happens after the tag is
-pushed, because the tag push is the trigger (`cd.yml:3-6`).
+Kotlin/Native's output is not reproducible across builds — the comment on `cd.yml`'s "Publish
+Autograph.xcframework binary target" step records rebuilding the same source on the same machine
+and getting a different zip checksum each time. So the checksum is only knowable *after* the build,
+and the build only happens after the tag is pushed, because the tag push is the trigger.
 
 The current workflow resolves this circle by moving the tag: it rewrites `Package.swift` with the
 checksum it just built, commits, and `git push origin "HEAD:refs/tags/$tag" --force`
-(`cd.yml:138-148`). Then a second step replays the same rewrite onto `main` as a *different* commit
-(`cd.yml:175-238`), because the force-pushed commit lands on no branch.
+in the same step. Then "Sync Package.swift's binary target onto main" replays that rewrite onto
+`main` as a *different* commit, because the force-pushed commit lands on no branch.
 
 ### What that costs, measured
 
@@ -73,8 +73,8 @@ What remains broken is not a symptom with a workaround:
 So this is a change to an irreversible pipeline with no dry-run path and no human gate. That is
 the reason for this document rather than a PR.
 
-**Line references throughout are against `cd.yml` as this change leaves it**, not as it was when
-the investigation ran.
+**`cd.yml` is cited by step name, not line number**, because this document's own change shifted
+every line reference in it twice before landing.
 
 ## The options
 
@@ -101,9 +101,9 @@ Reorder to: build → compute checksum → commit `Package.swift` on `main` → 
 commit, once, never moved → publish the release with its asset already attached.
 
 This makes the tag an ordinary commit on `main`, restores ancestry, and **deletes the entire
-main-sync step** (`cd.yml:175-238`, its three-attempt race loop, and its version-ordering
-tie-break) because the tag commit *is* the main commit. That deletion is the largest single
-simplification available here.
+main-sync step** — `cd.yml`'s "Sync Package.swift's binary target onto main", its three-attempt
+race loop, and its version-ordering tie-break — because the tag commit *is* the main commit. That
+deletion is the largest single simplification available here.
 
 It cannot keep `on: push: tags: 'v*'` as the trigger, because there is nothing to tag until the
 build has run. Hence the two trigger candidates below.
@@ -185,13 +185,13 @@ Both reviewers put these first, and none of them depends on the trigger question
    deployment.
 2. **`deployment_branch_policy`** on the `release` environment, currently `null`, meaning any ref
    can deploy.
-3. **`concurrency: { group: release, cancel-in-progress: false }`** in `cd.yml`. `docs.yml` is the
-   existing precedent for serializing this way; `ci.yml` has a concurrency block too but a
-   different one (per-ref, `cancel-in-progress: true`), which supersedes rather than serializes.
-   Note what this trades: a group holds one running plus one pending run, so a third tag arriving
-   cancels the pending second one and that release never publishes. It fails visibly and re-running
-   is safe because nothing was published, but the rule that avoids it is operational — one release
-   tag at a time.
+3. **`concurrency: { group: release, cancel-in-progress: false, queue: max }`** in `cd.yml`.
+   `docs.yml` is the existing precedent for serializing this way; `ci.yml` has a concurrency block
+   too but a different one (per-ref, `cancel-in-progress: true`), which supersedes rather than
+   serializes. `queue: max` is not optional garnish: `cancel-in-progress: false` protects only the
+   *running* release, and the default `queue: single` holds one pending run and cancels it when
+   another arrives — so a third tag would silently drop the second release entirely. `max` queues
+   up to 100 and runs them in order, and cannot be combined with `cancel-in-progress: true`.
 4. **The three version assertions** — shape, changelog section, ordering. All three are useful
    under the current trigger, which is why they land now rather than with the redesign.
 
@@ -204,26 +204,37 @@ Both reviewers put these first, and none of them depends on the trigger question
    there. The naive order (tag → release → upload) reopens a resolution window of exactly the kind
    §Context describes.
 2. **Maven publish goes last, and the claim about what that buys must be stated accurately.**
-   Today it runs first (`cd.yml:107`), so a later failure leaves a version on Maven Central that
-   cannot be re-published and cannot be reproduced. Moving it last means the *unrecoverable* step
+   Today it runs first, so a later failure leaves a version on Maven Central that cannot be
+   re-published and cannot be reproduced. Moving it last means the *unrecoverable* step
    is last. It does **not** mean earlier failures publish nothing — by then the commit, tag,
    release and asset are all public. It means an earlier failure is recoverable by cutting the
    next patch version, and a failure at Maven itself is resumable.
 3. **Resume must branch before the build, not after.** A re-run after a Maven failure would
    otherwise rebuild, get a different checksum from Kotlin/Native, and produce a second rewrite
    commit — at which point the "tag must point at the expected commit" assertion in point 4 fires
-   and the resume can never succeed. So: if the tag already exists **and** `Package.swift` at that
-   tag already names this version, skip the build, the rewrite, the tag and the release entirely,
-   and run only the Maven publish. This is sound because the Maven artifacts are not
-   byte-coupled to the xcframework zip — the checksum contract is SwiftPM's alone — so publishing
-   them from a later build is legitimate. Say so in the recovery doc, because it is the
-   non-obvious part.
+   and the resume can never succeed. So the resume branch runs only the Maven publish, and it must
+   establish that **everything before Maven genuinely completed** before deciding that: the tag
+   exists, `Package.swift` at that tag names this version, the release exists and is *published*
+   rather than still a draft, and it carries the `Autograph.xcframework.zip` asset. Anything short
+   of all four is a failure somewhere earlier, and the resume path is the wrong one for it.
+   Skipping on the first two alone would treat "the asset upload failed" as "only Maven is left".
+
+   Running Maven from a later build is legitimate despite Kotlin/Native's non-determinism, because
+   the Maven artifacts are not byte-coupled to the xcframework zip — the checksum contract is
+   SwiftPM's alone. That is the non-obvious part, and the recovery doc should say it.
 4. **Every write step idempotent and asserted, not inferred.** Tag creation skips if the tag
    exists *and points at the expected commit*, and fails otherwise. Never re-upload an existing
    asset: a rebuild's zip has a different checksum, and `--clobber` would break a previously-good
-   release. Use `--verify-tag` on the release call so it can never silently create a tag at the
-   default-branch tip. Keep #166's explicit `--notes-start-tag`: ancestry-based resolution stays
-   wrong until the orphaned `v0.1.1`–`v0.4.0` fall out of range.
+   release. Keep #166's explicit `--notes-start-tag`: ancestry-based resolution stays wrong until
+   the orphaned `v0.1.1`–`v0.4.0` fall out of range.
+
+   **`--verify-tag` and the draft flow of point 1 are mutually exclusive, and point 1 wins.**
+   `--verify-tag` aborts unless the tag already exists, whereas the whole point of the draft flow
+   is that the tag does not exist until publish. The protection `--verify-tag` was there to give —
+   that the release cannot silently attach itself to the default-branch tip — is supplied instead
+   by `--target <the built commit's SHA>` on the draft, and by asserting after publish that the
+   tag now exists and points at that SHA. Use `--verify-tag` only in a design that pushes the tag
+   itself before creating the release.
 5. **A written manual recovery path** for "Maven published, everything else failed", produced
    before cutover rather than during one.
 6. **A merge freeze during a release run.** The fast-forward-only push is fail-closed, which is
@@ -240,10 +251,11 @@ dry run of point 7 is where they get measured; do not treat either as settled be
 
 ## Consequences
 
-- `cd.yml:175-238` — the main-sync step, its retry loop, and its version-ordering tie-break — is
-  deleted, not modified. The class of bug it defends against stops existing.
+- `cd.yml`'s "Sync Package.swift's binary target onto main" step, its retry loop, and its
+  version-ordering tie-break, are deleted rather than modified. The class of bug they defend
+  against stops existing.
 - `Package.swift:19-28`'s comment, which currently explains the tag-move to readers as intended
-  behavior, is rewritten. So is `cd.yml:119-124`.
+  behavior, is rewritten. So is the comment on its "Publish Autograph.xcframework binary target" step.
 - Releases stop being "push a tag" and become "run a workflow". A real ergonomic loss.
 - **Two capabilities are lost, and this is irreversible without another redesign.** The current
   trigger can tag *any* commit, including one on a hotfix branch; fast-forward-only-onto-`main`
