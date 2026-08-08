@@ -22,6 +22,16 @@ if [ -z "$tag" ]; then
   echo "usage: $(basename "$0") vX.Y.Z" >&2
   exit 2
 fi
+
+# The `v` is required rather than optional. Everything downstream compares $tag against real tag
+# names — `grep -vFx` to exclude this release from the list, `sort -V` to order it against the rest
+# — and a bare `0.5.0` matches none of them and sorts before all of them. It would still fail
+# closed, but for the wrong reason and with a message that blames the version ordering. Reject the
+# shape up front instead of explaining the wrong thing later.
+if [ "${tag#v}" = "$tag" ]; then
+  echo "usage: $(basename "$0") vX.Y.Z — the leading v is required (got '$tag')" >&2
+  exit 2
+fi
 version="${tag#v}"
 
 # `::error::` is a GitHub Actions annotation and plain text everywhere else, which is why the

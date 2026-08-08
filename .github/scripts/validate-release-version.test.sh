@@ -101,6 +101,13 @@ expect pass v0.5.0    ok   "$existing"          "a normal next release"
 expect pass v0.5.0    ok   "v0.5.0"             "the only tag in the repository is this one"
 expect pass v0.10.0   ok   "$existing"          "double-digit minor sorts above v0.4.0, not below"
 
+# Without the `v`, everything downstream compares against real tag names and silently disagrees:
+# `grep -vFx` fails to exclude this release from the list and `sort -V` puts a bare 0.4.0 *before*
+# v0.4.0, so it used to fail with "0.4.0 sorts below the existing v0.4.0" — closed, but blaming the
+# wrong thing. Rejected up front now.
+expect fail 0.5.0     ok   "$existing"          "no leading v, otherwise a valid next version"
+expect fail 0.4.0     ok   "$existing"          "no leading v, and already released"
+
 expect fail v0.4      ok   "$existing"          "not three components"
 expect fail v0.4.0.1  ok   "$existing"          "four components"
 expect fail vX.Y.Z    ok   "$existing"          "not numeric"
