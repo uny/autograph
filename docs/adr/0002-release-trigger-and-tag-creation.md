@@ -217,8 +217,9 @@ Both reviewers put these first, and none of them depends on the trigger question
    not state either way. If the draft does create the tag immediately, this ordering buys nothing
    and the window has to be closed differently: upload the asset to a release created against a
    tag that is pushed only after the upload succeeds, or accept the window and document it. **This
-   is the single most important thing for the dry run of point 7 to settle**, because the rest of
-   this section's ordering depends on the answer.
+   is the single most important thing to settle before A is built**, because the rest of this
+   section's ordering depends on the answer. The dry run that exists today does not settle it — it
+   creates no tag and no release; see point 7.
 2. **Maven publish goes last, and the claim about what that buys must be stated accurately.**
    Today it runs first, so a later failure leaves a version on Maven Central that cannot be
    re-published and cannot be reproduced. Moving it last means the *unrecoverable* step
@@ -275,9 +276,11 @@ Both reviewers put these first, and none of them depends on the trigger question
 **One premise above is GitHub's behavior rather than this repository's, and it is unverified and
 actively contested:** whether a draft release defers git tag creation until publish (point 1).
 GitHub's release documentation does not say, and a review of this document asserted the opposite.
-The dry run of point 7 is where it gets measured; do not design against it before then. The other
-external premise, that `target_commitish` is unused once the tag exists, *is* documented, and is
-quoted at point 4.
+It is **still unmeasured**: the dry run that now exists stops after validation, the build and the
+checksum, so it never creates a tag or a release and cannot answer this. Do not design against the
+premise before it is settled — either by the probe below, or by the dry run once it grows the
+release sequence point 7 leaves for later. The other external premise, that `target_commitish` is
+unused once the tag exists, *is* documented, and is quoted at point 4.
 
 Both are cheap to settle, and settling them does not require a real release — creating a draft
 release against a throwaway tag name and checking whether `refs/tags/<name>` appears answers point
