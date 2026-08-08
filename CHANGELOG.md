@@ -28,6 +28,31 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   hand-publishes accessibility elements can still read as warm and never see the line. It is a
   diagnostic, not a guarantee: taps you cannot afford to lose still need explicit instrumentation.
 
+- The release workflow validates the pushed tag before publishing anything ([#167]). Publishing runs
+  with `automaticRelease = true` and therefore has no staging repository to inspect or drop, so the
+  tag push was already irreversible with nothing checking it. A tag now has to be `vMAJOR.MINOR.PATCH`
+  with no leading zeros, have a matching `## [X.Y.Z] - <date>` section in this file, and sort above
+  every existing release tag. The middle one catches the transposition a regex cannot — `v0.41.0`
+  for `v0.4.1` is well-formed, and only the changelog knows which was meant. A prerelease tag such
+  as `v0.5.0-rc1` is rejected by the first: the trigger is `v*`, so pushing one starts the workflow
+  and it stops there.
+
+- The release workflow is serialized with `concurrency: release` ([#167]), following `docs.yml`
+  (`ci.yml` also has a concurrency block, but a per-ref superseding one rather than a serializing
+  one). Two tags pushed close together could otherwise run two publishes at once.
+  `cancel-in-progress` stays false because an in-flight run may already have published to Maven
+  Central, and `queue: max` is set alongside it because that flag protects only the *running*
+  release: the default `queue: single` holds one pending run and cancels it when another arrives,
+  so a third tag would have silently dropped the second release entirely.
+
+- [ADR 0002](docs/adr/0002-release-trigger-and-tag-creation.md) records why the release tag is
+  force-pushed to a new commit today, what that costs, and the two candidate redesigns ([#167]). The
+  trigger choice is left open on purpose. Documented rather than fixed for now: a consumer resolving
+  the package in the window between the tag push and the force-push gets an *older* release's binary
+  with no error, because `Package.swift` interpolates `releaseVersion` into the download URL, so the
+  stale version and stale checksum agree with each other. Measured at each tag's parent commit, that
+  window served `v0.1.0` for `v0.1.1`, `v0.2.0` and `v0.3.0` alike, and `v0.3.0` for `v0.4.0`.
+
 ## [0.4.0] - 2026-08-06
 
 ### Changed
@@ -454,4 +479,5 @@ Initial release.
 [#157]: https://github.com/uny/autograph/issues/157
 [#158]: https://github.com/uny/autograph/issues/158
 [#159]: https://github.com/uny/autograph/issues/159
+[#167]: https://github.com/uny/autograph/issues/167
 [#170]: https://github.com/uny/autograph/issues/170
