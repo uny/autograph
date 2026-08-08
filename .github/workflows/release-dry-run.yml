@@ -14,20 +14,28 @@ name: Release dry run
 # trigger redesign (#167) for exactly that reason, and it is just as useful before an ordinary
 # release under the current trigger.
 #
-# What this proves: the version passes validation, the Kotlin/Native build and xcframework assemble
-# from this ref, and a checksum can be computed from the result. What it cannot prove: that the
-# checksum matches a future release's, since Kotlin/Native's output is not reproducible across
-# builds — this run's checksum is this run's alone and is printed for information only. It also
-# does not exercise `publishToMavenCentral`, so a Gradle change that breaks the POM, the signing
-# wiring, or the publication itself passes here and surfaces for the first time mid-release; that
-# gap is #176.
+# What this proves: the version passes validation, every module's publication assembles, signs and
+# publishes to a local repository, and the Kotlin/Native build and xcframework assemble from this
+# ref with a checksum computable from the result. What it cannot prove: that the checksum matches a
+# future release's, since Kotlin/Native's output is not reproducible across builds — this run's
+# checksum is this run's alone and is printed for information only. Nor does it prove Maven Central
+# accepts the result; it never contacts Central. It exercises everything that runs before the
+# upload, which is where the failures #176 was about actually live.
 #
 # Deliberately absent: `environment: release`, every `secrets.*` cd.yml uses — the Maven Central
-# credentials and the GPG signing key — and any publish, tag or release step. The only credential
-# here is the automatic `github.token`, scoped to `contents: read` below, which is what lets the
-# validation list existing tags. So this workflow cannot sign anything, cannot reach Maven Central,
-# and cannot write to the repository. That is its whole value, and it should stay true as the
-# steps A needs get added to it.
+# credentials and the release GPG key — and any tag, release or remote publish step. The only
+# credential here is the automatic `github.token`, scoped to `contents: read` below, which is what
+# lets the validation list existing tags. So this workflow cannot reach Maven Central and cannot
+# write to the repository. That is its whole value, and it should stay true as the steps A needs
+# get added to it.
+#
+# It *can* sign, which an earlier version of this comment said it could not. The publish step below
+# generates a throwaway GPG key inside the job. That is a smaller claim than it sounds: the key
+# exists for one run, no one trusts it, and an artifact signed with it is worthless to Maven
+# Central, which only accepts the published release key. The property worth protecting was never
+# "holds no key" but "holds no *secret* and can reach no *remote*" — and this adds no `secrets.*`
+# entry and no remote. Do not replace it with a repository secret to make signing "more realistic";
+# that would trade the whole safety argument for nothing.
 
 on:
   workflow_dispatch:
@@ -85,6 +93,71 @@ jobs:
           VERSION: ${{ inputs.version }}
         run: .github/scripts/validate-release-version.sh "v${VERSION#v}"
 
+      # cd.yml's "Publish to Maven Central" step, aimed at a directory instead of Central. It sits
+      # here, between validation and the xcframework, because that is where it sits there.
+      #
+      # `signAllPublications()` in build.gradle.kts is unconditional, and it is not optional in the
+      # way it first looks. Measured, on this tree:
+      #
+      #  - With no key, the publication assembles fine — jar, sources, javadoc and POM all build —
+      #    and then `signJvmPublication` fails with "no configured signatory". It does not skip
+      #    quietly, so there is no keyless publish to fall back on.
+      #  - Excluding the six `sign*Publication` tasks with `-x` does not work either: the
+      #    publications still declare the `.asc` files as artifacts, so publishing fails with
+      #    "artifact file does not exist: .../pom-default.xml.asc". This measures green on a warm
+      #    tree only because a previous run's signature files are still on disk — delete them and
+      #    it fails. Do not "fix" this step by reintroducing `-x`.
+      #
+      # That leaves making `signAllPublications()` conditional, which puts a switch in the release
+      # path whose failure mode is publishing unsigned, or generating a key here. Hence the key.
+      #
+      # GNUPGHOME is set to a short path under RUNNER_TEMP rather than `mktemp -d`, because
+      # gpg-agent's socket path has a ~104-character limit and macOS's temp directories are long
+      # enough to cross it. That failure reads as "can't connect to the gpg-agent", which does not
+      # sound like a path-length problem and costs a while to place.
+      #
+      # `-Pversion` matches what cd.yml passes, so the POMs carry a realistic version rather than
+      # the 0.0.0-SNAPSHOT default — a version-dependent break in publication config surfaces here.
+      - name: Publish every module to a local repository
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          export GNUPGHOME="${RUNNER_TEMP}/dry-run-gnupg"
+          mkdir -p "$GNUPGHOME"
+          chmod 700 "$GNUPGHOME"
+          gpg --batch --pinentry-mode loopback --passphrase '' \
+            --quick-generate-key "Autograph Dry Run <dryrun@example.invalid>" rsa3072 sign never
+
+          ORG_GRADLE_PROJECT_signingInMemoryKey=$(
+            gpg --batch --pinentry-mode loopback --passphrase '' \
+              --armor --export-secret-keys dryrun@example.invalid
+          )
+          export ORG_GRADLE_PROJECT_signingInMemoryKey
+
+          ./gradlew publishToMavenLocal -Pversion="${VERSION#v}" \
+            -Dmaven.repo.local="${RUNNER_TEMP}/dry-run-m2" --stacktrace
+
+      # The one Central rejection this dry run can still predict without contacting Central.
+      #
+      # Kotlin's SwiftPM support attaches an artifact with classifier "swiftpm-metadata" and an
+      # empty extension, which Maven Central rejects and a local repository accepts without
+      # complaint (KT-85476). build.gradle.kts strips it, in a `gradle.projectsEvaluated` block
+      # that reaches into two different places and is marked to be removed once the upstream bug
+      # is fixed. So this is precisely the kind of breakage that publishes green here and fails
+      # during a release — checking for it is what makes the step above worth its runtime.
+      #
+      # Signature coverage deliberately goes unchecked: a missing `.asc` fails the publish itself,
+      # as the note on the previous step records, so asserting it here would only restate that.
+      - name: Check the publication for artifacts Maven Central rejects
+        run: |
+          leaked=$(find "${RUNNER_TEMP}/dry-run-m2" -name '*swiftpm-metadata*' -o -name '*.')
+          if [ -n "$leaked" ]; then
+            echo "::error::swiftpm-metadata artifacts reached the publication; Maven Central will reject them (KT-85476)"
+            echo "$leaked"
+            exit 1
+          fi
+          echo "No swiftpm-metadata artifacts in the publication."
+
       - name: Build Autograph.xcframework
         run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
 
@@ -100,7 +173,9 @@ jobs:
           {
             echo "### Release dry run for v${version}"
             echo
-            echo 'Validation passed and the xcframework built. This run published nothing.'
+            echo 'Validation passed, every module published to a local repository, and the'
+            echo 'xcframework built. Nothing left this runner: no Maven Central upload, no tag,'
+            echo 'no release.'
             echo
             echo "- ref: \`${{ github.sha }}\`"
             echo "- checksum of *this* build: \`$checksum\`"
