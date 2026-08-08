@@ -1,0 +1,82 @@
+name: Release dry run
+
+# Everything cd.yml does up to the point of no return, and nothing after it.
+#
+# cd.yml publishes with `automaticRelease = true`, so there is no staging repository and no undo,
+# and it only runs on a `v*` tag — which means every guard it carries would otherwise first execute
+# during a real, irreversible release. ADR 0002 lists a dry-run path as a prerequisite for the
+# trigger redesign (#167) for exactly that reason, and it is just as useful before an ordinary
+# release under the current trigger.
+#
+# What this proves: the version passes validation, the Kotlin/Native build and xcframework assemble
+# from this ref, and a checksum can be computed from the result. What it cannot prove: that the
+# checksum matches a future release's, since Kotlin/Native's output is not reproducible across
+# builds — this run's checksum is this run's alone and is printed for information only.
+#
+# Deliberately absent: `environment: release`, any credential, any publish, any tag, any release.
+# This workflow cannot reach Maven Central or write to the repository, and it should stay that way
+# — its value is that it is safe to run at any time, for any reason.
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to validate, without the leading v (e.g. 0.5.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+# Shares no group with CD: a dry run must never queue behind, or ahead of, a real release.
+concurrency:
+  group: release-dry-run-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dry-run:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+
+      # The same script cd.yml runs, not a copy of it. A dry run that validated something slightly
+      # different from the release would be worse than no dry run, because it would be trusted.
+      #
+      # Note this asserts the changelog section for the version already exists, so the intended
+      # order is: prepare CHANGELOG.md, dry run, tag. Running this against a version whose changelog
+      # entry is still under [Unreleased] is meant to fail.
+      - name: Validate the release version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: .github/scripts/validate-release-version.sh "v${{ inputs.version }}"
+
+      - name: Build Autograph.xcframework
+        run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
+
+      - name: Compute the binary target checksum
+        run: |
+          zip_path="autograph-apple/build/XCFrameworks/release/Autograph.xcframework.zip"
+          (cd autograph-apple/build/XCFrameworks/release && zip -ry Autograph.xcframework.zip Autograph.xcframework)
+          checksum=$(swift package compute-checksum "$zip_path")
+
+          {
+            echo "### Release dry run for v${{ inputs.version }}"
+            echo
+            echo 'Validation passed and the xcframework built. This run published nothing.'
+            echo
+            echo "- ref: \`${{ github.sha }}\`"
+            echo "- checksum of *this* build: \`$checksum\`"
+            echo
+            echo 'The checksum above is not the one a release would carry — Kotlin/Native builds are'
+            echo 'not reproducible, so only the build that produces the published zip can know it.'
+            echo 'It is here to confirm the step works, not to be copied anywhere.'
+          } >> "$GITHUB_STEP_SUMMARY"

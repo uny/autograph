@@ -18,6 +18,21 @@ concurrency:
 # All require macOS for iosSimulatorArm64; Apple silicon runners execute its tests natively.
 
 jobs:
+  # The one job here that guards something CI otherwise cannot reach. cd.yml runs only on a `v*`
+  # tag, so the gate standing in front of an irreversible publish would first execute during a real
+  # release; these tests execute it on every PR instead. Seconds on the cheapest runner, and it is
+  # deliberately not folded into `library` so a shell regression is not reported as a Kotlin failure.
+  release-scripts:
+    name: release-scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Test the release version gate
+        run: .github/scripts/validate-release-version.test.sh
+
   library:
     name: library
     runs-on: macos-latest
