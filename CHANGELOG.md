@@ -38,10 +38,17 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   measured on this tree, a keyless publish assembles every artifact and then fails at
   `signJvmPublication` with "no configured signatory", and skipping the `sign*Publication` tasks
   fails too because the publications declare the `.asc` files as artifacts. So the job generates a
-  throwaway GPG key, which adds no repository secret and no remote — the key lives for one run, and
-  Maven Central accepts only the published release key. The run also fails if a `swiftpm-metadata`
+  throwaway GPG key, which adds no repository secret and no publish target — the key lives for one
+  run and its public half never reaches a keyserver, so Central could not verify a signature made
+  with it even if something uploaded one. The run also fails if a `swiftpm-metadata`
   artifact reaches the publication: Maven Central rejects those and a local repository accepts them
   silently, so that break is invisible without an explicit check.
+
+  It closes most of that gap rather than all of it, and the remainder is named in the workflow:
+  `publishToMavenLocal` runs the same publications as `publishToMavenCentral` but not
+  `prepareMavenCentralPublishing` or the upload tasks, the throwaway key exercises neither the
+  key-id nor the passphrase path the release secrets use, and Central's own POM-field validation
+  still runs for the first time during a release ([#176]).
 
   The `release` environment now also requires a review before a publish can proceed, with
   self-review permitted because the project has a single maintainer.

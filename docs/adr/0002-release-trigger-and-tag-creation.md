@@ -267,8 +267,10 @@ Both reviewers put these first, and none of them depends on the trigger question
    not use the `release` environment, and uploads nothing; its only credential is the automatic
    `github.token` at `contents: read`, which is what lets the validation list existing tags. The
    local publish signs with a key generated inside the job, which adds no repository secret and no
-   remote, because `signAllPublications()` is unconditional and measurement showed no keyless
-   publish to fall back on (#176). That is what makes it safe to run at any time.
+   publish target, because `signAllPublications()` is unconditional and measurement showed no
+   keyless publish to fall back on (#176). That is what makes it safe to run at any time. It is a
+   local publish, not the release's: the Central-repository tasks, the release key's id/passphrase
+   paths and Central's own POM validation still first run during a release.
 
    It does **not** yet cover the parts of A that do not exist: the fast-forward push to `main`,
    tag creation, and the release/draft sequence of point 1. Those get added to it as A is built,
@@ -280,10 +282,10 @@ Both reviewers put these first, and none of them depends on the trigger question
 actively contested:** whether a draft release defers git tag creation until publish (point 1).
 GitHub's release documentation does not say, and a review of this document asserted the opposite.
 It is **still unmeasured**: the dry run that now exists stops after validation, the local publish,
-the build and the checksum, so it never creates a tag or a release and cannot answer this. Do not design against the
-premise before it is settled — either by the probe below, or by the dry run once it grows the
-release sequence point 7 leaves for later. The other external premise, that `target_commitish` is
-unused once the tag exists, *is* documented, and is quoted at point 4.
+the build and the checksum, so it never creates a tag or a release and cannot answer this. Do not
+design against the premise before it is settled — either by the probe below, or by the dry run
+once it grows the release sequence point 7 leaves for later. The other external premise, that
+`target_commitish` is unused once the tag exists, *is* documented, and is quoted at point 4.
 
 Both are cheap to settle, and settling them does not require a real release — creating a draft
 release against a throwaway tag name and checking whether `refs/tags/<name>` appears answers point
