@@ -18,9 +18,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   fail-open form of the tag lookup is reintroduced, so a green result means something.
 
   `release-dry-run.yml` (`workflow_dispatch`, version input) runs that same script — not a copy —
-  then builds the xcframework and computes a checksum, and stops. It holds no credentials, does not
-  use the `release` environment, and publishes nothing. The checksum it prints belongs to that build
-  alone and is not the one a release would carry, since Kotlin/Native output is not reproducible.
+  then builds the xcframework and computes a checksum, and stops. It holds no publishing credential
+  — no Maven Central login and no signing key — does not use the `release` environment, and
+  publishes nothing; its only credential is the automatic `github.token` at `contents: read`, which
+  is what lets the validation list existing tags. The checksum it prints belongs to that build alone
+  and is not the one a release would carry, since Kotlin/Native output is not reproducible.
   ADR 0002 lists a dry-run path as a prerequisite for the trigger redesign; this is the half of it
   that does not depend on which trigger wins.
 

@@ -67,9 +67,16 @@ EOF
 failures=0
 pass_count=0
 
-# expect <expected: pass|fail> <tag> <gh: ok|down> <tags> <description>
+# expect <expected: pass|fail> <tag> <gh: ok|down> <tags> <reason> <description>
+#
+# <reason> is a substring the output must contain, and it is what makes a `fail` expectation mean
+# anything. Every rejection here exits non-zero, so a status-only assertion is satisfied by the
+# script failing for *any* reason — under which deleting the leading-`v` guard entirely leaves the
+# whole suite green, because a bare `0.5.0` then sorts below `v0.4.0` and is rejected as an
+# ordering violation instead. Same verdict, wrong cause, no test would notice. Pinning the message
+# is what distinguishes the six rejection paths from each other.
 expect() {
-  local expected="$1" tag="$2" gh_state="$3" tags="$4" description="$5"
+  local expected="$1" tag="$2" gh_state="$3" tags="$4" reason="$5" description="$6"
   set_gh_stub "$gh_state"
 
   local output status
@@ -82,50 +89,74 @@ expect() {
   local actual=pass
   [ "$status" -eq 0 ] || actual=fail
 
-  if [ "$actual" = "$expected" ]; then
-    pass_count=$((pass_count + 1))
-    printf '  ok    %-34s %s\n' "$tag" "$description"
-  else
+  if [ "$actual" != "$expected" ]; then
     failures=$((failures + 1))
     printf '  FAIL  %-34s %s\n' "$tag" "$description"
     printf '        expected to %s, but it %sed (exit %d)\n' "$expected" "$actual" "$status"
     printf '        output: %s\n' "$output"
+    return
   fi
+
+  case "$output" in
+    *"$reason"*) ;;
+    *)
+      failures=$((failures + 1))
+      printf '  FAIL  %-34s %s\n' "$tag" "$description"
+      printf '        %sed as expected, but for the wrong reason\n' "$expected"
+      printf '        wanted output containing: %s\n' "$reason"
+      printf '        output: %s\n' "$output"
+      return
+      ;;
+  esac
+
+  pass_count=$((pass_count + 1))
+  printf '  ok    %-34s %s\n' "$tag" "$description"
 }
 
 existing="v0.1.0 v0.1.1 v0.2.0 v0.3.0 v0.4.0"
 
 echo "validate-release-version.sh"
 
-expect pass v0.5.0    ok   "$existing"          "a normal next release"
-expect pass v0.5.0    ok   "v0.5.0"             "the only tag in the repository is this one"
-expect pass v0.10.0   ok   "$existing"          "double-digit minor sorts above v0.4.0, not below"
+shape="is not vMAJOR.MINOR.PATCH"
+prefix="the leading v is required"
+changelog="has no released section"
+ordering="sorts below the existing"
+api="Could not list existing tags"
+
+expect pass v0.5.0    ok   "$existing"        "validated"  "a normal next release"
+expect pass v0.5.0    ok   "v0.5.0"           "no existing release" "the only tag in the repository is this one"
+expect pass v0.10.0   ok   "$existing"        "above v0.4.0" "double-digit minor sorts above v0.4.0, not below"
+
+expect fail ""        ok   "$existing"        "usage:"     "no argument at all"
 
 # Without the `v`, everything downstream compares against real tag names and silently disagrees:
 # `grep -vFx` fails to exclude this release from the list and `sort -V` puts a bare 0.4.0 *before*
 # v0.4.0, so it used to fail with "0.4.0 sorts below the existing v0.4.0" — closed, but blaming the
-# wrong thing. Rejected up front now.
-expect fail 0.5.0     ok   "$existing"          "no leading v, otherwise a valid next version"
-expect fail 0.4.0     ok   "$existing"          "no leading v, and already released"
+# wrong thing. Rejected up front now, which is why these two assert the message and not just the
+# verdict: on the ordering path they would fail either way.
+expect fail 0.5.0     ok   "$existing"        "$prefix"    "no leading v, otherwise a valid next version"
+expect fail 0.4.0     ok   "$existing"        "$prefix"    "no leading v, and already released"
 
-expect fail v0.4      ok   "$existing"          "not three components"
-expect fail v0.4.0.1  ok   "$existing"          "four components"
-expect fail vX.Y.Z    ok   "$existing"          "not numeric"
-expect fail v0.5.0-rc1 ok  "$existing"          "prerelease suffix"
-expect fail v01.2.3   ok   "$existing"          "leading zero, though the changelog has a section"
+expect fail v0.4      ok   "$existing"        "$shape"     "not three components"
+expect fail v0.4.0.1  ok   "$existing"        "$shape"     "four components"
+expect fail vX.Y.Z    ok   "$existing"        "$shape"     "not numeric"
+expect fail v0.5.0-rc1 ok  "$existing"        "$shape"     "prerelease suffix"
+expect fail v01.2.3   ok   "$existing"        "$shape"     "leading zero, though the changelog has a section"
 
-expect fail v0.41.0   ok   "$existing"          "transposed v0.4.1; well-formed, absent from changelog"
-expect fail v0.6.0    ok   "$existing"          "no changelog section at all"
-expect fail v0.7.0    ok   "$existing"          "changelog heading present but still undated"
+expect fail v0.41.0   ok   "$existing"        "$changelog" "transposed v0.4.1; well-formed, absent from changelog"
+expect fail v0.6.0    ok   "$existing"        "$changelog" "no changelog section at all"
+expect fail v0.7.0    ok   "$existing"        "$changelog" "changelog heading present but still undated"
 
-expect fail v0.3.0    ok   "$existing"          "already released, sorts below v0.4.0"
-expect fail v0.4.1    ok   "v1.0.0 $existing"   "old-series patch after a newer major"
+expect fail v0.3.0    ok   "$existing"        "$ordering"  "already released, sorts below v0.4.0"
+expect fail v0.4.1    ok   "v1.0.0 $existing" "$ordering"  "old-series patch after a newer major"
 
 # The regression this file exists for. Before the fetch was separated from the filter, a failing
 # `gh` produced an empty tag list that read as "no other tags", and the ordering check was skipped
-# in silence — so this exact case PASSED, and would have published v0.3.0 over v0.4.0.
-expect fail v0.3.0    down "$existing"          "API down must fail closed, not skip the check"
-expect fail v0.5.0    down "$existing"          "API down fails even a version that is otherwise fine"
+# in silence — so this exact case PASSED, and would have published v0.3.0 over v0.4.0. The message
+# assertion matters here too: v0.3.0 is rejected by the ordering check as well, so only the reason
+# tells the fail-closed path apart from the check it is supposed to be protecting.
+expect fail v0.3.0    down "$existing"        "$api"       "API down must fail closed, not skip the check"
+expect fail v0.5.0    down "$existing"        "$api"       "API down fails even a version that is otherwise fine"
 
 echo
 if [ "$failures" -ne 0 ]; then

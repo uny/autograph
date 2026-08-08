@@ -261,8 +261,10 @@ Both reviewers put these first, and none of them depends on the trigger question
 
    **A dry-run path now exists**: `release-dry-run.yml`, `workflow_dispatch` with a version input,
    running the same validation script `cd.yml` runs — not a copy — then the xcframework build and
-   the checksum computation, and stopping there. It holds no credentials, does not use the
-   `release` environment, and publishes nothing, which is what makes it safe to run at any time.
+   the checksum computation, and stopping there. It holds no publishing credential — no Maven
+   Central login and no signing key — does not use the `release` environment, and publishes
+   nothing; its only credential is the automatic `github.token` at `contents: read`, which is what
+   lets the validation list existing tags. That is what makes it safe to run at any time.
 
    It does **not** yet cover the parts of A that do not exist: the fast-forward push to `main`,
    tag creation, and the release/draft sequence of point 1. Those get added to it as A is built,

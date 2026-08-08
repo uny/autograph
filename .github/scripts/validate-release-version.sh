@@ -73,15 +73,20 @@ if ! all_tags=$(gh api "repos/${repo}/tags" --paginate --jq '.[].name'); then
   fail "Could not list existing tags; refusing to publish without the version-ordering check."
 fi
 
-# `|| true` because `grep -vFx` legitimately matches nothing when the tag being released is the
-# only one that exists, and under `pipefail` that would otherwise abort the script. It is safe
-# here, and only here, because the fetch above already proved the API answered — so an empty
-# result now really does mean "no other tags" rather than "we never found out".
-highest=$(printf '%s\n' "$all_tags" \
+# `|| true` because `grep` legitimately matches nothing when the tag being released is the only one
+# that exists, and under `pipefail` that would otherwise abort the script. It is safe here, and
+# only here, because the fetch above already proved the API answered — so an empty result now
+# really does mean "no other tags" rather than "we never found out".
+#
+# Ordering is a separate statement so that `|| true` covers only the greps it is there for. With
+# `sort -V | tail -1` inside the same pipeline it would swallow their failures too, and a `sort`
+# that died would leave $highest empty — which reads as "no existing release" and skips the check
+# below. No way to make that happen has been found, but a fail-open path on this particular gate
+# is not worth keeping merely because it looks unreachable.
+release_tags=$(printf '%s\n' "$all_tags" \
   | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-  | grep -vFx "$tag" \
-  | sort -V \
-  | tail -1 || true)
+  | grep -vFx "$tag" || true)
+highest=$(printf '%s\n' "$release_tags" | sort -V | tail -1)
 
 # Deliberately forbids an old-series patch — a v0.4.1 cut after v1.0.0 shipped. This project has a
 # single release line and no maintenance branch; ADR 0002 records the restriction so that the day
