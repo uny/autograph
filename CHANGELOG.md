@@ -14,15 +14,22 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   suite that runs on every PR, and gained a dry-run workflow that calls it ([#167]). `cd.yml` runs
   only on a `v*` tag, so every guard it carries would otherwise first execute during a release that
   cannot be undone — the checks now execute on each PR instead, against a stubbed `gh` so that the
-  API-failure branch is exercised rather than simulated. The suite was confirmed to fail when the
-  fail-open form of the tag lookup is reintroduced, so a green result means something.
+  API-failure branch is exercised rather than simulated. Each case asserts *why* a version was
+  rejected and not merely that it was, since every rejection path exits non-zero and a status-only
+  assertion would be satisfied by the script failing for the wrong reason. The suite was confirmed
+  to fail when the fail-open form of the tag lookup is reintroduced, and when the leading-`v` check
+  is removed, so a green result means something. It runs on both Linux and macOS: the gate only ever
+  executes on macOS, where `grep`, `sort` and bash all differ from the GNU versions a contributor is
+  likely to be writing against.
 
   `release-dry-run.yml` (`workflow_dispatch`, version input) runs that same script — not a copy —
   then builds the xcframework and computes a checksum, and stops. It holds no publishing credential
   — no Maven Central login and no signing key — does not use the `release` environment, and
   publishes nothing; its only credential is the automatic `github.token` at `contents: read`, which
   is what lets the validation list existing tags. The checksum it prints belongs to that build alone
-  and is not the one a release would carry, since Kotlin/Native output is not reproducible.
+  and is not the one a release would carry, since Kotlin/Native output is not reproducible. It does
+  not exercise `publishToMavenCentral` itself, so a broken publication would still surface only
+  mid-release ([#176]).
   ADR 0002 lists a dry-run path as a prerequisite for the trigger redesign; this is the half of it
   that does not depend on which trigger wins.
 
@@ -500,3 +507,4 @@ Initial release.
 [#159]: https://github.com/uny/autograph/issues/159
 [#167]: https://github.com/uny/autograph/issues/167
 [#170]: https://github.com/uny/autograph/issues/170
+[#176]: https://github.com/uny/autograph/issues/176

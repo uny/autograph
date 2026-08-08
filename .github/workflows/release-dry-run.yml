@@ -1,6 +1,12 @@
 name: Release dry run
 
-# Everything cd.yml does up to the point of no return, and nothing after it.
+# cd.yml's validation and its Apple build, on demand, with the publish that normally sits between
+# them removed.
+#
+# Not "everything before the point of no return": cd.yml publishes to Maven Central as its third
+# step, so almost nothing precedes that line except the validation itself. The xcframework build
+# below actually comes *after* it in a real release, and is included here because it is the long,
+# failure-prone half — not because a dry run reaches it before the release would.
 #
 # cd.yml publishes with `automaticRelease = true`, so there is no staging repository and no undo,
 # and it only runs on a `v*` tag — which means every guard it carries would otherwise first execute
@@ -11,7 +17,10 @@ name: Release dry run
 # What this proves: the version passes validation, the Kotlin/Native build and xcframework assemble
 # from this ref, and a checksum can be computed from the result. What it cannot prove: that the
 # checksum matches a future release's, since Kotlin/Native's output is not reproducible across
-# builds — this run's checksum is this run's alone and is printed for information only.
+# builds — this run's checksum is this run's alone and is printed for information only. It also
+# does not exercise `publishToMavenCentral`, so a Gradle change that breaks the POM, the signing
+# wiring, or the publication itself passes here and surfaces for the first time mid-release; that
+# gap is #176.
 #
 # Deliberately absent: `environment: release`, every `secrets.*` cd.yml uses — the Maven Central
 # credentials and the GPG signing key — and any publish, tag or release step. The only credential
@@ -24,7 +33,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: 'Version to validate, without the leading v (e.g. 0.5.0)'
+        description: 'Version to validate, with or without the leading v (e.g. 0.5.0 or v0.5.0)'
         required: true
         type: string
 
@@ -63,11 +72,18 @@ jobs:
       # command. Dispatching already requires write access, so this is not the weakest link — but
       # it costs nothing to close, and the same habit is what keeps the pattern from spreading to
       # a workflow where the input is not so privileged.
+      #
+      # `${VERSION#v}` before re-adding the `v` so that both `0.5.0` and `v0.5.0` work. Everything
+      # else in this process — the trigger cd.yml listens on, `git tag`, the tag names the ordering
+      # check compares against — speaks in `v0.5.0`, so that is what a maintainer will reach for
+      # here, and a bare prepend would turn it into `vv0.5.0` and reject it as a malformed version.
+      # Failing closed is right; blaming the shape when the real problem is a doubled prefix is the
+      # same wrong-reason failure the leading-`v` check was added to stop.
       - name: Validate the release version
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ inputs.version }}
-        run: .github/scripts/validate-release-version.sh "v${VERSION}"
+        run: .github/scripts/validate-release-version.sh "v${VERSION#v}"
 
       - name: Build Autograph.xcframework
         run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
@@ -76,12 +92,13 @@ jobs:
         env:
           VERSION: ${{ inputs.version }}
         run: |
+          version="${VERSION#v}"
           zip_path="autograph-apple/build/XCFrameworks/release/Autograph.xcframework.zip"
           (cd autograph-apple/build/XCFrameworks/release && zip -ry Autograph.xcframework.zip Autograph.xcframework)
           checksum=$(swift package compute-checksum "$zip_path")
 
           {
-            echo "### Release dry run for v${VERSION}"
+            echo "### Release dry run for v${version}"
             echo
             echo 'Validation passed and the xcframework built. This run published nothing.'
             echo
