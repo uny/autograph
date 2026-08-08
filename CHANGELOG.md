@@ -10,6 +10,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- The release version gate moved into `.github/scripts/validate-release-version.sh`, gained a test
+  suite that runs on every PR, and gained a dry-run workflow that calls it ([#167]). `cd.yml` runs
+  only on a `v*` tag, so every guard it carries would otherwise first execute during a release that
+  cannot be undone — the checks now execute on each PR instead, against a stubbed `gh` so that the
+  API-failure branch is exercised rather than simulated. The suite was confirmed to fail when the
+  fail-open form of the tag lookup is reintroduced, so a green result means something.
+
+  `release-dry-run.yml` (`workflow_dispatch`, version input) runs that same script — not a copy —
+  then builds the xcframework and computes a checksum, and stops. It holds no publishing credential
+  — no Maven Central login and no signing key — does not use the `release` environment, and
+  publishes nothing; its only credential is the automatic `github.token` at `contents: read`, which
+  is what lets the validation list existing tags. The checksum it prints belongs to that build alone
+  and is not the one a release would carry, since Kotlin/Native output is not reproducible.
+  ADR 0002 lists a dry-run path as a prerequisite for the trigger redesign; this is the half of it
+  that does not depend on which trigger wins.
+
+  The `release` environment now also requires a review before a publish can proceed, with
+  self-review permitted because the project has a single maintainer.
+
 - iOS native tap capture warns once via `NSLog` when it drops a tap because the accessibility tree is
   cold ([#170]). `installAutographNativeTapCapture` resolves nothing until some accessibility client
   (VoiceOver, Voice Control, the Accessibility Inspector, an XCUITest runner) has run in the process —
