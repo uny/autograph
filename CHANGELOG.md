@@ -23,15 +23,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   likely to be writing against.
 
   `release-dry-run.yml` (`workflow_dispatch`, version input) runs that same script — not a copy —
-  then builds the xcframework and computes a checksum, and stops. It holds no publishing credential
-  — no Maven Central login and no signing key — does not use the `release` environment, and
-  publishes nothing; its only credential is the automatic `github.token` at `contents: read`, which
-  is what lets the validation list existing tags. The checksum it prints belongs to that build alone
-  and is not the one a release would carry, since Kotlin/Native output is not reproducible. It does
-  not exercise `publishToMavenCentral` itself, so a broken publication would still surface only
-  mid-release ([#176]).
+  then publishes every module to a local repository, builds the xcframework and computes a
+  checksum, and stops. It holds no publishing credential — no Maven Central login and no release
+  signing key — does not use the `release` environment, and uploads nothing; its only credential is
+  the automatic `github.token` at `contents: read`, which is what lets the validation list existing
+  tags. The checksum it prints belongs to that build alone and is not the one a release would carry,
+  since Kotlin/Native output is not reproducible.
   ADR 0002 lists a dry-run path as a prerequisite for the trigger redesign; this is the half of it
   that does not depend on which trigger wins.
+
+  The local publish exists because `cd.yml` publishes to Maven Central as its *third* step, so a
+  Gradle change breaking the POM, the signing wiring or the publication config would otherwise first
+  surface mid-release, inside the run that cannot be undone ([#176]). Signing is not optional:
+  measured on this tree, a keyless publish assembles every artifact and then fails at
+  `signJvmPublication` with "no configured signatory", and skipping the `sign*Publication` tasks
+  fails too because the publications declare the `.asc` files as artifacts. So the job generates a
+  throwaway GPG key, which adds no repository secret and no remote — the key lives for one run, and
+  Maven Central accepts only the published release key. The run also fails if a `swiftpm-metadata`
+  artifact reaches the publication: Maven Central rejects those and a local repository accepts them
+  silently, so that break is invisible without an explicit check.
 
   The `release` environment now also requires a review before a publish can proceed, with
   self-review permitted because the project has a single maintainer.
