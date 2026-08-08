@@ -47,63 +47,17 @@ jobs:
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       # Pushing the tag is the only gate on this pipeline: `publishToMavenCentral(automaticRelease
-      # = true)` leaves no staging repository to inspect or drop, so the first step below is
-      # already irreversible and a mistyped tag is a published version. These three assertions are
-      # cheap, run before anything is published, and are the part of ADR 0002 that does not wait on
-      # the trigger redesign — they hold under the current tag trigger and under either successor.
+      # = true)` leaves no staging repository to inspect or drop, so the next step is already
+      # irreversible and a mistyped tag is a published version.
       #
-      # Checked against the tagged trees rather than assumed: v0.3.0 and v0.4.0 both carry their
-      # own CHANGELOG section at the tag and would have passed. v0.2.0 would not, which is a change
-      # in practice since, not a regression.
+      # The checks live in a script because this workflow runs only on a release tag and so can
+      # never be exercised by CI — the script can be, and is, on every PR
+      # (validate-release-version.test.sh). The release dry-run workflow calls the same script
+      # rather than a copy, so what a dry run validates is what a release validates.
       - name: Validate the release version
         env:
           GH_TOKEN: ${{ github.token }}
-        run: |
-          tag="${GITHUB_REF#refs/tags/}"
-          version="${tag#v}"
-
-          # No leading zeros: v01.2.3 and v1.2.3 are different Maven coordinates but the same
-          # intent, and `sort -V` orders them apart. Rejects a prerelease tag (v0.5.0-rc1) too —
-          # the trigger is `v*`, so pushing one starts this workflow and it stops here rather than
-          # publishing something the single-line release history has no place for.
-          if ! printf '%s' "$version" | grep -qE '^(0|[1-9][0-9]*)(\.(0|[1-9][0-9]*)){2}$'; then
-            echo "::error::$tag is not vMAJOR.MINOR.PATCH; refusing to publish it."
-            exit 1
-          fi
-
-          # Catches the transposition a regex cannot — v0.41.0 for v0.4.1 is well-formed, and only
-          # the changelog knows which one was meant. The dots are escaped because they are pattern
-          # metacharacters here, unlike the -F match below.
-          if ! grep -qE "^## \[${version//./\\.}\] - [0-9]{4}-[0-9]{2}-[0-9]{2}$" CHANGELOG.md; then
-            echo "::error::CHANGELOG.md has no released section for $version. Move [Unreleased] to ## [$version] - <date> before tagging."
-            exit 1
-          fi
-
-          # Fetch and filter are separate so that "the API failed" and "there are no other tags"
-          # stay distinguishable. Collapsed into one pipeline they are not: `set -e` is on but
-          # `pipefail` is not, so a failed `gh` leaves the assignment exiting 0 with an empty
-          # value, and an emptiness test would then skip the check in silence — fail-open, on the
-          # one gate standing in front of an irreversible publish. Turning `pipefail` on instead
-          # would break the opposite case, since `grep -vFx` legitimately matches nothing when this
-          # is the only tag.
-          if ! all_tags=$(gh api "repos/${{ github.repository }}/tags" --paginate --jq '.[].name'); then
-            echo "::error::Could not list existing tags; refusing to publish without the version-ordering check."
-            exit 1
-          fi
-
-          # Deliberately forbids an old-series patch (a v0.4.1 cut after v1.0.0). This project has a
-          # single release line and no maintenance branch; ADR 0002 records the restriction so the
-          # day a maintenance branch is wanted, this is a known thing to revisit rather than a
-          # surprise. Uses the API rather than a full fetch, matching the tag listing further down.
-          highest=$(printf '%s\n' "$all_tags" \
-            | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-            | grep -vFx "$tag" \
-            | sort -V \
-            | tail -1)
-          if [ -n "$highest" ] && [ "$(printf '%s\n%s\n' "$highest" "$tag" | sort -V | tail -1)" != "$tag" ]; then
-            echo "::error::$tag sorts below the existing $highest; refusing to publish it."
-            exit 1
-          fi
+        run: .github/scripts/validate-release-version.sh "${GITHUB_REF#refs/tags/}"
 
       - name: Extract version from tag
         id: version

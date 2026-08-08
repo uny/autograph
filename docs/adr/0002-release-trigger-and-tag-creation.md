@@ -1,6 +1,6 @@
 # ADR 0002 — How a release is triggered, and when the tag is created
 
-- **Status:** Proposed — this document is the comparison [#167](https://github.com/uny/autograph/issues/167) asks for in step 1 of its sequencing. **The trigger choice is deliberately left open**; see §"A1 vs A2". The only part implemented alongside this document is §"Do this regardless of A or B", items 3 and 4 (`concurrency` and the version assertions in `cd.yml`), because neither depends on the outcome. Items 1 and 2 are GitHub environment settings and cannot land in a PR.
+- **Status:** Proposed — this document is the comparison [#167](https://github.com/uny/autograph/issues/167) asks for in step 1 of its sequencing. **The trigger choice is deliberately left open**; see §"A1 vs A2". The only part implemented alongside this document is §"Do this regardless of A or B", items 3 and 4 (`concurrency` and the version assertions in `cd.yml`), because neither depends on the outcome. Item 1 has since been applied as a GitHub environment setting (`required_reviewers`, with self-review permitted since there is one maintainer); item 2 is deliberately not, see that section. Point 7 of §"What A must carry" — the dry-run path — also exists now.
 - **Date:** 2026-08-08
 - **Issue:** [#167](https://github.com/uny/autograph/issues/167); related [#166](https://github.com/uny/autograph/pull/166)
 - **Reviewed by:** Fable 5 and GPT-5.6 Sol, independently, on the first draft — both GO-WITH-CHANGES, and both refuted the two arguments that draft used to pick a trigger. Their findings are folded in below; §"A1 vs A2" is materially different from the draft as a result.
@@ -179,12 +179,17 @@ the rest of this document applies unchanged to either.
 
 Both reviewers put these first, and none of them depends on the trigger question.
 
-1. **A human gate**, since there is no staging gate. Add `required_reviewers` to the `release`
-   environment (currently `protection_rules: []`). This repository is public, so environment
-   protection rules are available on the Free plan, and a sole owner can approve their own
-   deployment.
-2. **`deployment_branch_policy`** on the `release` environment, currently `null`, meaning any ref
-   can deploy.
+1. **A human gate**, since there is no staging gate. **Done** — the `release` environment carries
+   `required_reviewers` as of 2026-08-08, where it previously had `protection_rules: []`. This
+   repository is public, so environment protection rules are available on the Free plan.
+   `prevent_self_review` is deliberately `false`: with one maintainer, `true` would mean nobody
+   could ever approve a release.
+2. **`deployment_branch_policy`**, still `null`, meaning any ref can deploy. **Deliberately left
+   alone for now.** With the approval gate in place its marginal value is small — the only path to
+   this environment is `cd.yml`'s publish job, which a `v*` tag triggers and a human now has to
+   approve — while a mistyped tag pattern would block releases entirely, and would not be
+   discovered until one was attempted. Worth adding once there is a way to verify it without
+   spending a release on the experiment.
 3. **`concurrency: { group: release, cancel-in-progress: false, queue: max }`** in `cd.yml`.
    `docs.yml` is the existing precedent for serializing this way; `ci.yml` has a concurrency block
    too but a different one (per-ref, `cancel-in-progress: true`), which supersedes rather than
@@ -212,8 +217,9 @@ Both reviewers put these first, and none of them depends on the trigger question
    not state either way. If the draft does create the tag immediately, this ordering buys nothing
    and the window has to be closed differently: upload the asset to a release created against a
    tag that is pushed only after the upload succeeds, or accept the window and document it. **This
-   is the single most important thing for the dry run of point 7 to settle**, because the rest of
-   this section's ordering depends on the answer.
+   is the single most important thing to settle before A is built**, because the rest of this
+   section's ordering depends on the answer. The dry run that exists today does not settle it — it
+   creates no tag and no release; see point 7.
 2. **Maven publish goes last, and the claim about what that buys must be stated accurately.**
    Today it runs first, so a later failure leaves a version on Maven Central that cannot be
    re-published and cannot be reproduced. Moving it last means the *unrecoverable* step
@@ -252,15 +258,29 @@ Both reviewers put these first, and none of them depends on the trigger question
 6. **A merge freeze during a release run.** The fast-forward-only push is fail-closed, which is
    correct, but a Kotlin/Native build is long and `main` moves often here. Without a freeze the
    realistic failure is a long build discarded because a PR merged during it.
-7. **Validate on a dry run first** — build, checksum, and the fast-forward check against a scratch
-   ref, end to end, before the first real cutover release.
+7. **Validate on a dry run first**, before the first real cutover release.
+
+   **A dry-run path now exists**: `release-dry-run.yml`, `workflow_dispatch` with a version input,
+   running the same validation script `cd.yml` runs — not a copy — then the xcframework build and
+   the checksum computation, and stopping there. It holds no publishing credential — no Maven
+   Central login and no signing key — does not use the `release` environment, and publishes
+   nothing; its only credential is the automatic `github.token` at `contents: read`, which is what
+   lets the validation list existing tags. That is what makes it safe to run at any time.
+
+   It does **not** yet cover the parts of A that do not exist: the fast-forward push to `main`,
+   tag creation, and the release/draft sequence of point 1. Those get added to it as A is built,
+   and the draft-release premise §"What A must carry" flags as contested is the first thing they
+   should settle. The build and validation halves are covered today, which is the half that would
+   otherwise first run during an irreversible release.
 
 **One premise above is GitHub's behavior rather than this repository's, and it is unverified and
 actively contested:** whether a draft release defers git tag creation until publish (point 1).
 GitHub's release documentation does not say, and a review of this document asserted the opposite.
-The dry run of point 7 is where it gets measured; do not design against it before then. The other
-external premise, that `target_commitish` is unused once the tag exists, *is* documented, and is
-quoted at point 4.
+It is **still unmeasured**: the dry run that now exists stops after validation, the build and the
+checksum, so it never creates a tag or a release and cannot answer this. Do not design against the
+premise before it is settled — either by the probe below, or by the dry run once it grows the
+release sequence point 7 leaves for later. The other external premise, that `target_commitish` is
+unused once the tag exists, *is* documented, and is quoted at point 4.
 
 Both are cheap to settle, and settling them does not require a real release — creating a draft
 release against a throwaway tag name and checking whether `refs/tags/<name>` appears answers point
