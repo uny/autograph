@@ -53,6 +53,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   The `release` environment now also requires a review before a publish can proceed, with
   self-review permitted because the project has a single maintainer.
 
+  The release-notes start tag is derived by `.github/scripts/derive-release-notes-start-tag.sh`,
+  extracted from `cd.yml` for the same reason and tested the same way ([#174]). Inline it had the
+  fail-open shape the version gate just lost: `set -e` without `pipefail` left a failed `gh api`
+  exiting 0 with an empty result, which the caller read as "there is no previous release" and
+  answered with the start-tag-less `--generate-notes` that [#166] removed — so an API blip would
+  quietly reinstate that bug. An empty answer and a failed one are now distinguishable, and the
+  release stops rather than mislabelling its notes. Extracting it put the derivation under test for
+  the first time; it has never run during a release, having landed after v0.4.0 shipped. Two cases
+  were confirmed to fail against the code they replace: the fail-open lookup, and the walk that
+  answered with the highest existing tag whenever `gh` replied from a cache older than the tag being
+  released.
+
 - iOS native tap capture warns once via `NSLog` when it drops a tap because the accessibility tree is
   cold ([#170]). `installAutographNativeTapCapture` resolves nothing until some accessibility client
   (VoiceOver, Voice Control, the Accessibility Inspector, an XCUITest runner) has run in the process —
@@ -522,6 +534,8 @@ Initial release.
 [#157]: https://github.com/uny/autograph/issues/157
 [#158]: https://github.com/uny/autograph/issues/158
 [#159]: https://github.com/uny/autograph/issues/159
+[#166]: https://github.com/uny/autograph/pull/166
 [#167]: https://github.com/uny/autograph/issues/167
 [#170]: https://github.com/uny/autograph/issues/170
+[#174]: https://github.com/uny/autograph/issues/174
 [#176]: https://github.com/uny/autograph/issues/176

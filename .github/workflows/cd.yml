@@ -108,15 +108,23 @@ jobs:
 
           # --generate-notes with no explicit start tag has picked v0.1.0 as the "previous"
           # release for every tag so far (v0.2.0, v0.3.0, v0.4.0) instead of the actual preceding
-          # one, so derive it ourselves from the sorted tag list rather than trust gh's resolution.
+          # one, so derive it ourselves rather than trust gh's resolution. The derivation is a
+          # script so it can be tested (derive-release-notes-start-tag.test.sh, run on every PR);
+          # inline here it could only ever first execute during a release, which is how the
+          # resolution this replaced got shipped wrong.
+          #
+          # An empty result means "this is the first release", and a non-zero exit means the tag
+          # list could not be read at all. Those must not be conflated: treating a failed lookup
+          # as "no previous tag" falls through to the start-tag-less --generate-notes that #166
+          # removed, which is the bug rather than a degraded version of it.
+          #
           # Notes generated this way can still be corrected by hand afterward if they're off
           # (`gh release edit "$tag" --notes-file -` fed from a re-run of the same generate-notes
           # call below).
           if ! gh release view "$tag" >/dev/null 2>&1; then
-            prev_tag=$(gh api "repos/${{ github.repository }}/tags" --paginate --jq '.[].name' \
-              | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' \
-              | sort -V \
-              | awk -v cur="$tag" '$0==cur{exit} {prev=$0} END{print prev}')
+            if ! prev_tag=$(.github/scripts/derive-release-notes-start-tag.sh "$tag"); then
+              exit 1
+            fi
 
             if [ -n "$prev_tag" ]; then
               gh release create "$tag" --notes-start-tag "$prev_tag" --generate-notes
