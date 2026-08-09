@@ -59,11 +59,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   exiting 0 with an empty result, which the caller read as "there is no previous release" and
   answered with the start-tag-less `--generate-notes` that [#166] removed — so an API blip would
   quietly reinstate that bug. An empty answer and a failed one are now distinguishable, and the
-  release stops rather than mislabelling its notes. Extracting it put the derivation under test for
-  the first time; it has never run during a release, having landed after v0.4.0 shipped. Two cases
-  were confirmed to fail against the code they replace: the fail-open lookup, and the walk that
-  answered with the highest existing tag whenever `gh` replied from a cache older than the tag being
-  released.
+  release stops rather than mislabelling its notes — but it stops *before* the publish, not after
+  it. The derivation runs in its own step alongside the version gate, because a fail-closed check
+  placed after `publishToMavenCentral` would abort between an irreversible publish and
+  `gh release upload`, leaving the tag's rewritten `Package.swift` pointing at an asset that was
+  never uploaded. Extracting it put the derivation under test for the first time; it has never run
+  during a release, having landed after v0.4.0 shipped. Every assertion was confirmed to fail
+  against the code it replaces — among them the fail-open lookup, `--paginate` dying with earlier
+  pages already read, a mistyped or unpaginated API request, the walk that answered with the highest
+  existing tag whenever `gh` replied from a cache older than the tag being released, and an early
+  `awk` exit that made a large tag list return the right answer with a SIGPIPE exit status.
 
 - iOS native tap capture warns once via `NSLog` when it drops a tap because the accessibility tree is
   cold ([#170]). `installAutographNativeTapCapture` resolves nothing until some accessibility client
