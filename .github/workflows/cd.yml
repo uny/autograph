@@ -65,7 +65,9 @@ jobs:
       # between the irreversible Maven Central publish and `gh release upload`, leaving the tag's
       # rewritten Package.swift pointing at a release asset that was never uploaded — precisely
       # the half-published state the main-sync step at the end of this job is ordered to avoid.
-      # Here, nothing has happened yet and the tag can simply be pushed again.
+      # Here nothing has happened yet, so a transient failure costs a re-run of this workflow and
+      # nothing else. Re-run it from the Actions UI: `git push` of a tag that already points at the
+      # same commit reports "Everything up-to-date" and delivers no event, so it starts nothing.
       #
       # An empty START_TAG is a real answer ("this is the first release"), so it cannot also stand
       # for "the derivation never ran"; DERIVED carries that apart.

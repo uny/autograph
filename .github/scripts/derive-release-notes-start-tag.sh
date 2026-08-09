@@ -42,14 +42,14 @@ fi
 
 repo="${GITHUB_REPOSITORY:-}"
 if [ -z "$repo" ]; then
-  # `scp`-style and URL remotes alike, with any scheme, `user[:password]@` prefix and `:port` —
-  # cd.yml itself rewrites origin to `https://x-access-token:$GH_TOKEN@github.com/...` before the
-  # release step, so a sed that left the userinfo in would splice the token into the request path
-  # and into gh's error output. The result is then checked rather than trusted: a URL shape none of
-  # these match would otherwise reach `gh api` whole and come back 404, reporting a parsing bug as
-  # "the tag list could not be read". Unreachable under Actions, which always sets
-  # $GITHUB_REPOSITORY; this branch exists for the local invocation, which is where the odd remote
-  # shapes actually live.
+  # Unreachable under Actions, which always sets $GITHUB_REPOSITORY. This branch is for running the
+  # script by hand, which is also where the awkward remote shapes live — so it handles `scp`-style
+  # and URL remotes alike, stripping any scheme, `user[:password]@` and `:port`. Dropping the
+  # userinfo matters beyond tidiness: a credential-bearing origin is a thing people have (cd.yml
+  # sets one on itself later in the job), and leaving it in would splice the token into the request
+  # path and into gh's error output. The result is then checked rather than trusted, because a URL
+  # shape none of this matches would otherwise reach `gh api` whole, come back 404, and report a
+  # parsing bug as "the tag list could not be read".
   repo=$(git remote get-url origin \
     | sed -E 's#\.git$##; s#^[a-z+]+://##; s#^[^/@]*@##; s#^[^:/]*(:[0-9]+)?[:/]##')
   if ! printf '%s' "$repo" | grep -qE '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; then
