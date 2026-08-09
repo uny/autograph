@@ -261,11 +261,16 @@ Both reviewers put these first, and none of them depends on the trigger question
 7. **Validate on a dry run first**, before the first real cutover release.
 
    **A dry-run path now exists**: `release-dry-run.yml`, `workflow_dispatch` with a version input,
-   running the same validation script `cd.yml` runs — not a copy — then the xcframework build and
-   the checksum computation, and stopping there. It holds no publishing credential — no Maven
-   Central login and no signing key — does not use the `release` environment, and publishes
-   nothing; its only credential is the automatic `github.token` at `contents: read`, which is what
-   lets the validation list existing tags. That is what makes it safe to run at any time.
+   running the same validation script `cd.yml` runs — not a copy — then a publish of every module
+   to a local repository, the xcframework build and the checksum computation, and stopping there.
+   It holds no publishing credential — no Maven Central login and no release signing key — does
+   not use the `release` environment, and uploads nothing; its only credential is the automatic
+   `github.token` at `contents: read`, which is what lets the validation list existing tags. The
+   local publish signs with a key generated inside the job, which adds no repository secret and no
+   publish target, because `signAllPublications()` is unconditional and measurement showed no
+   keyless publish to fall back on (#176). That is what makes it safe to run at any time. It is a
+   local publish, not the release's: the Central-repository tasks, the release key's id/passphrase
+   paths and Central's own POM validation still first run during a release.
 
    It does **not** yet cover the parts of A that do not exist: the fast-forward push to `main`,
    tag creation, and the release/draft sequence of point 1. Those get added to it as A is built,
@@ -276,11 +281,11 @@ Both reviewers put these first, and none of them depends on the trigger question
 **One premise above is GitHub's behavior rather than this repository's, and it is unverified and
 actively contested:** whether a draft release defers git tag creation until publish (point 1).
 GitHub's release documentation does not say, and a review of this document asserted the opposite.
-It is **still unmeasured**: the dry run that now exists stops after validation, the build and the
-checksum, so it never creates a tag or a release and cannot answer this. Do not design against the
-premise before it is settled — either by the probe below, or by the dry run once it grows the
-release sequence point 7 leaves for later. The other external premise, that `target_commitish` is
-unused once the tag exists, *is* documented, and is quoted at point 4.
+It is **still unmeasured**: the dry run that now exists stops after validation, the local publish,
+the build and the checksum, so it never creates a tag or a release and cannot answer this. Do not
+design against the premise before it is settled — either by the probe below, or by the dry run
+once it grows the release sequence point 7 leaves for later. The other external premise, that
+`target_commitish` is unused once the tag exists, *is* documented, and is quoted at point 4.
 
 Both are cheap to settle, and settling them does not require a real release — creating a draft
 release against a throwaway tag name and checking whether `refs/tags/<name>` appears answers point
