@@ -163,6 +163,14 @@ final class iosAppUITests: XCTestCase {
     /// it, while the claim `trackClick` registers stays the unexpanded layout bounds; iOS matches the
     /// two by rect equality, so the suppression silently stopped applying and the element was
     /// reported twice. The 56.dp box above is above the threshold and never showed it.
+    ///
+    /// It now also covers #179, and only because the fixture was moved into a Column with no
+    /// arrangement spacing. With the 12.dp gap it used to sit in, Compose applied the minimum at
+    /// *layout* time and this element's claim was already 48.dp — measured, the published frame was
+    /// then identical to the claim and the expansion branch was never reached, so this test passed
+    /// without exercising what it names. Butted against the clickable below it, Compose clamps the
+    /// expansion to one side and the published frame is neither the claim nor the claim expanded
+    /// symmetrically, which is the case the old derived-rect equality could not match.
     func testExplicitTrackClickOnASmallElementFiresExactlyOnce() {
         let app = launchSettled()
         app.buttons["explicit_tracked_small"].tap()

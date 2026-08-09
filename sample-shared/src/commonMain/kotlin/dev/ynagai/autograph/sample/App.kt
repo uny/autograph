@@ -153,43 +153,63 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
             )
         }
 
-        // The same explicit instrumentation on an element SHORTER than the minimum touch target.
-        // Deliberately a plain Text at its natural height: iOS resolves "already instrumented" by
-        // comparing the claim's boundsInWindow() against the accessibility frame, and Compose
-        // expands the latter to the minimum touch target for an element this small — so this is the
-        // shape that regressed in #151 while the 56.dp box above kept passing. It is also the shape
-        // the README's own quick start uses.
-        Text(
-            "Explicitly tracked, small (Modifier.trackClick)",
-            modifier = Modifier
-                .testTag("explicit_tracked_small")
-                .trackClick("Recipe Saved", target = "explicit_tracked_small") {},
-        )
-
-        // A trackImpression element that is not clickable itself, inside a clickable that IS. The
-        // outer is deliberately NOT instrumented: autocapture owns its taps and must keep reporting
-        // them. iOS cannot read the marker off the ancestry and used to consult a registered rect
-        // instead, which the inner element's own frame was indistinguishable from — so the outer's
-        // real tap silently vanished (#153, #158). trackImpression now registers nothing at all.
-        //
-        // The inner fillMaxSize()es deliberately: coincident bounds are the shape that failed
-        // whichever way the old rect match was qualified, so it is the stronger fixture of the two
-        // geometries — a centred sub-minimum inner (#153's own) only failed against pre-#155 code.
-        Box(
-            modifier = Modifier
-                .testTag("impression_inner_host")
-                .fillMaxWidth()
-                .height(48.dp)
-                .background(MaterialTheme.colorScheme.tertiaryContainer)
-                .clickable {},
-            contentAlignment = Alignment.Center,
-        ) {
+        // The next two fixtures share a Column with NO arrangement spacing, and that is the point of
+        // nesting them rather than letting the 12.dp above separate them. Nothing is added to the
+        // screen's height budget by it — the gap between them is simply removed.
+        Column {
+            // The same explicit instrumentation on an element SHORTER than the minimum touch target.
+            // Deliberately a plain Text at its natural height: iOS resolves "already instrumented" by
+            // comparing the claim's boundsInWindow() against the accessibility frame, and Compose
+            // expands the latter to the minimum touch target for an element this small — so this is
+            // the shape that regressed in #151 while the 56.dp box above kept passing. It is also the
+            // shape the README's own quick start uses.
+            //
+            // Butted against the clickable below, it is also #179's shape, and that is why it is here
+            // rather than up in the spaced Column. Given room, Compose applies the minimum at *layout*
+            // time and the claim is already 48dp — measured, this element then publishes a frame
+            // identical to its claim and never exercises the expansion at all, which is exactly why
+            // nothing on this screen caught #179. Denied the room, Compose clamps the expansion to one
+            // side instead (measured: 36px of growth upward, none downward, the bottom edge exactly
+            // the neighbour's top), and the published frame is neither the claim nor the claim
+            // expanded symmetrically.
             Text(
-                "Impression filling a plain 48dp clickable",
+                "Explicitly tracked, small (Modifier.trackClick)",
                 modifier = Modifier
-                    .fillMaxSize()
-                    .trackImpression("Recipe Viewed", target = "impression_inner"),
+                    .testTag("explicit_tracked_small")
+                    .trackClick("Recipe Saved", target = "explicit_tracked_small") {},
             )
+
+            // A trackImpression element that is not clickable itself, inside a clickable that IS. The
+            // outer is deliberately NOT instrumented: autocapture owns its taps and must keep
+            // reporting them. iOS cannot read the marker off the ancestry and used to consult a
+            // registered rect instead, which the inner element's own frame was indistinguishable
+            // from — so the outer's real tap silently vanished (#153, #158). trackImpression now
+            // registers nothing at all.
+            //
+            // The inner fillMaxSize()es deliberately: coincident bounds are the shape that failed
+            // whichever way the old rect match was qualified, so it is the stronger fixture of the
+            // two geometries — a centred sub-minimum inner (#153's own) only failed against
+            // pre-#155 code.
+            //
+            // It doubles as the neighbour that clamps the element above. A clickable one, which
+            // matters: a neighbour that reserves no touch target of its own leaves the expansion
+            // room and the clamp never happens.
+            Box(
+                modifier = Modifier
+                    .testTag("impression_inner_host")
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(MaterialTheme.colorScheme.tertiaryContainer)
+                    .clickable {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Impression filling a plain 48dp clickable",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .trackImpression("Recipe Viewed", target = "impression_inner"),
+                )
+            }
         }
 
         // The same explicit instrumentation as explicit_tracked_small, under a scale transform.

@@ -3,7 +3,6 @@ package dev.ynagai.autograph.compose
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalViewConfiguration
@@ -19,7 +18,6 @@ import dev.ynagai.autograph.uikit.nearestAccessibilityClickable
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import kotlin.math.abs
-import kotlin.math.max
 
 /**
  * Resolves a Compose tap to an element identifier by hit-testing the UIKit accessibility tree that
@@ -143,9 +141,14 @@ internal fun resolveIosElement(
  * 48dp, symmetric about the same centre, with the already-wide-enough horizontal axis untouched. So
  * the claim is also compared against itself expanded that way.
  *
- * This stays rect *equality* against a second precisely-derived rect rather than becoming a
- * containment or tolerance widening, both of which would start matching a merely-similar ancestor
- * container — the failure the equality check exists to prevent (see the call site).
+ * Deriving that second rect and requiring equality is what shipped, and #179 is why it is gone: the
+ * expansion is clamped against neighbouring layout, so the published frame is not a function of the
+ * claim and no derived rect equals it in general. The match is now made per axis by
+ * [admitsTheExpansionOf] — exact on an axis that already meets the minimum, and anywhere between the
+ * claim and the minimum on one that falls short. That KDoc has the measurement and the residual.
+ *
+ * What has not changed is what the check is for: keeping a merely-similar ancestor container from
+ * counting as this element (see the call site). The exact-match axis is what still does that work.
  *
  * The expansion is **not** the plain minimum, though, and that was #159: Compose qualifies the touch
  * target on the element's MEASURED size — the distinction `SemanticsHitPath.kt`'s
@@ -179,9 +182,63 @@ internal fun resolveIosElement(
  * state the unexpanded case directly.
  */
 @OptIn(AutographInternalApi::class)
-private fun AutocaptureClaimBounds.isTheElementBehind(other: AxRect, minimumTouchTargetPx: Size): Boolean =
-    drawn.approximatelyEquals(other) ||
-        drawn.expandedToAtLeast(minimumTouchTargetPx.drawnLike(this)).approximatelyEquals(other)
+private fun AutocaptureClaimBounds.isTheElementBehind(other: AxRect, minimumTouchTargetPx: Size): Boolean {
+    val minimum = minimumTouchTargetPx.drawnLike(this)
+    return admitsTheExpansionOf(drawn.left, drawn.right, other.left, other.right, minimum.width) &&
+        admitsTheExpansionOf(drawn.top, drawn.bottom, other.top, other.bottom, minimum.height)
+}
+
+/**
+ * One axis of [isTheElementBehind]: whether the published span `[publishedStart, publishedEnd]` is
+ * the claim's span `[claimStart, claimEnd]` as Compose may have expanded it toward [minimum].
+ *
+ * The tolerance exists because the two spans come from independent measurement paths across the
+ * Compose/UIKit divide — `boundsInWindow()` at claim registration vs `accessibilityFrame` +
+ * `convertRect` + scale — and exact equality is too strict for that. A real ancestor container
+ * differs by far more than float noise. Both are window-space pixels, so they compare directly.
+ *
+ * **An axis that already meets the minimum must match exactly.** There is no expansion left for
+ * Compose to apply there, so any difference describes a different element. This is the axis that
+ * keeps a merely-similar ancestor container out, and it is why the band below can be as loose as it
+ * is: a container overlapping the tap almost always differs on the axis that needed no expanding.
+ *
+ * **An axis that falls short is admitted anywhere between the two.** The published span must contain
+ * the claim's and must not exceed [minimum]. It is *not* required to be the claim's span expanded
+ * symmetrically, and that is the whole of #179: Compose clamps the expansion against neighbouring
+ * layout, so where it lands is not a function of the claim. Measured on device (iPhone 17 Pro,
+ * `scale = 3`), a natural-height `trackClick` `Text` directly above another clickable registered
+ * `(48, 540, 945, 612)` — 72px tall — and published `(48, 504, 945, 612)`: 108px, grown 36px upward
+ * and not at all downward, its bottom edge exactly the neighbour's top. The symmetric expansion this
+ * used to derive, `(48, 504, 945, 648)`, shares only the top edge, so it matched nothing and the
+ * element was reported twice. Give the same `Text` room — the repository sample's
+ * `Arrangement.spacedBy(12.dp)` — and Compose applies the minimum at *layout* time instead: the
+ * claim itself is then 144px and takes the exact-match path above, never reaching this branch.
+ *
+ * The residual is the shape this cannot tell apart: a claim below the minimum on **both** axes,
+ * inside an unrelated clickable that is itself within the minimum of it on both axes and contains
+ * it. Then the container's frame sits in the band and would veto the container's own tap. It needs
+ * a claim narrower AND shorter than the minimum, which the axis rule above cannot filter, and it is
+ * not reachable through the shapes this project has measured: [trackClick] makes its element a
+ * `clickable`, so its expanded touch target covers the container and Compose routes the tap to the
+ * claim's own element rather than the container (see [isTheElementBehind]'s note on #153/#158).
+ * Narrower than what shipped before this, but no longer nothing — worth stating rather than implying
+ * the match is exact.
+ */
+private fun admitsTheExpansionOf(
+    claimStart: Float,
+    claimEnd: Float,
+    publishedStart: Float,
+    publishedEnd: Float,
+    minimum: Float,
+    tolerance: Float = 1f,
+): Boolean {
+    if (claimEnd - claimStart >= minimum - tolerance) {
+        return abs(publishedStart - claimStart) < tolerance && abs(publishedEnd - claimEnd) < tolerance
+    }
+    return publishedStart <= claimStart + tolerance &&
+        publishedEnd >= claimEnd - tolerance &&
+        publishedEnd - publishedStart <= minimum + tolerance
+}
 
 /**
  * This size mapped through the transform [claim]'s element was drawn under. The identity whenever the
@@ -198,23 +255,3 @@ private fun AutocaptureClaimBounds.isTheElementBehind(other: AxRect, minimumTouc
 private fun Size.drawnLike(claim: AutocaptureClaimBounds): Size =
     Size(width * claim.drawScale.width, height * claim.drawScale.height)
 
-/** This rect grown about its own centre so that neither side is shorter than [size]. */
-private fun Rect.expandedToAtLeast(size: Size): Rect {
-    val halfWidth = max(width, size.width) / 2f
-    val halfHeight = max(height, size.height) / 2f
-    val centerX = (left + right) / 2f
-    val centerY = (top + bottom) / 2f
-    return Rect(centerX - halfWidth, centerY - halfHeight, centerX + halfWidth, centerY + halfHeight)
-}
-
-/**
- * Bounds equality with tolerance, across the Compose/UIKit divide — exact equality is too strict for
- * two independent measurement paths, but a real ancestor container's bounds differ by more than float
- * noise. Both are window-space pixels, so they're directly comparable.
- */
-@OptIn(AutographInternalApi::class)
-private fun Rect.approximatelyEquals(other: AxRect, tolerance: Float = 1f): Boolean =
-    abs(left - other.left) < tolerance &&
-        abs(top - other.top) < tolerance &&
-        abs(right - other.right) < tolerance &&
-        abs(bottom - other.bottom) < tolerance

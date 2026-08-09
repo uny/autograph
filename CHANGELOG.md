@@ -139,6 +139,33 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- Autocapture on iOS no longer double-reports a `Modifier.trackClick` element whose touch-target
+  expansion Compose **clamped against a neighbour** ([#179]). Found by re-measuring the released
+  `0.4.0` from a fresh Maven Central consumer, so it shipped in `0.4.0` and was live on `main`.
+  [#151] reconciled the claim with the published accessibility frame by deriving a second rect — the
+  claim expanded symmetrically to the minimum touch target — and requiring equality with one of the
+  two. Where the expansion lands is not the claim's to decide: Compose clamps it against neighbouring
+  layout, so a frame can be neither rect. Measured on device (iPhone 17 Pro, `scale = 3`), a
+  natural-height `trackClick` `Text` directly above another clickable registered
+  `(48, 540, 945, 612)` — 72px tall — and published `(48, 504, 945, 612)`: grown 36px upward and not
+  at all downward, its bottom edge exactly the neighbour's top, while the derived rect was
+  `(48, 504, 945, 648)`. The match is now made per axis: exact on an axis that already meets the
+  minimum, and anywhere between the claim and the minimum on one that falls short. The exact-match
+  axis is what still keeps a merely-similar ancestor container out, and it is load-bearing in both
+  directions — dropping it fails three of the tests that predate this.
+
+  Nothing caught it because the sample could not. `DemoScreen`'s Column spaces its children by
+  12.dp, and that gap is enough room for Compose to apply the minimum at *layout* time instead:
+  measured, `explicit_tracked_small`'s claim was then already 48dp and its published frame identical
+  to it, so the fixture took the plain-equality path and never exercised the expansion branch #151
+  added at all. It now sits in a Column with no arrangement spacing, butted against the clickable
+  below it, which costs the screen nothing — the change removes a gap rather than adding an element,
+  and the sample's height budget was already spent. Verified both ways on device: with the previous
+  resolver that fixture reports `Recipe Saved` **and** `Element Clicked`; with this one, only the
+  first. The residual is stated in `admitsTheExpansionOf`'s kdoc — a claim below the minimum on both
+  axes inside an unrelated clickable within the minimum of it on both, which no shape measured here
+  reaches.
+
 - Autocapture on iOS no longer double-reports a `Modifier.trackClick` element under a **scale
   transform** ([#159]). Compose qualifies the touch target on the element's *measured* size and then
   draws the result through the transform, while the claim the modifier registers is
@@ -544,3 +571,4 @@ Initial release.
 [#170]: https://github.com/uny/autograph/issues/170
 [#174]: https://github.com/uny/autograph/issues/174
 [#176]: https://github.com/uny/autograph/issues/176
+[#179]: https://github.com/uny/autograph/issues/179

@@ -387,6 +387,62 @@ class ElementResolverIosTest {
         assertNull(result)
     }
 
+    /** A point rect in the window-space pixels the resolver works in. */
+    private fun pointRect(left: Double, top: Double, right: Double, bottom: Double): Rect {
+        val scale = UIScreen.mainScreen.scale
+        return Rect((left * scale).toFloat(), (top * scale).toFloat(), (right * scale).toFloat(), (bottom * scale).toFloat())
+    }
+
+    @Test
+    fun resolveIosElementSuppressesAShortElementWhoseExpansionWasClampedToOneSide() {
+        // #179, and the reason the derived-rect equality this replaced could not work. Compose clamps
+        // the touch-target expansion against neighbouring layout, so it is not centred on the element:
+        // measured on device, a natural-height `trackClick` `Text` sitting directly above another
+        // clickable grew 36px upward and 0px downward, its bottom edge exactly the neighbour's top.
+        //
+        // Modelled here at the fixture's scale: a 20x12pt claim flush with the BOTTOM of the button's
+        // 20x20pt frame, so the frame is the claim grown upward only. The symmetric expansion the old
+        // code derived is (14, 34)pt vertically — it shares neither edge with the frame, matched
+        // nothing, and the element was reported twice.
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(pointRect(10.0, 18.0, 30.0, 30.0)))
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
+
+        assertNull(result)
+    }
+
+    @Test
+    fun resolveIosElementDoesNotSuppressWhenThePublishedFrameExceedsTheMinimumTouchTarget() {
+        // The band is bounded, and this is what bounds it. Admitting a frame anywhere at or above the
+        // claim would admit any container that happens to contain the element — the failure the match
+        // exists to prevent. The claim is 20x8pt and the frame 20x20pt, but the minimum here is only
+        // 12x12pt, so no expansion Compose could have applied reaches the frame's height.
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(unexpandedClaimBoundsOfAShortButton()))
+        val smallerMinimum = (12.0 * UIScreen.mainScreen.scale).toFloat()
+
+        val result = resolveIosElement(root, claims, position, Size(smallerMinimum, smallerMinimum))
+
+        assertEquals("share_button", result)
+    }
+
+    @Test
+    fun resolveIosElementDoesNotSuppressWhenThePublishedFrameDoesNotContainTheClaim() {
+        // The other half of the bound: an expansion only ever grows a rect, so a frame that fails to
+        // contain the claim describes a different element however short the claim is. Here the claim
+        // is a 20x6pt sliver above the button, well inside the minimum of it but outside its frame.
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(pointRect(10.0, 2.0, 30.0, 8.0)))
+
+        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
+
+        assertEquals("share_button", result)
+    }
+
     @Test
     fun resolveIosElementStillDoesNotSuppressAnAncestorContainerWhenExpandingToTheMinimumTouchTarget() {
         // Expansion must not widen what counts as a match: a claim ALREADY larger than the minimum
