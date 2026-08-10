@@ -77,6 +77,33 @@ Before merging a `composeMultiplatform` bump:
 
 This is a manual step, not something a script in this repo currently automates.
 
+### The second iOS check: `trackClick` must run before the tap observer sees the release
+
+iOS suppresses autocapture for an explicitly instrumented element by observing that
+`Modifier.trackClick`'s handler *ran* during the pointer dispatch being resolved (see the kdoc on
+[`AutocaptureClaims`](autograph-compose/src/commonMain/kotlin/dev/ynagai/autograph/compose/AutocaptureClaims.kt)).
+That works because `clickable` invokes its handler synchronously on the `Main` pass of the release,
+strictly before the observer's `Final` pass — measured on CMP 1.11.1, but a Compose implementation
+detail rather than anything the API promises. Upstream has previously routed clicks through a
+suspending `detectTapAndPress`, and `combinedClickable` deliberately delays `onClick` past a
+double-tap timeout.
+
+**A break here degrades to double-reporting, never to a lost event**, so it is not a correctness
+emergency — but it silently removes a feature, and no unit test can see it.
+
+Re-check it on device when any of these change:
+
+- the `composeMultiplatform` version (fold this into the cold-device check above — same session);
+- `Modifier.trackClick`'s own implementation, in particular replacing `clickable` with
+  `combinedClickable`, `toggleable`, `selectable`, or a hand-written gesture detector;
+- `autocaptureTaps`'s pointer loop, which brackets each dispatch with the generation the mark
+  lands in.
+
+The check: with `AutographSample` running and log capture attached as above, tap
+`explicit_tracked_small`. The log must show `Recipe Saved` and no `Element Clicked` for it. Tap
+`clamped_inner_host`'s lower strip and confirm the opposite — an `Element Clicked` with no explicit
+event — which is what proves the suppression is still discriminating rather than simply always on.
+
 ## Reporting bugs
 
 Open a [GitHub issue](https://github.com/uny/autograph/issues/new) with steps to

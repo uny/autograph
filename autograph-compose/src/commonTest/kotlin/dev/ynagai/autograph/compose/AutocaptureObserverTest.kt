@@ -7,6 +7,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
@@ -17,6 +21,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
@@ -35,6 +40,84 @@ private class ThrowingTracker : Tracker {
     override fun track(name: String, properties: JsonObject, target: String?): Unit = throw RuntimeException("boom")
     override fun screen(name: String, properties: JsonObject) {}
     override fun identify(userId: String, traits: JsonObject) {}
+}
+
+/**
+ * The two guards [autocaptureTaps] applies before it trusts a [trackClick] execution mark.
+ *
+ * Extracted from the pointer loop so they can be stated against constructed events: the behaviour
+ * they protect against — a second finger on the screen, a `Final` that belongs to another dispatch —
+ * is not reachable through the test harness's touch injection, and it is exactly the behaviour a
+ * later refactor is most likely to get subtly wrong.
+ */
+class ExecutionEvidenceAttributionTest {
+
+    private fun change(id: Long, consumed: Boolean): PointerInputChange = PointerInputChange(
+        id = PointerId(id),
+        uptimeMillis = 10L,
+        position = Offset(1f, 1f),
+        pressed = false,
+        previousUptimeMillis = 0L,
+        previousPosition = Offset(1f, 1f),
+        previousPressed = true,
+        isInitiallyConsumed = consumed,
+    )
+
+    @Test
+    fun trustsASingleConsumedChangeInTheSameDispatch() {
+        val event = PointerEvent(listOf(change(1, consumed = true)))
+
+        assertTrue(executionEvidenceIsAttributable(event, event))
+    }
+
+    /**
+     * The discriminating case for counting `isConsumed` instead of `changes.size`.
+     *
+     * A [PointerEvent] carries every active pointer, so a finger resting on the screen while another
+     * taps rides along unconsumed. Keying the guard on `changes.size` would discard the mark here and
+     * double-report every tap made with a second finger down — allowed by the failure contract, but a
+     * regression against the behaviour before this mechanism, and avoidable.
+     */
+    @Test
+    fun trustsATapMadeWhileAnotherFingerRestsOnTheScreen() {
+        val event = PointerEvent(listOf(change(1, consumed = true), change(2, consumed = false)))
+
+        assertTrue(executionEvidenceIsAttributable(event, event))
+    }
+
+    /**
+     * Two consumed releases in one dispatch: the mark could belong to either, and suppressing the
+     * wrong one loses that element's tap outright. This is the multi-touch shape that made a
+     * geometry-gated design unsafe, and the reason the answer here is "discard", not "guess".
+     */
+    @Test
+    fun refusesTwoConsumedChangesInOneDispatch() {
+        val event = PointerEvent(listOf(change(1, consumed = true), change(2, consumed = true)))
+
+        assertFalse(executionEvidenceIsAttributable(event, event))
+    }
+
+    /**
+     * A `Final` that is not the `Initial`'s own event — what an abnormal dispatch (a Main-pass
+     * handler throwing past the remaining passes, say) would leave the loop holding. The marks in the
+     * open generation then describe some other tap.
+     */
+    @Test
+    fun refusesAFinalFromADifferentDispatch() {
+        val initial = PointerEvent(listOf(change(1, consumed = true)))
+        val final = PointerEvent(listOf(change(1, consumed = true)))
+
+        assertFalse(executionEvidenceIsAttributable(initial, final))
+    }
+
+    @Test
+    fun trustsADispatchWhereNothingWasConsumed() {
+        // Nothing to misattribute. The loop drops such an event before resolving anyway; the guard
+        // simply must not treat "no consumption" as ambiguity.
+        val event = PointerEvent(listOf(change(1, consumed = false)))
+
+        assertTrue(executionEvidenceIsAttributable(event, event))
+    }
 }
 
 class ReportTapIfResolvableTest {

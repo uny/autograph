@@ -113,6 +113,42 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   stale version and stale checksum agree with each other. Measured at each tag's parent commit, that
   window served `v0.1.0` for `v0.1.1`, `v0.2.0` and `v0.3.0` alike, and `v0.3.0` for `v0.4.0`.
 
+### Fixed
+
+- iOS autocapture no longer decides "this element is already instrumented" by comparing rectangles.
+  It observes whether `Modifier.trackClick`'s handler actually *ran* during the pointer dispatch
+  being resolved, and suppresses that dispatch's `Element Clicked` when it did ([#179]). The public
+  contract is unchanged on both platforms, and Android is untouched — it reads the marker off the
+  semantics ancestry, which is stronger evidence than timing.
+
+  The rectangle comparison could not be made correct. Compose expands a small element's touch target
+  — and the accessibility frame it publishes — toward the minimum, but **clamps that expansion
+  against neighbouring layout**, so the published frame is not a function of the element's own
+  bounds. Measured on device, a sub-48dp `trackClick` in an unspaced `Column` registered a 72px-tall
+  rect and published a 108px one: grown 36px upward, not at all downward, its bottom edge exactly the
+  next element's top. Every rule tried over those rectangles picked one of two failures — leave the
+  element double-reported, or match a merely-similar enclosing container too and drop *its* tap with
+  no event at all. The decisive shape is a `fillMaxWidth` `trackClick` `Text` at the top of a
+  `fillMaxWidth`, 48dp, uninstrumented `clickable`: the two publish frames of the same size that both
+  contain the inner's bounds, differing only in where the clamp landed, so no comparison can tell
+  which owns a tap. Execution needs no comparison — a tap on the host's exposed strip runs no
+  `trackClick`. #151, #153, #158 and #159 were all bugs in that same apparatus, and it is now gone,
+  along with the per-element rect, the recovered draw scale, and the minimum-touch-target
+  reconciliation.
+
+  Every way this can break falls toward a duplicate rather than a dropped event, which is the
+  property the previous design lacked: if the ordering it relies on stops holding the mark simply
+  never lands, and when the observer cannot attribute a mark to the pointer it is reporting it
+  discards the evidence rather than guessing. Two consequences worth knowing:
+
+  - **A dispatch that consumes more than one pointer suppresses nothing**, so an instrumented element
+    tapped as part of a genuine two-finger gesture reports both its explicit event and an
+    `Element Clicked`. A second finger merely resting on the screen does not cause this.
+  - The suppression now depends on `clickable` invoking its handler synchronously, before the tap
+    observer's `Final` pass — measured on Compose Multiplatform 1.11.1, but an implementation detail
+    rather than a documented guarantee. `CONTRIBUTING.md` records when to re-check it on device;
+    `combinedClickable`, which delays `onClick` past a double-tap timeout, would break it outright.
+
 ## [0.4.0] - 2026-08-06
 
 ### Changed
@@ -544,3 +580,4 @@ Initial release.
 [#170]: https://github.com/uny/autograph/issues/170
 [#174]: https://github.com/uny/autograph/issues/174
 [#176]: https://github.com/uny/autograph/issues/176
+[#179]: https://github.com/uny/autograph/issues/179

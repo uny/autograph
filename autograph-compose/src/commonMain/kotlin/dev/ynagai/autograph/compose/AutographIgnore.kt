@@ -16,7 +16,7 @@ internal val AutographIgnoredKey: SemanticsPropertyKey<Boolean> = SemanticsPrope
  * this only stops the ambient tap observer from reporting taps here on its own.
  */
 public fun Modifier.autographIgnore(): Modifier = composed {
-    semantics { this[AutographIgnoredKey] = true }.registerAutocaptureClaim(AutocaptureClaimKind.IGNORED)
+    semantics { this[AutographIgnoredKey] = true }.registerIgnoredBounds()
 }
 
 /** Marks an element as already instrumented via [trackClick], so the ambient
