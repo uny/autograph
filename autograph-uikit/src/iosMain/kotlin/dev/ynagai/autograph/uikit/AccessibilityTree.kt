@@ -502,19 +502,25 @@ private fun isAccessibilityTreeCold(node: Any, ancestors: List<Any>, budget: Int
  * [predicate]. This element itself is never offered to [predicate].
  *
  * Unlike [deepestAccessibilityHitPath] this does not gate the descent on containing a position: the
- * caller is asking about the subtree as a whole, not about one tap. `autograph-compose` uses it to
- * ask whether an instrumented claim describes a descendant of the resolved clickable rather than the
- * clickable itself (#153) — a question that has to hold for taps anywhere on the clickable, including
- * the margin outside the descendant, so a position-gated walk would answer it correctly only for some
- * of them.
+ * caller is asking about the subtree as a whole, not about one tap.
+ *
+ * **Currently unused in production.** It was written for `autograph-compose`, which used it to ask
+ * whether a registered rect described a descendant of the resolved clickable rather than the
+ * clickable itself (#153) — a question that had to hold for taps anywhere on the clickable, so a
+ * position-gated walk would have answered it correctly only for some of them. That caller went away
+ * with the rect itself: #158 removed the descendant search, and #179 removed the whole geometric
+ * comparison in favour of observing whether `trackClick`'s handler ran. Kept, with its tests, because
+ * the traversal is correct and independently useful; whether it should stay is
+ * [#182](https://github.com/uny/autograph/issues/182).
  *
  * **Threading.** Main thread only, for the same reason [deepestAccessibilityHitPath] is.
  *
  * **Termination.** Bounded exactly as [deepestAccessibilityHitPath] is, against the same
  * host-supplied and possibly cyclic tree: a branch revisiting a node already on the path is
  * abandoned, descent stops at [MAX_ACCESSIBILITY_TREE_DEPTH], and the walk stops after
- * [MAX_ACCESSIBILITY_NODE_VISITS] nodes. Exhausting any of them returns false — for the caller above
- * that degrades to keeping the veto, i.e. a dropped event rather than a wedged main thread, matching
+ * [MAX_ACCESSIBILITY_NODE_VISITS] nodes. Exhausting any of them returns false — which for the caller
+ * it was written for degraded to keeping the veto, i.e. a dropped event rather than a wedged main
+ * thread. A future caller inherits that bias and should check it suits them, matching
  * how the rest of this file resolves the same trade.
  */
 @AutographInternalApi
