@@ -245,9 +245,15 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
 
         // The same explicit instrumentation as explicit_tracked_small, under a scale transform.
         // Compose qualifies the touch target on the MEASURED size and then draws the result through
-        // the transform, so the accessibility frame is neither the drawn rect nor the drawn rect
-        // expanded to the plain minimum — and the claim, being boundsInWindow(), is already scaled.
-        // The element was reported twice until the claim carried that scale too (#159).
+        // the transform, so the published accessibility frame is neither the drawn rect nor the
+        // drawn rect expanded to the plain minimum. That is what made the element report twice
+        // under the geometric veto, until the registered rect carried the draw scale too (#159) —
+        // a reconciliation #179 deleted along with the rest of the geometry.
+        //
+        // Kept because the fixture outlived its explanation: execution-based suppression should be
+        // indifferent to any transform, and this is the only fixture that says so. It is now a
+        // guard against a future veto quietly reacquiring a geometric dependency, not a test of
+        // scale recovery.
         Text(
             "Scaled trackClick",
             modifier = Modifier

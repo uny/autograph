@@ -258,14 +258,16 @@ final class iosAppUITests: XCTestCase {
         )
     }
 
-    /// The same explicit instrumentation as `explicit_tracked_small`, under a scale transform — #159.
+    /// The same explicit instrumentation as `explicit_tracked_small`, under a scale transform — #159,
+    /// and now a guard against #179's fix regressing.
     ///
     /// Compose qualifies the touch target on the element's MEASURED size and draws the result through
-    /// the transform, so the published accessibility frame is the minimum *scaled*, while the claim —
-    /// `boundsInWindow()` — is already scaled. Deriving the plain minimum from it matched nothing and
-    /// the element reported twice; the claim now carries the scale it was drawn through. Only an
-    /// on-device test can pin that relationship: it is what Compose Multiplatform publishes, not
-    /// something this code decides.
+    /// the transform, so the published accessibility frame is the minimum *scaled*. Under the
+    /// geometric veto the registered rect had to carry that scale to match it, and the element
+    /// reported twice until it did. #179 deleted that reconciliation with the rest of the geometry,
+    /// which is what this case now covers: suppression decided by execution must be indifferent to
+    /// the transform, and a veto that quietly reacquired a geometric dependency would fail here
+    /// while `explicit_tracked_small` still passed.
     func testScaledTrackClickFiresExactlyOnce() {
         let app = launchSettled()
         app.buttons["scaled_tracked_small"].tap()
@@ -299,10 +301,24 @@ final class iosAppUITests: XCTestCase {
     func testDisabledElementIsNotCaptured() {
         let app = launchSettled()
         let beforeTap = lastEventLabel(app)
+        let disabled = app.buttons["disabled_button"]
+
+        // This test asserts an ABSENCE, and its tap is the one on this screen that cannot fail
+        // loudly: `coordinate(...).tap()` does not require hittability (see below), so a fixture
+        // pushed off the bottom of this non-scrolling screen would be tapped at a coordinate that
+        // is simply nowhere, and "no new event" would pass for the wrong reason. Every other
+        // fixture here is reached with `.tap()`, which errors when the element is not hittable and
+        // so polices its own visibility. `App.kt`'s DemoScreen comment records the height budget
+        // this guards; #179 spent some of it on `clamped_inner_host`.
+        XCTAssertTrue(
+            app.windows.firstMatch.frame.contains(disabled.frame),
+            "disabled_button must be fully on screen or this test passes vacuously — "
+                + "its frame \(disabled.frame) is outside \(app.windows.firstMatch.frame)"
+        )
 
         // A coordinate tap, not `.tap()`: XCUITest considers a disabled element non-hittable, while
         // the element does still receive the touch — which is the whole state under test.
-        app.buttons["disabled_button"]
+        disabled
             .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .tap()
 
