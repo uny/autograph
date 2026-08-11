@@ -153,50 +153,107 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
             )
         }
 
-        // The same explicit instrumentation on an element SHORTER than the minimum touch target.
-        // Deliberately a plain Text at its natural height: iOS resolves "already instrumented" by
-        // comparing the claim's boundsInWindow() against the accessibility frame, and Compose
-        // expands the latter to the minimum touch target for an element this small — so this is the
-        // shape that regressed in #151 while the 56.dp box above kept passing. It is also the shape
-        // the README's own quick start uses.
-        Text(
-            "Explicitly tracked, small (Modifier.trackClick)",
-            modifier = Modifier
-                .testTag("explicit_tracked_small")
-                .trackClick("Recipe Saved", target = "explicit_tracked_small") {},
-        )
+        // The next two fixtures share a Column with NO arrangement spacing, and that is the point of
+        // nesting them rather than letting the 12.dp above separate them. Nothing is added to the
+        // screen's height budget by it — the gap between them is simply removed.
+        Column {
+            // The same explicit instrumentation on an element SHORTER than the minimum touch target.
+            // Deliberately a plain Text at its natural height: Compose expands such an element's
+            // touch target — and the accessibility frame it publishes — to the minimum, so this is
+            // the shape that regressed in #151 while the 56.dp box above kept passing. It is also
+            // the shape the README's own quick start uses.
+            //
+            // Butted against the clickable below, it is #179's shape too, and that is why it is here
+            // rather than up in the spaced Column. Given room, Compose applies the minimum at
+            // *layout* time and the element is already 48dp, publishing a frame identical to its own
+            // bounds — which is exactly why nothing on this screen caught #179. Denied the room,
+            // Compose clamps the expansion to one side instead (measured: 36px of growth upward,
+            // none downward, the bottom edge exactly the neighbour's top). No rectangle derived from
+            // the element could equal that, which is what retired the geometric veto entirely.
+            Text(
+                "Explicitly tracked, small (Modifier.trackClick)",
+                modifier = Modifier
+                    .testTag("explicit_tracked_small")
+                    .trackClick("Recipe Saved", target = "explicit_tracked_small") {},
+            )
 
-        // A trackImpression element that is not clickable itself, inside a clickable that IS. The
-        // outer is deliberately NOT instrumented: autocapture owns its taps and must keep reporting
-        // them. iOS cannot read the marker off the ancestry and used to consult a registered rect
-        // instead, which the inner element's own frame was indistinguishable from — so the outer's
-        // real tap silently vanished (#153, #158). trackImpression now registers nothing at all.
+            // A trackImpression element that is not clickable itself, inside a clickable that IS. The
+            // outer is deliberately NOT instrumented: autocapture owns its taps and must keep
+            // reporting them. iOS cannot read the marker off the ancestry and used to consult a
+            // registered rect instead, which the inner element's own frame was indistinguishable
+            // from — so the outer's real tap silently vanished (#153, #158). trackImpression now
+            // registers nothing at all.
+            //
+            // The inner fillMaxSize()es deliberately: coincident bounds are the shape that failed
+            // whichever way the old rect match was qualified, so it is the stronger fixture of the
+            // two geometries — a centred sub-minimum inner (#153's own) only failed against
+            // pre-#155 code.
+            //
+            // It doubles as the neighbour that clamps the element above. A clickable one, which
+            // matters: a neighbour that reserves no touch target of its own leaves the expansion
+            // room and the clamp never happens.
+            Box(
+                modifier = Modifier
+                    .testTag("impression_inner_host")
+                    .fillMaxWidth()
+                    .height(48.dp)
+                    .background(MaterialTheme.colorScheme.tertiaryContainer)
+                    .clickable {},
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    "Impression filling a plain 48dp clickable",
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .trackImpression("Recipe Viewed", target = "impression_inner"),
+                )
+            }
+        }
+
+        // An instrumented element at the TOP of a taller uninstrumented clickable, leaving a strip of
+        // the host exposed below it. The host owns that strip's taps and autocapture must report
+        // them; the inner owns its own and must not be reported twice.
         //
-        // The inner fillMaxSize()es deliberately: coincident bounds are the shape that failed
-        // whichever way the old rect match was qualified, so it is the stronger fixture of the two
-        // geometries — a centred sub-minimum inner (#153's own) only failed against pre-#155 code.
+        // This is the fixture that decides the whole mechanism. Measured on device, the two publish
+        // frames of the SAME size that BOTH contain the inner's bounds — host (16, 256, 370x48),
+        // inner (16, 244, 370x48) — differing only in where Compose's clamp landed. Every rule over
+        // those rectangles picked one of two failures: leave the inner double-reported (#179), or
+        // match the host's frame too and drop the host's own tap with no event at all (#180, measured
+        // by tapping this strip). Execution separates them with nothing left to judge — a tap on the
+        // strip runs no trackClick, a tap on the inner runs one.
+        //
+        // Both fill their width on purpose: that is what makes the horizontal axis identical and
+        // defeats any per-axis refinement. `fillMaxWidth` inside `fillMaxWidth` is the ordinary case
+        // on mobile, not a contrived one.
         Box(
             modifier = Modifier
-                .testTag("impression_inner_host")
+                .testTag("clamped_inner_host")
                 .fillMaxWidth()
                 .height(48.dp)
-                .background(MaterialTheme.colorScheme.tertiaryContainer)
+                .background(MaterialTheme.colorScheme.secondaryContainer)
                 .clickable {},
-            contentAlignment = Alignment.Center,
+            contentAlignment = Alignment.TopStart,
         ) {
             Text(
-                "Impression filling a plain 48dp clickable",
+                "trackClick at the top of a plain 48dp clickable",
                 modifier = Modifier
-                    .fillMaxSize()
-                    .trackImpression("Recipe Viewed", target = "impression_inner"),
+                    .testTag("clamped_inner")
+                    .fillMaxWidth()
+                    .trackClick("Recipe Saved", target = "clamped_inner") {},
             )
         }
 
         // The same explicit instrumentation as explicit_tracked_small, under a scale transform.
         // Compose qualifies the touch target on the MEASURED size and then draws the result through
-        // the transform, so the accessibility frame is neither the drawn rect nor the drawn rect
-        // expanded to the plain minimum — and the claim, being boundsInWindow(), is already scaled.
-        // The element was reported twice until the claim carried that scale too (#159).
+        // the transform, so the published accessibility frame is neither the drawn rect nor the
+        // drawn rect expanded to the plain minimum. That is what made the element report twice
+        // under the geometric veto, until the registered rect carried the draw scale too (#159) —
+        // a reconciliation #179 deleted along with the rest of the geometry.
+        //
+        // Kept because the fixture outlived its explanation: execution-based suppression should be
+        // indifferent to any transform, and this is the only fixture that says so. It is now a
+        // guard against a future veto quietly reacquiring a geometric dependency, not a test of
+        // scale recovery.
         Text(
             "Scaled trackClick",
             modifier = Modifier

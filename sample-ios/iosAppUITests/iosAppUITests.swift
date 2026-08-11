@@ -157,12 +157,20 @@ final class iosAppUITests: XCTestCase {
         )
     }
 
-    /// The same, on an element SHORTER than the minimum touch target — #151.
+    /// The same, on an element SHORTER than the minimum touch target — #151, and now #179.
     ///
     /// Compose expands such an element's touch target, and the accessibility frame it publishes with
-    /// it, while the claim `trackClick` registers stays the unexpanded layout bounds; iOS matches the
-    /// two by rect equality, so the suppression silently stopped applying and the element was
-    /// reported twice. The 56.dp box above is above the threshold and never showed it.
+    /// it, while the rect `trackClick` used to register stayed the unexpanded layout bounds; iOS
+    /// matched the two by rect equality, so the suppression silently stopped applying and the element
+    /// was reported twice. The 56.dp box above is above the threshold and never showed it.
+    ///
+    /// It covers #179 only because the fixture was moved into a `Column` with no arrangement spacing.
+    /// With the 12.dp gap it used to sit in, Compose applied the minimum at *layout* time and the
+    /// element was already 48.dp — measured, the published frame was then identical to its bounds and
+    /// no expansion was involved at all, so this test passed without exercising what it names. Butted
+    /// against the clickable below it, Compose clamps the expansion to one side and the frame is
+    /// neither the element's bounds nor those bounds expanded symmetrically. That is the case no
+    /// derived rectangle could match, and why the veto is now decided by execution instead.
     func testExplicitTrackClickOnASmallElementFiresExactlyOnce() {
         let app = launchSettled()
         app.buttons["explicit_tracked_small"].tap()
@@ -211,14 +219,55 @@ final class iosAppUITests: XCTestCase {
         )
     }
 
-    /// The same explicit instrumentation as `explicit_tracked_small`, under a scale transform — #159.
+    /// A `trackClick` element at the top of a taller uninstrumented clickable, tapped on the strip of
+    /// the host it leaves exposed — #179/#180, and the case that decided the mechanism.
+    ///
+    /// The host's own tap belongs to autocapture: no explicit event is produced for it, so failing to
+    /// report it loses the interaction outright rather than duplicating it. Measured, the two publish
+    /// frames of the same size that both contain the inner element's bounds, differing only in where
+    /// Compose's touch-target clamp landed — so a veto decided by geometry either left the inner
+    /// double-reported or matched the host's frame as well and dropped this tap with no event at all.
+    /// Deciding it by execution needs no comparison: tapping here runs no `trackClick`.
+    ///
+    /// On-device rather than in `ElementResolverIosTest`: what is at stake is the pair of frames
+    /// Compose Multiplatform publishes for these two elements, and a test that builds the tree itself
+    /// would be assuming the very thing in question.
+    func testExposedStripOfAClickableHostingATrackClickIsAutocaptured() {
+        let app = launchSettled()
+        let host = app.buttons["clamped_inner_host"]
+        // Low in the host, below the inner element's own expanded frame. 0.9 rather than 1.0 so the
+        // tap stays clear of the boundary itself.
+        host.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.9)).tap()
+        waitForLastEventTarget(app, "clamped_inner_host")
+        XCTAssertEqual(
+            trackLog(app),
+            Self.impressionBaseline + "|Element Clicked:clamped_inner_host"
+        )
+    }
+
+    /// The other half of the same fixture: the inner element still reports exactly once.
+    ///
+    /// Without this, a suppression that had simply stopped working would pass the test above.
+    func testTrackClickInsideAClickableHostFiresExactlyOnce() {
+        let app = launchSettled()
+        app.buttons["clamped_inner"].tap()
+        waitForLastEventTarget(app, "clamped_inner")
+        XCTAssertEqual(
+            trackLog(app),
+            Self.impressionBaseline + "|Recipe Saved:clamped_inner"
+        )
+    }
+
+    /// The same explicit instrumentation as `explicit_tracked_small`, under a scale transform — #159,
+    /// and now a guard against #179's fix regressing.
     ///
     /// Compose qualifies the touch target on the element's MEASURED size and draws the result through
-    /// the transform, so the published accessibility frame is the minimum *scaled*, while the claim —
-    /// `boundsInWindow()` — is already scaled. Deriving the plain minimum from it matched nothing and
-    /// the element reported twice; the claim now carries the scale it was drawn through. Only an
-    /// on-device test can pin that relationship: it is what Compose Multiplatform publishes, not
-    /// something this code decides.
+    /// the transform, so the published accessibility frame is the minimum *scaled*. Under the
+    /// geometric veto the registered rect had to carry that scale to match it, and the element
+    /// reported twice until it did. #179 deleted that reconciliation with the rest of the geometry,
+    /// which is what this case now covers: suppression decided by execution must be indifferent to
+    /// the transform, and a veto that quietly reacquired a geometric dependency would fail here
+    /// while `explicit_tracked_small` still passed.
     func testScaledTrackClickFiresExactlyOnce() {
         let app = launchSettled()
         app.buttons["scaled_tracked_small"].tap()
@@ -252,10 +301,24 @@ final class iosAppUITests: XCTestCase {
     func testDisabledElementIsNotCaptured() {
         let app = launchSettled()
         let beforeTap = lastEventLabel(app)
+        let disabled = app.buttons["disabled_button"]
+
+        // This test asserts an ABSENCE, and its tap is the one on this screen that cannot fail
+        // loudly: `coordinate(...).tap()` does not require hittability (see below), so a fixture
+        // pushed off the bottom of this non-scrolling screen would be tapped at a coordinate that
+        // is simply nowhere, and "no new event" would pass for the wrong reason. Every other
+        // fixture here is reached with `.tap()`, which errors when the element is not hittable and
+        // so polices its own visibility. `App.kt`'s DemoScreen comment records the height budget
+        // this guards; #179 spent some of it on `clamped_inner_host`.
+        XCTAssertTrue(
+            app.windows.firstMatch.frame.contains(disabled.frame),
+            "disabled_button must be fully on screen or this test passes vacuously — "
+                + "its frame \(disabled.frame) is outside \(app.windows.firstMatch.frame)"
+        )
 
         // A coordinate tap, not `.tap()`: XCUITest considers a disabled element non-hittable, while
         // the element does still receive the touch — which is the whole state under test.
-        app.buttons["disabled_button"]
+        disabled
             .coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
             .tap()
 

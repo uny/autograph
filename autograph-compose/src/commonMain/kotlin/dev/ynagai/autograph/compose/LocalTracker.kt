@@ -79,8 +79,9 @@ public fun AutographProvider(
         LocalScopeStack provides effectiveScopeStack,
     ) {
         if (autocapture != null) {
-            // Only provided when autocapture is on: registerAutocaptureClaim no-ops without it, so
-            // autographIgnore()/trackClick()/trackImpression() don't pay for position tracking otherwise.
+            // Only provided when autocapture is on: registerIgnoredBounds no-ops without it, so
+            // autographIgnore() doesn't pay for position tracking otherwise, and trackClick()'s
+            // execution mark costs a null check.
             val claims = remember { AutocaptureClaims() }
             CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
                 Box(Modifier.fillMaxSize().autocaptureTaps(tracker, effectiveScopeStack, autocapture)) {

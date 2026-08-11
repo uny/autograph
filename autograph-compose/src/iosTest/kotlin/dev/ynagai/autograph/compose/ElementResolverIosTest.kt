@@ -2,7 +2,6 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
 import platform.CoreGraphics.CGRectMake
@@ -45,11 +44,11 @@ class ElementResolverIosTest {
         }
     }
 
-    /**
-     * A claim for an element drawn at exactly the size it was measured at — no transform, which is
-     * every case but the two scaled ones below.
-     */
-    private fun claim(drawn: Rect) = AutocaptureClaimBounds(drawn, Size(1f, 1f))
+    /** Opens a generation and records a [trackClick] execution in it, as a real tap would. */
+    private fun AutocaptureClaims.withAnInstrumentedClickExecuted() {
+        openTapGeneration()
+        markInstrumentedClickExecuted()
+    }
 
     private fun UIView.setPointFrame(x: Double, y: Double, width: Double, height: Double) {
         setAccessibilityFrame(CGRectMake(x, y, width, height))
@@ -163,68 +162,48 @@ class ElementResolverIosTest {
     fun resolveIosElementReturnsNullWhenThePositionIsInsideAnIgnoredClaim() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.IGNORED, claim(Rect(0f, 0f, 100f, 100f)))
+        claims.ignored[Any()] = Rect(0f, 0f, 100f, 100f)
 
         val result = resolveIosElement(root, claims, position)
 
         assertNull(result)
     }
 
+    /**
+     * The instrumented veto, now stated as execution rather than geometry.
+     *
+     * It suppresses whatever this dispatch resolved to, not "the element that matches the claim" —
+     * there is no claim any more. A single pointer activates at most one `clickable`, so a
+     * [trackClick] handler having run means this dispatch's click is already reported, and anything
+     * the accessibility walk lands on here is either that same element or a misattribution.
+     */
     @Test
-    fun resolveIosElementReturnsNullWhenTheButtonItselfIsTheInstrumentedClaim() {
-        // Mirrors self-registration (trackClick registers its OWN boundsInWindow()),
-        // which resolveIosElement must still suppress to avoid double-reporting an explicitly
-        // instrumented element via the ambient autocapture observer too.
-        val scale = UIScreen.mainScreen.scale
+    fun resolveIosElementReturnsNullWhenATrackClickRanDuringThisDispatch() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        val buttonBounds = Rect(
-            (10.0 * scale).toFloat(),
-            (10.0 * scale).toFloat(),
-            (30.0 * scale).toFloat(),
-            (30.0 * scale).toFloat(),
-        )
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(buttonBounds))
+        claims.withAnInstrumentedClickExecuted()
 
         val result = resolveIosElement(root, claims, position)
 
         assertNull(result)
     }
 
+    /**
+     * The negative, and the whole of #179: an instrumented element that did NOT run must not silence
+     * the element that did.
+     *
+     * This is the shape geometry could not express. Measured on device, a `fillMaxWidth` `trackClick`
+     * `Text` at the top of a `fillMaxWidth`, 48dp, uninstrumented `clickable` published frames — host
+     * `(16, 256, 370x48)`, inner `(16, 244, 370x48)` — that are the same size and both contain the
+     * inner's registered rect, differing only in where Compose's touch-target clamp landed. Every rule
+     * over those rectangles either double-reported the inner (#151, #179) or dropped the host's own
+     * tap entirely (#180). Tapping the host's exposed strip runs no `trackClick` at all, so with
+     * execution as the signal the two are not even close cases.
+     */
     @Test
-    fun resolveIosElementSuppressesTheInstrumentedButtonEvenWhenBoundsDriftWithinTolerance() {
-        // approximatelyEquals' 1f tolerance exists because nearestClickable's bounds come from two
-        // independent measurement paths (Compose boundsInWindow() vs the accessibility tree's
-        // accessibilityFrame + convertRect + scale) for the same physical element — a sub-pixel drift
-        // between them must still count as a match.
-        val scale = UIScreen.mainScreen.scale
+    fun resolveIosElementReportsTheTapWhenNoTrackClickRan() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        val driftedButtonBounds = Rect(
-            (10.0 * scale).toFloat() + 0.5f,
-            (10.0 * scale).toFloat() + 0.5f,
-            (30.0 * scale).toFloat() + 0.5f,
-            (30.0 * scale).toFloat() + 0.5f,
-        )
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(driftedButtonBounds))
-
-        val result = resolveIosElement(root, claims, position)
-
-        assertNull(result)
-    }
-
-    @Test
-    fun resolveIosElementDoesNotSuppressWhenBoundsDriftBeyondTolerance() {
-        val scale = UIScreen.mainScreen.scale
-        val (root, position) = buildRootWithButton()
-        val claims = AutocaptureClaims()
-        val farDriftedButtonBounds = Rect(
-            (10.0 * scale).toFloat() + 1.5f,
-            (10.0 * scale).toFloat() + 1.5f,
-            (30.0 * scale).toFloat() + 1.5f,
-            (30.0 * scale).toFloat() + 1.5f,
-        )
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(farDriftedButtonBounds))
 
         val result = resolveIosElement(root, claims, position)
 
@@ -232,198 +211,86 @@ class ElementResolverIosTest {
     }
 
     /**
-     * The claim a `trackClick`ed element registers when it is SHORTER than the minimum touch
-     * target: its unexpanded layout bounds, centred on the same point as the accessibility frame
-     * the fixture's button publishes (20x20pt). Here 20x8pt, so only the vertical axis is expanded —
-     * matching what was measured on device for a natural-height `Text` (#151).
+     * Evidence from a *previous* dispatch must not suppress this one.
+     *
+     * The generation is what confines a mark to the tap that produced it, and this is the failure it
+     * exists to prevent — the one way execution-based suppression could drop an event rather than
+     * duplicate one. [AutocaptureClaimsGenerationTest] pins the bookkeeping; this pins that the
+     * resolver actually reads it.
      */
-    private fun unexpandedClaimBoundsOfAShortButton(): Rect {
-        val scale = UIScreen.mainScreen.scale
-        return Rect(
-            (10.0 * scale).toFloat(),
-            (16.0 * scale).toFloat(),
-            (30.0 * scale).toFloat(),
-            (24.0 * scale).toFloat(),
-        )
-    }
-
-    /** The fixture button's own 20x20pt size — what Compose would have expanded that claim to. */
-    private fun minimumTouchTargetPxOfTheFixture(): Size {
-        val side = (20.0 * UIScreen.mainScreen.scale).toFloat()
-        return Size(side, side)
-    }
-
     @Test
-    fun resolveIosElementSuppressesAnInstrumentedElementShorterThanTheMinimumTouchTarget() {
-        // #151: Compose expands a small element's touch target — and the accessibility frame it
-        // publishes with it — to the minimum touch target, centred, while the claim it registers
-        // stays the unexpanded layout bounds. The two must still be recognised as one element.
+    fun resolveIosElementReportsTheTapWhenTheExecutionBelongsToAClosedGeneration() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(unexpandedClaimBoundsOfAShortButton()))
-
-        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
-
-        assertNull(result)
-    }
-
-    @Test
-    fun resolveIosElementDoesNotSuppressAShortInstrumentedElementWithoutAMinimumTouchTarget() {
-        // The negative of the test above, pinning that reconciling the expansion is what does the
-        // work: with no minimum touch target to expand to, the same claim is the #151 defect —
-        // an explicitly instrumented element reported a second time by autocapture.
-        val (root, position) = buildRootWithButton()
-        val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(unexpandedClaimBoundsOfAShortButton()))
-
-        val result = resolveIosElement(root, claims, position, minimumTouchTargetPx = Size.Zero)
-
-        assertEquals("share_button", result)
-    }
-
-    @Test
-    fun resolveIosElementSuppressesAScaledTrackClickElement() {
-        // #159. The element is drawn at half the size it was measured at, so Compose expands the
-        // touch target on the MEASURED size and then draws the result through the transform: the
-        // published frame is the minimum HALVED, not the plain minimum. Here the button's frame is
-        // the fixture's 20x20pt and the claim is drawn 10x10pt through a 0.5 scale, so the minimum
-        // has to be halved to 20x20pt of a 40x40pt nominal before it lands on the frame.
-        val (root, position) = buildRootWithButton()
-        val scale = UIScreen.mainScreen.scale
-        val drawn = Rect(
-            (15.0 * scale).toFloat(),
-            (15.0 * scale).toFloat(),
-            (25.0 * scale).toFloat(),
-            (25.0 * scale).toFloat(),
-        )
-        val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.5f, 0.5f)))
-        val nominalMinimum = (40.0 * scale).toFloat()
-
-        val result = resolveIosElement(root, claims, position, Size(nominalMinimum, nominalMinimum))
-
-        assertNull(result)
-    }
-
-    @Test
-    fun resolveIosElementDoesNotSuppressAScaledClaimWhoseUnscaledExpansionWouldHaveMatched() {
-        // The negative of the test above: ignoring the claim's scale — what the code did before
-        // #159 — expands this claim onto the button's frame and vetoes. The element really is drawn
-        // at a fifth of its measured size, so that match describes no element on screen.
-        val (root, position) = buildRootWithButton()
-        val scale = UIScreen.mainScreen.scale
-        val drawn = Rect(
-            (18.0 * scale).toFloat(),
-            (18.0 * scale).toFloat(),
-            (22.0 * scale).toFloat(),
-            (22.0 * scale).toFloat(),
-        )
-        val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.2f, 0.2f)))
-
-        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
-
-        assertEquals("share_button", result)
-    }
-
-    @Test
-    fun resolveIosElementScalesTheMinimumPerAxisAndOnlyWhereTheClaimFallsShort() {
-        // The shape of the real on-device case, which the two square fixtures above cannot state:
-        // one axis is ALREADY longer than the scaled minimum and must be left alone, while the
-        // other expands — and the two axes are scaled by different factors.
-        //
-        // It is the discriminating case for how the scale and the expansion compose. Scaling the
-        // minimum first (correct) gives max(drawn, scale x minimum): width max(20, 15) = 20pt,
-        // untouched, and height max(10, 20) = 20pt, expanded — the fixture's 20x20pt frame.
-        //
-        // The numbers are chosen so every nearby wrong derivation misses it. Expanding to the plain
-        // minimum and scaling the RESULT gives 15x20pt, shrinking the already long-enough width as
-        // it would on a wide `Text` on device. Applying ONE of the two scales to both axes misses
-        // whichever one is borrowed: 0.25 leaves the height at 10pt, 0.5 stretches the width to 30pt.
-        val (root, position) = buildRootWithButton()
-        val scale = UIScreen.mainScreen.scale
-        val drawn = Rect(
-            (10.0 * scale).toFloat(),
-            (15.0 * scale).toFloat(),
-            (30.0 * scale).toFloat(),
-            (25.0 * scale).toFloat(),
-        )
-        val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, AutocaptureClaimBounds(drawn, Size(0.25f, 0.5f)))
-        val nominalMinimum = Size((60.0 * scale).toFloat(), (40.0 * scale).toFloat())
-
-        val result = resolveIosElement(root, claims, position, nominalMinimum)
-
-        assertNull(result)
-    }
-
-    /**
-     * The fixture's button with one non-clickable child whose own accessibility frame is exactly
-     * [unexpandedClaimBoundsOfAShortButton] — Compose Multiplatform publishes child `Text`s as their
-     * own accessibility descendants even inside a merged clickable (measured), so a sub-minimum
-     * `trackClick` *container* whose child fills it is reachable. Here 20x8pt inside 20x20pt.
-     */
-    private fun buildRootWithButtonContainingAShortChild(): Pair<UIView, Offset> {
-        val (root, position) = buildRootWithButton()
-        val button = root.subviews.first() as UIView
-        val child = UIView()
-        child.setPointFrame(10.0, 16.0, 20.0, 8.0)
-        button.addSubview(child)
-        return root to position
-    }
-
-    @Test
-    fun resolveIosElementStillSuppressesAShortTrackClickElementThatHasAChildFillingIt() {
-        // A descendant publishing the claim's own rect must NOT be read as "the claim belongs to
-        // someone else": a trackClick claim's element is clickable by construction, so a match
-        // describes that clickable however its children are laid out. Treating the descendant as
-        // disambiguating would reopen #151 for a sub-minimum trackClick container.
-        val (root, position) = buildRootWithButtonContainingAShortChild()
-        val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(unexpandedClaimBoundsOfAShortButton()))
-
-        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
-
-        assertNull(result)
-    }
-
-    @Test
-    fun resolveIosElementStillDoesNotSuppressAnAncestorContainerWhenExpandingToTheMinimumTouchTarget() {
-        // Expansion must not widen what counts as a match: a claim ALREADY larger than the minimum
-        // touch target is left alone by it, so an instrumented ancestor container still doesn't
-        // suppress a button inside it (the invariant the test below states without expansion).
-        val (root, position) = buildRootWithButton()
-        val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(Rect(0f, 0f, 100f, 100f)))
-
-        val result = resolveIosElement(root, claims, position, minimumTouchTargetPxOfTheFixture())
-
-        assertEquals("share_button", result)
-    }
-
-    @Test
-    fun resolveIosElementDoesNotSuppressAButtonInsideAnInstrumentedAncestorContainer() {
-        // Android's resolveAutocaptureTarget only checks the resolved nearestClickable's OWN
-        // `instrumented` flag — an instrumented ANCESTOR (e.g. a trackClick container wrapping an
-        // unrelated Button) never suppresses it. iOS has no ancestor chain to consult, so this
-        // must be approximated by NOT treating a claim broader than nearestClickable's own bounds
-        // (i.e. a container, not a self-registration) as a suppression match.
-        val (root, position) = buildRootWithButton()
-        val claims = AutocaptureClaims()
-        // A container claim covering the whole root — much larger than the button's own (10,10)-(30,30)
-        // point bounds — simulating a trackClick ancestor, not the button self-registering.
-        claims.put(Any(), AutocaptureClaimKind.INSTRUMENTED_CLICK, claim(Rect(0f, 0f, 100f, 100f)))
+        val token = claims.openTapGeneration()
+        claims.markInstrumentedClickExecuted()
+        claims.closeTapGeneration(token)
+        claims.openTapGeneration()
 
         val result = resolveIosElement(root, claims, position)
 
         assertEquals("share_button", result)
+    }
+
+    /**
+     * The observer discards execution evidence it cannot attribute to the pointer being reported (a
+     * multi-touch dispatch, or a Final that does not belong to its Initial). Discarding it must
+     * restore reporting, not leave a half-suppressed state.
+     */
+    @Test
+    fun resolveIosElementReportsTheTapAfterTheObserverDiscardsUnattributableEvidence() {
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.withAnInstrumentedClickExecuted()
+
+        claims.clearTapExecution()
+
+        assertEquals("share_button", resolveIosElement(root, claims, position))
+    }
+
+    /**
+     * An activation that reaches no pointer dispatch — VoiceOver's double-tap, an `Enter` press, a
+     * dialog route — marks nothing, so the next real tap is unaffected. Without the generation this
+     * would be a persistent "already instrumented" flag that silently ate subsequent taps.
+     *
+     * No [AutocaptureClaims.openTapGeneration] between the mark and the resolve, deliberately: with
+     * one, deleting `markInstrumentedClickExecuted`'s `generation != null` guard still leaves this
+     * green, because opening clears the flag the missing guard let through — the test would then be
+     * restating [resolveIosElementReportsTheTapWhenTheExecutionBelongsToAClosedGeneration] rather
+     * than pinning the guard. Resolving straight after the mark is what makes it discriminating.
+     */
+    @Test
+    fun resolveIosElementReportsTheTapWhenTheActivationHappenedOutsideAnyDispatch() {
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.markInstrumentedClickExecuted()
+
+        val result = resolveIosElement(root, claims, position)
+
+        assertEquals("share_button", result)
+    }
+
+    /**
+     * The two vetoes are independent: [autographIgnore] is positional and has no execution to observe,
+     * so it must keep working with the generation closed and empty.
+     */
+    @Test
+    fun resolveIosElementStillHonoursIgnoredBoundsWithNoExecutionRecorded() {
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        claims.ignored[Any()] = Rect(0f, 0f, 100f, 100f)
+        claims.openTapGeneration()
+
+        val result = resolveIosElement(root, claims, position)
+
+        assertNull(result)
     }
 
     @Test
     fun resolveIosElementIgnoresClaimsOutsideTheTapPosition() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.put(Any(), AutocaptureClaimKind.IGNORED, claim(Rect(500f, 500f, 600f, 600f)))
+        claims.ignored[Any()] = Rect(500f, 500f, 600f, 600f)
 
         val result = resolveIosElement(root, claims, position)
 

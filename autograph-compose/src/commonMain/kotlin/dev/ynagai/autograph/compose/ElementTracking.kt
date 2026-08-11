@@ -62,11 +62,20 @@ public fun Modifier.trackClick(
 ): Modifier = composed {
     val tracker = LocalTracker.current
     val screenContext = LocalScreenContext.current
+    val claims = LocalAutocaptureClaims.current
     clickable {
         tracker.track(name, withScreenContext(properties, screenContext), target)
+        // After the explicit event is recorded and before the caller's handler, because the mark's
+        // whole meaning is "this tap already produced an event, so autocapture must not add one".
+        // If `track` throws there is no explicit event, the mark never happens, and autocapture
+        // reports the tap — the right way round: a duplicate is recoverable, a missing event is not.
+        //
+        // This is what the iOS resolver reads in place of the geometry it used to compare (see
+        // [AutocaptureClaims]). Android ignores it and reads [AutographInstrumentedKey] below off the
+        // tapped node's ancestry instead, which is strictly better evidence where it is available.
+        claims?.markInstrumentedClickExecuted()
         onClick()
     }.semantics { this[AutographInstrumentedKey] = true }
-        .registerAutocaptureClaim(AutocaptureClaimKind.INSTRUMENTED_CLICK)
 }
 
 /**

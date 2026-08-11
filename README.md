@@ -249,14 +249,25 @@ There's a `JsonObject` overload for non-string values. Notes:
 element's identifier as `target` on a configurable event name (`"Element Clicked"` by default) —
 without needing `Modifier.trackClick` on every element. It's opt-in: observing every tap is a
 meaningfully different privacy posture than explicit instrumentation, so it's off unless you ask
-for it. Elements already instrumented with `trackClick` are never double-reported,
-`Modifier.autographIgnore()` excludes a subtree entirely, and
-[`Modifier.autocaptureScope(...)`](#scoped-context) attaches per-element properties to the taps
+for it. Elements already instrumented with `trackClick` are not double-reported — with one iOS
+multi-touch exception, described below — `Modifier.autographIgnore()` excludes a subtree entirely,
+and [`Modifier.autocaptureScope(...)`](#scoped-context) attaches per-element properties to the taps
 under it.
 
 `trackImpression` deliberately does **not** suppress autocapture: it reports a visibility event and
 never a click, so a tap on the element it marks is one autocapture owns. Use `autographIgnore()` for
 an element that should report neither.
+
+The two platforms establish "already instrumented" differently, and it costs iOS one edge case.
+Android reads the marker off the tapped element's semantics ancestry. iOS cannot — Compose
+Multiplatform's UIKit accessibility bridge carries only the fixed `UIAccessibility` properties, not
+arbitrary semantics keys — so it observes instead whether a `trackClick` handler *ran* during the
+tap being resolved. When a single dispatch consumes more than one pointer, which handler belongs to
+which finger is undecidable, and rather than guess, iOS reports the tap: **an instrumented element
+tapped as part of a genuine multi-touch gesture emits both its explicit event and an
+`Element Clicked`**. A second finger merely resting on the screen does not trigger this. The
+alternative — guessing — risks dropping an unrelated element's tap entirely, which is the failure
+this design refuses to make ([#179](https://github.com/uny/autograph/issues/179)).
 
 Implemented on Android (hit-testing the semantics tree via the same opt-in `RootForTest` entry
 point other autocapture SDKs use) and iOS (walking the native accessibility tree Compose

@@ -6,128 +6,121 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
-import kotlin.math.abs
 
 /**
- * Which modifier registered a claim.
+ * What iOS autocapture consults instead of the semantics tree: the bounds of [autographIgnore]
+ * subtrees, and whether a [trackClick] handler ran during the pointer dispatch being resolved.
  *
- * [INSTRUMENTED_CLICK] is registered by [trackClick] alone. [trackImpression] deliberately registers
- * none: it reports a visibility event, never a click, so there is no click for autocapture to
- * duplicate and nothing to suppress. It used to register one, and geometry could not tell that claim
- * apart from the clickable enclosing it — the resolver either dropped the host's real tap or
- * double-reported, depending on which way the ambiguity was resolved (#153, #158; both shapes
- * measured byte-identical from the accessibility tree). Removing the claim removes the ambiguity
- * rather than picking a side of it.
- */
-internal enum class AutocaptureClaimKind { IGNORED, INSTRUMENTED_CLICK }
-
-/**
- * On-screen bounds of [autographIgnore]/[trackClick] elements, tracked positionally
- * rather than via the semantics tree.
- *
- * Android's [ElementResolver] doesn't need this — it hit-tests the semantics tree directly and reads
+ * Android's [ElementResolver] needs neither — it hit-tests the semantics tree directly and reads
  * [AutographIgnoredKey]/[AutographInstrumentedKey] straight off the tapped node's ancestry. iOS has no
  * way to read a custom semantics key back off a tapped element (see ElementResolver.ios.kt: the UIKit
  * accessibility bridge only carries the fixed UIAccessibility properties — label, traits, identifier,
- * frame — not arbitrary Compose semantics keys), so its resolver consults this instead: is the tap
- * position inside any ignored/instrumented element's last-known bounds. Bounds are captured in
- * WINDOW space ([boundsInWindow], not `boundsInRoot`) to match [ElementResolver.ios.kt]'s resolver,
- * which converts the tap position via `root.localToWindow(position)` before comparing against these —
- * the two must share a coordinate space regardless of where [autocaptureTaps] sits relative to the
- * window (safe-area insets, nested embedding, etc.).
+ * frame — not arbitrary Compose semantics keys), so its resolver consults this.
+ *
+ * The two halves answer their question by different means, deliberately:
+ *
+ * - **[ignored] is positional.** [autographIgnore] marks a subtree; nothing about it *runs*, so there
+ *   is no execution to observe and geometry is the only signal available. Bounds are captured in
+ *   WINDOW space ([boundsInWindow], not `boundsInRoot`) to match `ElementResolver.ios.kt`, which
+ *   converts the tap via `root.localToWindow(position)` before comparing — the two must share a
+ *   coordinate space regardless of where [autocaptureTaps] sits relative to the window (safe-area
+ *   insets, nested embedding, etc.).
+ * - **The instrumented half is executional.** It used to be positional too, and that was wrong: it
+ *   compared a [trackClick] element's registered rect against the accessibility frame Compose
+ *   publishes for it, and Compose clamps a small element's touch-target expansion against
+ *   *neighbouring layout*, so the published frame is not a function of the claim at all. Measured on
+ *   device, a sub-48dp `trackClick` in an unspaced `Column` registered a 72px-tall rect and published
+ *   a 108px one, grown 36px upward and not at all downward — its bottom edge exactly the next
+ *   element's top. No rect derived from the claim alone can equal that in general, and every
+ *   tightening of the rule traded the duplicate for a silently dropped event
+ *   ([#179](https://github.com/uny/autograph/issues/179), and #151/#153/#158/#159 before it — all
+ *   five were bugs in that one geometric apparatus). So the geometry is gone, and the question
+ *   "is the tapped element already instrumented" is answered by the only thing that actually knows:
+ *   whether [trackClick]'s handler ran.
  */
 internal class AutocaptureClaims {
-    val ignored = mutableStateMapOf<Any, AutocaptureClaimBounds>()
+    /** Window-space bounds of live [autographIgnore] subtrees, keyed per call-site instance. */
+    val ignored = mutableStateMapOf<Any, Rect>()
 
-    /** Claims from [trackClick] — see [AutocaptureClaimKind] for why [trackImpression] registers none. */
-    val instrumentedClick = mutableStateMapOf<Any, AutocaptureClaimBounds>()
+    // --- Execution-based deduplication (read only by ElementResolver.ios.kt) ---
+    //
+    // Deliberately NOT snapshot state: nothing recomposes on it, and routing it through the snapshot
+    // system would add invalidation for no reader. Plain fields are sound here because every access is
+    // confined to the UI thread within one pointer dispatch — `awaitPointerEventScope` is documented
+    // as un-dispatched and synchronously resumed, so the observer's Initial/Final code runs inline in
+    // the pointer pipeline, and `markInstrumentedClickExecuted` is called straight from `clickable`'s
+    // callback on the Main pass of that same dispatch.
 
-    private fun mapFor(kind: AutocaptureClaimKind) = when (kind) {
-        AutocaptureClaimKind.IGNORED -> ignored
-        AutocaptureClaimKind.INSTRUMENTED_CLICK -> instrumentedClick
+    /**
+     * Identity of the dispatch currently being observed, or null between dispatches.
+     *
+     * A token rather than a boolean so [closeTapGeneration] can refuse to close a generation it did
+     * not open. The observer's `pointerInput` coroutine restarts whenever its keys change; without the
+     * token, a cancelled coroutine's `finally` could close the generation its replacement had just
+     * opened, and the mark that followed would be silently discarded.
+     */
+    private var generation: Any? = null
+
+    private var instrumentedClickExecuted = false
+
+    /** Opens a generation for one pointer dispatch and returns the token identifying it. */
+    fun openTapGeneration(): Any = Any().also {
+        generation = it
+        instrumentedClickExecuted = false
     }
 
-    fun put(key: Any, kind: AutocaptureClaimKind, bounds: AutocaptureClaimBounds) {
-        mapFor(kind)[key] = bounds
+    /**
+     * Drops the execution evidence while leaving the generation open — for when the observer can see
+     * that a mark cannot be attributed to the pointer it is about to report. Forgetting evidence can
+     * only cost a duplicate; keeping evidence it cannot attribute could cost the event itself.
+     */
+    fun clearTapExecution() {
+        instrumentedClickExecuted = false
     }
 
-    fun remove(key: Any, kind: AutocaptureClaimKind) {
-        mapFor(kind).remove(key)
+    /** Closes [token]'s generation. A stale token is ignored — see [generation]. */
+    fun closeTapGeneration(token: Any) {
+        if (generation === token) {
+            generation = null
+            instrumentedClickExecuted = false
+        }
     }
+
+    /**
+     * Records that a [trackClick] handler ran, if a dispatch is currently being observed.
+     *
+     * The no-op outside a generation is what confines this to real taps. A VoiceOver double-tap, an
+     * `Enter` activation, and any dialog/popup route that never reaches [autocaptureTaps]'s
+     * `pointerInput` all invoke the same handler; each marks nothing, so none of them can suppress a
+     * later tap. That is also why the generation is scoped to a single dispatch rather than being a
+     * persistent "last activated" flag.
+     */
+    fun markInstrumentedClickExecuted() {
+        if (generation != null) instrumentedClickExecuted = true
+    }
+
+    /** Whether a [trackClick] handler ran during the dispatch being resolved. */
+    fun instrumentedClickExecutedThisGeneration(): Boolean = instrumentedClickExecuted
 }
-
-/**
- * One claim's geometry: where the element was [drawn] in window space, and the per-axis
- * [drawScale] it was drawn through.
- *
- * The pair is only read by `ElementResolver.ios.kt`, which has to reconcile a claim with the
- * accessibility frame Compose Multiplatform publishes for the same element — and for an element below
- * the minimum touch target that frame is the *measured* rect expanded to the minimum and then drawn
- * through the transform. So the resolver needs the transform, and [drawn] alone cannot recover it
- * after the fact (measured on device — a `scale(0.5f)` `Text` reported `drawn = 246x36px` against a
- * measured `492x72px`, and published its frame at `246x72px`, the minimum halved on the axis that
- * needed expanding). Android reads a semantics marker off the ancestry and consults neither
- * ([#159](https://github.com/uny/autograph/issues/159)).
- *
- * [drawn] stays `boundsInWindow()`, which an ancestor's clip shrinks. A claim whose element is partly
- * clipped therefore still carries a rect the published frame will not match — but that is confined to
- * [drawn]: [drawScale] is measured off the layout's corners rather than off [drawn], so a clip is
- * never mistaken for a scale and a clipped element's derived rect is exactly the one it had before
- * any scale was recovered (see [drawScale]).
- */
-internal data class AutocaptureClaimBounds(val drawn: Rect, val drawScale: Size)
 
 /** The ambient [AutocaptureClaims], or null outside [AutographProvider] / when autocapture is disabled. */
 internal val LocalAutocaptureClaims = staticCompositionLocalOf<AutocaptureClaims?> { null }
 
 /**
- * Registers this element's on-screen bounds into the ambient [AutocaptureClaims] as [kind], keyed by
- * a per-call-site-instance identity so the entry is removed on disposal without disturbing other
+ * Registers this element's on-screen bounds into the ambient [AutocaptureClaims.ignored], keyed by a
+ * per-call-site-instance identity so the entry is removed on disposal without disturbing other
  * elements' entries. No-op when there's no ambient [AutocaptureClaims] (autocapture disabled, or
- * outside [AutographProvider]) — cheap to call unconditionally from [autographIgnore]/[trackClick].
+ * outside [AutographProvider]) — cheap to call unconditionally from [autographIgnore].
+ *
+ * [trackClick] does not use this. It reports its execution instead — see [AutocaptureClaims].
  */
 @Composable
-internal fun Modifier.registerAutocaptureClaim(kind: AutocaptureClaimKind): Modifier {
+internal fun Modifier.registerIgnoredBounds(): Modifier {
     val claims = LocalAutocaptureClaims.current ?: return this
     val key = remember { Any() }
-    DisposableEffect(claims, key, kind) { onDispose { claims.remove(key, kind) } }
-    return onGloballyPositioned {
-        claims.put(key, kind, AutocaptureClaimBounds(it.boundsInWindow(), it.drawScale()))
-    }
-}
-
-/**
- * The per-axis scale this layout is drawn through: its window-space extent over the size it was
- * measured at.
- *
- * Taken from [LayoutCoordinates.localToWindow] on the layout's own corners, NOT from the ratio of
- * `boundsInWindow()` to [LayoutCoordinates.size]. `boundsInWindow()` is clipped — to the window and
- * to every clipping ancestor — so that ratio reports a clip as a scale, and the two are
- * indistinguishable once stored. Measured (`runComposeUiTest`, JVM): a 20dp-tall element centred in a
- * 10dp `clipToBounds` host reports `boundsInWindow()` 10dp tall against a measured 20dp — the same
- * `0.5` an actual `scale(0.5f)` reports — while `localToWindow` on its corners still spans the full
- * 20dp, giving `1.0`. That distinction is what keeps a clipped element's derived touch target the
- * plain minimum it was before #159, instead of a minimum shrunk by a scale that was never applied.
- *
- * An axis measured to zero has no ratio and reports `1`, leaving the minimum alone.
- *
- * Only a scale is recovered, and only an axis-aligned one: under a rotation the two corners span the
- * rotated diagonal rather than the element, so the ratio is not the scale — the same axis-aligned
- * assumption `AutocaptureNode.kt` documents for the Android hit test. That costs the resolver's
- * expansion branch alone, leaving a rotated element below the minimum touch target double-reporting
- * exactly as it did before any scale was recovered.
- */
-private fun LayoutCoordinates.drawScale(): Size {
-    val topLeft = localToWindow(Offset.Zero)
-    val bottomRight = localToWindow(Offset(size.width.toFloat(), size.height.toFloat()))
-    return Size(
-        if (size.width > 0) abs(bottomRight.x - topLeft.x) / size.width else 1f,
-        if (size.height > 0) abs(bottomRight.y - topLeft.y) / size.height else 1f,
-    )
+    DisposableEffect(claims, key) { onDispose { claims.ignored.remove(key) } }
+    return onGloballyPositioned { claims.ignored[key] = it.boundsInWindow() }
 }
