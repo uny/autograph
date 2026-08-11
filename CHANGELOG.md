@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-11
+
 ### Added
 
 - The release version gate moved into `.github/scripts/validate-release-version.sh`, gained a test
@@ -151,6 +153,37 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     observer's `Final` pass — measured on Compose Multiplatform 1.11.1, but an implementation detail
     rather than a documented guarantee. `CONTRIBUTING.md` records when to re-check it on device;
     `combinedClickable`, which delays `onClick` past a double-tap timeout, would break it outright.
+
+### Documentation
+
+- `CONTRIBUTING.md` now carries a concrete cold-device checklist to run before merging a
+  `composeMultiplatform` bump ([#154]). The 0.4.0 notes named that check as the reason for spelling
+  out the CMP dependency, but left it as tribal knowledge; it is now three runnable `simctl` steps.
+  The check cannot be automated in CI, and the checklist says why: `xcodebuild test` is itself an
+  accessibility client, so it warms the exact state a cold launch starts without, and a bump that
+  broke cold-start tap resolution would land fully green ([#135]). Two details are load-bearing
+  rather than incidental — the device must be freshly *created* (`shutdown`+`boot` does not reset the
+  accessibility subsystem), and log capture must start before the tap rather than after it.
+
+- The native tap-capture kdoc records that a hybrid app's own Compose autocapture does **not** warm
+  the native pipeline ([#135], measured). `autograph-compose`'s iOS resolver activates Compose
+  Multiplatform's accessibility bridge on tap, but that is a *separate* on-demand activation from the
+  one UIKit and SwiftUI sit behind: measured in sequence within one process, a Compose tap confirmed
+  by its `Element Clicked` followed immediately by a tap on an unrelated SwiftUI element still
+  resolved to nothing. So the cold-inertness is not narrowed to apps with no Compose anywhere — it
+  applies to every hybrid app's native screens too, until a genuine accessibility client has run in
+  the process.
+
+- The accessibility-walk kdoc records a measured side effect and closes it as a non-issue ([#156]):
+  the walk also flips Compose Multiplatform's internal "a screen reader is active" belief
+  (`LocalPlatformScreenReader.current.isActive`) from `false` to `true`, where an identical tap
+  through plain Compose leaves it `false`. This is what the already-documented activation call site
+  implies rather than a new failure mode — that call site cannot distinguish an app from a screen
+  reader, and the flag records exactly that. The flag is `@InternalComposeUiApi` with no supported
+  read path from application code, so nothing downstream of Compose can observe it. Whether it
+  perturbs real assistive-technology traversal order was **not** measurable, and the entry says so:
+  observing AT-facing behaviour requires attaching a real AT, which sets the same flag by itself, so
+  no walk-free baseline exists to compare against.
 
 ## [0.4.0] - 2026-08-06
 
@@ -513,7 +546,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/uny/autograph/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/uny/autograph/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/uny/autograph/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/uny/autograph/compare/v0.1.1...v0.2.0
@@ -575,6 +609,7 @@ Initial release.
 [#151]: https://github.com/uny/autograph/issues/151
 [#153]: https://github.com/uny/autograph/issues/153
 [#154]: https://github.com/uny/autograph/issues/154
+[#156]: https://github.com/uny/autograph/issues/156
 [#157]: https://github.com/uny/autograph/issues/157
 [#158]: https://github.com/uny/autograph/issues/158
 [#159]: https://github.com/uny/autograph/issues/159
