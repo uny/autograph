@@ -158,7 +158,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 - `CONTRIBUTING.md` now carries a concrete cold-device checklist to run before merging a
   `composeMultiplatform` bump ([#154]). The 0.4.0 notes named that check as the reason for spelling
-  out the CMP dependency, but left it as tribal knowledge; it is now three runnable `simctl` steps.
+  out the CMP dependency, but left it as tribal knowledge; it is now three runnable steps.
   The check cannot be automated in CI, and the checklist says why: `xcodebuild test` is itself an
   accessibility client, so it warms the exact state a cold launch starts without, and a bump that
   broke cold-start tap resolution would land fully green ([#135]). Two details are load-bearing
