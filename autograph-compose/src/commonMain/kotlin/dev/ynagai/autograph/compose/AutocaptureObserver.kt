@@ -99,9 +99,14 @@ internal fun Modifier.autocaptureTaps(
  * autocapture must never produce ([#179](https://github.com/uny/autograph/issues/179)), so anything
  * short of certainty answers `false`.
  *
- * - **Same dispatch.** The three passes of one event are documented to hand back the identical
- *   instance, so a mismatch means this `Final` does not belong to the `Initial` the generation was
- *   opened for — the marks in it describe some other dispatch.
+ * - **Same dispatch.** One dispatch's passes hand back one [PointerEvent] instance and separate
+ *   dispatches hand back separate ones, so a mismatch means this `Final` does not belong to the
+ *   `Initial` the generation was opened for — the marks in it describe some other dispatch. That is
+ *   a Compose implementation detail rather than an API promise, and both halves are load-bearing in
+ *   opposite directions, so `PointerEventIdentityTest` measures them against real dispatches instead
+ *   of asserting them here: were instances per-pass, this would answer `false` for every tap and
+ *   suppression would vanish entirely; were they recycled across dispatches, a desynced loop would
+ *   trust a stale mark and drop an unrelated element's tap.
  * - **At most one consumed change.** With two, which of them the mark belongs to is undecidable, and
  *   guessing wrong suppresses an unrelated element's tap.
  *

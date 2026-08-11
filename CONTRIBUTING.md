@@ -88,8 +88,16 @@ detail rather than anything the API promises. Upstream has previously routed cli
 suspending `detectTapAndPress`, and `combinedClickable` deliberately delays `onClick` past a
 double-tap timeout.
 
-**A break here degrades to double-reporting, never to a lost event**, so it is not a correctness
-emergency — but it silently removes a feature, and no unit test can see it.
+**A handler that runs late degrades to double-reporting, not to a lost event** — it lands outside
+any generation and marks nothing — so the ordinary form of this break is not a correctness
+emergency. It still silently removes a feature.
+
+The exception is worth naming, because the mark records *that* a handler ran and not *which
+element's*: a replacement that invokes `onClick` inside a **later** dispatch's `Initial`→`Final`
+window suppresses that dispatch instead, and if the element tapped there is uninstrumented its event
+is lost outright. A timeout resuming between dispatches cannot do this — the main thread runs one
+dispatch at a time — but a hand-written detector that defers a tap to the next pointer event can.
+Treat that shape as a correctness change, not a feature regression.
 
 Re-check it on device when any of these change:
 
@@ -98,6 +106,13 @@ Re-check it on device when any of these change:
   `combinedClickable`, `toggleable`, `selectable`, or a hand-written gesture detector;
 - `autocaptureTaps`'s pointer loop, which brackets each dispatch with the generation the mark
   lands in.
+
+Two unit tests do cover part of this, so run them first — they are cheaper than a device and they
+fail loudly. `AutocaptureClaimDisposalTest.trackClickMarksItsExecutionBetweenTrackAndOnClick` injects
+a real touch and reads the flag from inside the handler, so a handler that no longer runs inside its
+dispatch turns it red; `PointerEventIdentityTest` pins the `PointerEvent` identity the observer's
+attribution guard depends on. What neither can see is the on-device pipeline itself, which is what
+the manual check below is for.
 
 The check: with `AutographSample` running and log capture attached as above, tap
 `explicit_tracked_small`. The log must show `Recipe Saved` and no `Element Clicked` for it. Tap

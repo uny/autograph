@@ -136,10 +136,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   along with the per-element rect, the recovered draw scale, and the minimum-touch-target
   reconciliation.
 
-  Every way this can break falls toward a duplicate rather than a dropped event, which is the
-  property the previous design lacked: if the ordering it relies on stops holding the mark simply
-  never lands, and when the observer cannot attribute a mark to the pointer it is reporting it
-  discards the evidence rather than guessing. Two consequences worth knowing:
+  The ways this breaks fall toward a duplicate rather than a dropped event, which is the property
+  the previous design lacked: if the ordering it relies on stops holding, the mark lands outside any
+  generation and does nothing, and when the observer cannot attribute a mark to the pointer it is
+  reporting it discards the evidence rather than guessing. The one shape that would not degrade that
+  way needs a handler running inside a *later* dispatch's window, since the mark records that a
+  handler ran and not which element's; `CONTRIBUTING.md` names it as the case to treat as a
+  correctness change. Two consequences worth knowing:
 
   - **A dispatch that consumes more than one pointer suppresses nothing**, so an instrumented element
     tapped as part of a genuine two-finger gesture reports both its explicit event and an

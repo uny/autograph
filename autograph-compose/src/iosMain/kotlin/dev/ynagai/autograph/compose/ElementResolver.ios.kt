@@ -78,8 +78,17 @@ internal fun resolveIosElement(
         // That is deliberately weaker than "the resolved element is the instrumented one", and the
         // weakness is the point: a single pointer activates at most one `clickable` (consumption in
         // the Main pass sees to that), so if a [trackClick] handler ran, this dispatch's click is
-        // already reported. Whatever the accessibility walk resolves here is then either that same
+        // already reported. Whatever the accessibility walk resolves here is then usually that same
         // element or a misattribution, and both should be dropped.
+        //
+        // "Usually", because stock `clickable`s are what consumption arbitrates. An element that
+        // publishes a click *action* without owning the pointer — a hand-written `semantics { onClick
+        // {} }`, which `AutocaptureConfig`'s kdoc already lists as a gap in its own right — can be
+        // what the walk resolves while an enclosing [trackClick] is what actually ran. That element
+        // loses its `Element Clicked`. The tap itself is still reported, by the enclosing
+        // [trackClick]'s own explicit event, so this costs attribution rather than the interaction;
+        // narrowing it would mean identifying the marking element, which is the geometry this change
+        // exists to delete.
         //
         // Stating it this way is what finally separates the shape geometry could not. Measured on
         // device: a `fillMaxWidth` `trackClick` `Text` inside a `fillMaxWidth`, 48dp, uninstrumented
