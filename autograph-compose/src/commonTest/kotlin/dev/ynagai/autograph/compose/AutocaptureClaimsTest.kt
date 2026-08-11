@@ -259,6 +259,48 @@ class AutocaptureClaimDisposalTest {
     }
 
     /**
+     * The other end of the same dispatch: [autocaptureTaps]'s `finally` really closes the generation
+     * it opened.
+     *
+     * The test above proves a generation is *open* while the handler runs; nothing proved it is shut
+     * afterwards, and the whole safety argument for VoiceOver double-taps, `Enter` activations and
+     * dialog routes is that a mark made outside a dispatch lands nowhere. Deleting the observer's
+     * `try`/`finally` leaves every other test in this repo green — the next dispatch's
+     * [AutocaptureClaims.openTapGeneration] re-zeroes the flag before anything reads it — so this is
+     * the only place that failure surfaces.
+     *
+     * Both assertions discriminate, and against different halves: the first fails if evidence
+     * outlives the dispatch that produced it, the second if the generation is left open for an
+     * unrelated activation to mark into.
+     */
+    @Test
+    fun theObserverClosesItsGenerationWhenTheDispatchEnds() = runComposeUiTest {
+        lateinit var claims: AutocaptureClaims
+        setContent {
+            PlatformAutocaptureTestHost {
+                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                    claims = LocalAutocaptureClaims.current!!
+                    Box(Modifier.testTag("tracked").size(40.dp).trackClick("Item Clicked") {})
+                }
+            }
+        }
+        waitForIdle()
+
+        onNodeWithTag("tracked").performTouchInput { down(center); up() }
+        waitForIdle()
+
+        assertFalse(
+            claims.instrumentedClickExecutedThisGeneration(),
+            "the mark must not outlive the dispatch that produced it",
+        )
+        claims.markInstrumentedClickExecuted()
+        assertFalse(
+            claims.instrumentedClickExecutedThisGeneration(),
+            "the generation must be closed once the dispatch ends, not merely emptied",
+        )
+    }
+
+    /**
      * [trackImpression] neither registers bounds nor marks an execution.
      *
      * It reports a visibility event and never a click, so there is nothing for autocapture to

@@ -9,9 +9,12 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerId
 import androidx.compose.ui.input.pointer.PointerInputChange
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
@@ -117,6 +120,71 @@ class ExecutionEvidenceAttributionTest {
         val event = PointerEvent(listOf(change(1, consumed = false)))
 
         assertTrue(executionEvidenceIsAttributable(event, event))
+    }
+}
+
+/**
+ * The premise [executionEvidenceIsAttributable]'s `final === initial` clause rests on, measured
+ * against real dispatches rather than asserted in prose.
+ *
+ * [ExecutionEvidenceAttributionTest] can only state the predicate against events it constructs
+ * itself — it passes the same object twice, so it proves the comparison, never that Compose's
+ * identities line up the way the guard needs. Both halves are load-bearing and they fail in
+ * opposite directions:
+ *
+ * - **Same instance across one dispatch's passes.** If Compose built a fresh [PointerEvent] per
+ *   pass, the guard would answer `false` on *every* tap, `clearTapExecution` would run before every
+ *   resolve, and iOS suppression would silently vanish for all elements — not just the documented
+ *   multi-touch case.
+ * - **Distinct instances across dispatches.** This is what makes a desynced loop fail safe. If the
+ *   observer's `finally` is ever skipped (a `Main`-pass handler throwing past the remaining passes,
+ *   say), the next `Final` is paired with the previous dispatch's `Initial`; the guard fires only
+ *   because the two are different objects, and the stale mark is discarded rather than trusted.
+ *   Were instances recycled per node, that pairing would be trusted and an unrelated element's tap
+ *   would be dropped — the one outcome this design promises cannot happen.
+ *
+ * Runs on every target, but the pointer pipeline it measures (`HitPathTracker`) is common Compose
+ * code, so a JVM run is evidence about iOS too — not a substitute for the on-device check
+ * `CONTRIBUTING.md` describes, which covers the ordering premise this one does not.
+ */
+@OptIn(ExperimentalTestApi::class)
+class PointerEventIdentityTest {
+
+    @Test
+    fun oneDispatchHandsBackOneInstanceAndSeparateDispatchesDoNot() = runComposeUiTest {
+        val initials = mutableListOf<PointerEvent>()
+        val finals = mutableListOf<PointerEvent>()
+        setContent {
+            Box(
+                Modifier.testTag("probe").size(50.dp).pointerInput(Unit) {
+                    awaitPointerEventScope {
+                        while (true) {
+                            initials += awaitPointerEvent(PointerEventPass.Initial)
+                            finals += awaitPointerEvent(PointerEventPass.Final)
+                        }
+                    }
+                },
+            )
+        }
+        waitForIdle()
+        // Two taps, so there are four dispatches (a Press and a Release each) to compare across.
+        repeat(2) {
+            onNodeWithTag("probe").performTouchInput { down(center); up() }
+            waitForIdle()
+        }
+
+        assertTrue(initials.size >= 4, "expected at least four dispatches, saw ${initials.size}")
+        initials.forEachIndexed { i, initial ->
+            assertTrue(initial === finals[i], "dispatch $i handed Initial and Final different instances")
+        }
+        for (a in initials.indices) {
+            for (b in a + 1 until initials.size) {
+                assertFalse(
+                    initials[a] === initials[b],
+                    "dispatches $a and $b share one PointerEvent instance, so the guard cannot tell them apart",
+                )
+            }
+        }
     }
 }
 

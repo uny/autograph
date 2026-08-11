@@ -2,7 +2,6 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.geometry.Size
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
 import platform.CoreGraphics.CGRectMake
@@ -253,13 +252,18 @@ class ElementResolverIosTest {
      * An activation that reaches no pointer dispatch — VoiceOver's double-tap, an `Enter` press, a
      * dialog route — marks nothing, so the next real tap is unaffected. Without the generation this
      * would be a persistent "already instrumented" flag that silently ate subsequent taps.
+     *
+     * No [AutocaptureClaims.openTapGeneration] between the mark and the resolve, deliberately: with
+     * one, deleting `markInstrumentedClickExecuted`'s `generation != null` guard still leaves this
+     * green, because opening clears the flag the missing guard let through — the test would then be
+     * restating [resolveIosElementReportsTheTapWhenTheExecutionBelongsToAClosedGeneration] rather
+     * than pinning the guard. Resolving straight after the mark is what makes it discriminating.
      */
     @Test
     fun resolveIosElementReportsTheTapWhenTheActivationHappenedOutsideAnyDispatch() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
         claims.markInstrumentedClickExecuted()
-        claims.openTapGeneration()
 
         val result = resolveIosElement(root, claims, position)
 
