@@ -5,6 +5,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.uikit.LocalUIView
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.uikit.AxPoint
 import dev.ynagai.autograph.uikit.accessibilityIdentifierOrNull
 import dev.ynagai.autograph.uikit.deepestAccessibilityHitPath
@@ -46,14 +47,12 @@ internal actual fun rememberElementResolver(): ElementResolver {
     val claims = LocalAutocaptureClaims.current
     return remember(view, claims) {
         ElementResolver { root, position ->
-            // No scope: the UIKit bridge carries none of the custom semantics [autocaptureScope]
-            // writes, so there is nothing to read back off the hit path here — and none of the
-            // properties it does carry can stand in for one soundly, which is why this is left empty
-            // rather than approximated. That modifier's kdoc is the canonical account (#68). An empty
-            // scope leaves the tap attributed exactly as it was before it existed — the ambient
-            // `ScopeStack` still contributes, and simultaneously-mounted siblings there still drop
-            // rather than guess.
-            resolveIosElement(view, claims, root.localToWindow(position))?.let { AutocaptureTarget(it) }
+            // SPIKE (#185): the scope no longer comes off the a11y bridge (it cannot) but off
+            // Compose's own pointer dispatch, recorded during this dispatch by every
+            // [autocaptureScope] on the hit path. The identifier still comes from the a11y walk —
+            // the two-sources-of-truth risk this spike exists to measure.
+            resolveIosElement(view, claims, root.localToWindow(position))
+                ?.let { AutocaptureTarget(it, claims?.scopeThisGeneration() ?: EmptyJsonObject) }
         }
     }
 }

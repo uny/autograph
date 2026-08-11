@@ -1,8 +1,14 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEvent
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.node.CompositionLocalConsumerModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
+import androidx.compose.ui.node.PointerInputModifierNode
 import androidx.compose.ui.node.SemanticsModifierNode
+import androidx.compose.ui.node.currentValueOf
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.semantics.SemanticsConfiguration
 import androidx.compose.ui.semantics.SemanticsPropertyKey
 import androidx.compose.ui.semantics.SemanticsPropertyReceiver
@@ -153,10 +159,37 @@ private data class AutocaptureScopeElement(
     }
 }
 
-private class AutocaptureScopeNode(var properties: JsonObject) : Modifier.Node(), SemanticsModifierNode {
+private class AutocaptureScopeNode(var properties: JsonObject) :
+    Modifier.Node(),
+    SemanticsModifierNode,
+    PointerInputModifierNode,
+    CompositionLocalConsumerModifierNode {
     override fun SemanticsPropertyReceiver.applySemantics() {
         this[AutographScopeKey] = properties
     }
+
+    // --- SPIKE (#185) ---
+    //
+    // Compose's own pointer dispatch reaches every PointerInputModifierNode on the hit path, and
+    // Initial propagates ancestor→descendant. So a scope on the tapped element's ancestry records
+    // itself *during* the tap, rather than being read back off the tapped element afterwards — which
+    // is what the UIKit accessibility bridge cannot support (see this file's kdoc).
+    override fun onPointerEvent(pointerEvent: PointerEvent, pass: PointerEventPass, bounds: IntSize) {
+        if (pass != PointerEventPass.Initial) return
+        currentValueOf(LocalAutocaptureClaims)?.recordScope(properties)
+    }
+
+    override fun onCancelPointerInput() = Unit
+
+    // This node observes; it must never take a hit away from a sibling underneath it. Without this,
+    // a scope-only wrapper becomes a hit-test target of its own and Compose stops descending to
+    // siblings below it, which would change routing rather than observe it.
+    override fun sharePointerInputWithSiblings(): Boolean = false
+
+    // For F4: a clickable child drawn outside this wrapper's own bounds. Without this the wrapper is
+    // not on the hit path for such a pointer and its scope is lost, though Android's semantics
+    // ancestry keeps it.
+    override fun interceptOutOfBoundsChildEvents(): Boolean = true
 }
 
 /** The scope this node declares directly, or empty. Hit-testing convenience; see [autocaptureScope]. */

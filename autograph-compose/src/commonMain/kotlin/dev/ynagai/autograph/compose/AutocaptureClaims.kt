@@ -9,6 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
+import dev.ynagai.autograph.EmptyJsonObject
+import kotlinx.serialization.json.JsonObject
 
 /**
  * What iOS autocapture consults instead of the semantics tree: the bounds of [autographIgnore]
@@ -66,10 +68,28 @@ internal class AutocaptureClaims {
 
     private var instrumentedClickExecuted = false
 
+    // --- SPIKE (#185): scope recorded during pointer dispatch, not read back off the a11y bridge ---
+    //
+    // Ancestor→descendant is the order PointerEventPass.Initial propagates in, so entries land
+    // outermost-first and a later one wins a key clash — the same outer→inner precedence
+    // resolveAutocaptureTarget applies to the semantics chain on Android.
+
+    private val scopeChain = mutableListOf<JsonObject>()
+
+    /** Records one [autocaptureScope]'s properties, if a dispatch is currently being observed. */
+    fun recordScope(properties: JsonObject) {
+        if (generation != null && properties.isNotEmpty()) scopeChain.add(properties)
+    }
+
+    /** The scopes recorded on the hit path during the dispatch being resolved, merged inner-wins. */
+    fun scopeThisGeneration(): JsonObject =
+        scopeChain.fold(EmptyJsonObject) { acc, scope -> if (acc.isEmpty()) scope else JsonObject(acc + scope) }
+
     /** Opens a generation for one pointer dispatch and returns the token identifying it. */
     fun openTapGeneration(): Any = Any().also {
         generation = it
         instrumentedClickExecuted = false
+        scopeChain.clear()
     }
 
     /**
@@ -86,6 +106,7 @@ internal class AutocaptureClaims {
         if (generation === token) {
             generation = null
             instrumentedClickExecuted = false
+            scopeChain.clear()
         }
     }
 
