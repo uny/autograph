@@ -183,7 +183,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   read path from application code, so nothing downstream of Compose can observe it. Whether it
   perturbs real assistive-technology traversal order was **not** measurable, and the entry says so:
   observing AT-facing behaviour requires attaching a real AT, which sets the same flag by itself, so
-  no walk-free baseline exists to compare against.
+  no walk-free baseline exists to compare against. What carries the non-issue classification despite
+  that gap is not the absence of a measurement but a property that does not need one: the walk cannot
+  manufacture a state a genuine AT visit would not already produce, so it can only make Compose
+  believe that arrival happened earlier and more often than it otherwise would — a state every
+  screen-reader user reaches anyway, not a new one.
 
 ## [0.4.0] - 2026-08-06
 
