@@ -123,6 +123,17 @@ struct HybridSampleView: View {
 /// Launch argument for the UIKit-navigation sample that exercises #65's native screen capture.
 let nativeScreensLaunchArgument = "-autograph-native-screens"
 
+/// THROWAWAY measurement rig for #185 — delete with the spike. See `ZzMeasure185.kt`.
+let measure185LaunchArgument = "-autograph-measure-185"
+
+struct Measure185View: UIViewControllerRepresentable {
+    func makeUIViewController(context: Context) -> UIViewController {
+        ZzMeasure185Kt.Measure185ViewController()
+    }
+
+    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}
+}
+
 struct ContentView: View {
     var body: some View {
         let arguments = ProcessInfo.processInfo.arguments
@@ -136,6 +147,8 @@ struct ContentView: View {
             NativeScreensRootView()
         } else if arguments.contains(swiftUIScreensLaunchArgument) {
             SwiftUIScreensView()
+        } else if arguments.contains(measure185LaunchArgument) {
+            Measure185View()
         } else {
             ComposeView()
         }
