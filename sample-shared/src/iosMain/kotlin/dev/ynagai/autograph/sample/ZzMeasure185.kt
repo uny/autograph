@@ -40,8 +40,13 @@ import platform.Foundation.NSProcessInfo
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 import platform.UIKit.UIViewController
+import kotlinx.cinterop.ExperimentalForeignApi
+import platform.UIKit.accessibilityContainerType
 import platform.UIKit.accessibilityElements
+import platform.UIKit.accessibilityElementsHidden
 import platform.UIKit.accessibilityLabel
+import platform.UIKit.accessibilityTraits
+import platform.UIKit.accessibilityViewIsModal
 import platform.UIKit.isAccessibilityElement
 import platform.darwin.NSObject
 
@@ -436,6 +441,8 @@ private fun dumpEverything(view: UIView) {
     dumpTree(view, view, scale, depth = 0)
     ax("=== VOICEOVER ===")
     dumpVoiceOverOrder(view, mutableListOf())
+    ax("=== ROTOR ===")
+    dumpRotorSurface(view, 0)
     ax("=== HITS ===")
     for ((tag, centre) in centres.entries.sortedBy { it.key }) {
         val path = deepestAccessibilityHitPath(view, view, AxPoint(centre.x, centre.y), scale)
@@ -479,6 +486,33 @@ private fun Any.describe(): String {
  * ([accessibilityIdentifierOrNull]'s kdoc). Here the announced text *is* the measurement, and this
  * file is throwaway.
  */
+/**
+ * The properties VoiceOver's **rotor** is driven by, for every node — the half of the a11y cost that
+ * [dumpVoiceOverOrder] cannot see, since the rotor navigates by category rather than by swipe order.
+ *
+ * `accessibilityContainerType` is the one that decides whether an element shows up under the rotor's
+ * *Containers* setting; traits decide Headings / Links / Form Controls; `accessibilityViewIsModal`
+ * and `accessibilityElementsHidden` decide whether a subtree is reachable at all. Compare the scoped
+ * fixture against its unwrapped control: any difference on these is a rotor-visible change that the
+ * stop-order measurement would have reported as inert.
+ */
+@OptIn(AutographInternalApi::class, ExperimentalForeignApi::class)
+private fun dumpRotorSurface(node: Any, depth: Int) {
+    if (depth > 24) return
+    val obj = node as? NSObject
+    if (obj != null) {
+        ax(
+            "ROTOR ${"  ".repeat(depth)}id=${node.accessibilityIdentifierOrNull()} " +
+                "container=${obj.accessibilityContainerType()} " +
+                "traits=${obj.accessibilityTraits()} " +
+                "isElement=${obj.isAccessibilityElement()} " +
+                "hidden=${obj.accessibilityElementsHidden()} " +
+                "modal=${obj.accessibilityViewIsModal()}",
+        )
+    }
+    for (child in node.accessibilityChildren()) dumpRotorSurface(child, depth + 1)
+}
+
 private fun dumpVoiceOverOrder(node: Any, stops: MutableList<String>, depth: Int = 0) {
     if (depth > 24) return
     val obj = node as? NSObject
