@@ -79,6 +79,9 @@ final object dev.ynagai.autograph.uikit/AutographComposeHosts { // dev.ynagai.au
     final fun unregister(platform.UIKit/UIView) // dev.ynagai.autograph.uikit/AutographComposeHosts.unregister|unregister(platform.UIKit.UIView){}[0]
 }
 
+final const val dev.ynagai.autograph.uikit/AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX // dev.ynagai.autograph.uikit/AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX|{}AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX[0]
+    final fun <get-AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX>(): kotlin/String // dev.ynagai.autograph.uikit/AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX.<get-AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX>|<get-AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX>(){}[0]
+
 final fun (kotlin.collections/List<kotlin/Any>).dev.ynagai.autograph.uikit/nearestAccessibilityClickable(): kotlin/Any? // dev.ynagai.autograph.uikit/nearestAccessibilityClickable|nearestAccessibilityClickable@kotlin.collections.List<kotlin.Any>(){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx(platform.UIKit/UIView, kotlin/Float): dev.ynagai.autograph.uikit/AxRect? // dev.ynagai.autograph.uikit/accessibilityBoundsInWindowPx|accessibilityBoundsInWindowPx@kotlin.Any(platform.UIKit.UIView;kotlin.Float){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityChildren(): kotlin.collections/List<kotlin/Any> // dev.ynagai.autograph.uikit/accessibilityChildren|accessibilityChildren@kotlin.Any(){}[0]
@@ -86,6 +89,7 @@ final fun (kotlin/Any).dev.ynagai.autograph.uikit/accessibilityIdentifierOrNull(
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/anyAccessibilityDescendant(platform.UIKit/UIView, kotlin/Float, kotlin/Function1<dev.ynagai.autograph.uikit/AxRect, kotlin/Boolean>): kotlin/Boolean // dev.ynagai.autograph.uikit/anyAccessibilityDescendant|anyAccessibilityDescendant@kotlin.Any(platform.UIKit.UIView;kotlin.Float;kotlin.Function1<dev.ynagai.autograph.uikit.AxRect,kotlin.Boolean>){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/isAccessibilityButton(): kotlin/Boolean // dev.ynagai.autograph.uikit/isAccessibilityButton|isAccessibilityButton@kotlin.Any(){}[0]
 final fun (kotlin/Any).dev.ynagai.autograph.uikit/isAccessibilityDisabled(): kotlin/Boolean // dev.ynagai.autograph.uikit/isAccessibilityDisabled|isAccessibilityDisabled@kotlin.Any(){}[0]
+final fun (kotlin/Any).dev.ynagai.autograph.uikit/isAutographScopeContainer(): kotlin/Boolean // dev.ynagai.autograph.uikit/isAutographScopeContainer|isAutographScopeContainer@kotlin.Any(){}[0]
 final fun (platform.UIKit/UIWindow).dev.ynagai.autograph.uikit/isCapturableWindow(): kotlin/Boolean // dev.ynagai.autograph.uikit/isCapturableWindow|isCapturableWindow@platform.UIKit.UIWindow(){}[0]
 final fun dev.ynagai.autograph.uikit/deepestAccessibilityHitPath(kotlin/Any, platform.UIKit/UIView, dev.ynagai.autograph.uikit/AxPoint, kotlin/Float, kotlin/Boolean = ...): kotlin.collections/List<kotlin/Any>? // dev.ynagai.autograph.uikit/deepestAccessibilityHitPath|deepestAccessibilityHitPath(kotlin.Any;platform.UIKit.UIView;dev.ynagai.autograph.uikit.AxPoint;kotlin.Float;kotlin.Boolean){}[0]
 final fun dev.ynagai.autograph.uikit/defaultScreenName(platform.UIKit/UIViewController): kotlin/String? // dev.ynagai.autograph.uikit/defaultScreenName|defaultScreenName(platform.UIKit.UIViewController){}[0]
