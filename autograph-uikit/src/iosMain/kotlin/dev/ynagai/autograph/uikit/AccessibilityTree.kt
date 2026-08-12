@@ -331,7 +331,18 @@ private fun deepestAccessibilityHitPath(
     // is reported whenever any child resolves — a dropped event turned into a misattributed one, the
     // wrong side of that trade. Neither pipeline's real starting node is clickable (Compose's
     // `OverlayInputView`, the native path's `UIWindow`), so the cold-start fix is unaffected.
-    if (!containsPosition && (ancestors.isNotEmpty() || node.isAccessibilityButton())) return null
+    // An Autograph scope container is exempt, and only it — see [AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX].
+    // It is a marker this library asked the app to place, carrying no content of its own, so it is
+    // never the answer to "what was tapped"; without the exemption it would prune its own subtree
+    // whenever a child is drawn outside it, which is the shape `autocaptureScope`'s kdoc promises
+    // works. The exemption is withheld from a *clickable* marker, since exempting one would let it
+    // claim a tap that landed outside it — a drop traded for a misattribution, the wrong direction.
+    val exemptScopeContainer = node.isAutographScopeContainer() && !node.isAccessibilityButton()
+    if (!containsPosition && !exemptScopeContainer &&
+        (ancestors.isNotEmpty() || node.isAccessibilityButton())
+    ) {
+        return null
+    }
     val pathToNode = ancestors + node
     // Keep the first branch that resolved at all as a fallback and carry on looking for a clickable
     // one — see the kdoc for why clickability outranks the z-order tie-break. Walking on instead of
@@ -576,6 +587,36 @@ private fun Any.anyAccessibilityDescendant(
 @AutographInternalApi
 public fun List<Any>.nearestAccessibilityClickable(): Any? =
     asReversed().firstOrNull { it.isAccessibilityButton() }
+
+/**
+ * Prefix marking an accessibility identifier as an Autograph **element scope** rather than a name the
+ * host app chose. Everything after it is the scope's payload.
+ *
+ * The identifier slot is the only bridged accessibility property that is both identity-bearing and
+ * never read out to a VoiceOver user, which is why the scope travels in it — see `autocaptureScope`'s
+ * kdoc in `autograph-compose` for the other three channels and why each is unusable. Compose
+ * Multiplatform collapses two `testTag`s on one layout node to the first, so a scope can never share a
+ * node with the element's own tag; it always arrives on a wrapper, one level above.
+ *
+ * **Reserved.** An identifier starting with this prefix is treated as Autograph's own and is never
+ * reported as a tap `target`, so an app that sets one itself loses that element's name. The payload
+ * format after the prefix is an implementation detail shared between the writer and this reader in the
+ * same release, and is not a compatibility surface.
+ */
+@AutographInternalApi
+public const val AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX: String = "__autograph_scope__"
+
+/**
+ * Whether this element is an Autograph scope container — a wrapper carrying
+ * [AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX] in its identifier.
+ *
+ * Load-bearing in two places, for opposite reasons: [deepestAccessibilityHitPath] exempts such a node
+ * from the containment gate so it cannot prune a child drawn outside it, and every site that names a
+ * tapped element must *exclude* it, since a scope marker is not a thing the user touched.
+ */
+@AutographInternalApi
+public fun Any.isAutographScopeContainer(): Boolean =
+    accessibilityIdentifierOrNull()?.startsWith(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX) == true
 
 /** Whether this element exposes `UIAccessibilityTraitButton`, Autograph's clickability predicate. */
 @AutographInternalApi
