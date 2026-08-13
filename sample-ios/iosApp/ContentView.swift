@@ -66,6 +66,13 @@ struct UIKitButton: UIViewRepresentable {
         // through the coordinator rather than baked into the UIAction at creation — otherwise a tap
         // counter would keep incrementing a stale copy and never move on screen.
         context.coordinator.action = action
+        // Title and identifier are re-applied here, not left to makeUIView, because makeUIView runs
+        // once per *UIView* while updateUIView runs per value change — and a `List` row's representable
+        // can be handed a surviving UIButton for a different index. Baking the identifier in at
+        // creation risks a button labelled "Row 2" still reporting `native_row_17`, which the XCUITest
+        // suite could not catch: it locates the row by the same stale identifier it then asserts on.
+        uiView.setTitle(title, for: .normal)
+        uiView.accessibilityIdentifier = identifier
     }
 
     final class Coordinator {
@@ -89,7 +96,8 @@ struct UIKitButton: UIViewRepresentable {
 /// asserting a behaviour that no longer exists. UIKit controls are what the pipeline names now, so
 /// hosting them here keeps the coverage above on the surface that is actually captured, rather than
 /// deleting it. The SwiftUI shell is retained deliberately: it is the real hierarchy the resolver has
-/// to walk out of, and [nativeSwiftUIButtonIsNotCaptured]'s fixture below pins the other half.
+/// to walk out of, and the `native_swiftui_button` fixture below pins the other half (asserted by
+/// `NativeSampleUITests.testNativeSwiftUIButtonIsNotReported`).
 struct NativeSampleView: View {
     @StateObject private var events = NativeSampleEvents()
 
@@ -108,10 +116,11 @@ struct NativeSampleView: View {
             UIKitButton(title: "Unidentified", identifier: nil)
                 .frame(height: 32)
 
-            // Disabled: capture must report nothing rather than invent a click, and must not fall
-            // through to whatever sits underneath either. See #134 — and note the mechanism changed
-            // with #189: `hitTest` declines a disabled UIControl outright, so it never reaches the
-            // resolver at all, where before a trait veto dropped it.
+            // Disabled: capture must report nothing rather than invent a click. See #134 — and note the
+            // mechanism changed with #189: `hitTest` declines a disabled UIControl outright, so it never
+            // reaches the resolver, where before a trait veto dropped it. The touch therefore passes
+            // through to whatever is drawn behind; nothing is reported here because that is inert, not
+            // because the pipeline refuses to look underneath.
             UIKitButton(title: "Disabled", identifier: "native_disabled_button")
                 .frame(height: 32)
                 .disabled(true)
