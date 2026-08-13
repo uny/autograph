@@ -217,7 +217,7 @@ class AccessibilityTreeTest {
         scope.addSubview(button)
 
         val position = AxPoint(55f * scale, 55f * scale)
-        val path = deepestAccessibilityHitPath(root, root, position, scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale, allowScopeContainerDescent = true)
 
         assertEquals(listOf(root, scope, button), path)
         assertEquals(button, path?.nearestAccessibilityClickable())
@@ -240,7 +240,7 @@ class AccessibilityTreeTest {
         scope.addSubview(inert)
 
         val position = AxPoint(55f * scale, 55f * scale)
-        val path = deepestAccessibilityHitPath(root, root, position, scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale, allowScopeContainerDescent = true)
 
         assertEquals(listOf(root), path)
     }
@@ -264,10 +264,44 @@ class AccessibilityTreeTest {
         scope.addSubview(button)
 
         val position = AxPoint(55f * scale, 55f * scale)
-        val path = deepestAccessibilityHitPath(root, root, position, scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale, allowScopeContainerDescent = true)
 
         assertEquals(listOf(root), path)
         assertNull(path?.nearestAccessibilityClickable())
+    }
+
+    /**
+     * The exemption is off unless the caller asks for it, and the native pipeline never does. That is
+     * what keeps the ownership boundary intact by construction: [resolveNativeTapTarget] drops a tap
+     * whose path crosses a Compose host, and a branch that stopped pruning on containment could
+     * resolve *before* the branch through the host — so neither returned path would cross it, and a
+     * Compose-owned tap could be reported natively. The marker is an identifier the host app is free
+     * to write, so it can never stand as proof of who owns a subtree.
+     */
+    @Test
+    fun doesNotDescendPastAScopeContainerUnlessTheCallerOptsIn() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val scope = UIView()
+        scope.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        scope.setIdentifier("${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{\"article_id\":\"42\"}")
+        root.addSubview(scope)
+
+        val button = UIView()
+        button.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        scope.addSubview(button)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+
+        // Default — the native pipeline's call.
+        assertEquals(listOf(root), deepestAccessibilityHitPath(root, root, position, scale))
+        // The ownership walk's call, which passes preferClickableBranches = false, must not differ.
+        assertEquals(
+            listOf(root),
+            deepestAccessibilityHitPath(root, root, position, scale, preferClickableBranches = false),
+        )
     }
 
     @Test

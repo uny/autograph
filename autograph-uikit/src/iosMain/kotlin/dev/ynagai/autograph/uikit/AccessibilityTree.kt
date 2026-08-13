@@ -245,6 +245,23 @@ import platform.darwin.NSObject
  * clickable-free subtree compounds per level whenever a node is reachable by more than one route. All
  * three degrade to resolving a shallower element rather than crashing — a missed leaf is a dropped
  * event, an overflow or a multi-second walk on the main thread is a wedged app.
+ *
+ * **[allowScopeContainerDescent] is off by default, and only the Compose pipeline turns it on.** It
+ * exempts an Autograph scope container ([AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX]) from the containment
+ * gate, so a clickable drawn outside its scope wrapper still resolves. Confining it to the Compose
+ * adapter is what keeps two other properties intact by construction rather than by argument:
+ *
+ * - **The ownership boundary.** [resolveNativeTapTarget] walks the whole window and drops a tap whose
+ *   path crosses a Compose host, which is how the two pipelines avoid reporting the same tap twice.
+ *   A branch that no longer prunes on containment can resolve *before* the branch through the host,
+ *   and neither returned path then crosses it — so a Compose-owned tap could be reported by the
+ *   native pipeline. That is the privacy boundary this file warns about above, and the marker is an
+ *   identifier the host app is free to write, so it cannot be treated as proof of who owns a subtree.
+ *   The Compose walk starts *at* the Compose host, so everything it reaches is Compose-owned already
+ *   and there is no boundary for the exemption to cross.
+ * - **The visit budget.** A non-containing branch that used to cost one visit can expose a whole
+ *   subtree instead. Confined to the Compose walk that subtree is the composition's own; opened on
+ *   the native walk it is the entire window, twice per tap.
  */
 @AutographInternalApi
 public fun deepestAccessibilityHitPath(
@@ -253,12 +270,14 @@ public fun deepestAccessibilityHitPath(
     positionInWindowPx: AxPoint,
     scale: Float,
     preferClickableBranches: Boolean = true,
+    allowScopeContainerDescent: Boolean = false,
 ): List<Any>? = deepestAccessibilityHitPath(
     node,
     view,
     positionInWindowPx,
     scale,
     preferClickableBranches,
+    allowScopeContainerDescent,
     ancestors = emptyList(),
     budget = intArrayOf(MAX_ACCESSIBILITY_NODE_VISITS),
 )
@@ -311,6 +330,7 @@ private fun deepestAccessibilityHitPath(
     positionInWindowPx: AxPoint,
     scale: Float,
     preferClickableBranches: Boolean,
+    allowScopeContainerDescent: Boolean,
     ancestors: List<Any>,
     budget: IntArray,
 ): List<Any>? {
@@ -337,7 +357,8 @@ private fun deepestAccessibilityHitPath(
     // whenever a child is drawn outside it, which is the shape `autocaptureScope`'s kdoc promises
     // works. The exemption is withheld from a *clickable* marker, since exempting one would let it
     // claim a tap that landed outside it — a drop traded for a misattribution, the wrong direction.
-    val exemptScopeContainer = node.isAutographScopeContainer() && !node.isAccessibilityButton()
+    val exemptScopeContainer =
+        allowScopeContainerDescent && node.isAutographScopeContainer() && !node.isAccessibilityButton()
     if (!containsPosition && !exemptScopeContainer &&
         (ancestors.isNotEmpty() || node.isAccessibilityButton())
     ) {
@@ -351,7 +372,8 @@ private fun deepestAccessibilityHitPath(
     var fallback: List<Any>? = null
     for (child in node.accessibilityChildren().asReversed()) {
         val branch = deepestAccessibilityHitPath(
-            child, view, positionInWindowPx, scale, preferClickableBranches, pathToNode, budget,
+            child, view, positionInWindowPx, scale, preferClickableBranches,
+            allowScopeContainerDescent, pathToNode, budget,
         ) ?: continue
         if (!preferClickableBranches) return listOf(node) + branch
         if (branch.any { it.isAccessibilityButton() }) return listOf(node) + branch

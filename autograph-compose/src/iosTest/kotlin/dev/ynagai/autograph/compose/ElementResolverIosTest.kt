@@ -126,6 +126,23 @@ class ElementResolverIosTest {
         assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope)
     }
 
+    /**
+     * The other half of that: a payload that parses perfectly well but isn't an object. Syntactically
+     * invalid JSON exercises the parser's throw path; these exercise the cast, which is a different
+     * branch and would otherwise be untested.
+     */
+    @Test
+    fun skipsAScopePayloadThatParsesToSomethingOtherThanAnObject() {
+        for (payload in listOf("[]", "null", "42", "\"a string\"")) {
+            val (root, position) = buildScopedRoot(payload, """{"article_id":"42"}""")
+
+            val result = resolveIosElement(root, claims = null, position)
+
+            assertEquals("share_button", result?.identifier, "payload=$payload")
+            assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope, "payload=$payload")
+        }
+    }
+
     @Test
     fun reportsAnEmptyScopeWhenNoWrapperIsOnThePath() {
         val (root, position) = buildScopedRoot()

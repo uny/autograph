@@ -70,6 +70,23 @@ class NativeTapResolutionTest {
         assertEquals("share_button", target)
     }
 
+    /**
+     * [AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX] states as an unconditional contract that a reserved
+     * identifier is never reported as a tap target, so both resolvers have to honour it — the Compose
+     * one is not the only place an identifier becomes an event's `target`. Nothing this library emits
+     * reaches here (its scope wrappers carry no click action, and anything under a Compose host is
+     * dropped before this), so it takes an app naming a native control with the prefix; the tap then
+     * drops rather than shipping an internal marker into that app's analytics.
+     */
+    @Test
+    fun neverReportsAReservedIdentifierAsANativeTarget() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(button("${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{\"article_id\":\"42\"}", 10.0, 10.0, 20.0, 20.0))
+
+        assertNull(resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale))
+    }
+
     @Test
     fun attributesToTheInnermostClickable() {
         val root = UIView()

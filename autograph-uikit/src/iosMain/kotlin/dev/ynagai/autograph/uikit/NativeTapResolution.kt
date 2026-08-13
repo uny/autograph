@@ -121,6 +121,13 @@ public fun resolveNativeTapTarget(
     // why this is a veto here rather than a narrowing of the clickability predicate, and why a
     // disabled ancestor must not suppress an enabled descendant.
     if (nearestClickable.isAccessibilityDisabled()) return null
+    // The reserved prefix names an Autograph marker, never something the user touched, and
+    // [AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX] states that as an unconditional contract — so it has to hold
+    // in *both* resolvers, not just the Compose one. Nothing this library emits can reach here (its
+    // scope wrappers carry no click action, and anything under a Compose host is dropped above), so
+    // this fires only when an app puts the prefix on a native control of its own. The tap then drops
+    // rather than shipping an internal marker to the app's analytics as an element name.
+    if (nearestClickable.isAutographScopeContainer()) return null
     return nearestClickable.accessibilityIdentifierOrNull()
 }
 

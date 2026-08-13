@@ -101,7 +101,13 @@ internal fun resolveIosElement(
         if (claims.instrumentedClickExecutedThisGeneration()) return null
     }
     val scale = UIScreen.mainScreen.scale.toFloat()
-    val path = deepestAccessibilityHitPath(view, view, AxPoint(position.x, position.y), scale) ?: return null
+    // `allowScopeContainerDescent` is turned on here and nowhere else. The walk starts at the Compose
+    // host, so every node it reaches is Compose-owned and the exemption has no ownership boundary to
+    // cross — see deepestAccessibilityHitPath's kdoc for what turning it on in the native pipeline
+    // would cost.
+    val path = deepestAccessibilityHitPath(
+        view, view, AxPoint(position.x, position.y), scale, allowScopeContainerDescent = true,
+    ) ?: return null
     val nearestClickable = path.nearestAccessibilityClickable() ?: return null
     // A disabled element takes the hit and is vetoed here, exactly as Android's
     // resolveAutocaptureTarget vetoes SemanticsProperties.Disabled (#128) — measured on-device,
