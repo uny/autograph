@@ -136,8 +136,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   UIKit taps are now resolved first by `UIView.hitTest`, which never consults accessibility. In that
   same cold process the tap position returned the real `UIButton` **carrying its
   `accessibilityIdentifier`** — the exact string reported as the event's `target`. A `UIControl`, or
-  any view with an enabled tap gesture recognizer, is therefore identified cold. The accessibility
-  resolver remains as the second path, which is what still covers SwiftUI on a warm tree.
+  any view with an enabled tap gesture recognizer, is therefore identified cold. (At the time, the
+  accessibility resolver remained behind it as a second path covering SwiftUI on a warm tree; the entry
+  above supersedes that — [#191] removed it before either change shipped.)
 
   Two things improve on UIKit as a side effect, because `hitTest` *is* the answer to which view
   receives a touch rather than an approximation of it: the overlap and z-order ambiguity documented
@@ -814,5 +815,5 @@ Initial release.
 [#176]: https://github.com/uny/autograph/issues/176
 [#179]: https://github.com/uny/autograph/issues/179
 [#185]: https://github.com/uny/autograph/issues/185
-[#191]: https://github.com/uny/autograph/issues/191
 [#189]: https://github.com/uny/autograph/issues/189
+[#191]: https://github.com/uny/autograph/issues/191

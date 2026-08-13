@@ -10,10 +10,11 @@ import dev.ynagai.autograph.uikit.installAutographNativeTapCapture
  * resolved tap through [onTap] as its `target` and its full `properties` (JSON).
  *
  * This is the counterpart to `MainViewController()`: that entry point hosts the Compose sample and
- * exercises `autograph-compose`'s pipeline, this one exercises `autograph-uikit`'s. The SwiftUI screen
- * it serves (see `ContentView.swift`) contains no Compose at all, so every tap it reports came through
- * the accessibility-tree walk aimed at a real SwiftUI hierarchy — the shape that unit tests cannot
- * reproduce and that has hidden three separate defects (#77, #82, #83).
+ * exercises `autograph-compose`'s pipeline, this one exercises `autograph-uikit`'s. The screen it
+ * serves (see `ContentView.swift`) contains no Compose at all: a SwiftUI layout hosting real UIKit
+ * controls, which since #191 is the only shape native capture resolves. Every tap it reports came
+ * through `UIView.hitTest` against a real hierarchy — the shape that unit tests cannot reproduce and
+ * that has hidden three separate defects (#77, #82, #83).
  *
  * [onTap] is what the XCUITest suite reads: it can't inspect Kotlin state, so the sample surfaces
  * every reported tap on-screen. Mirrors `LoggingTracker`'s role in the Compose sample.

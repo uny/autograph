@@ -251,14 +251,17 @@ import platform.darwin.NSObject
  * gate, so a clickable drawn outside its scope wrapper still resolves. Confining it to the Compose
  * adapter is what keeps two other properties intact by construction rather than by argument:
  *
- * - **The ownership boundary.** The native pipeline walks the whole window and drops a tap whose
- *   path crosses a Compose host, which is how the two pipelines avoid reporting the same tap twice.
- *   A branch that no longer prunes on containment can resolve *before* the branch through the host,
- *   and neither returned path then crosses it — so a Compose-owned tap could be reported by the
- *   native pipeline. That is the privacy boundary this file warns about above, and the marker is an
- *   identifier the host app is free to write, so it cannot be treated as proof of who owns a subtree.
- *   The Compose walk starts *at* the Compose host, so it stays inside one composition's subtree and
- *   never reaches a sibling of that host — which is the boundary the native pipeline arbitrates.
+ * - **The ownership boundary.** Both pipelines drop a tap whose path crosses a Compose host, which is
+ *   how they avoid reporting the same tap twice. **Historical, and stated because the shape of the
+ *   argument still applies:** until #191 the native pipeline arbitrated that boundary *through this
+ *   very walk*, over the whole window — so a branch that no longer pruned on containment could resolve
+ *   *before* the branch through the host, neither returned path would cross it, and a Compose-owned tap
+ *   could be reported natively. Since #191 the native pipeline asks the question of the `UIView.hitTest`
+ *   chain instead (see `NativeHitTestResolution.kt`) and does not use this walk at all, so that
+ *   particular route is closed — but the marker is still an identifier the host app is free to write,
+ *   so it still cannot be treated as proof of who owns a subtree, and the exemption still must not
+ *   escape the Compose adapter. The Compose walk starts *at* the Compose host, so it stays inside one
+ *   composition's subtree and never reaches a sibling of that host.
  *   Note what that does *not* say: [accessibilityChildren] unions `accessibilityElements` with
  *   `subviews`, so the walk does descend into UIKit interop (`UIKitView`/`UIKitViewController`)
  *   subtrees hosted *inside* the composition, and those are not Compose-owned. The exemption can

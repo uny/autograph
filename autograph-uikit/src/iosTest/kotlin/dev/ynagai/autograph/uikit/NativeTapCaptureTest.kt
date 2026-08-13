@@ -17,7 +17,6 @@ import kotlinx.serialization.json.JsonObject
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIButton
-import platform.UIKit.UIScreen
 import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIView
 import platform.UIKit.UIWindow

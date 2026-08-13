@@ -113,9 +113,10 @@ internal sealed interface NativeHitTestResolution {
 
     /**
      * The tap resolved, and the answer is that nothing may be reported for it — an ignored region, an
-     * excluded or Compose-owned subtree, a reserved identifier. **Terminal**: the caller must not
-     * consult the accessibility resolver, which could otherwise name something for the very tap this
-     * vetoed.
+     * excluded or Compose-owned subtree, a reserved identifier. **Terminal**: nothing may name this tap
+     * afterwards, and nothing may treat it as a symptom. That was originally a rule about a second
+     * resolver behind this one; #191 removed it, and what the distinction buys now is the diagnostic —
+     * see this interface's kdoc above.
      */
     object Dropped : NativeHitTestResolution
 
@@ -160,14 +161,15 @@ internal sealed interface NativeHitTestResolution {
  *    attributes to the button.
  * 5. **It carries no usable `accessibilityIdentifier`** ([accessibilityIdentifierOrNull], which also
  *    rejects a blank one) → [Unresolved][NativeHitTestResolution.Unresolved]. Deliberately *not* a
- *    drop, and this is the single most load-bearing choice in the function: a warm SwiftUI screen hits
- *    exactly this case — its hosting views carry gesture recognizers and no identifier — so dropping
- *    here would silently disable the SwiftUI half of native capture, which is the half that has no
- *    other route. Identification never falls back to `accessibilityLabel`; see
+ *    drop: an untagged control is a miss, not something this library was asked to withhold, and only a
+ *    miss may spend the caller's one-per-process warning — which is exactly the developer this case
+ *    concerns. (Until #191 the reason was different and stronger: a second resolver ran behind this
+ *    one, and a drop here would have cut off warm SwiftUI capture. That resolver is gone; the outcome
+ *    is unchanged.) Identification never falls back to `accessibilityLabel`; see
  *    [accessibilityIdentifierOrNull] for that privacy guarantee.
  * 6. **The identifier is reserved** ([AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX]) →
  *    [Dropped][NativeHitTestResolution.Dropped], because that prefix names an Autograph marker
- *    unconditionally, in both resolvers.
+ *    unconditionally — here and in `autograph-compose`'s resolver alike.
  *
  * **There is deliberately no disabled-control veto here, and that is a measured decision rather than
  * an omission.** The removed accessibility resolver had one, and #189's sketch of this function
@@ -346,9 +348,10 @@ private const val MINIMUM_VISIBLE_ALPHA = 0.01
  *
  * Emptiness is a real case rather than paranoia — `hitTest` is overridable, and an app is free to
  * return a view from another part of the hierarchy. The caller reads empty as
- * [Unresolved][NativeHitTestResolution.Unresolved] rather than as a drop, since a chain that does not
- * reach [to] cannot be checked against the ownership registries either; sending it on to the
- * accessibility resolver, which does its own containment walk from [to], is the honest outcome.
+ * [Unresolved][NativeHitTestResolution.Unresolved] rather than as a drop: a chain that does not reach
+ * [to] cannot be checked against the ownership registries, so this resolver has no basis for either
+ * naming the tap or claiming it withheld one. Nothing runs afterwards — the tap is simply not reported,
+ * and the developer is told once (see [warnOnceIfANativeTapResolvedToNothing]).
  *
  * Compared with `==`, never `===`: [from] arrives from `hitTest` across the interop boundary and [to]
  * is the caller's own reference, so Kotlin/Native hands them out as distinct wrappers for what may be
@@ -429,23 +432,27 @@ private const val MAX_HIT_CHAIN_DEPTH = 256
  * UIScrollView(id="feed_list") → row`, a tap on the row resolved to `login_screen`. A screen container
  * carrying an `accessibilityIdentifier` for UI testing and a tap-to-dismiss-keyboard recognizer is an
  * ordinary UIKit shape, so this was not a corner. Stopping at the barrier gives
- * [Unresolved][NativeHitTestResolution.Unresolved], and the accessibility route — which *can* see
- * SwiftUI rows — resolves it exactly as before.
+ * [Unresolved][NativeHitTestResolution.Unresolved].
  *
- * Nothing above a scroll view is a plausible owner of a tap the scroll view's own content received, so
- * the barrier costs no target this resolver should have named: UIKit delivered the touch inside the
- * scroll view, and an ancestor's recognizer that did also fire is not what the user tapped.
+ * **Since #191 that is where the tap ends** — no second resolver runs behind this one, so a row the
+ * barrier stops at is not reported at all. When this barrier was written the accessibility route still
+ * caught the SwiftUI rows it stopped, and this note said so; that rescue is gone, and the barrier's
+ * cost is now paid in full. It is still the right trade, for the reason below rather than for that one:
+ * nothing above a scroll view is a plausible owner of a tap the scroll view's own content received, so
+ * the barrier costs no target *this* resolver should have named — UIKit delivered the touch inside the
+ * scroll view, and an ancestor's recognizer that did also fire is not what the user tapped. What it
+ * costs is a row this resolver could never have named anyway; a drop, chosen over a misattribution.
  *
  * **A `UITextView` is a `UIScrollView`**, and so is excluded by the same branch — an editable one is
  * tapped to focus rather than to activate, so this is the wanted answer, but it means text views are
- * never reported here and fall through like a cell. Named because the type relationship is easy to miss.
+ * never reported, like a cell. Named because the type relationship is easy to miss.
  *
  * **Known gap — UIKit cell selection.** A `UITableViewCell` or `UICollectionViewCell` is neither a
  * `UIControl` nor recognizer-bearing; selection is the delegate's, driven by recognizers on the scroll
- * view this now excludes. So a tap on a plain cell reaches nothing interactive and falls through to the
- * accessibility resolver, where it resolves warm and drops cold — the same position UIKit cells were in
- * before #189, and no worse. Adding cells to the predicate is a guess until a real `UITableView`
- * hierarchy is run against it.
+ * view this now excludes. So a tap on a plain cell reaches nothing interactive and **is not reported at
+ * all** — warm or cold, since #191 removed the accessibility resolver that used to resolve it on a warm
+ * tree. The README's gap list says the same; keep the two in step. Adding cells to the predicate is a
+ * guess until a real `UITableView` hierarchy is run against it.
  *
  * **Threading.** Main thread only.
  */

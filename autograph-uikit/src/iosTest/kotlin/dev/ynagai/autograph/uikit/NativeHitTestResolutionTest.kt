@@ -253,6 +253,70 @@ class NativeHitTestResolutionTest {
         )
     }
 
+    /**
+     * The release half of the boundary, and the only test that asserts anything about
+     * [AutographComposeHosts.unregister] at all. Its predecessor died with `NativeTapResolutionTest`
+     * in #191, and nothing replaced it: every other Compose-host test only ever *registers*, and the
+     * `@AfterTest` teardown unregisters without asserting, so making `unregister` a no-op left the whole
+     * iOS suite green. In production `ComposeHostRegistration.ios.kt` unregisters on `onDispose`, so a
+     * broken release means a dismissed `ComposeUIViewController`'s view stays registered for the life
+     * of the process and every native tap over that screen region is silently [Dropped] forever.
+     *
+     * Covered on the shared [WeakViewRegistry] by the ignored-view suite, but not through *this*
+     * boundary — and the two are deliberately separate registry instances, so the delegation is exactly
+     * what could break without either suite noticing.
+     */
+    @Test
+    fun unregisteringAComposeHostRestoresNativeResolution() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val composeHost = view(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(composeHost)
+        composeHost.addSubview(controlAt(10.0, 10.0, 20.0, 20.0).identified("was_compose_button"))
+
+        registerHost(composeHost)
+        assertSame(
+            NativeHitTestResolution.Dropped,
+            resolve(root, 15.0, 15.0),
+            "precondition: while registered the tap is Compose-owned",
+        )
+
+        AutographComposeHosts.unregister(composeHost)
+        registeredHosts.remove(composeHost)
+
+        assertTarget(
+            "was_compose_button",
+            resolve(root, 15.0, 15.0),
+            "once the host is released the view is ordinary native content again",
+        )
+    }
+
+    /**
+     * Ref-counting on the Compose-host boundary specifically: two registrations of one host — two
+     * `AutographProvider`s under one `ComposeUIViewController`, or two nav destinations composed during
+     * a transition — must both be released before native capture re-arms. Releasing one early would
+     * expose live Compose content to the native pipeline, which is the privacy direction of this
+     * boundary rather than the merely-noisy one.
+     */
+    @Test
+    fun aComposeHostStaysRegisteredUntilEveryRegistrationIsReleased() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val composeHost = view(0.0, 0.0, 100.0, 100.0)
+        root.addSubview(composeHost)
+        composeHost.addSubview(controlAt(10.0, 10.0, 20.0, 20.0).identified("compose_button"))
+
+        registerHost(composeHost)
+        registerHost(composeHost)
+
+        AutographComposeHosts.unregister(composeHost)
+        registeredHosts.remove(composeHost)
+
+        assertSame(
+            NativeHitTestResolution.Dropped,
+            resolve(root, 15.0, 15.0),
+            "a host released by one of its two registrations stays Compose-owned",
+        )
+    }
+
     @Test
     fun dropsATapWhoseHitChainCrossesADeveloperExcludedView() {
         val root = view(0.0, 0.0, 100.0, 100.0)
@@ -393,12 +457,13 @@ class NativeHitTestResolutionTest {
         assertTarget("card", resolve(root, 15.0, 15.0))
     }
 
-    // --- fall-through: not a drop ---
+    // --- unresolved: a miss, not a drop ---
 
     /**
-     * **The load-bearing one.** A warm SwiftUI screen lands exactly here — hosting views carrying
-     * recognizers and no identifier — so a drop would silently disable the SwiftUI half of native
-     * capture, which has no other route. It must fall through to the accessibility resolver.
+     * An untagged control is a **miss**, not something the library was asked to withhold, so it must be
+     * [NativeHitTestResolution.Unresolved] and not [NativeHitTestResolution.Dropped]. Nothing is
+     * reported either way; the distinction is that only a miss may spend the one-per-process warning,
+     * and a developer whose untagged control produced no event is exactly who that line is for.
      */
     @Test
     fun fallsThroughWhenTheInteractiveViewCarriesNoIdentifier() {
@@ -415,8 +480,9 @@ class NativeHitTestResolutionTest {
      * would shadow its own content and claim every tap inside it. Measured before the exclusion: a tap
      * on `native_row_2` reported `native_list`, where the accessibility resolver named the row.
      *
-     * Falling through is what lets the accessibility route — the only one that can see SwiftUI rows —
-     * resolve it as it always did.
+     * That resolver is gone since #191, so the row is now not reported at all rather than rescued. The
+     * exclusion still holds, because it chooses a drop over a misattribution — see
+     * [isNativeInteractive]'s barrier section for the trade.
      */
     @Test
     fun neverTreatsAScrollViewAsTheTappedElement() {
