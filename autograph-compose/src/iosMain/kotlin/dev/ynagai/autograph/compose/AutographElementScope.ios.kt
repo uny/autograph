@@ -21,6 +21,13 @@ import kotlinx.serialization.json.JsonObject
  * its size is a latency budget rather than a storage one. Well above any plausible scope — a handful
  * of ids — and far below anything that would be felt.
  *
+ * **Applied on both sides, and the reader's side is the one that has to hold.** This writer is not the
+ * only writer of a reserved identifier: the identifier slot belongs to the host app, so anything in the
+ * process — an app view, a third-party SDK behind a `UIKitView` — can put the prefix on a node the walk
+ * reaches. A ceiling enforced only here would be enforced only where it was never needed; `scopeOnPath`
+ * applies it too, which is what actually bounds the per-tap parse and what keeps an arbitrarily large
+ * foreign payload out of the event.
+ *
  * Over the ceiling the marker is dropped whole rather than truncated: half a JSON object does not
  * parse, so truncating would produce a wrapper that publishes an accessibility container and a
  * reserved identifier while contributing no scope, which is the cost without the benefit. Dropping it
@@ -32,7 +39,7 @@ import kotlinx.serialization.json.JsonObject
  * and nothing about the parse cost at either end has been timed. Treat it as a guard against the
  * pathological, not as a tuned budget: if a real scope ever approaches it, measure before raising it.
  */
-private const val MAX_SCOPE_PAYLOAD_LENGTH = 2048
+internal const val MAX_SCOPE_PAYLOAD_LENGTH = 2048
 
 /**
  * Printed once per process, the first time a scope is dropped for size.
@@ -84,6 +91,13 @@ private fun warnScopePayloadTooLarge(length: Int) {
 @Composable
 internal actual fun Modifier.autographElementScopeMarker(properties: JsonObject): Modifier {
     val identifier = remember(properties) {
+        // An empty scope publishes nothing, for the reason the oversized branch below drops the marker
+        // whole: a container with no readable scope is the whole accessibility cost of this API — a
+        // rotor stop, an extra node UI tests traversing descendants will count — with none of its
+        // benefit, since `scopeOnPath` folds an empty payload away to nothing anyway. Reachable without
+        // anyone writing `AutographElementScope { }` on purpose: a scope assembled from values that all
+        // turned out absent for this row.
+        if (properties.isEmpty()) return@remember null
         val payload = Json.encodeToString(JsonObject.serializer(), properties)
         if (payload.length > MAX_SCOPE_PAYLOAD_LENGTH) {
             warnScopePayloadTooLarge(payload.length)

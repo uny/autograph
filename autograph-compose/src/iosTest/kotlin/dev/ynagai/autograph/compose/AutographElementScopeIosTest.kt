@@ -99,6 +99,29 @@ class AutographElementScopeIosTest {
     }
 
     /**
+     * The other end of the same rule: an empty scope publishes nothing either. A container with no
+     * readable scope is this API's whole accessibility cost — a rotor stop, an extra node — with none
+     * of its benefit, since the reader folds an empty payload away regardless. Reachable without anyone
+     * writing `AutographElementScope { }` on purpose: a scope whose values all turned out absent for
+     * this row. Android has the matching assertion in [AutographElementScopeTest]; this is what stops
+     * the two platforms disagreeing about what an empty scope costs.
+     */
+    @Test
+    fun publishesNothingAtAllWhenTheScopeIsEmpty() = runComposeUiTest {
+        setContent {
+            AutographElementScope {
+                Box(Modifier.testTag("row").size(20.dp).clickable {})
+            }
+        }
+        waitForIdle()
+
+        val root = onRoot(useUnmergedTree = true).fetchSemanticsNode()
+        assertEquals(emptyList(), root.scopeIdentifiers())
+        assertTrue(root.traversalGroups().isEmpty(), "an empty scope must publish no container either")
+        assertEquals("row", onNodeWithTag("row", useUnmergedTree = true).fetchSemanticsNode().config.getOrNull(SemanticsProperties.TestTag))
+    }
+
+    /**
      * Dropping the marker degrades to exactly what happens with no wrapper at all — the element keeps
      * its own name and its click. This is the half of the drop that makes it safe to be silent.
      */

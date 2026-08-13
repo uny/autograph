@@ -102,9 +102,11 @@ internal fun resolveIosElement(
     }
     val scale = UIScreen.mainScreen.scale.toFloat()
     // `allowScopeContainerDescent` is turned on here and nowhere else. The walk starts at the Compose
-    // host, so every node it reaches is Compose-owned and the exemption has no ownership boundary to
-    // cross — see deepestAccessibilityHitPath's kdoc for what turning it on in the native pipeline
-    // would cost.
+    // host, so it stays within one composition's subtree and never reaches a sibling of that host —
+    // which is the boundary the native pipeline arbitrates, so the exemption has none to cross. (It
+    // does reach UIKit interop subtrees hosted *inside* the composition, which are not Compose-owned;
+    // see deepestAccessibilityHitPath's kdoc for why that is bounded, and for what turning this on in
+    // the native pipeline would cost.)
     val path = deepestAccessibilityHitPath(
         view, view, AxPoint(position.x, position.y), scale, allowScopeContainerDescent = true,
     ) ?: return null
@@ -142,12 +144,20 @@ internal fun resolveIosElement(
  * runs against arbitrary strings on the main thread inside a tap handler; a wrong scope lands in
  * analytics data looking true, and a crash costs the whole app. Dropping the entry leaves the tap
  * attributed exactly as it would have been without the wrapper.
+ *
+ * [MAX_SCOPE_PAYLOAD_LENGTH] is enforced here as well as at the writer, and this is the side that
+ * matters. The writer's own scopes are already under it by construction; what this bounds is a payload
+ * this library did not write — the prefix sits in an identifier slot the host app owns, and the walk
+ * reaches UIKit interop subtrees too, so a foreign node can carry one of any size. Without the check
+ * here, one such node would put an unbounded `parseToJsonElement` on the main thread on *every* tap and
+ * fold an unbounded object straight into the event.
  */
 @OptIn(AutographInternalApi::class)
 private fun List<Any>.scopeOnPath(): JsonObject = fold(EmptyJsonObject) { acc, node ->
     val payload = node.accessibilityIdentifierOrNull()
         ?.takeIf { it.startsWith(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX) }
         ?.removePrefix(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX)
+        ?.takeIf { it.length <= MAX_SCOPE_PAYLOAD_LENGTH }
         ?: return@fold acc
     val parsed = runCatching { Json.parseToJsonElement(payload) as? JsonObject }.getOrNull() ?: return@fold acc
     when {
