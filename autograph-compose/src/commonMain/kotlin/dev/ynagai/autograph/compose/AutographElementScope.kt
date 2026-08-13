@@ -30,9 +30,18 @@ import kotlinx.serialization.json.JsonPrimitive
  * its name. This API's shape is what makes that impossible rather than documented-against — which is
  * why it replaces [autocaptureScope], whose kdoc endorsed exactly the usage iOS cannot support.
  *
- * The wrapper is a [Box]: it adds one layout node, propagates its constraints, and clips nothing, so
- * a `clickable` drawn *outside* it — an overhanging badge, an `offset` decoration — is still scoped
- * and still resolves.
+ * The wrapper is a [Box]: it adds one layout node, propagates its constraints — minimums included,
+ * which is why it passes `propagateMinConstraints = true` — and clips nothing, so a `clickable` drawn
+ * *outside* it — an overhanging badge, an `offset` decoration — is still scoped and still resolves.
+ *
+ * **One thing a wrapper cannot be transparent to: modifiers scoped to the *enclosing* layout.**
+ * `Modifier.weight` in a `Row`/`Column`, `Modifier.align` / `matchParentSize` in a `Box`, and
+ * `alignByBaseline` are parent data read by the direct parent, and after wrapping the direct parent is
+ * this [Box] rather than yours. Put them on the wrapper's side of the boundary — wrap the *inside* of
+ * the element, or hoist the layout — not on the content. `weight` and `alignByBaseline` stop compiling,
+ * which is the loud half; `align` and `matchParentSize` are members of [BoxScope] and quietly rebind to
+ * this wrapper, which is the half to watch (measured: a `Modifier.align(BottomEnd)` moved inside the
+ * wrapper stops reaching its former parent, and a `matchParentSize` collapses to zero).
  *
  * **What it does to accessibility, on iOS only.** The scope reaches the tap through the UIKit
  * accessibility tree, which is the only route to a tapped element Compose Multiplatform offers there,
@@ -90,7 +99,12 @@ public fun AutographElementScope(
     properties: JsonObject,
     content: @Composable BoxScope.() -> Unit,
 ) {
-    Box(Modifier.autographElementScopeMarker(properties), content = content)
+    // `propagateMinConstraints = true`, not the Box default: a wrapper that zeroed the incoming
+    // minimums would stop stretching content its parent had stretched before, and the caller cannot
+    // compensate — this composable takes no `Modifier`. Measured inside a `propagateMinConstraints`
+    // parent (what Material's `Surface`/`Card`/`ListItem` are): the wrapped child went 1024x20 -> 20x20,
+    // which for a row with `Arrangement.SpaceBetween` bunches its content at the start.
+    Box(Modifier.autographElementScopeMarker(properties), propagateMinConstraints = true, content = content)
 }
 
 /**
