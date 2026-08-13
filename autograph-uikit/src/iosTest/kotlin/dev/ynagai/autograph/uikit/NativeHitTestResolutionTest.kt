@@ -504,8 +504,7 @@ class NativeHitTestResolutionTest {
             "an excluded view under the tap must veto it even when it cannot receive the touch",
         )
         // The divergence is the point, so it is asserted rather than assumed: give the same tree the
-        // accessibility frames that resolver needs and confirm it drops this tap too. Without this the
-        // test would keep passing if the two routes silently stopped disagreeing.
+        // accessibility frames that resolver needs and confirm it drops this tap too.
         root.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
         card.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
         card.setAccessibilityTraits(UIAccessibilityTraitButton)
@@ -513,6 +512,16 @@ class NativeHitTestResolutionTest {
         assertNull(
             resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
             "the accessibility resolver honours the same opt-out — both routes must agree here",
+        )
+        // Control arm: without it the null above could equally mean "this fixture resolves to nothing
+        // for an unrelated reason", and the claim would be unbacked. Releasing the registration must
+        // bring the accessibility resolver back to naming the card.
+        registeredIgnores.forEach { it.unregister() }
+        registeredIgnores.clear()
+        assertEquals(
+            "profile_card",
+            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
+            "non-vacuity: the null above must be the opt-out's doing, not the fixture's",
         )
     }
 
@@ -534,6 +543,52 @@ class NativeHitTestResolutionTest {
         assertTarget("profile_card", resolve(root, 15.0, 15.0), "precondition")
 
         registerIgnored(emailOverlay)
+
+        assertSame(NativeHitTestResolution.Dropped, resolve(root, 15.0, 15.0))
+    }
+
+    /**
+     * The shape that defeats a frontmost-only walk. A clear-backgrounded full-size sibling — visible by
+     * `alpha`, occluding nothing, declining touches — sits in front of the excluded label. `hitTest`
+     * steps over it and returns the card, and a walk that always takes the frontmost subview commits to
+     * the scrim and never reaches the label. The hit view's own subtree walk is what covers this.
+     */
+    @Test
+    fun honoursAnOptOutBehindATransparentFrontSibling() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("profile_card")
+        root.addSubview(card)
+        val emailLabel = UILabel(frame = CGRectMake(5.0, 5.0, 50.0, 20.0)).identified("email_label")
+        card.addSubview(emailLabel)
+        // Added after the label, so it is in front of it, and touch-transparent so hitTest ignores it.
+        card.addSubview(view(0.0, 0.0, 100.0, 100.0))
+
+        assertTarget("profile_card", resolve(root, 15.0, 15.0), "precondition")
+
+        registerIgnored(emailLabel)
+
+        assertSame(NativeHitTestResolution.Dropped, resolve(root, 15.0, 15.0))
+    }
+
+    /**
+     * An excluded view drawn outside its own parent's bounds. A zero-sized container with an overhanging
+     * child is an ordinary autolayout result, and `hitTest` refuses to enter such a parent at all — so
+     * the subtree walk deliberately judges each view by whether *it* contains the point rather than
+     * gating descent on its ancestors.
+     */
+    @Test
+    fun honoursAnOptOutDrawnOutsideItsParentsBounds() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("profile_card")
+        root.addSubview(card)
+        // A zero-sized container: it contains no point at all, yet its child is drawn over the card.
+        val badgeContainer = view(0.0, 0.0, 0.0, 0.0)
+        card.addSubview(badgeContainer)
+        badgeContainer.addSubview(UILabel(frame = CGRectMake(0.0, 0.0, 50.0, 20.0)).identified("email_label"))
+
+        assertTarget("profile_card", resolve(root, 15.0, 15.0), "precondition")
+
+        registerIgnored(badgeContainer.subviews.first() as UIView)
 
         assertSame(NativeHitTestResolution.Dropped, resolve(root, 15.0, 15.0))
     }

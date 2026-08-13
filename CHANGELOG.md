@@ -136,9 +136,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   it cannot receive touches itself — the default for `UILabel` and `UIImageView`, and so the shape the
   opt-out is most often reached for. `hitTest` steps over such a view, which would otherwise have let
   the new route report a tap the accessibility route correctly dropped. The exclusion is checked against
-  what is *drawn* under the tap — `hitTest`'s own frontmost-branch walk with only the "declines touches"
-  gate removed — so an excluded view vetoes whether it is nested inside the tapped view or drawn over
-  it, while an excluded view sitting *behind* whatever the user actually tapped correctly does not.
+  what is *drawn* under the tap, by two walks: `hitTest`'s own frontmost-branch descent with only the
+  "declines touches" gate removed, which catches an excluded view drawn *over* a sibling, plus a sweep
+  of the reported element's own subtree, which catches one sitting behind a transparent front sibling or
+  drawn outside its parent's bounds. An excluded view *behind* whatever the user actually tapped, in
+  another branch entirely, correctly does not veto. Note the corollary: registering a full-screen
+  container silences native capture for every tap inside it, so register the content, not the chrome.
 
   One documented UIKit behaviour turned out to be wrong and is corrected here. A disabled `UIControl`
   does not "still get returned by `hitTest` while suppressing its own action" — measured for a bare

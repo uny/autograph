@@ -183,7 +183,6 @@ internal fun resolveNativeTapTargetByHitTest(
     if (AutographComposeHosts.containsAny(chain) || AutographIgnoredViews.containsAny(chain)) {
         return NativeHitTestResolution.Dropped
     }
-    if (anExcludedViewIsDrawnUnder(positionInWindowPoints, root)) return NativeHitTestResolution.Dropped
     // Leaf-first, so `firstOrNull` is the innermost interactive view. `dropLast` removes [root] — see
     // the kdoc; hitChain always ends at it whenever it returns anything at all. `takeWhile` stops the
     // search at the first scroll view rather than stepping over it — see [isNativeInteractive].
@@ -191,14 +190,16 @@ internal fun resolveNativeTapTargetByHitTest(
         .takeWhile { it !is UIScrollView }
         .firstOrNull { it.isNativeInteractive() }
         ?: return NativeHitTestResolution.Unresolved
+    // Asked of the element about to be *reported*, not of the view that received the touch: attributing
+    // this tap to `interactive` is exactly the claim an excluded view inside it must be able to veto.
+    if (anExcludedViewIsUnder(positionInWindowPoints, root, interactive)) return NativeHitTestResolution.Dropped
     val identifier = interactive.accessibilityIdentifierOrNull() ?: return NativeHitTestResolution.Unresolved
     if (identifier.startsWith(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX)) return NativeHitTestResolution.Dropped
     return NativeHitTestResolution.Target(identifier)
 }
 
 /**
- * Whether an [AutographIgnoredViews]-excluded view is the thing *drawn* under [point], following the
- * frontmost visible branch down from [root].
+ * Whether an [AutographIgnoredViews]-excluded view is under [point] in the sense the opt-out promises.
  *
  * **This exists because the two paths mean different things, and the opt-out is defined in terms of the
  * one this resolver does not have.** `registerAutographIgnoredView` promises that a tap whose hit path
@@ -210,21 +211,42 @@ internal fun resolveNativeTapTargetByHitTest(
  * — the accessibility resolver drops the tap, and without this check `hitTest` reported the card. The
  * opt-out silently stopped holding for the shape it is most often reached for.
  *
- * So the excluded set is asked of what is *drawn* under the point rather than of what receives the
- * touch. This walk is deliberately `hitTest`'s own algorithm with exactly one gate removed — descend
- * the frontmost subview whose bounds contain the point, skipping `isHidden` and effectively transparent
- * views as `hitTest` does, but **not** skipping a view that merely declines touches. That single
- * difference is the whole divergence, so nothing else about which view "the tap landed on" changes.
+ * **Two walks, because one does not cover it and each fails in the direction the other does not.**
  *
- * Following the frontmost branch rather than sweeping the whole subtree is what keeps this from
- * over-dropping in the other direction: an excluded view *behind* the opaque thing the user actually
- * tapped is not what they touched, and must not veto. It is also why an excluded view drawn over its
- * sibling — not just one nested inside the hit view — is caught: the walk reaches whatever is in front
- * at that point, wherever it sits in the hierarchy.
+ * 1. **The frontmost drawn branch from [root]** — `hitTest`'s own algorithm with a single gate removed:
+ *    descend the frontmost subview containing the point, skipping hidden and effectively transparent
+ *    views as `hitTest` does, but **not** skipping one that merely declines touches. This is what
+ *    catches an excluded view drawn *over* its sibling, which is nowhere in [hitView]'s subtree. On its
+ *    own it is not enough: it commits to the frontmost view at every step, so a clear-backgrounded
+ *    full-size `scrim` sibling — visible by `alpha`, occluding nothing — swallows the walk and an
+ *    excluded label behind it is never reached. Nothing UIKit exposes reliably answers "is this view
+ *    actually opaque here", so that cannot be decided by looking harder.
+ * 2. **[attributedTo]'s subtree** — the element about to be reported — judging each view by whether *it*
+ *    contains the point and never gating descent on an ancestor containing it. This covers the scrim
+ *    case, and also an excluded view drawn outside its own parent's bounds: a zero-sized or undersized
+ *    container with an overhanging child, which autolayout produces routinely and which walk 1 (like
+ *    `hitTest` itself) refuses to enter. Descent still stops at a hidden or transparent ancestor,
+ *    because nothing under one is drawn.
+ *
+ *    Scoped to the *reported* element rather than to the view `hitTest` returned, which is not a detail:
+ *    a touch-receiving scrim makes itself the hit view, so a sweep rooted there would search an empty
+ *    subtree while the excluded label sits one level up inside the card being reported. Attribution is
+ *    the claim being made, so attribution is the right scope for a veto of it.
+ *
+ * The union is deliberately asymmetric, and that asymmetry is the point: an excluded view *behind* what
+ * the user tapped, in a different branch entirely, is reached by neither walk and correctly does not
+ * veto. Over-dropping every tap that merely shares a screen region with an excluded subtree would be
+ * its own defect.
  *
  * **Fail-closed on truncation.** Exceeding [MAX_HIT_CHAIN_DEPTH] vetoes rather than continuing. The
  * depth is unreachable for a real UIKit hierarchy; the direction is what matters, because the wrong one
  * would let an opt-out silently lapse.
+ *
+ * **A registered view that covers the screen therefore silences this resolver for every tap inside it.**
+ * That is the opt-out doing what it was asked, not a bug — but an app excluding a full-screen
+ * touch-transparent toast container rather than its transient children gets terminal [Dropped] on every
+ * tap, and [Dropped] is deliberately not consulted by [resolveNativeTapTarget] afterwards. Register the
+ * content, not the chrome.
  *
  * [point] is in [root]'s coordinate space (a `UIWindow` in production), and is converted per node
  * rather than accumulated, so a transformed or offset ancestor cannot skew it.
@@ -232,28 +254,51 @@ internal fun resolveNativeTapTargetByHitTest(
  * **Threading.** Main thread only.
  */
 @OptIn(ExperimentalForeignApi::class, AutographInternalApi::class)
-private fun anExcludedViewIsDrawnUnder(point: AxPoint, root: UIView): Boolean {
+private fun anExcludedViewIsUnder(point: AxPoint, root: UIView, attributedTo: UIView): Boolean {
     val cgPoint = CGPointMake(point.x.toDouble(), point.y.toDouble())
+
+    fun UIView.isDrawn(): Boolean = !hidden && alpha >= MINIMUM_VISIBLE_ALPHA
+    fun UIView.containsPoint(): Boolean =
+        pointInside(convertPoint(cgPoint, fromView = root), withEvent = null)
+
+    // Walk 1: the frontmost drawn branch.
     var view: UIView = root
     var depth = 0
     while (true) {
         if (AutographIgnoredViews.contains(view)) return true
         if (depth++ >= MAX_HIT_CHAIN_DEPTH) return true
-        val front = view.subviews
+        view = view.subviews
             .filterIsInstance<UIView>()
             .asReversed()
-            .firstOrNull { subview ->
-                !subview.hidden && subview.alpha > MINIMUM_VISIBLE_ALPHA &&
-                    subview.pointInside(subview.convertPoint(cgPoint, fromView = root), withEvent = null)
-            }
-            ?: return false
-        view = front
+            .firstOrNull { it.isDrawn() && it.containsPoint() }
+            ?: break
     }
+
+    // Walk 2: everything drawn under the point inside the reported element, ungated by containment.
+    val stack = ArrayDeque<Pair<UIView, Int>>()
+    stack.addLast(attributedTo to 0)
+    while (stack.isNotEmpty()) {
+        val (node, nodeDepth) = stack.removeLast()
+        if (nodeDepth >= MAX_HIT_CHAIN_DEPTH) return true
+        if (node.containsPoint() && AutographIgnoredViews.contains(node)) return true
+        node.subviews
+            .filterIsInstance<UIView>()
+            .forEach { if (it.isDrawn()) stack.addLast(it to nodeDepth + 1) }
+    }
+    return false
 }
 
 /**
- * The alpha below which UIKit's own hit-testing treats a view as untappable, mirrored by
- * [anExcludedViewIsDrawnUnder] so its walk diverges from `hitTest` in exactly one respect and no other.
+ * The alpha at or above which UIKit's own hit-testing still considers a view — it ignores those "with an
+ * alpha level less than 0.01". Mirrored by [anExcludedViewIsUnder] so its walks diverge from `hitTest`
+ * only where intended.
+ *
+ * **`>=` rather than `>` is the doc-faithful form, and the difference is unobservable — measured, not
+ * assumed.** A review flagged the boundary as an off-by-one that would skip a view `hitTest` still
+ * reaches. It cannot: `UIView.alpha` is stored as a 32-bit float, so a view set to `0.01` reads back as
+ * `0.009999999776482582`, which is below this either way — and the same probe showed `hitTest` declines
+ * that view too (`hitTest` returned the view *behind* it). So no alpha exists for which this gate and
+ * UIKit's disagree, and the operator is a statement of intent rather than a live distinction.
  */
 private const val MINIMUM_VISIBLE_ALPHA = 0.01
 
