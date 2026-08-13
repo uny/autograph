@@ -105,10 +105,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   selection is its delegate's, and `.onTapGesture` on a `Text`. Both resolved only on a warm tree
   before, and both are listed as known gaps in the README.
 
-  API: `resolveNativeTapTarget` (`@AutographInternalApi`) is removed. The accessibility walk itself
-  (`deepestAccessibilityHitPath` and friends) is untouched — `autograph-compose`'s iOS resolver uses
-  it, and Compose taps resolve in a cold process, so Compose autocapture is unaffected on both
-  platforms.
+  API: `resolveNativeTapTarget` (`@AutographInternalApi`) keeps its name and its job — resolve a tap
+  to the identifier that would be reported — but now answers through `hitTest`, so it takes the tap's
+  position in **points as well as pixels** and no longer takes a scale. It exists for `AutographUI`,
+  a separate Swift package whose `.autographIgnore()` contract can only be checked by asking what the
+  pipeline would report. The accessibility walk itself (`deepestAccessibilityHitPath` and friends) is
+  untouched — `autograph-compose`'s iOS resolver uses it, and Compose taps resolve in a cold process,
+  so Compose autocapture is unaffected on both platforms.
 
 - `Modifier.autocaptureScope` is deprecated in favour of `AutographElementScope`, and is removed at
   1.0 ([#185]). It is not fixable in place: its documented canonical usage puts the scope on the

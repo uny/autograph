@@ -55,6 +55,39 @@ import platform.UIKit.UIView
  */
 
 /**
+ * The identifier a native tap at this position would be reported under, or null when nothing would be
+ * reported for it — whether because it resolved to nothing or because a veto dropped it.
+ *
+ * **The public face of [resolveNativeTapTargetByHitTest], and the reason it exists is that
+ * `AutographUI` is a separate Swift package.** `.autographIgnore()` ships there, its contract is "a tap
+ * in this region is not reported", and the only way to check that contract from Swift is to ask what
+ * the pipeline would report. `AutographIgnoreTests` does exactly that. Nothing inside this module calls
+ * it — [AutographNativeTapCapture.report] uses the resolver directly, because it needs the distinction
+ * this function deliberately collapses (see [NativeHitTestResolution]).
+ *
+ * A caller outside the pipeline has no use for that distinction: both mean no event. So the tri-state
+ * stays internal and this hands back the one thing an external caller can act on.
+ *
+ * The predecessor of this name walked the accessibility tree and took a scale instead of a second
+ * position; #191 removed it. Same question, answered by `hitTest`, so it works in a cold process — see
+ * this file's header. Both positions describe the same point in [root]'s space; see
+ * [resolveNativeTapTargetByHitTest] for the units.
+ *
+ * **Threading.** Main thread only.
+ */
+@AutographInternalApi
+public fun resolveNativeTapTarget(
+    root: UIView,
+    positionInWindowPoints: AxPoint,
+    positionInWindowPx: AxPoint,
+): String? = when (
+    val resolution = resolveNativeTapTargetByHitTest(root, positionInWindowPoints, positionInWindowPx)
+) {
+    is NativeHitTestResolution.Target -> resolution.identifier
+    NativeHitTestResolution.Dropped, NativeHitTestResolution.Unresolved -> null
+}
+
+/**
  * What [resolveNativeTapTargetByHitTest] concluded. The three cases exist because "no answer" and
  * "the answer is: report nothing" must not be confused.
  *

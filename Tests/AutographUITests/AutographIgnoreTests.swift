@@ -12,12 +12,12 @@ import XCTest
 /// moves? We cannot read that rectangle back (the registry is internal), so we observe it the only way the
 /// pipeline exposes it — the positional veto `resolveNativeTapTarget` applies **before** it walks anything.
 ///
-/// Why a hand-built `UIView` probe rather than the hosted SwiftUI button: SwiftUI's accessibility tree
-/// does not materialise in-process (no accessibility client), so the resolver finds nothing in a hosted
-/// SwiftUI view and every "not reported" would be vacuous. A plain `UIView` added to the same real window,
-/// with an `accessibilityFrame`, IS walkable in-process (the Kotlin resolver tests rely on this), so it
-/// gives a real positive: a point outside the ignored region resolves to it. Both the marker and the probe
-/// live in one real key window, so their rectangles share the window-pixel space the veto compares in.
+/// Why a hand-built `UIView` probe rather than the hosted SwiftUI button: a SwiftUI element is never
+/// resolved by this pipeline at all (#191 — it has no per-element backing view for `hitTest` to find), so
+/// every "not reported" would be vacuous. A plain `UIView` with a real frame and a tap recogniser, added
+/// to the same real window, gives a real positive: a point outside the ignored region resolves to it.
+/// Both the marker and the probe live in one real key window, so their rectangles share the window-pixel
+/// space the veto compares in.
 ///
 /// **Fault-injection (manual, per repo discipline):** revert the `AutographIgnoredBounds.contains(...)`
 /// veto at the top of `resolveNativeTapTarget`; the "inside is vetoed" assertions must go red (the inside
@@ -72,25 +72,31 @@ final class AutographIgnoreTests: XCTestCase {
         AxPoint(x: Float(point.x * scale), y: Float(point.y * scale))
     }
 
-    /// Resolves the tap at `windowPoint`, having placed a walkable button-role probe covering
-    /// `probeFrame` (window points) in the same window. The resolver root is a container whose
-    /// `accessibilityFrame` spans the screen (a `UIWindow`'s own is zero — it isn't an accessibility
-    /// element — so it can't be the root); the probe is its child, in the real window, so its window-pixel
-    /// rectangle is in the same space as the marker's. Window origin == screen origin for a standard
-    /// full-screen window, so `accessibilityFrame` (screen space) equals the window frame here.
+    /// Resolves the tap at `windowPoint`, having placed a tappable probe covering `probeFrame` (window
+    /// points) in the same window.
+    ///
+    /// **The probe is built from a real `frame` and a real tap recogniser, with no accessibility state
+    /// at all.** Since #191 the pipeline resolves a native tap through `UIView.hitTest`, which consults
+    /// geometry and interactivity and never the accessibility tree — so a probe published only to that
+    /// tree (as this one was) is invisible to it, and every assertion here would pass vacuously. The
+    /// container is the resolver root; the probe is its child, in the real window, so its window-pixel
+    /// rectangle is in the same space as the marker's.
     private func resolveWithProbe(at windowPoint: CGPoint, probeCovering probeFrame: CGRect, id: String = "probe") -> String? {
         probe?.removeFromSuperview()
         let container = UIView(frame: window.bounds)
-        container.accessibilityFrame = window.bounds
         let button = UIView(frame: probeFrame)
-        button.isAccessibilityElement = true
-        button.accessibilityTraits = .button
+        button.addGestureRecognizer(UITapGestureRecognizer())
         button.accessibilityIdentifier = id
-        button.accessibilityFrame = probeFrame
         container.addSubview(button)
         window.addSubview(container)
+        container.setNeedsLayout()
+        container.layoutIfNeeded()
         probe = container
-        return NativeTapResolutionKt.resolveNativeTapTarget(root: container, positionInWindowPx: px(windowPoint), scale: Float(scale))
+        return NativeHitTestResolutionKt.resolveNativeTapTarget(
+            root: container,
+            positionInWindowPoints: AxPoint(x: Float(windowPoint.x), y: Float(windowPoint.y)),
+            positionInWindowPx: px(windowPoint)
+        )
     }
 
     // MARK: - Non-vacuity: the probe resolves where it should, so a "not resolved" means something
