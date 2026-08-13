@@ -366,8 +366,9 @@ private fun deepestAccessibilityHitPath(
     // claim a tap that landed outside it — a drop traded for a misattribution, the wrong direction.
     // Ordered so the exemption's identifier read happens only where it can change the answer: it is a
     // KVC round-trip (see accessibilityIdentifierOrNull) and this runs per visited node, on the main
-    // thread inside a tap handler, while the overwhelming majority of nodes either contain the tap or
-    // are not scope containers.
+    // thread inside a tap handler. The saving is exactly the nodes that contain the tap — roughly the
+    // hit path itself — and no more: whether a node is a scope container is knowable only by doing the
+    // read, so a non-containing node still pays for it.
     if (!containsPosition && (ancestors.isNotEmpty() || node.isAccessibilityButton())) {
         val exemptScopeContainer =
             allowScopeContainerDescent && node.isAutographScopeContainer() && !node.isAccessibilityButton()

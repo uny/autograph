@@ -103,8 +103,12 @@ class AutographElementScopeIosTest {
      * readable scope is this API's whole accessibility cost — a rotor stop, an extra node — with none
      * of its benefit, since the reader folds an empty payload away regardless. Reachable without anyone
      * writing `AutographElementScope { }` on purpose: a scope whose values all turned out absent for
-     * this row. Android has the matching assertion in [AutographElementScopeTest]; this is what stops
-     * the two platforms disagreeing about what an empty scope costs.
+     * this row.
+     *
+     * iOS only, and deliberately not mirrored: the Android actual still applies its node for an empty
+     * scope, because there the marker is a private semantics key that no assistive technology can
+     * perceive — it costs nothing to publish, so there is nothing to skip. The asymmetry is in what the
+     * two platforms *charge* for a scope, not in what either reports.
      */
     @Test
     fun publishesNothingAtAllWhenTheScopeIsEmpty() = runComposeUiTest {

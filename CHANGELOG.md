@@ -65,6 +65,15 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `implementation`: `BoxScope` is the wrapper's content receiver and so sits in the module's public
   signature, and an `implementation` dependency reaches consumers at runtime only.
 
+  `autograph-uikit`'s `deepestAccessibilityHitPath` gained a parameter, so its klib signature is
+  **replaced rather than extended** — the five-argument form is gone from the dump. It is
+  `@AutographInternalApi` and both modules are released together from this repo, so the only way to
+  reach it is a graph that resolves `autograph-compose` and `autograph-uikit` at *different* versions
+  (adding `autograph-uikit` directly for the native tap pipeline, at a newer version than the compose
+  artifact pulls in). That fails at runtime with `IrLinkageError` on the first tap, not at link time —
+  the shape this repo measured for mixed-version klib diamonds. **Keep the two modules on the same
+  version.** The previous release changed this signature the same way, silently.
+
 ### Changed
 
 - `Modifier.autocaptureScope` is deprecated in favour of `AutographElementScope`, and is removed at

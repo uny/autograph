@@ -34,14 +34,19 @@ import kotlinx.serialization.json.JsonPrimitive
  * which is why it passes `propagateMinConstraints = true` — and clips nothing, so a `clickable` drawn
  * *outside* it — an overhanging badge, an `offset` decoration — is still scoped and still resolves.
  *
- * **One thing a wrapper cannot be transparent to: modifiers scoped to the *enclosing* layout.**
- * `Modifier.weight` in a `Row`/`Column`, `Modifier.align` / `matchParentSize` in a `Box`, and
- * `alignByBaseline` are parent data read by the direct parent, and after wrapping the direct parent is
- * this [Box] rather than yours. Put them on the wrapper's side of the boundary — wrap the *inside* of
- * the element, or hoist the layout — not on the content. `weight` and `alignByBaseline` stop compiling,
- * which is the loud half; `align` and `matchParentSize` are members of [BoxScope] and quietly rebind to
- * this wrapper, which is the half to watch (measured: a `Modifier.align(BottomEnd)` moved inside the
- * wrapper stops reaching its former parent, and a `matchParentSize` collapses to zero).
+ * **Two things a wrapper cannot be transparent to.** Both follow from it being a real layout node, so
+ * neither is fixable here — wrap a single element and keep the rest outside.
+ *
+ * - **Modifiers scoped to the *enclosing* layout.** `Modifier.weight` in a `Row`/`Column`,
+ *   `Modifier.align` / `matchParentSize` in a `Box`, and `alignByBaseline` are parent data read by the
+ *   direct parent, and after wrapping the direct parent is this [Box] rather than yours. `weight` and
+ *   `alignByBaseline` stop compiling, which is the loud half; `align` and `matchParentSize` are members
+ *   of [BoxScope] and quietly rebind to this wrapper, which is the half to watch (measured: an
+ *   `align(BottomEnd)` moved inside stops reaching its former parent, and a `matchParentSize` collapses
+ *   to zero).
+ * - **More than one child.** [content] is a [BoxScope], so two siblings stack instead of being laid out
+ *   by your `Row`/`Column` — `Row { AutographElementScope(…) { Icon(…); Text(…) } }` draws the icon and
+ *   the label on top of each other. Wrap the element, not a run of siblings.
  *
  * **What it does to accessibility, on iOS only.** The scope reaches the tap through the UIKit
  * accessibility tree, which is the only route to a tapped element Compose Multiplatform offers there,
@@ -101,9 +106,11 @@ public fun AutographElementScope(
 ) {
     // `propagateMinConstraints = true`, not the Box default: a wrapper that zeroed the incoming
     // minimums would stop stretching content its parent had stretched before, and the caller cannot
-    // compensate — this composable takes no `Modifier`. Measured inside a `propagateMinConstraints`
-    // parent (what Material's `Surface`/`Card`/`ListItem` are): the wrapped child went 1024x20 -> 20x20,
-    // which for a row with `Arrangement.SpaceBetween` bunches its content at the start.
+    // compensate — this composable takes no `Modifier`. Measured against a `propagateMinConstraints`
+    // parent, which is the shape `Surface` uses: the wrapped child went 1024x20 -> 20x20, which for a
+    // row with `Arrangement.SpaceBetween` bunches its content at the start. Where the incoming minimums
+    // are 0 — the common case, and what `Column`/`Row`/`LazyColumn` pass their children — this changes
+    // nothing.
     Box(Modifier.autographElementScopeMarker(properties), propagateMinConstraints = true, content = content)
 }
 

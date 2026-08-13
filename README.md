@@ -216,11 +216,12 @@ There's a `JsonObject` overload for non-string values. Notes:
   nothing there.
 
   The wrapper is a `Box` that propagates its constraints and clips nothing, so it is layout-neutral
-  with one exception worth knowing when you migrate: **modifiers that are parent data for the
-  *enclosing* layout don't cross it.** `Modifier.weight` in a `Row`/`Column` and `alignByBaseline` stop
-  compiling once their element moves inside; `align` and `matchParentSize` are `BoxScope` members and
-  quietly rebind to the wrapper instead. Keep those on the wrapper's side — wrap the inside of the
-  element, or hoist the layout.
+  with two exceptions worth knowing when you migrate, both of which follow from it being a real layout
+  node. **Modifiers that are parent data for the *enclosing* layout don't cross it:** `Modifier.weight`
+  in a `Row`/`Column` and `alignByBaseline` stop compiling once their element moves inside, while
+  `align` and `matchParentSize` are `BoxScope` members and quietly rebind to the wrapper instead. And
+  **wrap one element, not a run of siblings** — the content is a `BoxScope`, so two children stack
+  rather than being laid out by your `Row`.
 
   Attribution reads the marker back off the **tapped element's own ancestry** in the semantics tree
   — the same chain the tap's `target` is picked from, so the scope always describes the element that
