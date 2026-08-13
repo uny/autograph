@@ -6,12 +6,17 @@ import UIKit
 /// SwiftUI opt-out from native tap autocapture — the counterpart of Compose's `Modifier.autographIgnore()`
 /// and UIKit's `registerAutographIgnoredView(view:)`.
 ///
-/// Native tap autocapture resolves a tap's target from the accessibility tree. A SwiftUI view is not
-/// UIView-backed, so — unlike UIKit, where the excluded thing *is* a view — there is no view to hand the
-/// registry. Instead this reports the view's **window-space rectangle** and the tap pipeline vetoes any
-/// tap that lands inside it (`AutographIgnoredBounds` / `resolveNativeTapTarget`). The exclusion is purely
-/// positional: the marker adds no hittable view, intercepts no touches, and does not sit on the
-/// accessibility hit path.
+/// Native tap autocapture resolves a tap's target from the view that receives the touch. A SwiftUI view
+/// is not UIView-backed, so — unlike UIKit, where the excluded thing *is* a view — there is no view to
+/// hand the registry. Instead this reports the view's **window-space rectangle** and the tap pipeline
+/// vetoes any tap that lands inside it (`AutographIgnoredBounds` / `resolveNativeTapTarget`). The
+/// exclusion is purely positional: the marker adds no hittable view and intercepts no touches.
+///
+/// **What this is for, now that SwiftUI elements are not autocaptured at all** (#191): wrapping pure
+/// SwiftUI content changes nothing on its own, because ambient capture never names a SwiftUI element.
+/// It still matters where a SwiftUI subtree *hosts UIKit* — a `UIViewRepresentable` or a
+/// `UIViewControllerRepresentable` — whose controls are captured normally and for which SwiftUI hands
+/// you no `UIView` reference to pass to `registerAutographIgnoredView`.
 ///
 /// This is a **privacy** control, and it is fail-safe about *position*: while the wrapped content is on
 /// screen its rectangle is tracked every frame (via `CADisplayLink`), so scrolling or relayout can't

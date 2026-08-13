@@ -17,7 +17,6 @@ import kotlinx.serialization.json.JsonObject
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIButton
-import platform.UIKit.UIScreen
 import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIView
 import platform.UIKit.UIWindow
@@ -41,7 +40,7 @@ import platform.darwin.NSObject
 class NativeTapCaptureTest {
 
     /**
-     * [warnOnceIfAccessibilityTreeIsCold] spends its one-per-process check exactly once — reset it.
+     * [warnOnceIfANativeTapResolvedToNothing] warns exactly once per process — reset the flag.
      *
      * Both hooks, not just [AfterTest]: the flag is process-global and the K/N test binary is one
      * process, so a `@BeforeTest` reset is what keeps these tests independent of whether some other
@@ -50,8 +49,8 @@ class NativeTapCaptureTest {
      */
     @BeforeTest
     @AfterTest
-    fun resetAccessibilityTreeColdnessCheck() {
-        checkedAccessibilityTreeColdness = false
+    fun resetTheUnresolvedTapWarning() {
+        warnedANativeTapResolvedToNothing = false
     }
 
     private fun observer() = NativeTapObserver { _, _ -> }
@@ -291,65 +290,52 @@ class NativeTapCaptureTest {
         assertTrue(window.captureRecognizers().isEmpty())
     }
 
-    // --- #170: the one-time cold-accessibility-tree warning ---
+    // --- the one-time "a native tap resolved to nothing" warning (#170, reshaped by #191) ---
 
     @Test
-    fun aColdTreeWarnsOnTheFirstDrop() {
-        assertFalse(checkedAccessibilityTreeColdness, "precondition: nothing has run it yet this test")
+    fun anUnresolvedTapWarnsOnce() {
+        assertFalse(warnedANativeTapResolvedToNothing, "precondition: nothing has run it yet this test")
 
-        assertTrue(warnOnceIfAccessibilityTreeIsCold(UIWindow()), "a cold tree is what the warning is for")
-        assertTrue(checkedAccessibilityTreeColdness)
-    }
-
-    /** The join between the drop and the tree question: a warm tree spends the check but stays quiet. */
-    @Test
-    fun aWarmTreeSpendsTheCheckWithoutWarning() {
-        val warmWindow = UIWindow()
-        warmWindow.setAccessibilityFrame(CGRectMake(0.0, 0.0, 10.0, 10.0))
-
-        assertFalse(warnOnceIfAccessibilityTreeIsCold(warmWindow), "an ordinary miss on a warm tree is not news")
-        assertTrue(checkedAccessibilityTreeColdness, "spent either way — the answer cannot change later")
+        assertTrue(warnOnceIfANativeTapResolvedToNothing(), "the first unresolved tap is what the warning is for")
+        assertTrue(warnedANativeTapResolvedToNothing)
     }
 
     /**
      * Once spent, a second call is a no-op *and returns as one* — asserted on the return value, not on
      * the flag, which production never clears and which would therefore report success even if the
-     * early-return guard were deleted outright. The window here is cold, so without the guard this
-     * would warn a second time.
+     * early-return guard were deleted outright.
      *
-     * This is also what makes it safe for every dropped tap to call
-     * [warnOnceIfAccessibilityTreeIsCold] unconditionally, as [AutographNativeTapCapture.report] does,
-     * rather than every caller having to check the flag first.
+     * This is also what makes it safe for every unresolved tap to call
+     * [warnOnceIfANativeTapResolvedToNothing] unconditionally, as [AutographNativeTapCapture.report]
+     * does, rather than every caller having to check the flag first.
      */
     @Test
-    fun aSecondCallNeitherChecksNorWarns() {
-        assertTrue(warnOnceIfAccessibilityTreeIsCold(UIWindow()))
+    fun aSecondCallDoesNotWarnAgain() {
+        assertTrue(warnOnceIfANativeTapResolvedToNothing())
 
-        assertFalse(warnOnceIfAccessibilityTreeIsCold(UIWindow()), "the second call must not warn again")
+        assertFalse(warnOnceIfANativeTapResolvedToNothing(), "the second call must not warn again")
     }
 
     /**
-     * The wiring itself: a dropped tap has to reach the warning. Everything above drives
-     * [warnOnceIfAccessibilityTreeIsCold] directly, which leaves the single line in
-     * [AutographNativeTapCapture.report] that calls it uncovered — and restoring the `?: return` it
-     * replaced reads as a simplification, so nothing else would catch the whole feature disappearing.
+     * The wiring itself: an unresolved tap has to reach the warning. Everything above drives
+     * [warnOnceIfANativeTapResolvedToNothing] directly, which leaves the single line in
+     * [AutographNativeTapCapture.report] that calls it uncovered — and deleting that line reads as a
+     * simplification, so nothing else would catch the whole feature disappearing.
      *
-     * A bare [UIWindow] resolves nothing (it is cold, so no frame contains any position), which is the
-     * drop this needs; [AutographNativeTapCapture.report] is reachable without a `UITouch`, unlike the
-     * recognizer path the class kdoc describes.
+     * A bare [UIWindow] resolves nothing (no subview, so nothing interactive is under the point), which
+     * is the miss this needs; [AutographNativeTapCapture.report] is reachable without a `UITouch`,
+     * unlike the recognizer path the class kdoc describes.
      */
     @Test
-    fun aDroppedTapReachesTheColdnessCheck() {
+    fun anUnresolvedTapReachesTheWarning() {
         val capture = AutographNativeTapCapture(NoopTracker(), ScopeStack(), "Element Clicked")
 
         capture.report(AxPoint(5f, 5f), UIWindow())
 
-        assertTrue(checkedAccessibilityTreeColdness, "a drop must ask the coldness question")
+        assertTrue(warnedANativeTapResolvedToNothing, "an unresolved tap must reach the warning")
     }
 
-    // --- #189: the two resolvers, and the order report() runs them in ---
-
-    private val scale: Float get() = UIScreen.mainScreen.scale.toFloat()
+    // --- #189/#191: the single resolver, and what report() does with each of its three answers ---
 
     /**
      * The `hitTest` resolver answers first, and its answer is reported — on a tree with no
@@ -388,52 +374,35 @@ class NativeTapCaptureTest {
             "non-vacuity: the enriched properties must differ from what an unenriched call would send",
         )
         assertFalse(
-            checkedAccessibilityTreeColdness,
-            "a tap the hitTest route resolved is not a cold-tree symptom and must not spend the check",
+            warnedANativeTapResolvedToNothing,
+            "a tap the resolver named is not a miss and must not spend the warning",
         )
     }
 
     /**
-     * **The reason [NativeHitTestResolution] is a tri-state rather than a nullable `String`.** A veto is
-     * terminal: it must not fall through to a resolver that would answer differently.
-     *
-     * The fixture makes the two resolvers genuinely disagree, so this is not vacuous. `hitTest` follows
-     * real frames into the registered Compose host and drops the tap as Compose-owned. The accessibility
-     * walk cannot see that host at all — its `accessibilityFrame` is zero, exactly as a cold one is — so
-     * it prunes that branch, finds the accessibility-only sibling instead, and would happily report it.
-     * With a nullable resolver and a `?:`, this tap on Compose-owned content leaks out under another
-     * element's name.
+     * **The reason [NativeHitTestResolution] is still a tri-state rather than a nullable `String`, now
+     * that the accessibility resolver it was introduced for is gone (#191).** `Dropped` and `Unresolved`
+     * both report no event, so as far as the tracker is concerned they are the same — but only one of
+     * them is a *symptom*. A veto is this library working as asked, and in a hybrid app the very first
+     * tap is quite likely to be one, on Compose content that `autograph-compose` reports perfectly well.
+     * The warning is spent once per process, so letting a vetoed tap consume it would print a line
+     * blaming a pipeline that did nothing wrong and then stay silent for the tap that needed it.
      *
      * **Fault-injected** (manual, per repo discipline): collapsing `report`'s `Dropped -> return` into
      * the `Unresolved` branch makes this test fail and no other. Without that check it would be
      * measuring nothing.
      */
     @Test
-    fun aTapVetoedByTheHitTestResolverIsNotRescuedByTheAccessibilityOne() {
+    fun aTapVetoedAsComposeOwnedDoesNotSpendTheWarning() {
         val tracker = RecordingTracker()
         val capture = AutographNativeTapCapture(tracker, ScopeStack(), "Element Clicked")
 
         val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
-        root.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
-
         val composeHost = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
         root.addSubview(composeHost)
         composeHost.addSubview(
             UIButton(frame = CGRectMake(10.0, 10.0, 20.0, 20.0))
                 .also { (it as NSObject).setValue("compose_button", forKey = "accessibilityIdentifier") },
-        )
-
-        // Visible only to the accessibility walk: zero real frame, so hitTest never reaches it.
-        val axOnlySibling = UIView()
-        axOnlySibling.setAccessibilityFrame(CGRectMake(10.0, 10.0, 20.0, 20.0))
-        axOnlySibling.setAccessibilityTraits(UIAccessibilityTraitButton)
-        (axOnlySibling as NSObject).setValue("ax_button", forKey = "accessibilityIdentifier")
-        root.addSubview(axOnlySibling)
-
-        assertEquals(
-            "ax_button",
-            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
-            "precondition: the accessibility resolver does resolve this tap, so falling through would report it",
         )
 
         AutographComposeHosts.register(composeHost)
@@ -444,17 +413,50 @@ class NativeTapCaptureTest {
         }
 
         assertTrue(tracker.targets.isEmpty(), "a tap on Compose-owned content must not be reported by this pipeline")
-        assertFalse(checkedAccessibilityTreeColdness, "a deliberate veto is not a cold-tree symptom")
+        assertFalse(
+            warnedANativeTapResolvedToNothing,
+            "a deliberate veto is not a symptom and must leave the one-per-process warning unspent",
+        )
     }
 
     /**
-     * The other half of the sequencing: `hitTest` having nothing to say is *not* a drop. This fixture is
-     * the SwiftUI-shaped case in miniature — no real geometry to hit-test, identity only on the
-     * accessibility tree — and it must still resolve, or #189 would have deleted the warm SwiftUI half
-     * of native capture while fixing the cold UIKit one.
+     * The other half of that distinction, and the non-vacuity guard for the test above: the *same*
+     * pipeline on a tap that genuinely resolves to nothing does spend the warning. Without this, the
+     * assertion above would keep passing if the warning were removed from `report` altogether.
      */
     @Test
-    fun aTapTheHitTestResolverCannotSeeStillFallsThroughToTheAccessibilityOne() {
+    fun aTapThatResolvesToNothingDoesSpendTheWarning() {
+        val tracker = RecordingTracker()
+        val capture = AutographNativeTapCapture(tracker, ScopeStack(), "Element Clicked")
+        // An identified but entirely inert view: nothing on the chain is interactive, so `Unresolved`.
+        val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
+        root.addSubview(
+            UIView(frame = CGRectMake(10.0, 10.0, 20.0, 20.0))
+                .also { (it as NSObject).setValue("inert_view", forKey = "accessibilityIdentifier") },
+        )
+
+        capture.report(AxPoint(15f, 15f), root)
+
+        assertTrue(tracker.targets.isEmpty(), "nothing interactive was tapped, so nothing is reported")
+        assertTrue(warnedANativeTapResolvedToNothing, "a genuine miss is what the warning exists for")
+    }
+
+    /**
+     * **#191's removal, pinned from the pipeline's end.** This fixture is the SwiftUI-shaped case in
+     * miniature: no real geometry for `hitTest` to find, identity published only on the accessibility
+     * tree. Until #191 a second resolver walked that tree and reported `swiftui_button` here; now
+     * nothing is reported at all.
+     *
+     * That inversion is the change, not a casualty of it. The old behaviour only ever happened in a
+     * process where an accessibility client was running, so what it captured was conditioned on the
+     * user running VoiceOver or on the tap coming from a test runner — a bias invisible downstream,
+     * where silence reads as "nobody tapped this". See [installAutographNativeTapCapture]'s kdoc.
+     *
+     * Kept rather than deleted because a test asserting the *absence* of a behaviour is the only thing
+     * that would notice the fallback being reintroduced by a well-meaning revert.
+     */
+    @Test
+    fun aTapVisibleOnlyOnTheAccessibilityTreeIsNoLongerReported() {
         val tracker = RecordingTracker()
         val capture = AutographNativeTapCapture(tracker, ScopeStack(), "Element Clicked")
 
@@ -468,7 +470,14 @@ class NativeTapCaptureTest {
 
         capture.report(AxPoint(15f, 15f), root)
 
-        assertEquals(listOf<String?>("swiftui_button"), tracker.targets)
+        assertTrue(
+            tracker.targets.isEmpty(),
+            "an element that exists only on the accessibility tree is no longer resolved",
+        )
+        assertTrue(
+            warnedANativeTapResolvedToNothing,
+            "and the developer is told once, rather than the tap vanishing silently",
+        )
     }
 }
 

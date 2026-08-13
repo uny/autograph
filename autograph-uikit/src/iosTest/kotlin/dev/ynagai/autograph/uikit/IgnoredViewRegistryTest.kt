@@ -4,38 +4,46 @@ import dev.ynagai.autograph.AutographInternalApi
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.setValue
-import platform.UIKit.UIAccessibilityTraitButton
+import platform.UIKit.UIButton
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
-import platform.UIKit.setAccessibilityFrame
-import platform.UIKit.setAccessibilityTraits
 import platform.darwin.NSObject
 
 /**
- * Drives the developer opt-out ([registerAutographIgnoredView]) through the real [resolveNativeTapTarget]
- * pipeline against hand-built [UIView] trees — the same approach and reasoning as [NativeTapResolutionTest].
- * Mirrors the Compose-host exclusion tests there, since the two boundaries share [WeakViewRegistry].
+ * Drives the developer opt-out ([registerAutographIgnoredView]) through the real
+ * [resolveNativeTapTargetByHitTest] pipeline against hand-built [UIView] trees.
+ *
+ * **Scope split with [NativeHitTestResolutionTest].** That suite pins how the *resolver* honours an
+ * excluded view — including the awkward geometries (a view that declines touches, one drawn over the
+ * tapped view, one behind a transparent sibling, one overhanging its parent). This one pins the
+ * *registry's lifecycle*: reference counting across two registrations, idempotent release, and matching
+ * the underlying view rather than the Kotlin wrapper it arrived in, since [WeakViewRegistry] is shared
+ * with the Compose-host boundary.
+ *
+ * Fixtures set **real frames**, because `hitTest` is what consults them.
  */
 @OptIn(ExperimentalForeignApi::class, AutographInternalApi::class)
 class IgnoredViewRegistryTest {
 
     private val scale: Float get() = UIScreen.mainScreen.scale.toFloat()
 
-    private fun UIView.setPointFrame(x: Double, y: Double, width: Double, height: Double) {
-        setAccessibilityFrame(CGRectMake(x, y, width, height))
-    }
+    private fun view(x: Double, y: Double, w: Double, h: Double): UIView =
+        UIView(frame = CGRectMake(x, y, w, h))
 
-    private fun button(id: String?, x: Double, y: Double, w: Double, h: Double): UIView =
-        UIView().apply {
-            setPointFrame(x, y, w, h)
-            setAccessibilityTraits(UIAccessibilityTraitButton)
-            id?.let { (this as NSObject).setValue(it, forKey = "accessibilityIdentifier") }
-        }
+    private fun button(id: String, x: Double, y: Double, w: Double, h: Double): UIView =
+        UIButton(frame = CGRectMake(x, y, w, h))
+            .apply { (this as NSObject).setValue(id, forKey = "accessibilityIdentifier") }
+
+    private fun resolve(root: UIView, xPoints: Double, yPoints: Double): NativeHitTestResolution =
+        resolveNativeTapTargetByHitTest(
+            root = root,
+            positionInWindowPoints = AxPoint(xPoints.toFloat(), yPoints.toFloat()),
+            positionInWindowPx = AxPoint(xPoints.toFloat() * scale, yPoints.toFloat() * scale),
+        )
 
     // The registry is process-global, so a leaked registration would leak between tests.
     private val registrations = mutableListOf<AutographIgnoredViewRegistration>()
@@ -51,81 +59,72 @@ class IgnoredViewRegistryTest {
 
     @Test
     fun dropsATapWhoseHitPathCrossesAnExcludedView() {
-        val root = UIView()
-        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
-        val excluded = UIView()
-        excluded.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val excluded = view(0.0, 0.0, 100.0, 100.0)
         root.addSubview(excluded)
         excluded.addSubview(button("secret_button", 10.0, 10.0, 20.0, 20.0))
 
-        val position = AxPoint(15f * scale, 15f * scale)
         assertEquals(
-            "secret_button",
-            resolveNativeTapTarget(root, position, scale),
+            NativeHitTestResolution.Target("secret_button"),
+            resolve(root, 15.0, 15.0),
             "precondition: without the opt-out the native pipeline does resolve this tap",
         )
 
         ignore(excluded)
 
-        assertNull(
-            resolveNativeTapTarget(root, position, scale),
+        assertEquals(
+            NativeHitTestResolution.Dropped,
+            resolve(root, 15.0, 15.0),
             "a tap under a registerAutographIgnoredView subtree must not be reported",
         )
     }
 
     @Test
     fun stillResolvesATapOutsideTheExcludedView() {
-        val root = UIView()
-        root.setPointFrame(0.0, 0.0, 200.0, 100.0)
-        val excluded = UIView()
-        excluded.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val root = view(0.0, 0.0, 200.0, 100.0)
+        val excluded = view(0.0, 0.0, 100.0, 100.0)
         root.addSubview(excluded)
         root.addSubview(button("public_button", 120.0, 10.0, 20.0, 20.0))
 
         ignore(excluded)
 
         assertEquals(
-            "public_button",
-            resolveNativeTapTarget(root, AxPoint(125f * scale, 15f * scale), scale),
+            NativeHitTestResolution.Target("public_button"),
+            resolve(root, 125.0, 15.0),
             "excluding one subtree must not deafen the native pipeline everywhere else",
         )
     }
 
     @Test
     fun unregisteringRestoresNativeResolution() {
-        val root = UIView()
-        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
-        val excluded = UIView()
-        excluded.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val excluded = view(0.0, 0.0, 100.0, 100.0)
         root.addSubview(excluded)
         excluded.addSubview(button("b", 10.0, 10.0, 20.0, 20.0))
-        val position = AxPoint(15f * scale, 15f * scale)
 
         val registration = ignore(excluded)
-        assertNull(resolveNativeTapTarget(root, position, scale))
+        assertEquals(NativeHitTestResolution.Dropped, resolve(root, 15.0, 15.0))
 
         registration.unregister()
-        assertEquals("b", resolveNativeTapTarget(root, position, scale))
+        assertEquals(NativeHitTestResolution.Target("b"), resolve(root, 15.0, 15.0))
     }
 
     /** One view, two registrations: releasing the first must not re-arm capture the second still forbids. */
     @Test
     fun staysExcludedUntilEveryRegistrationIsReleased() {
-        val root = UIView()
-        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
-        val excluded = UIView()
-        excluded.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val excluded = view(0.0, 0.0, 100.0, 100.0)
         root.addSubview(excluded)
         excluded.addSubview(button("b", 10.0, 10.0, 20.0, 20.0))
-        val position = AxPoint(15f * scale, 15f * scale)
 
         val first = ignore(excluded)
         ignore(excluded)
 
         first.unregister()
 
-        assertNull(
-            resolveNativeTapTarget(root, position, scale),
+        assertEquals(
+            NativeHitTestResolution.Dropped,
+            resolve(root, 15.0, 15.0),
             "a view released by one of its two registrations stays excluded by the one still holding it",
         )
     }
@@ -133,21 +132,19 @@ class IgnoredViewRegistryTest {
     /** `unregister()` is idempotent — a second call must not push the ref-count negative and re-arm. */
     @Test
     fun unregisterIsIdempotent() {
-        val root = UIView()
-        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
-        val excluded = UIView()
-        excluded.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val excluded = view(0.0, 0.0, 100.0, 100.0)
         root.addSubview(excluded)
         excluded.addSubview(button("b", 10.0, 10.0, 20.0, 20.0))
-        val position = AxPoint(15f * scale, 15f * scale)
 
         val outer = ignore(excluded)
         ignore(excluded)
         outer.unregister()
         outer.unregister() // extra release must be a no-op, not a second decrement
 
-        assertNull(
-            resolveNativeTapTarget(root, position, scale),
+        assertEquals(
+            NativeHitTestResolution.Dropped,
+            resolve(root, 15.0, 15.0),
             "an unbalanced extra unregister must not disarm the registration still held",
         )
     }
@@ -179,30 +176,27 @@ class IgnoredViewRegistryTest {
     }
 
     /**
-     * The exclusion must hold even when the clickable-preference walk chooses a branch that never
-     * touches the excluded view — the reason [resolveNativeTapTarget] also checks the topmost path.
+     * The exclusion must hold when the excluded subtree is what the touch lands on but carries nothing
+     * interactive, while an identified control sits in a sibling branch beneath it. Without the veto
+     * the resolver would have no reason to stop at the excluded view.
      */
     @Test
     fun dropsATapOnAnExcludedViewEvenWhenAClickableSitsBeneathIt() {
-        val root = UIView()
-        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val root = view(0.0, 0.0, 100.0, 100.0)
 
-        val nativeContent = UIView()
-        nativeContent.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        val nativeContent = view(0.0, 0.0, 100.0, 100.0)
         root.addSubview(nativeContent)
-        nativeContent.addSubview(button("public-button", 10.0, 10.0, 20.0, 20.0))
+        nativeContent.addSubview(button("public_button", 10.0, 10.0, 20.0, 20.0))
 
-        // On top, excluded, with nothing clickable at the tap position.
-        val excluded = UIView()
-        excluded.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        // On top, excluded, with nothing interactive at the tap position.
+        val excluded = view(0.0, 0.0, 100.0, 100.0)
         root.addSubview(excluded)
-        val inert = UIView()
-        inert.setPointFrame(0.0, 0.0, 100.0, 100.0)
-        excluded.addSubview(inert)
+        excluded.addSubview(view(0.0, 0.0, 100.0, 100.0))
         ignore(excluded)
 
-        assertNull(
-            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
+        assertEquals(
+            NativeHitTestResolution.Dropped,
+            resolve(root, 15.0, 15.0),
             "a tap landing on an excluded subtree must be dropped even when a clickable sits beneath it",
         )
     }

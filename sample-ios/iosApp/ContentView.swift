@@ -30,15 +30,74 @@ final class NativeSampleEvents: ObservableObject {
     @Published var lastProps = "(none yet)"
 }
 
-/// A SwiftUI-only screen — no Compose anywhere in it — exercising `autograph-uikit`'s native tap
-/// capture end to end, through real synthetic touches.
+/// A real `UIButton` in a SwiftUI layout — what native tap capture resolves, since #191 dropped the
+/// accessibility route that was the only way a SwiftUI element could ever be named.
+///
+/// `UIButton` rather than a bare `UIView` with a recognizer so the disabled case is the real one:
+/// `isEnabled` is what makes UIKit decline the touch, and no gesture recognizer reproduces that.
+///
+/// **Disable it with SwiftUI's `.disabled(true)`, never by setting `isEnabled` here.** Measured: a
+/// representable-hosted `UIControl` has its `isEnabled` driven from the SwiftUI environment *after*
+/// `updateUIView` returns, so an `isEnabled = false` written in `makeUIView` or `updateUIView` is
+/// silently undone — all three construction variants tried (`primaryAction` plus `isEnabled`, a
+/// `UIAction` carrying `.disabled`, and `addAction` plus `isEnabled`) came back enabled, while the same
+/// button disabled late, off a delayed dispatch, stayed disabled. The failure is quiet and looks exactly
+/// like a capture bug: the control stays tappable, so `hitTest` reaches it and the tap is reported,
+/// which is what a test asserting "a disabled control reports nothing" would blame on the library.
+struct UIKitButton: UIViewRepresentable {
+    let title: String
+    let identifier: String?
+    var action: () -> Void = {}
+
+    func makeCoordinator() -> Coordinator { Coordinator(action: action) }
+
+    func makeUIView(context: Context) -> UIButton {
+        let coordinator = context.coordinator
+        let button = UIButton(
+            type: .system,
+            primaryAction: UIAction(title: title) { _ in coordinator.action() }
+        )
+        button.accessibilityIdentifier = identifier
+        return button
+    }
+
+    func updateUIView(_ uiView: UIButton, context: Context) {
+        // The action closure captures SwiftUI state that is re-made on every update, so it is refreshed
+        // through the coordinator rather than baked into the UIAction at creation — otherwise a tap
+        // counter would keep incrementing a stale copy and never move on screen.
+        context.coordinator.action = action
+        // Title and identifier are re-applied here, not left to makeUIView, because makeUIView runs
+        // once per *UIView* while updateUIView runs per value change — and a `List` row's representable
+        // can be handed a surviving UIButton for a different index. Baking the identifier in at
+        // creation risks a button labelled "Row 2" still reporting `native_row_17`, which the XCUITest
+        // suite could not catch: it locates the row by the same stale identifier it then asserts on.
+        uiView.setTitle(title, for: .normal)
+        uiView.accessibilityIdentifier = identifier
+    }
+
+    final class Coordinator {
+        var action: () -> Void
+        init(action: @escaping () -> Void) { self.action = action }
+    }
+}
+
+/// A non-Compose screen exercising `autograph-uikit`'s native tap capture end to end, through real
+/// synthetic touches.
 ///
 /// The content is chosen to cover the shapes that have actually broken:
 /// - a `List`, whose full-screen `_UITouchPassthroughView` overlay swallowed every tap until #82
 /// - enough rows to scroll, because a scroll leaves a touch-begin position behind and the *next* tap
 ///   used to be resolved against it (#83)
-/// - a button carrying no `.accessibilityIdentifier`, which must be dropped rather than reported
+/// - a control carrying no `accessibilityIdentifier`, which must be dropped rather than reported
 ///   under some fallback name
+///
+/// **The tappable controls are UIKit (`UIKitButton`), inside a SwiftUI layout.** They were SwiftUI
+/// `Button`s until #191, which stopped native capture resolving SwiftUI at all — leaving these tests
+/// asserting a behaviour that no longer exists. UIKit controls are what the pipeline names now, so
+/// hosting them here keeps the coverage above on the surface that is actually captured, rather than
+/// deleting it. The SwiftUI shell is retained deliberately: it is the real hierarchy the resolver has
+/// to walk out of, and the `native_swiftui_button` fixture below pins the other half (asserted by
+/// `NativeSampleUITests.testNativeSwiftUIButtonIsNotReported`).
 struct NativeSampleView: View {
     @StateObject private var events = NativeSampleEvents()
 
@@ -49,23 +108,30 @@ struct NativeSampleView: View {
             Text("Last event props: \(events.lastProps)")
                 .accessibilityIdentifier("native_last_event_props_label")
 
-            Button("Plain") {}
-                .accessibilityIdentifier("native_plain_button")
+            UIKitButton(title: "Plain", identifier: "native_plain_button")
+                .frame(height: 32)
 
-            // Deliberately no .accessibilityIdentifier: there is no stable name to report this
-            // under, and identification must not fall back to the displayed text.
-            Button("Unidentified") {}
+            // Deliberately no accessibilityIdentifier: there is no stable name to report this under,
+            // and identification must not fall back to the displayed text.
+            UIKitButton(title: "Unidentified", identifier: nil)
+                .frame(height: 32)
 
-            // Disabled: it still swallows the touch (isEnabled is not isUserInteractionEnabled) but
-            // runs no action, so capture must report nothing rather than invent a click — and must
-            // not fall through to whatever sits underneath either. See #134.
-            Button("Disabled") {}
+            // Disabled: capture must report nothing rather than invent a click. See #134 — and note the
+            // mechanism changed with #189: `hitTest` declines a disabled UIControl outright, so it never
+            // reaches the resolver, where before a trait veto dropped it. The touch therefore passes
+            // through to whatever is drawn behind; nothing is reported here because that is inert, not
+            // because the pipeline refuses to look underneath.
+            UIKitButton(title: "Disabled", identifier: "native_disabled_button")
+                .frame(height: 32)
                 .disabled(true)
-                .accessibilityIdentifier("native_disabled_button")
+
+            // A SwiftUI button, kept as the negative fixture: #191 means this must NOT be reported.
+            Button("SwiftUI") {}
+                .accessibilityIdentifier("native_swiftui_button")
 
             List(0..<40, id: \.self) { index in
-                Button("Row \(index)") {}
-                    .accessibilityIdentifier("native_row_\(index)")
+                UIKitButton(title: "Row \(index)", identifier: "native_row_\(index)")
+                    .frame(height: 28)
             }
             .accessibilityIdentifier("native_list")
         }
@@ -106,8 +172,11 @@ struct HybridSampleView: View {
             Text("Last event target: \(events.lastEvent)")
                 .accessibilityIdentifier("native_last_event_label")
 
-            Button("Native") {}
-                .accessibilityIdentifier("native_button_in_hybrid")
+            // UIKit, not SwiftUI: this button is the suite's proof that native capture is live, and
+            // since #191 a SwiftUI button reports nothing — which would make "Compose content was not
+            // reported" vacuously true.
+            UIKitButton(title: "Native", identifier: "native_button_in_hybrid")
+                .frame(height: 32)
 
             ComposeHybridView()
         }

@@ -7,10 +7,16 @@ import platform.UIKit.UIView
  * The set of views whose content belongs to a Compose capture pipeline, so the native pipeline can
  * stay off it.
  *
- * Both pipelines hit-test the *same* accessibility tree — that is the whole point of walking it —
- * so a tap inside a `ComposeUIViewController` is visible to both. Without a boundary the two would
- * each report it and every Compose tap would be counted twice. `autograph-compose` registers its
- * host view; [containsAny] lets the native side drop any tap whose hit path crosses one.
+ * A tap inside a `ComposeUIViewController` is visible to both pipelines — `autograph-compose` reaches
+ * it by walking the accessibility tree CMP bridges its semantics into, and the native pipeline reaches
+ * it because `UIView.hitTest` delivers the touch straight through the host view. Without a boundary
+ * the two would each report it and every Compose tap would be counted twice. `autograph-compose`
+ * registers its host view; [containsAny] lets the native side drop any tap whose path crosses one.
+ *
+ * The two sides pass *different kinds of path* to [containsAny], and it works on either because it
+ * only ever asks whether a registered view is among the nodes: since #191 the native pipeline passes
+ * the `hitTest` superview chain (see `NativeHitTestResolution.kt`), while the Compose side passes a
+ * [deepestAccessibilityHitPath] walk.
  *
  * **This is a static condition, not a race.** The alternative — "did the Compose pipeline already
  * report this tap?" — would make the outcome depend on which recognizer fired first. Asking instead

@@ -4,7 +4,7 @@ import platform.UIKit.UIView
 
 /**
  * The set of views a developer has excluded from native tap autocapture. Consulted by
- * [resolveNativeTapTarget]; populated through the public [registerAutographIgnoredView]. A separate
+ * [resolveNativeTapTargetByHitTest]; populated through the public [registerAutographIgnoredView]. A separate
  * [WeakViewRegistry] instance from [AutographComposeHosts] on purpose — "the developer opted this out"
  * and "this is Compose-owned" are different facts, and one must never disarm the other.
  *
@@ -26,11 +26,15 @@ internal object AutographIgnoredViews {
 }
 
 /**
- * Excludes [view] and everything under it from native (UIKit/SwiftUI) tap autocapture — the
- * counterpart of Compose's `Modifier.autographIgnore()`. This is a **privacy** control: a tap whose
- * hit path crosses [view] is not reported at all, so a screen can keep something off the analytics
- * stream without stripping its `accessibilityIdentifier` (which UI testing and assistive tooling rely
- * on).
+ * Excludes [view] and everything under it from native tap autocapture — the counterpart of Compose's
+ * `Modifier.autographIgnore()`. This is a **privacy** control: a tap whose hit path crosses [view] is
+ * not reported at all, so a screen can keep something off the analytics stream without stripping its
+ * `accessibilityIdentifier` (which UI testing and assistive tooling rely on).
+ *
+ * Takes a `UIView`, so it covers what native capture actually reports: UIKit content, including UIKit
+ * hosted inside a SwiftUI layout. A pure SwiftUI element is never autocaptured (#191), so there is
+ * nothing to exclude there and no view to hand this anyway — use `.autographIgnore()`, which excludes
+ * by window region, when a SwiftUI subtree hosts UIKit you want kept out of the stream.
  *
  * Only *ambient* autocapture is suppressed. Explicit instrumentation is unaffected — a `trackClick`
  * you call yourself inside the subtree still fires.

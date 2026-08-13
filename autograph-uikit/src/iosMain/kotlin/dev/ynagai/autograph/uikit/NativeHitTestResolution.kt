@@ -10,9 +10,9 @@ import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIView
 
 /*
- * The newer of iOS's two native tap resolvers, and the one asked first.
+ * iOS's native tap resolver — since #191, the only one.
  *
- * [resolveNativeTapTarget] identifies a tapped element by walking the **accessibility tree**, which
+ * Its predecessor identified a tapped element by walking the **accessibility tree**, which
  * UIKit and SwiftUI build on demand — and measured on a physical iPad Pro 11" (3rd gen) running
  * iOS 26.2.1, rebooted and launched from the home screen, they had built nothing at all: 0 of 15 views
  * carried a non-zero `accessibilityFrame`, 0 carried any trait. Every native tap is dropped for the
@@ -28,9 +28,17 @@ import platform.UIKit.UIView
  * `PlatformGroupContainer` with a nil identifier and a nil label: SwiftUI creates no per-element
  * backing view, and the `.accessibilityIdentifier(_:)` set on the button appears nowhere in the view
  * hierarchy. The accessibility tree is SwiftUI's only enumeration, and that tree is what needs a
- * client — so SwiftUI stays [resolveNativeTapTarget]'s case, warm only. Do not re-derive this: it was
- * measured twice, on a fresh simulator and on the device. This is also the line PostHog draws (UIKit
- * swizzling; SwiftUI element metadata documented as possibly incomplete).
+ * client. Do not re-derive this: it was measured twice, on a fresh simulator and on the device, and a
+ * later sweep over `List`, `Form`, `Picker` and a plain `Button` found no SwiftUI
+ * `.accessibilityIdentifier` anywhere in the view hierarchy — cold *or* warm. This is also the line
+ * PostHog draws (UIKit swizzling; SwiftUI element metadata documented as possibly incomplete).
+ *
+ * **So SwiftUI is not covered at all, and #191 stopped pretending otherwise.** The accessibility
+ * resolver did name SwiftUI elements, but only in a process where an accessibility client happened to
+ * be running, which made what it captured conditional on the user running VoiceOver or on the tap
+ * coming from a test runner. That bias is invisible downstream — silence reads as "nobody tapped this"
+ * — so it was removed rather than kept for the population it served. SwiftUI surfaces need explicit
+ * instrumentation; `installAutographNativeTapCapture`'s kdoc says so to the developer.
  *
  * **Two side benefits, both of them real and neither of them the reason.** `hitTest` *is* the answer
  * to "which view receives this touch" — the accessibility tree is an approximation of it, which is why
@@ -41,31 +49,62 @@ import platform.UIKit.UIView
  * real one, unlike the accessibility walk, which needs a warm client and is why #135 hid behind green
  * CI for so long. `NativeHitTestResolutionTest` therefore covers this code directly.
  *
- * **Why first rather than second.** For a warm UIKit app the two resolvers can name different targets,
- * so ordering is a behaviour change. It is taken deliberately: where they disagree, `hitTest` is the
- * one that observed what UIKit actually did. Preferring the less correct path for continuity was
- * rejected, and the library is pre-1.0 (#189).
+ * **Where it and the removed resolver disagreed, this one is right**, which is what made removing the
+ * other a simplification rather than a loss: `hitTest` observed what UIKit actually did, while the
+ * accessibility walk inferred it from traits and approximate frames (#189).
  */
 
 /**
+ * The identifier a native tap at this position would be reported under, or null when nothing would be
+ * reported for it — whether because it resolved to nothing or because a veto dropped it.
+ *
+ * **The public face of [resolveNativeTapTargetByHitTest], and the reason it exists is that
+ * `AutographUI` is a separate Swift package.** `.autographIgnore()` ships there, its contract is "a tap
+ * in this region is not reported", and the only way to check that contract from Swift is to ask what
+ * the pipeline would report. `AutographIgnoreTests` does exactly that. Nothing inside this module calls
+ * it — [AutographNativeTapCapture.report] uses the resolver directly, because it needs the distinction
+ * this function deliberately collapses (see [NativeHitTestResolution]).
+ *
+ * A caller outside the pipeline has no use for that distinction: both mean no event. So the tri-state
+ * stays internal and this hands back the one thing an external caller can act on.
+ *
+ * The predecessor of this name walked the accessibility tree and took a scale instead of a second
+ * position; #191 removed it. Same question, answered by `hitTest`, so it works in a cold process — see
+ * this file's header. Both positions describe the same point in [root]'s space; see
+ * [resolveNativeTapTargetByHitTest] for the units.
+ *
+ * **Threading.** Main thread only.
+ */
+@AutographInternalApi
+public fun resolveNativeTapTarget(
+    root: UIView,
+    positionInWindowPoints: AxPoint,
+    positionInWindowPx: AxPoint,
+): String? = when (
+    val resolution = resolveNativeTapTargetByHitTest(root, positionInWindowPoints, positionInWindowPx)
+) {
+    is NativeHitTestResolution.Target -> resolution.identifier
+    NativeHitTestResolution.Dropped, NativeHitTestResolution.Unresolved -> null
+}
+
+/**
  * What [resolveNativeTapTargetByHitTest] concluded. The three cases exist because "no answer" and
- * "the answer is: report nothing" must not be confused — the caller **falls through to
- * [resolveNativeTapTarget] on [Unresolved] and must not on [Dropped]**.
+ * "the answer is: report nothing" must not be confused.
  *
- * Collapsing them to a nullable `String` was the first shape tried and it is wrong in a way that is
- * easy to miss: a veto returning null would send the tap on to a resolver that does not necessarily
- * apply the same veto to the same tree. The two resolvers ask the same ownership questions, but of
- * *different chains* — one built from real frames, one from accessibility frames — and those diverge
- * exactly where it matters. A registered Compose host has a zero `accessibilityFrame` while cold, so
- * the accessibility walk prunes that branch entirely, never sees the host, and is free to resolve a
- * neighbouring element instead. `hitTest` follows the real frames straight into it. Fall through on
- * that drop and a tap on Compose-owned content is reported by the native pipeline under some other
- * element's name — the privacy boundary [AutographComposeHosts] exists to hold, defeated by the very
- * mechanism added to strengthen it.
+ * **The distinction outlived the reason it was introduced, so do not collapse it to a nullable
+ * `String`.** It was originally what kept a veto here from being undone by the second resolver behind
+ * this one; #191 removed that resolver, and both [Dropped] and [Unresolved] now produce no event. What
+ * still separates them is that only one of them is a *symptom*. [Unresolved] means nothing here could
+ * be named — the case a developer needs told about, and the only one allowed to spend the
+ * one-per-process warning. [Dropped] means this library did exactly what it was asked: an ignored
+ * region, Compose-owned content, a reserved identifier. In a hybrid app the very first tap is quite
+ * likely to be the latter, on Compose content `autograph-compose` then reports perfectly well; letting
+ * it consume the warning would blame a pipeline that did nothing wrong and leave the tap that needed
+ * the warning silent.
  *
- * That is not hypothetical: `aTapVetoedByTheHitTestResolverIsNotRescuedByTheAccessibilityOne` builds
- * exactly that tree, asserts the accessibility resolver *does* answer for it, and fails if this
- * distinction is collapsed.
+ * `aTapVetoedAsComposeOwnedDoesNotSpendTheWarning` and
+ * `aTapThatResolvesToNothingDoesSpendTheWarning` are the pair that pin this; collapsing the two cases
+ * fails the first and no other.
  */
 internal sealed interface NativeHitTestResolution {
 
@@ -74,16 +113,18 @@ internal sealed interface NativeHitTestResolution {
 
     /**
      * The tap resolved, and the answer is that nothing may be reported for it — an ignored region, an
-     * excluded or Compose-owned subtree, a reserved identifier. **Terminal**: the caller must not
-     * consult the accessibility resolver, which could otherwise name something for the very tap this
-     * vetoed.
+     * excluded or Compose-owned subtree, a reserved identifier. **Terminal**: nothing may name this tap
+     * afterwards, and nothing may treat it as a symptom. That was originally a rule about a second
+     * resolver behind this one; #191 removed it, and what the distinction buys now is the diagnostic —
+     * see this interface's kdoc above.
      */
     object Dropped : NativeHitTestResolution
 
     /**
-     * `hitTest` had nothing to say about this tap, so the caller should try [resolveNativeTapTarget].
-     * Not a drop and not an error — this is the ordinary outcome on every SwiftUI screen, where the
-     * view hierarchy carries no per-element identity at all (see this file's header).
+     * `hitTest` found nothing that could be named. Not a drop and not an error — it is the ordinary
+     * outcome on every SwiftUI screen, where the view hierarchy carries no per-element identity at all
+     * (see this file's header), and on any UIKit control left without an `accessibilityIdentifier`.
+     * The one outcome that may spend the caller's one-per-process warning.
      */
     object Unresolved : NativeHitTestResolution
 }
@@ -101,39 +142,38 @@ internal sealed interface NativeHitTestResolution {
  * `hitTest` takes, pixels are the space [AutographIgnoredBounds] registers rectangles in (see [AxRect]
  * for why that space exists, and for the two on-device coordinate bugs that named it).
  *
- * The questions are asked in the same order and with the same shape as [resolveNativeTapTarget]'s, so
- * the two resolvers agree wherever they can — a UIKit control must not resolve one way cold and
- * another warm. Each step's outcome is stated in [NativeHitTestResolution]'s terms:
+ * The questions are asked in the order below, and each step's outcome is stated in
+ * [NativeHitTestResolution]'s terms. The ownership vetoes come first, before anything is attributed,
+ * so a tap this library must not report cannot be named by a later step:
  *
  * 1. **Position excluded** by a SwiftUI `.autographIgnore()` region → [Dropped][NativeHitTestResolution.Dropped].
- *    Checked first, before anything is walked, exactly as [resolveNativeTapTarget] does.
+ *    Checked first, before anything is walked, since it needs only the position already in hand.
  * 2. **`hitTest` declines the point**, or returns a view that is not under [root] →
  *    [Unresolved][NativeHitTestResolution.Unresolved].
  * 3. **The hit chain crosses a Compose host or a developer-excluded view** →
- *    [Dropped][NativeHitTestResolution.Dropped]. The same two ownership questions
- *    [resolveNativeTapTarget] asks of its hit path, asked of the chain UIKit itself produced — which
- *    is strictly the better evidence, since it is the actual touch delivery path rather than a
- *    geometric approximation of it. Note this resolver needs only *one* chain where the accessibility
- *    one needs two walks: the "where did the tap land" and "what should it be attributed to" questions
- *    it has to keep apart are the same question here.
+ *    [Dropped][NativeHitTestResolution.Dropped]. Both ownership questions are asked of the chain UIKit
+ *    itself produced, which is the actual touch-delivery path rather than a geometric approximation of
+ *    it. Note this needs only *one* chain where the removed accessibility resolver needed two walks:
+ *    "where did the tap land" and "what should it be attributed to" are the same question here.
  * 4. **Nothing on the chain below [root] is interactive** ([isNativeInteractive]) →
  *    [Unresolved][NativeHitTestResolution.Unresolved]. The innermost interactive view wins, matching
  *    [nearestAccessibilityClickable]'s leaf-upward search, so a button inside a tappable row
  *    attributes to the button.
  * 5. **It carries no usable `accessibilityIdentifier`** ([accessibilityIdentifierOrNull], which also
  *    rejects a blank one) → [Unresolved][NativeHitTestResolution.Unresolved]. Deliberately *not* a
- *    drop, and this is the single most load-bearing choice in the function: a warm SwiftUI screen hits
- *    exactly this case — its hosting views carry gesture recognizers and no identifier — so dropping
- *    here would silently disable the SwiftUI half of native capture, which is the half that has no
- *    other route. Identification never falls back to `accessibilityLabel`; see
+ *    drop: an untagged control is a miss, not something this library was asked to withhold, and only a
+ *    miss may spend the caller's one-per-process warning — which is exactly the developer this case
+ *    concerns. (Until #191 the reason was different and stronger: a second resolver ran behind this
+ *    one, and a drop here would have cut off warm SwiftUI capture. That resolver is gone; the outcome
+ *    is unchanged.) Identification never falls back to `accessibilityLabel`; see
  *    [accessibilityIdentifierOrNull] for that privacy guarantee.
  * 6. **The identifier is reserved** ([AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX]) →
  *    [Dropped][NativeHitTestResolution.Dropped], because that prefix names an Autograph marker
- *    unconditionally, in both resolvers.
+ *    unconditionally — here and in `autograph-compose`'s resolver alike.
  *
  * **There is deliberately no disabled-control veto here, and that is a measured decision rather than
- * an omission.** [resolveNativeTapTarget] has one, and #189's sketch of this function carried it over.
- * Written, it never fired — because `hitTest` has already applied it, and applied it *better*.
+ * an omission.** The removed accessibility resolver had one, and #189's sketch of this function
+ * carried it over. Written, it never fired — because `hitTest` has already applied it, and *better*.
  * Measured on the simulator, for a bare `UIControl`, a `UISwitch` and a `UIButton` alike: a control
  * whose `isEnabled` is false is declined by hit-testing entirely, along with its whole subtree, and a
  * touch over one **passes straight through to the view drawn behind it**. So there is no state in
@@ -148,9 +188,10 @@ internal sealed interface NativeHitTestResolution {
  *   which is correct here — the container is what UIKit delivers the touch to.
  * - An *enabled* control nested inside a disabled one resolves to nothing, because UIKit makes the
  *   child untappable too. Nothing runs, so nothing is reported.
- * - A disabled control alone over inert background is [Unresolved][NativeHitTestResolution.Unresolved]
- *   and falls through, where [resolveNativeTapTarget]'s `UIAccessibilityTraitNotEnabled` veto still
- *   drops it warm. No phantom event either way.
+ * - A disabled control alone over inert background is [Unresolved][NativeHitTestResolution.Unresolved].
+ *   Nothing ran, so nothing is reported — and since it is a miss rather than a veto, it is allowed to
+ *   spend the caller's warning, which is right: a developer whose disabled control produced no event
+ *   is exactly who that line is for.
  *
  * All three outcomes are pinned by tests. Note what those tests can and cannot catch: they fix the
  * *result* for each shape, but none of them would fail if a disabled veto were re-added, because in
@@ -245,8 +286,7 @@ internal fun resolveNativeTapTargetByHitTest(
  * **A registered view that covers the screen therefore silences this resolver for every tap inside it.**
  * That is the opt-out doing what it was asked, not a bug — but an app excluding a full-screen
  * touch-transparent toast container rather than its transient children gets terminal [Dropped] on every
- * tap, and [Dropped] is deliberately not consulted by [resolveNativeTapTarget] afterwards. Register the
- * content, not the chrome.
+ * tap, and nothing runs afterwards to rescue it. Register the content, not the chrome.
  *
  * [point] is in [root]'s coordinate space (a `UIWindow` in production), and is converted per node
  * rather than accumulated, so a transformed or offset ancestor cannot skew it.
@@ -308,9 +348,10 @@ private const val MINIMUM_VISIBLE_ALPHA = 0.01
  *
  * Emptiness is a real case rather than paranoia — `hitTest` is overridable, and an app is free to
  * return a view from another part of the hierarchy. The caller reads empty as
- * [Unresolved][NativeHitTestResolution.Unresolved] rather than as a drop, since a chain that does not
- * reach [to] cannot be checked against the ownership registries either; sending it on to the
- * accessibility resolver, which does its own containment walk from [to], is the honest outcome.
+ * [Unresolved][NativeHitTestResolution.Unresolved] rather than as a drop: a chain that does not reach
+ * [to] cannot be checked against the ownership registries, so this resolver has no basis for either
+ * naming the tap or claiming it withheld one. Nothing runs afterwards — the tap is simply not reported,
+ * and the developer is told once (see [warnOnceIfANativeTapResolvedToNothing]).
  *
  * Compared with `==`, never `===`: [from] arrives from `hitTest` across the interop boundary and [to]
  * is the caller's own reference, so Kotlin/Native hands them out as distinct wrappers for what may be
@@ -391,23 +432,27 @@ private const val MAX_HIT_CHAIN_DEPTH = 256
  * UIScrollView(id="feed_list") → row`, a tap on the row resolved to `login_screen`. A screen container
  * carrying an `accessibilityIdentifier` for UI testing and a tap-to-dismiss-keyboard recognizer is an
  * ordinary UIKit shape, so this was not a corner. Stopping at the barrier gives
- * [Unresolved][NativeHitTestResolution.Unresolved], and the accessibility route — which *can* see
- * SwiftUI rows — resolves it exactly as before.
+ * [Unresolved][NativeHitTestResolution.Unresolved].
  *
- * Nothing above a scroll view is a plausible owner of a tap the scroll view's own content received, so
- * the barrier costs no target this resolver should have named: UIKit delivered the touch inside the
- * scroll view, and an ancestor's recognizer that did also fire is not what the user tapped.
+ * **Since #191 that is where the tap ends** — no second resolver runs behind this one, so a row the
+ * barrier stops at is not reported at all. When this barrier was written the accessibility route still
+ * caught the SwiftUI rows it stopped, and this note said so; that rescue is gone, and the barrier's
+ * cost is now paid in full. It is still the right trade, for the reason below rather than for that one:
+ * nothing above a scroll view is a plausible owner of a tap the scroll view's own content received, so
+ * the barrier costs no target *this* resolver should have named — UIKit delivered the touch inside the
+ * scroll view, and an ancestor's recognizer that did also fire is not what the user tapped. What it
+ * costs is a row this resolver could never have named anyway; a drop, chosen over a misattribution.
  *
  * **A `UITextView` is a `UIScrollView`**, and so is excluded by the same branch — an editable one is
  * tapped to focus rather than to activate, so this is the wanted answer, but it means text views are
- * never reported here and fall through like a cell. Named because the type relationship is easy to miss.
+ * never reported, like a cell. Named because the type relationship is easy to miss.
  *
  * **Known gap — UIKit cell selection.** A `UITableViewCell` or `UICollectionViewCell` is neither a
  * `UIControl` nor recognizer-bearing; selection is the delegate's, driven by recognizers on the scroll
- * view this now excludes. So a tap on a plain cell reaches nothing interactive and falls through to the
- * accessibility resolver, where it resolves warm and drops cold — the same position UIKit cells were in
- * before #189, and no worse. Adding cells to the predicate is a guess until a real `UITableView`
- * hierarchy is run against it.
+ * view this now excludes. So a tap on a plain cell reaches nothing interactive and **is not reported at
+ * all** — warm or cold, since #191 removed the accessibility resolver that used to resolve it on a warm
+ * tree. The README's gap list says the same; keep the two in step. Adding cells to the predicate is a
+ * guess until a real `UITableView` hierarchy is run against it.
  *
  * **Threading.** Main thread only.
  */

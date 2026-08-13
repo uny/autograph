@@ -76,6 +76,43 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Changed
 
+- **iOS native tap capture no longer covers SwiftUI at all, and the accessibility resolver behind it
+  is removed** ([#191]). Since [#189] a `hitTest` resolver has handled UIKit without touching
+  accessibility state; behind it a second resolver walked the accessibility element tree, which UIKit
+  and SwiftUI build only once an accessibility client has run in the process. With UIKit already
+  covered, that fallback served exactly one remaining population — **SwiftUI in a process where
+  VoiceOver, Voice Control, the Accessibility Inspector or an XCUITest runner happened to be running.**
+
+  That is not partial capture, it is biased capture: the taps it recorded were the ones made by
+  assistive-technology users and by test automation, and downstream its silence is indistinguishable
+  from nobody having tapped. It also made a simulator you had run UI tests against look reliable while
+  the same build dropped every SwiftUI tap on a user's device. Analytics quietly conditioned on a
+  user's assistive technology is worse to ship than none, so it was removed rather than kept for the
+  population it happened to serve. **Instrument SwiftUI surfaces explicitly.**
+
+  Measured before removing, on a fresh simulator and on a warmed one, driving `hitTest` over a real
+  `UITableView`, a real `UICollectionView`, a SwiftUI `List`, `Form`, `Picker` and a plain `Button`:
+  no SwiftUI `.accessibilityIdentifier` appears anywhere in the view hierarchy, cold **or** warm. The
+  cold half was already known; the warm half is what confirms nothing is lost on the surviving path.
+
+  Two other things go with it. The container misattribution tracked as [#191]'s first item cannot
+  happen any more — it was the accessibility walk that let a UIView-backed SwiftUI container claim a
+  tap on its own contents. And the one-per-process console warning stopped asking whether the
+  accessibility tree is cold, since that no longer decides anything: it now fires on the first tap
+  that resolves to nothing, whatever the reason, and says what to do about it.
+
+  What is lost beyond SwiftUI is warm-only too: a `UITableViewCell` or `UICollectionViewCell` whose
+  selection is its delegate's, and `.onTapGesture` on a `Text`. Both resolved only on a warm tree
+  before, and both are listed as known gaps in the README.
+
+  API: `resolveNativeTapTarget` (`@AutographInternalApi`) keeps its name and its job — resolve a tap
+  to the identifier that would be reported — but now answers through `hitTest`, so it takes the tap's
+  position in **points as well as pixels** and no longer takes a scale. It exists for `AutographUI`,
+  a separate Swift package whose `.autographIgnore()` contract can only be checked by asking what the
+  pipeline would report. The accessibility walk itself (`deepestAccessibilityHitPath` and friends) is
+  untouched — `autograph-compose`'s iOS resolver uses it, and Compose taps resolve in a cold process,
+  so Compose autocapture is unaffected on both platforms.
+
 - `Modifier.autocaptureScope` is deprecated in favour of `AutographElementScope`, and is removed at
   1.0 ([#185]). It is not fixable in place: its documented canonical usage puts the scope on the
   clickable's own chain, and iOS needs it on a layout node of its own, since two `testTag`s on one
@@ -99,8 +136,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   UIKit taps are now resolved first by `UIView.hitTest`, which never consults accessibility. In that
   same cold process the tap position returned the real `UIButton` **carrying its
   `accessibilityIdentifier`** — the exact string reported as the event's `target`. A `UIControl`, or
-  any view with an enabled tap gesture recognizer, is therefore identified cold. The accessibility
-  resolver remains as the second path, which is what still covers SwiftUI on a warm tree.
+  any view with an enabled tap gesture recognizer, is therefore identified cold. (At the time, the
+  accessibility resolver remained behind it as a second path covering SwiftUI on a warm tree; the entry
+  above supersedes that — [#191] removed it before either change shipped.)
 
   Two things improve on UIKit as a side effect, because `hitTest` *is* the answer to which view
   receives a touch rather than an approximation of it: the overlap and z-order ambiguity documented
@@ -778,3 +816,4 @@ Initial release.
 [#179]: https://github.com/uny/autograph/issues/179
 [#185]: https://github.com/uny/autograph/issues/185
 [#189]: https://github.com/uny/autograph/issues/189
+[#191]: https://github.com/uny/autograph/issues/191
