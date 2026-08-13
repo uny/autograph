@@ -11,6 +11,7 @@ import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.setValue
 import platform.UIKit.UIButton
+import platform.UIKit.UILabel
 import platform.UIKit.UIScreen
 import platform.UIKit.UIScrollView
 import platform.UIKit.UITapGestureRecognizer
@@ -423,6 +424,132 @@ class NativeHitTestResolutionTest {
             resolve(root, 15.0, 15.0),
             "an identified scroll view must not claim a tap that landed on its content",
         )
+    }
+
+    /**
+     * The half of the scroll-view rule that excluding the scroll view alone does **not** buy, and which
+     * [neverTreatsAScrollViewAsTheTappedElement] cannot see because nothing interactive sits above its
+     * list. Skipping the scroll view merely hands the shadowing to the next interactive ancestor: here a
+     * screen container with an `accessibilityIdentifier` (routine for UI testing) and a
+     * tap-to-dismiss-keyboard recognizer (an ordinary UIKit idiom). Measured before the barrier: a tap
+     * on the row resolved to `login_screen`.
+     *
+     * The scroll view has to stop the search, not just decline to answer it.
+     */
+    @Test
+    fun stopsTheSearchAtAScrollViewRatherThanLettingAnAncestorClaimTheTap() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val screen = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("login_screen")
+        root.addSubview(screen)
+        val list = UIScrollView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0)).identified("feed_list")
+        screen.addSubview(list)
+        list.addSubview(view(10.0, 10.0, 20.0, 20.0))
+
+        assertSame(
+            NativeHitTestResolution.Unresolved,
+            resolve(root, 15.0, 15.0),
+            "a container above a scroll view must not claim a tap the scroll view's content received",
+        )
+    }
+
+    /**
+     * The barrier must not cost a legitimate target *inside* the scroll view: a tappable identified card
+     * in a scrolling list is the ordinary shape of any UIKit feed, and it sits below the barrier, so the
+     * leaf-upward search reaches it before the scroll view is ever considered.
+     */
+    @Test
+    fun stillResolvesAnInteractiveViewInsideAScrollView() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val list = UIScrollView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0)).identified("feed_list")
+        root.addSubview(list)
+        val card = view(0.0, 0.0, 100.0, 40.0).withTapRecognizer().identified("feed_card")
+        list.addSubview(card)
+        card.addSubview(view(10.0, 10.0, 20.0, 20.0))
+
+        assertTarget("feed_card", resolve(root, 15.0, 15.0))
+    }
+
+    // --- the developer opt-out holds on this route too ---
+
+    /**
+     * `registerAutographIgnoredView` promises that "a tap whose hit path crosses [view] is not reported
+     * at all". That hit path is the *visual* one; a `hitTest` chain is the *touch-delivery* path, and
+     * the two diverge at a view that declines touches — which is the default for the two types an app is
+     * most likely to exclude, `UILabel` and `UIImageView`.
+     *
+     * Measured on the tree below: the accessibility resolver drops this tap, and before the fix the
+     * `hitTest` route reported `profile_card` — so the opt-out stopped holding for the shape it is most
+     * often reached for, and stopped holding *cold*, where the pipeline previously reported nothing.
+     * Both resolvers are asserted so the divergence is the thing under test rather than an assumption.
+     */
+    @Test
+    fun honoursAnOptOutOnAViewThatDeclinesTouches() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("profile_card")
+        root.addSubview(card)
+        // A label showing the user's email. `isUserInteractionEnabled` is false by default, so `hitTest`
+        // returns the card and this view never appears on the delivery chain.
+        val emailLabel = UILabel(frame = CGRectMake(5.0, 5.0, 50.0, 20.0)).identified("email_label")
+        card.addSubview(emailLabel)
+
+        assertTarget("profile_card", resolve(root, 15.0, 15.0), "precondition: reported before opting out")
+
+        registerIgnored(emailLabel)
+
+        assertSame(
+            NativeHitTestResolution.Dropped,
+            resolve(root, 15.0, 15.0),
+            "an excluded view under the tap must veto it even when it cannot receive the touch",
+        )
+    }
+
+    /** The opt-out is the excluded view's, not the whole card's: a tap clear of it still resolves. */
+    @Test
+    fun anOptOutOnlyVetoesTapsThatActuallyLandOnIt() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("profile_card")
+        root.addSubview(card)
+        val emailLabel = UILabel(frame = CGRectMake(5.0, 5.0, 20.0, 20.0)).identified("email_label")
+        card.addSubview(emailLabel)
+        registerIgnored(emailLabel)
+
+        assertTarget(
+            "profile_card",
+            resolve(root, 80.0, 80.0),
+            "a tap elsewhere on the card is not inside the excluded view and must still be reported",
+        )
+    }
+
+    // --- a recognizer this tap could not have satisfied is not interactivity ---
+
+    /**
+     * The observer feeding this pipeline is a single-tap, single-touch recognizer, so a view whose only
+     * recognizer needs two taps demonstrably ran nothing for the tap being resolved. Reporting it would
+     * invent an event. The search carries on upward instead, exactly as for a disabled recognizer.
+     */
+    @Test
+    fun looksPastAViewWhoseOnlyTapRecognizerNeedsTwoTaps() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("card")
+        root.addSubview(card)
+        val zoom = view(10.0, 10.0, 20.0, 20.0).identified("double_tap_only")
+        zoom.addGestureRecognizer(UITapGestureRecognizer().also { it.numberOfTapsRequired = 2uL })
+        card.addSubview(zoom)
+
+        assertTarget("card", resolve(root, 15.0, 15.0))
+    }
+
+    /** The two-finger form of the same requirement. */
+    @Test
+    fun looksPastAViewWhoseOnlyTapRecognizerNeedsTwoFingers() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("card")
+        root.addSubview(card)
+        val twoFinger = view(10.0, 10.0, 20.0, 20.0).identified("two_finger_only")
+        twoFinger.addGestureRecognizer(UITapGestureRecognizer().also { it.numberOfTouchesRequired = 2uL })
+        card.addSubview(twoFinger)
+
+        assertTarget("card", resolve(root, 15.0, 15.0))
     }
 
     /** A tap on inert background: `hitTest` answers, nothing on the chain is interactive. */

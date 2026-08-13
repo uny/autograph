@@ -152,7 +152,12 @@ internal sealed interface NativeHitTestResolution {
  *   and falls through, where [resolveNativeTapTarget]'s `UIAccessibilityTraitNotEnabled` veto still
  *   drops it warm. No phantom event either way.
  *
- * All three are pinned by tests; re-adding a veto here would break them, which is the point.
+ * All three outcomes are pinned by tests. Note what those tests can and cannot catch: they fix the
+ * *result* for each shape, but none of them would fail if a disabled veto were re-added, because in
+ * every one of them `hitTest` has already declined the disabled control and it is therefore absent from
+ * the chain a veto could inspect. That is the same fact stated one paragraph up — there is no state in
+ * which this resolver holds a disabled control — so the absence of the veto is guaranteed by the
+ * mechanism rather than by the suite, and a reader must not expect a red test to stop them re-adding it.
  *
  * **[root] is never the answer.** It is dropped from the candidate set before step 4, which is not a
  * detail: in production [root] is the `UIWindow` this capture attached its own `UITapGestureRecognizer`
@@ -178,13 +183,63 @@ internal fun resolveNativeTapTargetByHitTest(
     if (AutographComposeHosts.containsAny(chain) || AutographIgnoredViews.containsAny(chain)) {
         return NativeHitTestResolution.Dropped
     }
+    if (hitView.hidesAnExcludedViewUnder(positionInWindowPoints, root)) return NativeHitTestResolution.Dropped
     // Leaf-first, so `firstOrNull` is the innermost interactive view. `dropLast` removes [root] — see
-    // the kdoc; hitChain always ends at it whenever it returns anything at all.
-    val interactive = chain.dropLast(1).firstOrNull { it.isNativeInteractive() }
+    // the kdoc; hitChain always ends at it whenever it returns anything at all. `takeWhile` stops the
+    // search at the first scroll view rather than stepping over it — see [isNativeInteractive].
+    val interactive = chain.dropLast(1)
+        .takeWhile { it !is UIScrollView }
+        .firstOrNull { it.isNativeInteractive() }
         ?: return NativeHitTestResolution.Unresolved
     val identifier = interactive.accessibilityIdentifierOrNull() ?: return NativeHitTestResolution.Unresolved
     if (identifier.startsWith(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX)) return NativeHitTestResolution.Dropped
     return NativeHitTestResolution.Target(identifier)
+}
+
+/**
+ * Whether the tap landed on top of a [AutographIgnoredViews]-excluded view that `hitTest` stepped over.
+ *
+ * **This exists because the two paths mean different things, and the opt-out is defined in terms of the
+ * one this resolver does not have.** `registerAutographIgnoredView` promises that a tap whose hit path
+ * crosses the excluded view "is not reported at all", and its hit path is the *visual* one the
+ * accessibility walk builds. A `hitTest` chain is the *touch-delivery* path, and the two diverge exactly
+ * at a view that declines touches — the default for the two view types an app is most likely to exclude:
+ * `UILabel` and `UIImageView` both ship with `isUserInteractionEnabled = false`. Measured: a `UILabel`
+ * showing an email address, registered as ignored, inside an identified card carrying a tap recognizer
+ * — the accessibility resolver drops the tap, and without this check `hitTest` reports the card. The
+ * opt-out silently stopped holding for the shape it is most often reached for.
+ *
+ * So the excluded set is asked of the views *under the point* below the receiver, not only of the
+ * delivery chain: descend the receiver's subtree taking every view whose bounds contain the point,
+ * whether or not it can receive a touch. Ancestors are already covered by the caller's
+ * `containsAny(chain)`.
+ *
+ * **One narrower shape is deliberately left uncovered**: an excluded, touch-declining view that is a
+ * *sibling drawn over* the receiver rather than a descendant of it. Covering that needs a walk from [to]
+ * over the whole tree, which would also drop taps on native content that merely happens to sit in front
+ * of an excluded subtree — over-dropping where this under-drops. The descendant walk is the tight fix
+ * for the measured shape; the sibling case is left to [resolveNativeTapTarget], which still applies its
+ * own veto on a warm tree whenever this resolver answers
+ * [Unresolved][NativeHitTestResolution.Unresolved]. Cold, it is a real residual gap.
+ *
+ * [point] is in [to]'s coordinate space (a `UIWindow` in production), and is converted per node rather
+ * than accumulated, so a transformed or offset ancestor cannot skew it.
+ *
+ * **Threading.** Main thread only.
+ */
+@OptIn(ExperimentalForeignApi::class, AutographInternalApi::class)
+private fun UIView.hidesAnExcludedViewUnder(point: AxPoint, to: UIView): Boolean {
+    val cgPoint = CGPointMake(point.x.toDouble(), point.y.toDouble())
+    val stack = ArrayDeque<Pair<UIView, Int>>()
+    stack.addLast(this to 0)
+    while (stack.isNotEmpty()) {
+        val (view, depth) = stack.removeLast()
+        if (depth >= MAX_HIT_CHAIN_DEPTH) continue
+        if (!view.pointInside(view.convertPoint(cgPoint, fromView = to), withEvent = null)) continue
+        if (AutographIgnoredViews.contains(view)) return true
+        view.subviews.forEach { subview -> (subview as? UIView)?.let { stack.addLast(it to depth + 1) } }
+    }
+    return false
 }
 
 /**
@@ -238,6 +293,19 @@ private const val MAX_HIT_CHAIN_DEPTH = 256
  * is needed for a disabled `UIControl` — measured, `hitTest` never hands one back at all (see
  * [resolveNativeTapTargetByHitTest]'s note on the absent disabled veto).
  *
+ * **Nor does a recognizer that this tap could not have satisfied.** The observer that feeds this
+ * pipeline is a *single*-tap, single-touch `UITapGestureRecognizer` on the window, so a recognizer
+ * requiring two taps or two fingers demonstrably did not fire for the tap being resolved: reporting its
+ * view would invent an event for an action that never ran. `numberOfTapsRequired` and
+ * `numberOfTouchesRequired` are checked for that reason and no other — they are the two requirements
+ * readable from the umbrella header that this pipeline can compare against its own recognizer.
+ *
+ * What is deliberately *not* modelled is the rest of recognition: a `delegate` that would have refused
+ * the touch, a `require(toFail:)` relationship, an `isEnabled` view hierarchy above. Those need the
+ * live gesture-recognition state rather than the recognizer's static configuration, and guessing at
+ * them would trade a rare phantom event for the misattribution of naming some ancestor instead. The
+ * identifier requirement bounds the residue: an untagged view is never reported whatever this answers.
+ *
  * **Deliberately not narrowed to a control that has a registered action.** `UIControl.allControlEvents`
  * would exclude a `UITextField` tapped only to focus it, but it would also exclude a `UIButton` driven
  * by `showsMenuAsPrimaryAction`, and neither behaviour has been measured. The identifier requirement
@@ -255,9 +323,24 @@ private const val MAX_HIT_CHAIN_DEPTH = 256
  * claiming its children's taps is a misattribution, the failure this codebase consistently ranks worse
  * than a drop.
  *
- * Excluded rather than special-cased so the walk continues past it: the tap then reaches no interactive
- * view at all, the resolver answers [Unresolved][NativeHitTestResolution.Unresolved], and the
- * accessibility route — which *can* see SwiftUI rows — resolves it exactly as before.
+ * A scroll view is therefore a **barrier**, not a skip: [resolveNativeTapTargetByHitTest] stops the
+ * upward search at the first one rather than stepping over it. Answering "not interactive" for the
+ * scroll view alone was measured to be only half the fix, because it relocates the problem rather than
+ * removing it — the search simply carried on to the *next* interactive ancestor and let that one shadow
+ * the content instead. Measured against a hand-built tree: `screen(id="login_screen", tap recognizer) →
+ * UIScrollView(id="feed_list") → row`, a tap on the row resolved to `login_screen`. A screen container
+ * carrying an `accessibilityIdentifier` for UI testing and a tap-to-dismiss-keyboard recognizer is an
+ * ordinary UIKit shape, so this was not a corner. Stopping at the barrier gives
+ * [Unresolved][NativeHitTestResolution.Unresolved], and the accessibility route — which *can* see
+ * SwiftUI rows — resolves it exactly as before.
+ *
+ * Nothing above a scroll view is a plausible owner of a tap the scroll view's own content received, so
+ * the barrier costs no target this resolver should have named: UIKit delivered the touch inside the
+ * scroll view, and an ancestor's recognizer that did also fire is not what the user tapped.
+ *
+ * **A `UITextView` is a `UIScrollView`**, and so is excluded by the same branch — an editable one is
+ * tapped to focus rather than to activate, so this is the wanted answer, but it means text views are
+ * never reported here and fall through like a cell. Named because the type relationship is easy to miss.
  *
  * **Known gap — UIKit cell selection.** A `UITableViewCell` or `UICollectionViewCell` is neither a
  * `UIControl` nor recognizer-bearing; selection is the delegate's, driven by recognizers on the scroll
@@ -269,10 +352,16 @@ private const val MAX_HIT_CHAIN_DEPTH = 256
  * **Threading.** Main thread only.
  */
 private fun UIView.isNativeInteractive(): Boolean = when {
+    // Kept alongside the caller's barrier: this predicate is also the answer to "is this view itself a
+    // tappable element", and a scroll view is not one whichever way it was reached.
     this is UIScrollView -> false
     this is UIControl -> true
     else -> gestureRecognizers
         ?.filterIsInstance<UIGestureRecognizer>()
-        ?.any { it is UITapGestureRecognizer && it.enabled }
+        ?.any { it is UITapGestureRecognizer && it.enabled && it.recognizesASingleTap() }
         ?: false
 }
+
+/** Whether this recognizer's requirements match the single-finger single tap this pipeline observes. */
+private fun UITapGestureRecognizer.recognizesASingleTap(): Boolean =
+    numberOfTapsRequired == 1uL && numberOfTouchesRequired == 1uL
