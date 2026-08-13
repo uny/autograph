@@ -51,6 +51,11 @@ import kotlinx.serialization.json.JsonPrimitive
  *   put anything in a scope you wouldn't put in a `testTag`. It is also an extra node in the
  *   hierarchy, which UI tests that count or traverse descendants will see.
  *
+ * Also on iOS only: the scope is parsed on the main thread inside a tap handler, so a scope whose
+ * encoded form exceeds 2048 characters is dropped whole — the element still reports its tap, without
+ * the scope — and a one-line diagnostic naming the size is printed to the console once per process.
+ * Scopes are for identifiers; nothing this API is for comes near the ceiling.
+ *
  * On Android none of that applies: the scope travels as a private semantics property that no
  * assistive technology can perceive, and no traversal grouping is set.
  *
@@ -96,5 +101,10 @@ public fun AutographElementScope(
  * capturing the scope is a fresh instance every call, so an unchanged scope would invalidate its
  * layout node's semantics on every recomposition. This API is aimed squarely at list rows, where that
  * difference lands — see [autocaptureScope] for the measurement.
+ *
+ * `@Composable` for the sake of iOS, the one platform that has work to do here beyond handing the
+ * scope to a node: it encodes the payload and checks it against a ceiling, and `remember` is what
+ * keeps that off the recomposition path and keeps its diagnostic from repeating.
  */
+@Composable
 internal expect fun Modifier.autographElementScopeMarker(properties: JsonObject): Modifier

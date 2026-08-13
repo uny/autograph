@@ -40,6 +40,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Requires Compose Multiplatform 1.11 or newer for the iOS half; older versions bridge the wrapper as
   a flat sibling and the scope is silently absent.
 
+  On iOS a scope whose encoded form exceeds 2048 characters is dropped whole — it is parsed on the
+  main thread inside a tap handler, so its size is a latency budget — and dropping it degrades to
+  exactly what no wrapper does. Crossing the ceiling prints a one-line console diagnostic naming the
+  size, once per process, because the drop is otherwise indistinguishable from a correctly configured
+  app until someone reads the events. The number is a guard against the pathological, not a measured
+  budget.
+
 ### Changed
 
 - `Modifier.autocaptureScope` is deprecated in favour of `AutographElementScope`, and is removed at

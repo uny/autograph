@@ -1,5 +1,7 @@
 package dev.ynagai.autograph.compose
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.node.SemanticsModifierNode
@@ -22,9 +24,40 @@ import kotlinx.serialization.json.JsonObject
  * Over the ceiling the marker is dropped whole rather than truncated: half a JSON object does not
  * parse, so truncating would produce a wrapper that publishes an accessibility container and a
  * reserved identifier while contributing no scope, which is the cost without the benefit. Dropping it
- * degrades to exactly what happens with no wrapper at all.
+ * degrades to exactly what happens with no wrapper at all — silently, which is why crossing it prints
+ * [warnScopePayloadTooLarge].
+ *
+ * The number itself is **not measured**. It was chosen as an order of magnitude above any scope this
+ * API is for and an order of magnitude below a payload that could plausibly be felt in a tap handler,
+ * and nothing about the parse cost at either end has been timed. Treat it as a guard against the
+ * pathological, not as a tuned budget: if a real scope ever approaches it, measure before raising it.
  */
 private const val MAX_SCOPE_PAYLOAD_LENGTH = 2048
+
+/**
+ * Printed once per process, the first time a scope is dropped for size.
+ *
+ * To the console rather than `AutographConfig.logger`, following [LocalTracker]'s missing-tracker
+ * warning: this is a develop-time report that a call site is wrong, not a diagnostic of a running
+ * tracker, and it has to work whether or not a tracker was ever provided.
+ *
+ * Once per *process*, not once per node: the scope wrapper's whole reason to exist is lists, so a
+ * single oversized row composable would otherwise print once per visible row and again on every
+ * scroll. One line naming the size and the ceiling is enough to act on, and the alternative floods
+ * the log it is trying to be seen in.
+ */
+private var scopePayloadTooLargeWarned = false
+
+private fun warnScopePayloadTooLarge(length: Int) {
+    if (scopePayloadTooLargeWarned) return
+    scopePayloadTooLargeWarned = true
+    println(
+        "Autograph: an AutographElementScope was dropped — its encoded properties are $length " +
+            "characters, over the $MAX_SCOPE_PAYLOAD_LENGTH-character ceiling. Taps inside it are " +
+            "still reported, but without the scope. Scopes are for identifiers, not payloads. " +
+            "(Printed once per process; other oversized scopes are dropped silently.)",
+    )
+}
 
 /**
  * Publishes the scope as an accessibility container carrying a reserved identifier — the one route a
@@ -41,12 +74,25 @@ private const val MAX_SCOPE_PAYLOAD_LENGTH = 2048
  * No escaping beyond JSON's own: the payload is a complete JSON document, so quotes, control
  * characters and non-ASCII are already handled, and the reader strips a fixed prefix and parses the
  * remainder. Normalizing keys or values would risk collapsing two scopes the app meant to keep apart.
+ *
+ * The encode and the size check are `remember`ed on the scope itself. This is the one platform that
+ * serializes on the composition path, and the wrapper's target is list rows, so doing it per
+ * recomposition would put a JSON encode on every frame of a scroll for every visible scoped row —
+ * the same cost on the encode side that [IosScopeMarkerElement] exists to avoid on the semantics one.
  */
 @OptIn(AutographInternalApi::class)
+@Composable
 internal actual fun Modifier.autographElementScopeMarker(properties: JsonObject): Modifier {
-    val payload = Json.encodeToString(JsonObject.serializer(), properties)
-    if (payload.length > MAX_SCOPE_PAYLOAD_LENGTH) return this
-    return this then IosScopeMarkerElement(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX + payload)
+    val identifier = remember(properties) {
+        val payload = Json.encodeToString(JsonObject.serializer(), properties)
+        if (payload.length > MAX_SCOPE_PAYLOAD_LENGTH) {
+            warnScopePayloadTooLarge(payload.length)
+            null
+        } else {
+            AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX + payload
+        }
+    } ?: return this
+    return this then IosScopeMarkerElement(identifier)
 }
 
 /**
