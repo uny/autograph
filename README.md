@@ -233,22 +233,23 @@ There's a `JsonObject` overload for non-string values. Notes:
     through the UIKit accessibility tree, the only route to a tapped element Compose Multiplatform
     offers there, so the wrapper is published as a semantic-group container and the scope's keys and
     values sit in its `accessibilityIdentifier` verbatim. VoiceOver's reading order, stop count and
-    spoken labels are unchanged — measured as four controlled A/Bs against identical unwrapped
-    content — but with the rotor set to Containers the scoped element becomes one more navigation
-    target. The identifier is also readable by any accessibility client (Accessibility Inspector,
+    spoken labels come out unchanged in four controlled A/Bs against identical unwrapped content —
+    but those read the *bridged hierarchy*, not a running VoiceOver, so treat them as strong evidence
+    rather than as a screen-reader pass. What is measured outright is the rotor: the wrapper publishes
+    a container type where the unwrapped control publishes none, so with the rotor set to Containers
+    the scoped element becomes one more navigation target. Whether VoiceOver announces the group's
+    boundary on entry or exit has not been checked on a device.
+    The identifier is also readable by any accessibility client (Accessibility Inspector,
     Appium, Maestro), so don't put anything in a scope you wouldn't put in a `testTag`. On Android
     none of this applies: the scope is a private semantics property no assistive technology can see.
   - **The iOS half needs Compose Multiplatform 1.11 or newer.** Older versions don't publish a
     traversal group as its own accessibility element, so the wrapper is bridged as a flat sibling
     rather than an ancestor and the scope is silently absent — a missing property rather than a wrong
     one, which is the trade this library takes on purpose, but silent. Pin your Compose version if
-    you rely on iOS scopes.
-    Where you need per-element properties on iOS, instrument the element explicitly:
+    you rely on iOS scopes. On an older Compose, instrument the element explicitly instead:
     `Modifier.trackClick("Article Opened", properties) { open(article) }` in place of its
-    `clickable`, which carries them on both platforms and reports the element under that name instead
-    of autocapturing it. The full account, and what Compose Multiplatform would have to expose for
-    this to change, is in the modifier's kdoc and
-    [#68](https://github.com/uny/autograph/issues/68).
+    `clickable` carries the properties on both platforms, reporting the element under that name
+    rather than autocapturing it.
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
   already receives, include it there explicitly.

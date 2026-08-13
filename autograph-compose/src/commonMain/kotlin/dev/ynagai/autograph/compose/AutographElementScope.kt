@@ -40,12 +40,17 @@ import kotlinx.serialization.json.JsonPrimitive
  * semantic group — and the scope's keys and values sit in that container's `accessibilityIdentifier`
  * verbatim. Two consequences worth knowing before you opt in:
  *
- * - **VoiceOver.** Reading order, stop count and spoken labels are unchanged — measured as four
- *   controlled A/Bs against identical unwrapped content, since `clickable` merges its subtree into a
- *   single stop and the container never takes focus itself. What *does* change is the rotor: with it
- *   set to Containers, the scoped element becomes one more navigation target. The change is additive
- *   — nothing is hidden, no stop is lost, no order moves — but it is a change to your app's
- *   accessibility structure, made by an analytics library, and you are the one choosing it.
+ * - **VoiceOver.** Reading order, stop count and spoken labels come out unchanged across four
+ *   controlled A/Bs against identical unwrapped content, matching the mechanism: `clickable` merges
+ *   its subtree into a single stop and the container never takes focus itself. Those A/Bs read the
+ *   **bridged hierarchy** rather than a running VoiceOver, so they are strong evidence and not a
+ *   screen-reader pass — the distinction matters because a null result on one accessibility surface
+ *   does not carry to another, which is exactly how the rotor was missed on the first pass. The rotor
+ *   *does* change, and that part is measured outright: with it set to Containers, the scoped element
+ *   becomes one more navigation target. Additive — nothing hidden, no stop lost, no order moved — but
+ *   it is a change to your app's accessibility structure, made by an analytics library, and you are
+ *   the one choosing it. **Unchecked on a device:** whether VoiceOver announces the group's boundary
+ *   on entry or exit.
  * - **The scope is visible on the device.** An accessibility identifier is readable by any
  *   accessibility client — Accessibility Inspector, Appium, Maestro, a page-source dump — so don't
  *   put anything in a scope you wouldn't put in a `testTag`. It is also an extra node in the

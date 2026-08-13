@@ -27,15 +27,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   got the target right.
 
   On iOS this changes the host app's accessibility structure, and the change was measured rather
-  than assumed. VoiceOver's reading order, stop count and spoken labels are unchanged — four
-  controlled A/Bs against identical unwrapped content, including a multi-child row and two sibling
-  rows — because `clickable` merges its subtree into a single stop and the published container never
-  takes focus. The rotor is a different surface and does change: the wrapper publishes
-  `UIAccessibilityContainerTypeSemanticGroup`, so with the rotor set to Containers a scoped element
-  becomes one more navigation target. Additive rather than distorting — nothing hidden, no stop lost,
-  no order moved — but it is a change an analytics library makes to your app, so it is opt-in per
-  call site and stated in the API's own documentation. The scope's keys and values are also readable
-  by any accessibility client, so treat them as you would a `testTag`.
+  than assumed — but measured on the *bridged hierarchy*, not by running a screen reader, and the
+  distinction is worth stating. Reading order, stop count and spoken labels come out unchanged across
+  four controlled A/Bs against identical unwrapped content, including a multi-child row and two
+  sibling rows, which matches the mechanism: `clickable` merges its subtree into a single stop and the
+  published container never takes focus. What is measured outright is the container type — the
+  wrapper publishes `UIAccessibilityContainerTypeSemanticGroup` where the unwrapped control publishes
+  none — so with the rotor set to Containers a scoped element becomes one more navigation target.
+  That much is additive: nothing hidden, no stop lost, no order moved. **Not checked on a device:**
+  whether VoiceOver announces the group's boundary on entry or exit. Being a change an analytics
+  library makes to your app, it is opt-in per call site and stated in the API's own documentation. The
+  scope's keys and values are also readable by any accessibility client, so treat them as you would a
+  `testTag`.
 
   Requires Compose Multiplatform 1.11 or newer for the iOS half; older versions bridge the wrapper as
   a flat sibling and the scope is silently absent.
