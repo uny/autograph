@@ -8,6 +8,61 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- `AutographElementScope { … }` attaches per-element properties to autocaptured taps on **both**
+  Android and iOS ([#185]). The iOS half was declared impossible and [#68] was closed on it: the
+  bridged accessibility tree was measured flat, leaving no ancestry for a scope to ride, and the
+  three things Compose Multiplatform would have had to grow were enumerated. It grew none of them.
+  Compose Multiplatform 1.11 instead began publishing a traversal group as its own accessibility
+  element — a fourth route that enumeration did not anticipate — so a wrapper is now a real ancestor
+  of the clickable on the bridged tree, and the scope travels in its accessibility identifier, the
+  one bridged property that is both identity-bearing and never spoken aloud. Sibling rows attribute
+  exactly, which is the case #68 was closed for being unable to do.
+
+  The scope is read off the **same hit path** the identifier came from, so a misattributed tap
+  carries the misattributed element's own scope rather than a mismatched pair. That is the property
+  every geometric design lacked, and why none of them shipped: two exactly coincident clickables
+  cannot be told apart by their rectangles, and the failure would land precisely when the hit test
+  got the target right.
+
+  On iOS this changes the host app's accessibility structure, and the change was measured rather
+  than assumed. VoiceOver's reading order, stop count and spoken labels are unchanged — four
+  controlled A/Bs against identical unwrapped content, including a multi-child row and two sibling
+  rows — because `clickable` merges its subtree into a single stop and the published container never
+  takes focus. The rotor is a different surface and does change: the wrapper publishes
+  `UIAccessibilityContainerTypeSemanticGroup`, so with the rotor set to Containers a scoped element
+  becomes one more navigation target. Additive rather than distorting — nothing hidden, no stop lost,
+  no order moved — but it is a change an analytics library makes to your app, so it is opt-in per
+  call site and stated in the API's own documentation. The scope's keys and values are also readable
+  by any accessibility client, so treat them as you would a `testTag`.
+
+  Requires Compose Multiplatform 1.11 or newer for the iOS half; older versions bridge the wrapper as
+  a flat sibling and the scope is silently absent.
+
+### Changed
+
+- `Modifier.autocaptureScope` is deprecated in favour of `AutographElementScope`, and is removed at
+  1.0 ([#185]). It is not fixable in place: its documented canonical usage puts the scope on the
+  clickable's own chain, and iOS needs it on a layout node of its own, since two `testTag`s on one
+  node collapse to the first and the element would lose either its scope or its name. A wrapper
+  cannot be written that way. On Android the replacement applies the very same modifier node, so
+  switching changes nothing there, and the modifier keeps behaving exactly as before until removal —
+  including contributing nothing at all on iOS.
+
+### Fixed
+
+- An iOS tap on a `clickable` drawn outside its scope wrapper's own bounds — an overhanging badge, an
+  `offset` decoration — was dropped entirely rather than reported ([#185]). The accessibility walk
+  gates descent on geometric containment at every node below its starting one, so a container whose
+  own frame misses the tap prunes before its child is reached; Compose Multiplatform 1.11 publishing
+  traversal groups as containers made that latent gap newly reachable. Measured with an oracle: the
+  element's `onClick` fired and no event followed. The exemption is the narrowest one that fixes it —
+  an element carrying the reserved scope prefix, never a clickable one, and only on the Compose
+  pipeline. Left global it could have let a branch resolve around the Compose host, which is how the
+  two iOS pipelines avoid reporting one tap twice and is a privacy boundary rather than an
+  attribution detail.
+
 ## [0.5.0] - 2026-08-11
 
 ### Added
@@ -623,3 +678,4 @@ Initial release.
 [#174]: https://github.com/uny/autograph/issues/174
 [#176]: https://github.com/uny/autograph/issues/176
 [#179]: https://github.com/uny/autograph/issues/179
+[#185]: https://github.com/uny/autograph/issues/185

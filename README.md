@@ -193,22 +193,27 @@ There's a `JsonObject` overload for non-string values. Notes:
   row-level keys go missing. Screen and section are unaffected (one screen is active at a time), and
   so is explicit instrumentation — `trackClick` / `trackImpression` and manual `track` calls keep
   their exact lexical scope. To scope siblings *exactly* rather than have them drop, use
-  `Modifier.autocaptureScope` below.
-- **`Modifier.autocaptureScope(...)` scopes one element's subtree exactly.** It is the per-element
+  `AutographElementScope` below.
+- **`AutographElementScope { … }` scopes one element's subtree exactly.** It is the per-element
   counterpart of `AutographScope`, for the case that composable cannot serve — simultaneously-mounted
   siblings, above all a list's rows:
 
   ```kotlin
   LazyColumn {
       items(articles) { article ->
-          Row(
-              Modifier
-                  .autocaptureScope("article_id" to article.id)
-                  .clickable { open(article) },
-          ) { ArticleRow(article) }
+          AutographElementScope("article_id" to article.id) {
+              Row(Modifier.clickable { open(article) }) { ArticleRow(article) }
+          }
       }
   }
   ```
+
+  It **wraps** the element rather than modifying it, and that shape is load-bearing rather than
+  stylistic: on iOS the scope travels in the element's accessibility identifier, the same slot the
+  tap's `target` comes from, and Compose collapses two `testTag`s on one layout node to the first —
+  so the scope needs a layout node of its own. This supersedes `Modifier.autocaptureScope`, which is
+  deprecated and removed at 1.0; on Android it applies the very same node, so switching changes
+  nothing there.
 
   Attribution reads the marker back off the **tapped element's own ancestry** in the semantics tree
   — the same chain the tap's `target` is picked from, so the scope always describes the element that
@@ -216,23 +221,28 @@ There's a `JsonObject` overload for non-string values. Notes:
   (inner wins a key clash), enclosing `AutographScope` frames still contribute underneath, and
   screen/section still win over both wherever they are actually set — with no screen resolved at
   all, a scope key you named `screen` stands (and likewise `section` where no section is set),
-  exactly as it would on an explicit `track` call, so don't name a key either of those. A wrapper
-  works as well as the clickable element itself, including for a `clickable` drawn outside that
-  wrapper's own bounds. Declare it **once per element** — that composition is across
-  the ancestry, not within one modifier chain, so `.autocaptureScope(a).autocaptureScope(b)` drops
-  `b` rather than merging it, the same way a repeated `testTag` does. Two limits, both deliberate:
-  - **Autocapture only.** A `Modifier` cannot install a `CompositionLocal` for its element's
-    children, so `trackClick` / `trackImpression` / manual `track` calls inside the subtree do *not*
-    pick these properties up. Pass them explicitly there, or wrap the content in `AutographScope`
-    too. It is a companion to `AutographScope`, not a replacement.
-  - **Android only**, and that is a limit of Compose Multiplatform's current surface rather than
-    unfinished work here. Its iOS accessibility bridge — the only supported route to a tapped element
-    there — carries none of the custom semantics an element declares, and none of the properties it
-    *does* carry can stand in: geometry cannot tell two coincident elements apart, and the
-    accessibility identifier is the very slot the tap's own `target` is read from. So on iOS this
-    modifier contributes nothing and taps resolve as they did before it (sibling `AutographScope`s
-    there still drop, as above). Expect an `article_id` on Android and none on iOS for the same tap —
-    a missing property rather than a wrong one, which is the trade this library takes on purpose.
+  exactly as it would on an explicit `track` call, so don't name a key either of those. A `clickable`
+  drawn *outside* the wrapper's own bounds — an overhanging badge, an `offset` decoration — is scoped
+  too. Three things to know, all deliberate:
+  - **Autocapture only.** `trackClick` / `trackImpression` / manual `track` calls inside the subtree
+    do *not* pick these properties up. Pass them explicitly there, or wrap the content in
+    `AutographScope` too. It is a companion to `AutographScope`, not a replacement — and folding the
+    two together would push one ambient frame per list row, every one of which `ScopeStack` drops as
+    ambiguous, so the cost would land exactly where the benefit does not.
+  - **On iOS it changes your app's accessibility structure, slightly.** The scope reaches the tap
+    through the UIKit accessibility tree, the only route to a tapped element Compose Multiplatform
+    offers there, so the wrapper is published as a semantic-group container and the scope's keys and
+    values sit in its `accessibilityIdentifier` verbatim. VoiceOver's reading order, stop count and
+    spoken labels are unchanged — measured as four controlled A/Bs against identical unwrapped
+    content — but with the rotor set to Containers the scoped element becomes one more navigation
+    target. The identifier is also readable by any accessibility client (Accessibility Inspector,
+    Appium, Maestro), so don't put anything in a scope you wouldn't put in a `testTag`. On Android
+    none of this applies: the scope is a private semantics property no assistive technology can see.
+  - **The iOS half needs Compose Multiplatform 1.11 or newer.** Older versions don't publish a
+    traversal group as its own accessibility element, so the wrapper is bridged as a flat sibling
+    rather than an ancestor and the scope is silently absent — a missing property rather than a wrong
+    one, which is the trade this library takes on purpose, but silent. Pin your Compose version if
+    you rely on iOS scopes.
     Where you need per-element properties on iOS, instrument the element explicitly:
     `Modifier.trackClick("Article Opened", properties) { open(article) }` in place of its
     `clickable`, which carries them on both platforms and reports the element under that name instead
@@ -251,7 +261,7 @@ without needing `Modifier.trackClick` on every element. It's opt-in: observing e
 meaningfully different privacy posture than explicit instrumentation, so it's off unless you ask
 for it. Elements already instrumented with `trackClick` are not double-reported — with one iOS
 multi-touch exception, described below — `Modifier.autographIgnore()` excludes a subtree entirely,
-and [`Modifier.autocaptureScope(...)`](#scoped-context) attaches per-element properties to the taps
+and [`AutographElementScope { … }`](#scoped-context) attaches per-element properties to the taps
 under it.
 
 `trackImpression` deliberately does **not** suppress autocapture: it reports a visibility event and
