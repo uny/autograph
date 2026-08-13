@@ -176,6 +176,18 @@ public class AutographNativeTapCapture internal constructor(
      * single bad resolve or a throwing tracker must not leave the capture poisoned for the rest of
      * the app's life, and this runs on every tap the user makes.
      *
+     * **Two resolvers, `hitTest` first.** [resolveNativeTapTargetByHitTest] reads no accessibility
+     * state at all, so it answers in a cold process where [resolveNativeTapTarget] cannot — that is
+     * #189's whole point, and this is the only place the two are sequenced. The tri-state it returns
+     * is what makes the sequencing safe: only [NativeHitTestResolution.Unresolved] falls through, and
+     * a [NativeHitTestResolution.Dropped] must not, or a veto applied by one resolver would be undone
+     * by the other. See [NativeHitTestResolution].
+     *
+     * The cold warning stays wired to the *final* nothing, and only on the fall-through branch. A tap
+     * this resolver deliberately dropped is not a symptom of a cold tree, and the check is spent once
+     * per process — so letting a vetoed tap consume it would print a misleading line and then never
+     * print the right one.
+     *
      * Internal rather than private only so tests can drive it without a `UITouch` — the same reasoning
      * as [attach]. Without that, the one line wiring #170's warning to a dropped tap has no coverage at
      * all: a revert to `?: return` reads as a simplification and would pass every other test.
@@ -191,15 +203,21 @@ public class AutographNativeTapCapture internal constructor(
             // accessibilityBoundsInWindowPx, whose precondition this inherits.
             val scale = UIScreen.mainScreen.scale.toFloat()
             val positionInWindowPx = AxPoint(positionInWindowPoints.x * scale, positionInWindowPoints.y * scale)
-            val target = resolveNativeTapTarget(window, positionInWindowPx, scale)
-            if (target == null) {
-                warnOnceIfAccessibilityTreeIsCold(window)
-                return
+            when (val hit = resolveNativeTapTargetByHitTest(window, positionInWindowPoints, positionInWindowPx)) {
+                is NativeHitTestResolution.Target -> track(hit.identifier)
+                NativeHitTestResolution.Dropped -> return
+                NativeHitTestResolution.Unresolved -> {
+                    val target = resolveNativeTapTarget(window, positionInWindowPx, scale)
+                    if (target == null) warnOnceIfAccessibilityTreeIsCold(window) else track(target)
+                }
             }
-            tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject), target)
         } catch (e: Exception) {
             // Swallowed: see kdoc above.
         }
+    }
+
+    private fun track(target: String) {
+        tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject), target)
     }
 }
 

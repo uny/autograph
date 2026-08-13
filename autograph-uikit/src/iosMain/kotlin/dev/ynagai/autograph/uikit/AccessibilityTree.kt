@@ -667,8 +667,17 @@ public fun Any.isAccessibilityButton(): Boolean =
  * element — which never received the tap either, so a phantom event would be traded for a
  * misattributed one, the worse failure. Measured for Compose Multiplatform: tapping a disabled
  * clickable nested in an enabled clickable parent fires *nothing*, so the parent did not receive the
- * tap. In UIKit the mechanism is `UIControl`'s: `isEnabled` is not `isUserInteractionEnabled`, so a
- * disabled control can still be what `hitTest` returns while suppressing its own control action.
+ * tap.
+ *
+ * **UIKit does the opposite, and an earlier version of this note had it backwards.** It claimed
+ * `isEnabled` is not `isUserInteractionEnabled`, so a disabled control could still be what `hitTest`
+ * returns while suppressing its own action. Measured (#189) for a bare `UIControl`, a `UISwitch` and a
+ * `UIButton` alike: a disabled control is declined by hit-testing entirely, subtree included, and the
+ * touch passes through to whatever is drawn behind it. So on UIKit a disabled control does *not*
+ * consume the tap, and the reasoning above — which is Compose's, and correct there — does not
+ * transfer. It still governs this predicate, because this predicate is only ever applied to the
+ * accessibility tree, where nothing carries the distinction; [resolveNativeTapTargetByHitTest] handles
+ * UIKit ahead of it and needs no disabled veto of its own.
  *
  * So a disabled element keeps taking the hit and is vetoed at the point where a hit becomes an event:
  * [resolveNativeTapTarget] and `autograph-compose`'s `resolveIosElement`. **Both must apply it** — the

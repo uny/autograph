@@ -13,11 +13,18 @@ import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.serialization.json.JsonObject
 import platform.CoreGraphics.CGRectMake
+import platform.UIKit.UIAccessibilityTraitButton
+import platform.UIKit.UIButton
+import platform.UIKit.UIScreen
 import platform.UIKit.UITapGestureRecognizer
+import platform.UIKit.UIView
 import platform.UIKit.UIWindow
 import platform.UIKit.UIWindowLevelAlert
 import platform.UIKit.UIWindowLevelNormal
 import platform.UIKit.setAccessibilityFrame
+import platform.UIKit.setAccessibilityTraits
+import platform.Foundation.setValue
+import platform.darwin.NSObject
 
 /**
  * Covers the parts of the native tap capture that a headless test can reach: which windows get
@@ -337,6 +344,126 @@ class NativeTapCaptureTest {
 
         assertTrue(checkedAccessibilityTreeColdness, "a drop must ask the coldness question")
     }
+
+    // --- #189: the two resolvers, and the order report() runs them in ---
+
+    private val scale: Float get() = UIScreen.mainScreen.scale.toFloat()
+
+    /**
+     * The `hitTest` resolver answers first, and its answer is reported — on a tree with no
+     * accessibility state whatsoever, which is what a cold process looks like. This is the whole of
+     * #189 seen from the pipeline's end rather than the resolver's.
+     */
+    @Test
+    fun aTapOnAUIKitControlIsReportedFromAColdTree() {
+        val tracker = RecordingTracker()
+        val capture = AutographNativeTapCapture(tracker, ScopeStack(), "Element Clicked")
+        val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
+        root.addSubview(
+            UIButton(frame = CGRectMake(10.0, 10.0, 20.0, 20.0))
+                .also { (it as NSObject).setValue("share_button", forKey = "accessibilityIdentifier") },
+        )
+
+        capture.report(AxPoint(15f, 15f), root)
+
+        assertEquals(listOf<String?>("share_button"), tracker.targets)
+        assertFalse(
+            checkedAccessibilityTreeColdness,
+            "a tap the hitTest route resolved is not a cold-tree symptom and must not spend the check",
+        )
+    }
+
+    /**
+     * **The reason [NativeHitTestResolution] is a tri-state rather than a nullable `String`.** A veto is
+     * terminal: it must not fall through to a resolver that would answer differently.
+     *
+     * The fixture makes the two resolvers genuinely disagree, so this is not vacuous. `hitTest` follows
+     * real frames into the registered Compose host and drops the tap as Compose-owned. The accessibility
+     * walk cannot see that host at all — its `accessibilityFrame` is zero, exactly as a cold one is — so
+     * it prunes that branch, finds the accessibility-only sibling instead, and would happily report it.
+     * With a nullable resolver and a `?:`, this tap on Compose-owned content leaks out under another
+     * element's name.
+     *
+     * **Fault-injected** (manual, per repo discipline): collapsing `report`'s `Dropped -> return` into
+     * the `Unresolved` branch makes this test fail and no other. Without that check it would be
+     * measuring nothing.
+     */
+    @Test
+    fun aTapVetoedByTheHitTestResolverIsNotRescuedByTheAccessibilityOne() {
+        val tracker = RecordingTracker()
+        val capture = AutographNativeTapCapture(tracker, ScopeStack(), "Element Clicked")
+
+        val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
+        root.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
+
+        val composeHost = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
+        root.addSubview(composeHost)
+        composeHost.addSubview(
+            UIButton(frame = CGRectMake(10.0, 10.0, 20.0, 20.0))
+                .also { (it as NSObject).setValue("compose_button", forKey = "accessibilityIdentifier") },
+        )
+
+        // Visible only to the accessibility walk: zero real frame, so hitTest never reaches it.
+        val axOnlySibling = UIView()
+        axOnlySibling.setAccessibilityFrame(CGRectMake(10.0, 10.0, 20.0, 20.0))
+        axOnlySibling.setAccessibilityTraits(UIAccessibilityTraitButton)
+        (axOnlySibling as NSObject).setValue("ax_button", forKey = "accessibilityIdentifier")
+        root.addSubview(axOnlySibling)
+
+        assertEquals(
+            "ax_button",
+            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
+            "precondition: the accessibility resolver does resolve this tap, so falling through would report it",
+        )
+
+        AutographComposeHosts.register(composeHost)
+        try {
+            capture.report(AxPoint(15f, 15f), root)
+        } finally {
+            AutographComposeHosts.unregister(composeHost)
+        }
+
+        assertTrue(tracker.targets.isEmpty(), "a tap on Compose-owned content must not be reported by this pipeline")
+        assertFalse(checkedAccessibilityTreeColdness, "a deliberate veto is not a cold-tree symptom")
+    }
+
+    /**
+     * The other half of the sequencing: `hitTest` having nothing to say is *not* a drop. This fixture is
+     * the SwiftUI-shaped case in miniature — no real geometry to hit-test, identity only on the
+     * accessibility tree — and it must still resolve, or #189 would have deleted the warm SwiftUI half
+     * of native capture while fixing the cold UIKit one.
+     */
+    @Test
+    fun aTapTheHitTestResolverCannotSeeStillFallsThroughToTheAccessibilityOne() {
+        val tracker = RecordingTracker()
+        val capture = AutographNativeTapCapture(tracker, ScopeStack(), "Element Clicked")
+
+        val root = UIView()
+        root.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
+        val axButton = UIView()
+        axButton.setAccessibilityFrame(CGRectMake(10.0, 10.0, 20.0, 20.0))
+        axButton.setAccessibilityTraits(UIAccessibilityTraitButton)
+        (axButton as NSObject).setValue("swiftui_button", forKey = "accessibilityIdentifier")
+        root.addSubview(axButton)
+
+        capture.report(AxPoint(15f, 15f), root)
+
+        assertEquals(listOf<String?>("swiftui_button"), tracker.targets)
+    }
+}
+
+/** Records what was tracked, for the tests that assert on the pipeline's output rather than its plumbing. */
+private class RecordingTracker : Tracker {
+
+    val targets = mutableListOf<String?>()
+
+    override fun track(name: String, properties: JsonObject, target: String?) {
+        targets += target
+    }
+
+    override fun screen(name: String, properties: JsonObject) = Unit
+
+    override fun identify(userId: String, traits: JsonObject) = Unit
 }
 
 /** Stands in for a real tracker where the test asserts on the capture's plumbing, not on its output. */

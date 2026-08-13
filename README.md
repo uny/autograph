@@ -307,7 +307,8 @@ table is the whole picture, because a gap here produces **no event at all** — 
 | Compose — Android | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
 | Compose — iOS | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
 | Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
-| iOS native — UIKit / SwiftUI | ⚠️ `installAutographNativeTapCapture` — **conditional, see below** | ✅ `installAutographNativeScreenCapture` (UIKit) · [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) (SwiftUI) |
+| iOS native — UIKit | ✅ `installAutographNativeTapCapture` | ✅ `installAutographNativeScreenCapture` |
+| iOS native — SwiftUI | ⚠️ `installAutographNativeTapCapture` — **conditional, see below** | ✅ [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) |
 | Android native — View / XML | ❌ **not captured** ([#63](https://github.com/uny/autograph/issues/63)) | ✅ `installAutographNativeScreenCapture` (Activity / Fragment) |
 
 The asymmetry worth stating plainly: **a hybrid Android app gets `Screen Viewed` for its non-Compose
@@ -316,22 +317,34 @@ matters to you, say so on [#63](https://github.com/uny/autograph/issues/63) — 
 a demand signal, not for a technical reason.
 
 > [!WARNING]
-> **iOS native tap capture reports nothing until an accessibility client has run in the process**
-> ([#135](https://github.com/uny/autograph/issues/135)). UIKit and SwiftUI build the accessibility
-> element tree *on demand*, when something asks for it — VoiceOver, Voice Control, Switch Control, the
-> Accessibility Inspector, an XCUITest runner. Until then the tree this pipeline hit-tests does not
-> exist: measured on a freshly created simulator, the walk finds only plain `UIView`s, every one
-> reporting an empty frame and no traits, with no button trait anywhere. **Every native tap is dropped,
-> silently, for the life of the process.** Once any client connects, the tree appears and taps resolve
-> normally again — subject to the gaps listed below, which are unrelated to this and apply either way.
+> **iOS native tap capture on SwiftUI reports nothing until an accessibility client has run in the
+> process** ([#135](https://github.com/uny/autograph/issues/135)). SwiftUI has no per-element backing
+> view, so the only place a SwiftUI element's identity exists is the accessibility element tree — and
+> UIKit and SwiftUI build that tree *on demand*, when something asks for it: VoiceOver, Voice Control,
+> Switch Control, the Accessibility Inspector, an XCUITest runner. Until then it does not exist.
+> Measured on a freshly created simulator and again on a physical iPad Pro 11" rebooted and launched
+> from the home screen: the walk finds only plain `UIView`s, every one reporting an empty frame and no
+> traits, with no button trait anywhere. **Every SwiftUI tap is dropped, silently, for the life of the
+> process.** Once any client connects, the tree appears and taps resolve normally again — subject to
+> the gaps listed below, which are unrelated to this and apply either way.
 >
-> There is no workaround in this library: nothing public asks UIKit to populate that tree, and any tap
-> capture built on the accessibility tree inherits this. So treat native tap capture as **best-effort**,
-> and instrument anything you must not lose with `Modifier.trackClick` or an explicit `track` call.
-> Note the consequence for your own testing: a simulator you have run UI tests against is already
-> warmed, so native capture will look reliable there while failing on a user's device.
+> There is no workaround for SwiftUI in this library: nothing public asks it to populate that tree, and
+> a `.accessibilityIdentifier(_:)` set on a SwiftUI button was measured to appear nowhere in the view
+> hierarchy either. So treat **SwiftUI** tap capture as best-effort, and instrument anything you must
+> not lose with `Modifier.trackClick` or an explicit `track` call. Note the consequence for your own
+> testing: a simulator you have run UI tests against is already warmed, so SwiftUI capture will look
+> reliable there while failing on a user's device.
 >
-> **Compose autocapture on iOS is not affected** — Compose Multiplatform builds its bridged
+> **UIKit is not affected** ([#189](https://github.com/uny/autograph/issues/189)). UIKit taps resolve
+> through `UIView.hitTest`, which never consults accessibility: in the same stone-cold process on the
+> same device, the tap position handed to `hitTest` returned the real `UIButton` carrying its
+> `accessibilityIdentifier`. A `UIControl`, or any view with a tap gesture recognizer, is identified in
+> a cold process exactly as in a warm one. `hitTest` is also *the* answer to which view receives a
+> touch, so on UIKit it settles the overlap and z-order ambiguities the accessibility route only
+> approximates, and it honours `isUserInteractionEnabled`, `isHidden` and `alpha`, which that route
+> cannot see at all.
+>
+> **Compose autocapture on iOS is not affected either** — Compose Multiplatform builds its bridged
 > accessibility elements *on demand* too, but its activation path does not require an accessibility
 > client: reading the tree is what triggers it, and this library's walk is such a reader. The gates in
 > front of that are about which scene is live, not about assistive technology — `AccessibilityTree.kt`
@@ -340,10 +353,15 @@ a demand signal, not for a technical reason.
 > ([#154](https://github.com/uny/autograph/issues/154)).
 
 Known gaps *within* iOS native tap capture, all tracked on
-[#86](https://github.com/uny/autograph/issues/86): `UIControl` target-action taps (the window-level
-recognizer only sees raw touches), `Menu`, `.onTapGesture` on a `Text` (it surfaces with no button trait,
-and widening the predicate would start capturing ordinary labels), and a `UIKitView` hosted inside Compose
-(excluded by the Compose boundary, unresolvable by Compose).
+[#86](https://github.com/uny/autograph/issues/86). On **SwiftUI**: `Menu`, and `.onTapGesture` on a `Text`
+(it surfaces with no button trait, and widening the predicate would start capturing ordinary labels). On
+**UIKit**: a `UITableViewCell` or `UICollectionViewCell` whose selection is the delegate's rather than a
+control's — it reaches nothing `hitTest` calls interactive, so it falls back to the accessibility route
+and resolves only on a warm tree, as it did before. (A scroll view is deliberately never reported as the
+tapped element: it would otherwise claim every tap on its own content.) On both: a `UIKitView` hosted
+inside Compose (excluded by the Compose boundary, unresolvable by Compose).
+`UIControl` target-action taps used to be listed here; they resolve since
+[#189](https://github.com/uny/autograph/issues/189), because `hitTest` names the control directly.
 
 Every event now carries — this shape is the stable envelope contract described above:
 
