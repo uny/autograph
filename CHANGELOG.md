@@ -116,12 +116,26 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   What is deliberately *not* claimed is the frequency: how large a share of real launches stay cold is
   unmeasured, and the mechanism being confirmed on hardware does not license a number.
 
-  A `UIScrollView` — and so `UITableView`, `UICollectionView`, and the backing view of a SwiftUI `List`
-  or `ScrollView` — is never reported as the tapped element. Its tap recognizers are UIKit's own
-  scrolling and selection plumbing, and SwiftUI puts a `List`'s `.accessibilityIdentifier` on that
-  backing view while the rows have no backing view at all, so treating one as interactive made the
-  container claim its own content's taps. Caught by the sample app's XCUITest suite, which reported a
-  `List` in place of the row inside it.
+  A `UIScrollView` — and so `UITableView`, `UICollectionView`, `UITextView`, and the backing view of a
+  SwiftUI `List` or `ScrollView` — is never reported as the tapped element, and it **stops** the search
+  for one rather than being stepped over. Its tap recognizers are UIKit's own scrolling and selection
+  plumbing, and SwiftUI puts a `List`'s `.accessibilityIdentifier` on that backing view while the rows
+  have no backing view at all, so treating one as interactive made the container claim its own content's
+  taps. Caught by the sample app's XCUITest suite, which reported a `List` in place of the row inside it.
+  Merely excluding the scroll view was measured to be half a fix: the search then carried on to the next
+  interactive ancestor and let *that* shadow the content instead — a screen container with an
+  `accessibilityIdentifier` and a tap-to-dismiss-keyboard recognizer, which is an ordinary UIKit shape,
+  claimed every tap on every row.
+
+  Only an element carrying an `accessibilityIdentifier` is ever reported, so an untagged control still
+  falls through to the accessibility route and is still dropped cold. The flip side of resolving any
+  `UIControl` is that taps which merely focus a `UITextField` now produce `Element Clicked`; use
+  `registerAutographIgnoredView` on fields that should stay out of the stream.
+
+  A view a developer excluded with `registerAutographIgnoredView` vetoes a tap on this route even when
+  it cannot receive touches itself — the default for `UILabel` and `UIImageView`, and so the shape the
+  opt-out is most often reached for. `hitTest` steps over such a view, which would otherwise have let
+  the new route report a tap the accessibility route correctly dropped.
 
   One documented UIKit behaviour turned out to be wrong and is corrected here. A disabled `UIControl`
   does not "still get returned by `hitTest` while suppressing its own action" — measured for a bare

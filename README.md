@@ -307,7 +307,7 @@ table is the whole picture, because a gap here produces **no event at all** — 
 | Compose — Android | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
 | Compose — iOS | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
 | Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
-| iOS native — UIKit | ✅ `installAutographNativeTapCapture` | ✅ `installAutographNativeScreenCapture` |
+| iOS native — UIKit | ✅ `installAutographNativeTapCapture` — for identified controls; **cell selection is conditional, see below** | ✅ `installAutographNativeScreenCapture` |
 | iOS native — SwiftUI | ⚠️ `installAutographNativeTapCapture` — **conditional, see below** | ✅ [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) |
 | Android native — View / XML | ❌ **not captured** ([#63](https://github.com/uny/autograph/issues/63)) | ✅ `installAutographNativeScreenCapture` (Activity / Fragment) |
 
@@ -335,13 +335,16 @@ a demand signal, not for a technical reason.
 > testing: a simulator you have run UI tests against is already warmed, so SwiftUI capture will look
 > reliable there while failing on a user's device.
 >
-> **UIKit is not affected** ([#189](https://github.com/uny/autograph/issues/189)). UIKit taps resolve
-> through `UIView.hitTest`, which never consults accessibility: in the same stone-cold process on the
-> same device, the tap position handed to `hitTest` returned the real `UIButton` carrying its
-> `accessibilityIdentifier`. A `UIControl`, or any view with a tap gesture recognizer, is identified in
-> a cold process exactly as in a warm one. `hitTest` is also *the* answer to which view receives a
-> touch, so on UIKit it settles the overlap and z-order ambiguities the accessibility route only
-> approximates, and it honours `isUserInteractionEnabled`, `isHidden` and `alpha`, which that route
+> **UIKit controls are not affected** ([#189](https://github.com/uny/autograph/issues/189)). UIKit taps
+> resolve through `UIView.hitTest`, which never consults accessibility: in the same stone-cold process on
+> the same device, the tap position handed to `hitTest` returned the real `UIButton` carrying its
+> `accessibilityIdentifier`. A `UIControl`, or any view with an **enabled single-tap** gesture
+> recognizer, is identified in a cold process exactly as in a warm one — **provided it carries an
+> `accessibilityIdentifier`**, which is the only thing ever reported as a `target`. An untagged control
+> falls back to the accessibility route and so is still dropped cold, as is a `UITableViewCell` whose
+> selection is the delegate's (see the gap list below). `hitTest` is also *the* answer to which view
+> receives a touch, so on UIKit it settles the overlap and z-order ambiguities the accessibility route
+> only approximates, and it honours `isUserInteractionEnabled`, `isHidden` and `alpha`, which that route
 > cannot see at all.
 >
 > **Compose autocapture on iOS is not affected either** — Compose Multiplatform builds its bridged
@@ -357,9 +360,15 @@ Known gaps *within* iOS native tap capture, all tracked on
 (it surfaces with no button trait, and widening the predicate would start capturing ordinary labels). On
 **UIKit**: a `UITableViewCell` or `UICollectionViewCell` whose selection is the delegate's rather than a
 control's — it reaches nothing `hitTest` calls interactive, so it falls back to the accessibility route
-and resolves only on a warm tree, as it did before. (A scroll view is deliberately never reported as the
-tapped element: it would otherwise claim every tap on its own content.) On both: a `UIKitView` hosted
-inside Compose (excluded by the Compose boundary, unresolvable by Compose).
+and resolves only on a warm tree, as it did before. The same applies to a `UITextView`, which is a
+`UIScrollView` subclass, and to any control with no `accessibilityIdentifier`. (A scroll view is
+deliberately never reported as the tapped element, and also **stops** the search rather than deferring it
+to an ancestor: otherwise a container would claim every tap on its own content.) Note the flip side — a
+`UIControl` is reported whatever kind it is, so taps that merely focus a `UITextField` become
+`Element Clicked` events; reach for
+[`registerAutographIgnoredView`](#ios-excluding-native-content-from-tap-capture) on fields you do not
+want in the stream. On both: a `UIKitView` hosted inside Compose (excluded by the Compose boundary,
+unresolvable by Compose).
 `UIControl` target-action taps used to be listed here; they resolve since
 [#189](https://github.com/uny/autograph/issues/189), because `hitTest` names the control directly.
 

@@ -20,20 +20,27 @@ import platform.UIKit.UIWindowDidBecomeVisibleNotification
 import platform.darwin.NSObjectProtocol
 
 /**
- * Starts reporting taps on native (UIKit/SwiftUI) content as [eventName], resolved through the
- * accessibility tree by [resolveNativeTapTarget].
+ * Starts reporting taps on native (UIKit/SwiftUI) content as [eventName], resolved by two resolvers in
+ * order: [resolveNativeTapTargetByHitTest], which reads no accessibility state, and then
+ * [resolveNativeTapTarget], which walks the accessibility tree.
  *
  * Opt-in, exactly as Compose autocapture is: observing every tap is a different privacy posture than
  * instrumenting individual elements, so nothing happens until an app calls this.
  *
- * **Best-effort, and read [resolveNativeTapTarget] before relying on it.** Measured: until some
- * accessibility client has run in the process (VoiceOver, Voice Control, the Accessibility Inspector, an
- * XCUITest runner), UIKit and SwiftUI have not built the accessibility tree this resolves taps through,
- * and every native tap is dropped. There is no fix available from public API, so anything that
- * must not be lost needs explicit instrumentation. Compose autocapture does not share the limitation.
- * The drop is at least **not silent**: the first time it happens, an `NSLog` line names it — see
- * [warnOnceIfAccessibilityTreeIsCold] (#170) — so a developer running the app during integration has
- * something in the console instead of nothing.
+ * **UIKit is covered in a cold process; SwiftUI is not** (#189, #135). UIKit and SwiftUI build the
+ * accessibility element tree only once some accessibility client has run (VoiceOver, Voice Control, the
+ * Accessibility Inspector, an XCUITest runner) — measured on a freshly created simulator and again on a
+ * rebooted physical device. A `UIView.hitTest` never consults that tree, so a `UIControl` or a view with
+ * an enabled single-tap recognizer resolves cold, **provided it carries an `accessibilityIdentifier`** —
+ * that identifier is the only thing ever reported as a `target`, so an untagged control falls through
+ * and is still dropped cold. SwiftUI has no per-element backing view for `hitTest` to find, so its
+ * elements stay accessibility-only and every SwiftUI tap is dropped until a client has run. There is no
+ * fix available from public API for that half, so anything on a SwiftUI surface that must not be lost
+ * needs explicit instrumentation. Compose autocapture does not share the limitation.
+ *
+ * A tap that resolves to nothing is at least **not silently** lost: the first time it happens, an
+ * `NSLog` line names the cold tree — see [warnOnceIfAccessibilityTreeIsCold] (#170) — so a developer
+ * running the app during integration has something in the console instead of nothing.
  *
  * **A hybrid app's own Compose autocapture does not warm this pipeline either (#135, measured).**
  * `autograph-compose`'s iOS resolver activates CMP's accessibility bridge on tap (see
@@ -277,13 +284,15 @@ internal fun warnOnceIfAccessibilityTreeIsCold(root: UIView): Boolean {
     NSLog(
         "Autograph: a tap resolved to nothing, and the UIKit/SwiftUI accessibility tree looks cold — " +
             "it has not been built yet in this process, so installAutographNativeTapCapture cannot " +
-            "resolve any native tap until an accessibility client (VoiceOver, Voice Control, the " +
-            "Accessibility Inspector, or an XCUITest runner) has run once. This is expected, not a bug " +
-            "in your integration — see installAutographNativeTapCapture's kdoc for the full " +
-            "explanation. Taps you cannot afford to lose should be instrumented explicitly " +
-            "(Modifier.trackClick on Compose content, or an explicit tracker.track() call on native " +
-            "content) rather than relying on this capture alone. Compose content is unaffected and is " +
-            "still captured normally.",
+            "resolve a SwiftUI tap until an accessibility client (VoiceOver, Voice Control, the " +
+            "Accessibility Inspector, or an XCUITest runner) has run once. UIKit is not affected: a " +
+            "UIControl, or a view with an enabled single-tap recognizer, resolves through hitTest even " +
+            "cold, as long as it carries an accessibilityIdentifier — an untagged one lands here too. " +
+            "This is expected, not a bug in your integration — see installAutographNativeTapCapture's " +
+            "kdoc for the full explanation. Taps you cannot afford to lose should be instrumented " +
+            "explicitly (Modifier.trackClick on Compose content, or an explicit tracker.track() call on " +
+            "native content) rather than relying on this capture alone. Compose content is unaffected " +
+            "and is still captured normally.",
     )
     return true
 }

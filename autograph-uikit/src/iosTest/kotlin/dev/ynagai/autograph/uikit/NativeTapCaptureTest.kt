@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.uikit
 
+import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeStack
@@ -357,7 +358,8 @@ class NativeTapCaptureTest {
     @Test
     fun aTapOnAUIKitControlIsReportedFromAColdTree() {
         val tracker = RecordingTracker()
-        val capture = AutographNativeTapCapture(tracker, ScopeStack(), "Element Clicked")
+        val scopeStack = ScopeStack()
+        val capture = AutographNativeTapCapture(tracker, scopeStack, "Element Clicked")
         val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
         root.addSubview(
             UIButton(frame = CGRectMake(10.0, 10.0, 20.0, 20.0))
@@ -367,6 +369,14 @@ class NativeTapCaptureTest {
         capture.report(AxPoint(15f, 15f), root)
 
         assertEquals(listOf<String?>("share_button"), tracker.targets)
+        // The event name and the scope enrichment ride the same call, and nothing else covers them on
+        // this path — see [RecordingTracker].
+        assertEquals(listOf("Element Clicked"), tracker.names, "the configured event name must be used")
+        assertEquals(
+            listOf(scopeStack.current().enrich(EmptyJsonObject)),
+            tracker.properties,
+            "a resolved tap must carry the shared scope stack's context, not bare empty properties",
+        )
         assertFalse(
             checkedAccessibilityTreeColdness,
             "a tap the hitTest route resolved is not a cold-tree symptom and must not spend the check",
@@ -452,13 +462,26 @@ class NativeTapCaptureTest {
     }
 }
 
-/** Records what was tracked, for the tests that assert on the pipeline's output rather than its plumbing. */
+/**
+ * Records what was tracked, for the tests that assert on the pipeline's output rather than its plumbing.
+ *
+ * Records the **whole** call, not just the target. These are the first tests in the repo to drive
+ * `report` all the way to a successful `track`, so they are the only coverage the event name and the
+ * scope enrichment have on this path — a recorder keeping only the target would let
+ * `tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject), target)` decay to a literal
+ * name or an unenriched `EmptyJsonObject` with the suite still green, silently stripping the element
+ * scope #187 added.
+ */
 private class RecordingTracker : Tracker {
 
     val targets = mutableListOf<String?>()
+    val names = mutableListOf<String>()
+    val properties = mutableListOf<JsonObject>()
 
     override fun track(name: String, properties: JsonObject, target: String?) {
         targets += target
+        names += name
+        this.properties += properties
     }
 
     override fun screen(name: String, properties: JsonObject) = Unit
