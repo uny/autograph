@@ -20,6 +20,9 @@ internal object AutographIgnoredViews {
 
     /** Whether a tap's hit [path] crosses an excluded view — i.e. landed inside an opted-out subtree. */
     fun containsAny(path: List<Any>): Boolean = views.containsAny(path)
+
+    /** Whether [view] itself is excluded. For callers walking a tree node by node. */
+    fun contains(view: UIView): Boolean = views.contains(view)
 }
 
 /**

@@ -86,6 +86,70 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- **iOS native tap capture now works on UIKit in a cold process** ([#189]). Native taps resolved
+  through the accessibility element tree, which UIKit and SwiftUI build only once an accessibility
+  client has asked for it — so until VoiceOver, Voice Control, the Accessibility Inspector or an
+  XCUITest runner had run, every native tap was dropped for the life of the process ([#135]). That was
+  known from a freshly created simulator; whether real hardware behaved the same was recorded as
+  unmeasured while the README already warned users it did. It has now been measured on a physical iPad
+  Pro 11" (3rd gen), rebooted, unplugged and launched from the home screen: 0 of 15 views carried a
+  non-zero accessibility frame and none carried any trait, and turning on a single accessibility
+  client took the *same 15 views* to 15 of 15. A device is cold exactly like a fresh simulator.
+
+  UIKit taps are now resolved first by `UIView.hitTest`, which never consults accessibility. In that
+  same cold process the tap position returned the real `UIButton` **carrying its
+  `accessibilityIdentifier`** — the exact string reported as the event's `target`. A `UIControl`, or
+  any view with an enabled tap gesture recognizer, is therefore identified cold. The accessibility
+  resolver remains as the second path, which is what still covers SwiftUI on a warm tree.
+
+  Two things improve on UIKit as a side effect, because `hitTest` *is* the answer to which view
+  receives a touch rather than an approximation of it: the overlap and z-order ambiguity documented
+  against the accessibility walk ([#140]) does not arise, and `isUserInteractionEnabled`, `isHidden`
+  and `alpha` are honoured — none of which the accessibility tree carries. `UIControl` target-action
+  taps, previously listed as a gap on [#86], resolve for the same reason.
+
+  **SwiftUI is unchanged and cannot be fixed this way.** Measured on the same device: under a SwiftUI
+  button the cold `hitTest` returns a `PlatformGroupContainer` with a nil identifier and nil label, and
+  the `.accessibilityIdentifier(_:)` set on that button appears nowhere in the view hierarchy — SwiftUI
+  creates no per-element backing view, so the accessibility tree is its only enumeration and that tree
+  is the thing that needs a client. The README's capture matrix and warning are now split accordingly.
+  What is deliberately *not* claimed is the frequency: how large a share of real launches stay cold is
+  unmeasured, and the mechanism being confirmed on hardware does not license a number.
+
+  A `UIScrollView` — and so `UITableView`, `UICollectionView`, `UITextView`, and the backing view of a
+  SwiftUI `List` or `ScrollView` — is never reported as the tapped element, and it **stops** the search
+  for one rather than being stepped over. Its tap recognizers are UIKit's own scrolling and selection
+  plumbing, and SwiftUI puts a `List`'s `.accessibilityIdentifier` on that backing view while the rows
+  have no backing view at all, so treating one as interactive made the container claim its own content's
+  taps. Caught by the sample app's XCUITest suite, which reported a `List` in place of the row inside it.
+  Merely excluding the scroll view was measured to be half a fix: the search then carried on to the next
+  interactive ancestor and let *that* shadow the content instead — a screen container with an
+  `accessibilityIdentifier` and a tap-to-dismiss-keyboard recognizer, which is an ordinary UIKit shape,
+  claimed every tap on every row.
+
+  Only an element carrying an `accessibilityIdentifier` is ever reported, so an untagged control still
+  falls through to the accessibility route and is still dropped cold. The flip side of resolving any
+  `UIControl` is that taps which merely focus a `UITextField` now produce `Element Clicked`; use
+  `registerAutographIgnoredView` on fields that should stay out of the stream.
+
+  A view a developer excluded with `registerAutographIgnoredView` vetoes a tap on this route even when
+  it cannot receive touches itself — the default for `UILabel` and `UIImageView`, and so the shape the
+  opt-out is most often reached for. `hitTest` steps over such a view, which would otherwise have let
+  the new route report a tap the accessibility route correctly dropped. The exclusion is checked against
+  what is *drawn* under the tap, by two walks: `hitTest`'s own frontmost-branch descent with only the
+  "declines touches" gate removed, which catches an excluded view drawn *over* a sibling, plus a sweep
+  of the reported element's own subtree, which catches one sitting behind a transparent front sibling or
+  drawn outside its parent's bounds. An excluded view *behind* whatever the user actually tapped, in
+  another branch entirely, correctly does not veto. Note the corollary: registering a full-screen
+  container silences native capture for every tap inside it, so register the content, not the chrome.
+
+  One documented UIKit behaviour turned out to be wrong and is corrected here. A disabled `UIControl`
+  does not "still get returned by `hitTest` while suppressing its own action" — measured for a bare
+  `UIControl`, a `UISwitch` and a `UIButton` alike, it is declined by hit-testing entirely, subtree
+  included, and the touch passes through to whatever is drawn behind it. So a tap near a disabled
+  control now names the thing that actually received it, which on UIKit is the opposite of what
+  [#128] measured for Compose, where a disabled clickable swallows the tap and fires nothing.
+
 - An iOS tap on a `clickable` drawn outside its scope wrapper's own bounds — an overhanging badge, an
   `offset` decoration — was dropped entirely rather than reported ([#185]). The accessibility walk
   gates descent on geometric containment at every node below its starting one, so a container whose
@@ -713,3 +777,4 @@ Initial release.
 [#176]: https://github.com/uny/autograph/issues/176
 [#179]: https://github.com/uny/autograph/issues/179
 [#185]: https://github.com/uny/autograph/issues/185
+[#189]: https://github.com/uny/autograph/issues/189
