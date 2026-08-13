@@ -107,6 +107,14 @@ internal val AutographScopeKey: SemanticsPropertyKey<JsonObject> = SemanticsProp
  * readable from both sides, or a supported semantics hit-test on iOS. See
  * [#68](https://github.com/uny/autograph/issues/68).
  */
+@Deprecated(
+    "Superseded by AutographElementScope, which works on iOS as well. This modifier stays a complete " +
+        "no-op there and cannot be made to work in place: the canonical usage below puts it on the " +
+        "clickable's own chain, and iOS needs the scope on a layout node of its own. Wrap the element " +
+        "instead. Removed in 1.0.",
+    level = DeprecationLevel.WARNING,
+)
+@Suppress("DEPRECATION") // Delegating to its own overload, which is deprecated alongside it.
 public fun Modifier.autocaptureScope(vararg properties: Pair<String, String>): Modifier =
     autocaptureScope(JsonObject(properties.associate { (k, v) -> k to JsonPrimitive(v) }))
 
@@ -114,6 +122,10 @@ public fun Modifier.autocaptureScope(vararg properties: Pair<String, String>): M
  * [autocaptureScope] overload taking a [JsonObject], for scope values that aren't strings (numbers,
  * booleans, nested objects) or that are already assembled as a [JsonObject].
  */
+@Deprecated(
+    "Superseded by AutographElementScope, which works on iOS as well. Removed in 1.0.",
+    level = DeprecationLevel.WARNING,
+)
 public fun Modifier.autocaptureScope(properties: JsonObject): Modifier =
     this then AutocaptureScopeElement(properties)
 
@@ -138,7 +150,7 @@ public fun Modifier.autocaptureScope(properties: JsonObject): Modifier =
  * equal, so re-emitting the same scope is a no-op. Two of these on one modifier chain still collapse
  * to the outermost, exactly as two `semantics {}` blocks would — see [autocaptureScope].
  */
-private data class AutocaptureScopeElement(
+internal data class AutocaptureScopeElement(
     val properties: JsonObject,
 ) : ModifierNodeElement<AutocaptureScopeNode>() {
     override fun create(): AutocaptureScopeNode = AutocaptureScopeNode(properties)
@@ -153,7 +165,7 @@ private data class AutocaptureScopeElement(
     }
 }
 
-private class AutocaptureScopeNode(var properties: JsonObject) : Modifier.Node(), SemanticsModifierNode {
+internal class AutocaptureScopeNode(var properties: JsonObject) : Modifier.Node(), SemanticsModifierNode {
     override fun SemanticsPropertyReceiver.applySemantics() {
         this[AutographScopeKey] = properties
     }

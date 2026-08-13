@@ -17,6 +17,11 @@ public final class dev/ynagai/autograph/compose/AutocaptureScopeKt {
 	public static final fun autocaptureScope (Landroidx/compose/ui/Modifier;[Lkotlin/Pair;)Landroidx/compose/ui/Modifier;
 }
 
+public final class dev/ynagai/autograph/compose/AutographElementScopeKt {
+	public static final fun AutographElementScope (Lkotlinx/serialization/json/JsonObject;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;I)V
+	public static final fun AutographElementScope ([Lkotlin/Pair;Lkotlin/jvm/functions/Function3;Landroidx/compose/runtime/Composer;I)V
+}
+
 public final class dev/ynagai/autograph/compose/AutographIgnoreKt {
 	public static final fun autographIgnore (Landroidx/compose/ui/Modifier;)Landroidx/compose/ui/Modifier;
 }
