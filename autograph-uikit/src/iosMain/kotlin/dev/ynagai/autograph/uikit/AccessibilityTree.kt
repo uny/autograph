@@ -257,8 +257,15 @@ import platform.darwin.NSObject
  *   and neither returned path then crosses it — so a Compose-owned tap could be reported by the
  *   native pipeline. That is the privacy boundary this file warns about above, and the marker is an
  *   identifier the host app is free to write, so it cannot be treated as proof of who owns a subtree.
- *   The Compose walk starts *at* the Compose host, so everything it reaches is Compose-owned already
- *   and there is no boundary for the exemption to cross.
+ *   The Compose walk starts *at* the Compose host, so it stays inside one composition's subtree and
+ *   never reaches a sibling of that host — which is the boundary [resolveNativeTapTarget] arbitrates.
+ *   Note what that does *not* say: [accessibilityChildren] unions `accessibilityElements` with
+ *   `subviews`, so the walk does descend into UIKit interop (`UIKitView`/`UIKitViewController`)
+ *   subtrees hosted *inside* the composition, and those are not Compose-owned. The exemption can
+ *   therefore apply to a foreign node — bounded, since the reported clickable must still contain the
+ *   tap and the native pipeline still drops any path crossing this host, but it is a bound rather than
+ *   the absence of a case. An earlier draft of this note claimed everything reachable here is
+ *   Compose-owned; it is not.
  * - **The visit budget.** A non-containing branch that used to cost one visit can expose a whole
  *   subtree instead. Confined to the Compose walk that subtree is the composition's own; opened on
  *   the native walk it is the entire window, twice per tap.
@@ -357,12 +364,14 @@ private fun deepestAccessibilityHitPath(
     // whenever a child is drawn outside it, which is the shape `autocaptureScope`'s kdoc promises
     // works. The exemption is withheld from a *clickable* marker, since exempting one would let it
     // claim a tap that landed outside it — a drop traded for a misattribution, the wrong direction.
-    val exemptScopeContainer =
-        allowScopeContainerDescent && node.isAutographScopeContainer() && !node.isAccessibilityButton()
-    if (!containsPosition && !exemptScopeContainer &&
-        (ancestors.isNotEmpty() || node.isAccessibilityButton())
-    ) {
-        return null
+    // Ordered so the exemption's identifier read happens only where it can change the answer: it is a
+    // KVC round-trip (see accessibilityIdentifierOrNull) and this runs per visited node, on the main
+    // thread inside a tap handler, while the overwhelming majority of nodes either contain the tap or
+    // are not scope containers.
+    if (!containsPosition && (ancestors.isNotEmpty() || node.isAccessibilityButton())) {
+        val exemptScopeContainer =
+            allowScopeContainerDescent && node.isAutographScopeContainer() && !node.isAccessibilityButton()
+        if (!exemptScopeContainer) return null
     }
     val pathToNode = ancestors + node
     // Keep the first branch that resolved at all as a fallback and carry on looking for a clickable
