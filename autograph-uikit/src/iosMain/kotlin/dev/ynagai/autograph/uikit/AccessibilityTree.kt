@@ -245,6 +245,30 @@ import platform.darwin.NSObject
  * clickable-free subtree compounds per level whenever a node is reachable by more than one route. All
  * three degrade to resolving a shallower element rather than crashing — a missed leaf is a dropped
  * event, an overflow or a multi-second walk on the main thread is a wedged app.
+ *
+ * **[allowScopeContainerDescent] is off by default, and only the Compose pipeline turns it on.** It
+ * exempts an Autograph scope container ([AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX]) from the containment
+ * gate, so a clickable drawn outside its scope wrapper still resolves. Confining it to the Compose
+ * adapter is what keeps two other properties intact by construction rather than by argument:
+ *
+ * - **The ownership boundary.** [resolveNativeTapTarget] walks the whole window and drops a tap whose
+ *   path crosses a Compose host, which is how the two pipelines avoid reporting the same tap twice.
+ *   A branch that no longer prunes on containment can resolve *before* the branch through the host,
+ *   and neither returned path then crosses it — so a Compose-owned tap could be reported by the
+ *   native pipeline. That is the privacy boundary this file warns about above, and the marker is an
+ *   identifier the host app is free to write, so it cannot be treated as proof of who owns a subtree.
+ *   The Compose walk starts *at* the Compose host, so it stays inside one composition's subtree and
+ *   never reaches a sibling of that host — which is the boundary [resolveNativeTapTarget] arbitrates.
+ *   Note what that does *not* say: [accessibilityChildren] unions `accessibilityElements` with
+ *   `subviews`, so the walk does descend into UIKit interop (`UIKitView`/`UIKitViewController`)
+ *   subtrees hosted *inside* the composition, and those are not Compose-owned. The exemption can
+ *   therefore apply to a foreign node — bounded, since the reported clickable must still contain the
+ *   tap and the native pipeline still drops any path crossing this host, but it is a bound rather than
+ *   the absence of a case. An earlier draft of this note claimed everything reachable here is
+ *   Compose-owned; it is not.
+ * - **The visit budget.** A non-containing branch that used to cost one visit can expose a whole
+ *   subtree instead. Confined to the Compose walk that subtree is the composition's own; opened on
+ *   the native walk it is the entire window, twice per tap.
  */
 @AutographInternalApi
 public fun deepestAccessibilityHitPath(
@@ -253,12 +277,14 @@ public fun deepestAccessibilityHitPath(
     positionInWindowPx: AxPoint,
     scale: Float,
     preferClickableBranches: Boolean = true,
+    allowScopeContainerDescent: Boolean = false,
 ): List<Any>? = deepestAccessibilityHitPath(
     node,
     view,
     positionInWindowPx,
     scale,
     preferClickableBranches,
+    allowScopeContainerDescent,
     ancestors = emptyList(),
     budget = intArrayOf(MAX_ACCESSIBILITY_NODE_VISITS),
 )
@@ -311,6 +337,7 @@ private fun deepestAccessibilityHitPath(
     positionInWindowPx: AxPoint,
     scale: Float,
     preferClickableBranches: Boolean,
+    allowScopeContainerDescent: Boolean,
     ancestors: List<Any>,
     budget: IntArray,
 ): List<Any>? {
@@ -331,7 +358,22 @@ private fun deepestAccessibilityHitPath(
     // is reported whenever any child resolves — a dropped event turned into a misattributed one, the
     // wrong side of that trade. Neither pipeline's real starting node is clickable (Compose's
     // `OverlayInputView`, the native path's `UIWindow`), so the cold-start fix is unaffected.
-    if (!containsPosition && (ancestors.isNotEmpty() || node.isAccessibilityButton())) return null
+    // An Autograph scope container is exempt, and only it — see [AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX].
+    // It is a marker this library asked the app to place, carrying no content of its own, so it is
+    // never the answer to "what was tapped"; without the exemption it would prune its own subtree
+    // whenever a child is drawn outside it, which is the shape `autocaptureScope`'s kdoc promises
+    // works. The exemption is withheld from a *clickable* marker, since exempting one would let it
+    // claim a tap that landed outside it — a drop traded for a misattribution, the wrong direction.
+    // Ordered so the exemption's identifier read happens only where it can change the answer: it is a
+    // KVC round-trip (see accessibilityIdentifierOrNull) and this runs per visited node, on the main
+    // thread inside a tap handler. The saving is exactly the nodes that contain the tap — roughly the
+    // hit path itself — and no more: whether a node is a scope container is knowable only by doing the
+    // read, so a non-containing node still pays for it.
+    if (!containsPosition && (ancestors.isNotEmpty() || node.isAccessibilityButton())) {
+        val exemptScopeContainer =
+            allowScopeContainerDescent && node.isAutographScopeContainer() && !node.isAccessibilityButton()
+        if (!exemptScopeContainer) return null
+    }
     val pathToNode = ancestors + node
     // Keep the first branch that resolved at all as a fallback and carry on looking for a clickable
     // one — see the kdoc for why clickability outranks the z-order tie-break. Walking on instead of
@@ -340,7 +382,8 @@ private fun deepestAccessibilityHitPath(
     var fallback: List<Any>? = null
     for (child in node.accessibilityChildren().asReversed()) {
         val branch = deepestAccessibilityHitPath(
-            child, view, positionInWindowPx, scale, preferClickableBranches, pathToNode, budget,
+            child, view, positionInWindowPx, scale, preferClickableBranches,
+            allowScopeContainerDescent, pathToNode, budget,
         ) ?: continue
         if (!preferClickableBranches) return listOf(node) + branch
         if (branch.any { it.isAccessibilityButton() }) return listOf(node) + branch
@@ -576,6 +619,36 @@ private fun Any.anyAccessibilityDescendant(
 @AutographInternalApi
 public fun List<Any>.nearestAccessibilityClickable(): Any? =
     asReversed().firstOrNull { it.isAccessibilityButton() }
+
+/**
+ * Prefix marking an accessibility identifier as an Autograph **element scope** rather than a name the
+ * host app chose. Everything after it is the scope's payload.
+ *
+ * The identifier slot is the only bridged accessibility property that is both identity-bearing and
+ * never read out to a VoiceOver user, which is why the scope travels in it — see `autocaptureScope`'s
+ * kdoc in `autograph-compose` for the other three channels and why each is unusable. Compose
+ * Multiplatform collapses two `testTag`s on one layout node to the first, so a scope can never share a
+ * node with the element's own tag; it always arrives on a wrapper, one level above.
+ *
+ * **Reserved.** An identifier starting with this prefix is treated as Autograph's own and is never
+ * reported as a tap `target`, so an app that sets one itself loses that element's name. The payload
+ * format after the prefix is an implementation detail shared between the writer and this reader in the
+ * same release, and is not a compatibility surface.
+ */
+@AutographInternalApi
+public const val AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX: String = "__autograph_scope__"
+
+/**
+ * Whether this element is an Autograph scope container — a wrapper carrying
+ * [AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX] in its identifier.
+ *
+ * Load-bearing in two places, for opposite reasons: [deepestAccessibilityHitPath] exempts such a node
+ * from the containment gate so it cannot prune a child drawn outside it, and every site that names a
+ * tapped element must *exclude* it, since a scope marker is not a thing the user touched.
+ */
+@AutographInternalApi
+public fun Any.isAutographScopeContainer(): Boolean =
+    accessibilityIdentifierOrNull()?.startsWith(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX) == true
 
 /** Whether this element exposes `UIAccessibilityTraitButton`, Autograph's clickability predicate. */
 @AutographInternalApi

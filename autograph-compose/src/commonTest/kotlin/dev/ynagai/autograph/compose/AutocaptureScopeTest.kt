@@ -83,6 +83,10 @@ private fun ComposeUiTest.semanticsRoot(): SemanticsNode = onRoot(useUnmergedTre
  * what Compose itself routed the pointer to. That is the bar this hit test is held to: agreeing with
  * Compose, not merely being self-consistent.
  */
+// The modifier under test is deprecated in favour of AutographElementScope but keeps its behaviour
+// until removal at 1.0, so these tests stay exactly as they are — and say so here rather than emitting
+// ~40 deprecation warnings across four target compilations, which would bury the next real one.
+@Suppress("DEPRECATION")
 @OptIn(ExperimentalTestApi::class)
 class AutocaptureScopeTest {
 

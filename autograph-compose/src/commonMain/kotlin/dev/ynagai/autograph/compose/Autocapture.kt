@@ -11,8 +11,8 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * Identification prefers `Modifier.testTag`, then the element's semantics role, then its
  * accessibility label — never its displayed text, to avoid capturing PII by default (on iOS, the
  * label step is skipped entirely; see the platform note below). Exclude a subtree entirely with
- * [autographIgnore]; attach per-element properties to the taps under one with [autocaptureScope]
- * (Android only — see its kdoc for why the iOS bridge cannot carry it).
+ * [autographIgnore]; attach per-element properties to an element's taps by wrapping it in
+ * [AutographElementScope], on both platforms.
  *
  * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer
  * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing works on each
@@ -36,10 +36,24 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * `minimumInteractiveComponentSize`: Android ranks such a hit by Compose's own rules
  * ([#127](https://github.com/uny/autograph/issues/127)), and iOS needs no counterpart because the
  * UIKit bridge already publishes the *expanded* target as the element's `accessibilityFrame`.
- * Neither, on either platform, is a `clickable` drawn outside its parent's bounds: on Android the
- * semantics walk descends regardless of the parent and only requires the element it reports to
- * contain the tap itself, and on iOS the question cannot arise, since the bridged accessibility tree
- * is flat — such an element is a *sibling* rather than a descendant, so no parent frame excludes it.
+ * A `clickable` drawn outside its parent's bounds is not in this category on Android: the semantics
+ * walk descends regardless of the parent and only requires the element it reports to contain the tap
+ * itself. **On iOS it now is one, and this note used to say the opposite.** The claim was that the
+ * question could not arise because the bridged accessibility tree was flat, so such an element was a
+ * *sibling* rather than a descendant and no parent frame could exclude it. Compose Multiplatform 1.11
+ * began publishing a traversal group as its own accessibility element, so the tree is no longer flat
+ * and a parent frame can exclude it: a `clickable` escaping a traversal group's published frame has
+ * its tap **dropped entirely** ([#188](https://github.com/uny/autograph/issues/188)). Measured with
+ * an oracle — the element's `onClick` fires and no event follows.
+ *
+ * [AutographElementScope]'s own wrapper is exempt from that gate, so the scope API does not carry the
+ * gap it would otherwise have introduced. A traversal group the *app* declares is not exempt, because
+ * the exemption keys on an identifier this library asked for and an app-written one cannot stand as
+ * proof of anything. Three conditions must coincide for it to bite — the clickable escapes the
+ * group's *published* frame, the tap lands on the escaped part, and the Compose version publishes
+ * containers — so it is narrow, and the failure direction is a drop rather than a misattribution,
+ * which is the side of that trade this walk has always taken. It is silent, though: no event is
+ * indistinguishable from nobody tapping.
  *
  * **One further gap, iOS only, and it is none of the above:** an overhanging tap can still be
  * misreported there, where Android attributes it correctly

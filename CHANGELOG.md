@@ -8,6 +8,95 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- `AutographElementScope { … }` attaches per-element properties to autocaptured taps on **both**
+  Android and iOS ([#185]). The iOS half was declared impossible and [#68] was closed on it: the
+  bridged accessibility tree was measured flat, leaving no ancestry for a scope to ride, and the
+  three things Compose Multiplatform would have had to grow were enumerated. It grew none of them.
+  Compose Multiplatform 1.11 instead began publishing a traversal group as its own accessibility
+  element — a fourth route that enumeration did not anticipate — so a wrapper is now a real ancestor
+  of the clickable on the bridged tree, and the scope travels in its accessibility identifier, the
+  one bridged property that is both identity-bearing and never spoken aloud. Sibling rows attribute
+  exactly, which is the case #68 was closed for being unable to do.
+
+  The scope is read off the **same hit path** the identifier came from, so a misattributed tap
+  carries the misattributed element's own scope rather than a mismatched pair. That is the property
+  every geometric design lacked, and why none of them shipped: two exactly coincident clickables
+  cannot be told apart by their rectangles, and the failure would land precisely when the hit test
+  got the target right.
+
+  On iOS this changes the host app's accessibility structure, and the change was measured rather
+  than assumed — but measured on the *bridged hierarchy*, not by running a screen reader, and the
+  distinction is worth stating. Reading order, stop count and spoken labels come out unchanged across
+  four controlled A/Bs against identical unwrapped content, including a multi-child row and two
+  sibling rows, which matches the mechanism: `clickable` merges its subtree into a single stop and the
+  published container never takes focus. What is measured outright is the container type — the
+  wrapper publishes `UIAccessibilityContainerTypeSemanticGroup` where the unwrapped control publishes
+  none — so with the rotor set to Containers a scoped element becomes one more navigation target.
+  That much is additive: nothing hidden, no stop lost, no order moved. **Not checked on a device:**
+  whether VoiceOver announces the group's boundary on entry or exit. Being a change an analytics
+  library makes to your app, it is opt-in per call site and stated in the API's own documentation. The
+  scope's keys and values are also readable by any accessibility client, so treat them as you would a
+  `testTag`.
+
+  Requires Compose Multiplatform 1.11 or newer for the iOS half; older versions bridge the wrapper as
+  a flat sibling and the scope is silently absent.
+
+  The wrapper is a `Box` that propagates its constraints, minimums included, so it is layout-neutral —
+  with one exception it cannot be: modifiers that are parent data for the *enclosing* layout do not
+  cross it. `Modifier.weight` and `alignByBaseline` stop compiling when their element moves inside;
+  `align` and `matchParentSize` are `BoxScope` members and rebind to the wrapper. Documented at the API
+  and in the README migration note.
+
+  On iOS a scope whose encoded form exceeds 2048 characters is dropped whole — it is parsed on the
+  main thread inside a tap handler, so its size is a latency budget — and dropping it degrades to
+  exactly what no wrapper does. Crossing the ceiling prints a one-line console diagnostic naming the
+  size, once per process, because the drop is otherwise indistinguishable from a correctly configured
+  app until someone reads the events. The number is a guard against the pathological, not a measured
+  budget. The same ceiling is applied when *reading*, which is the side that has to hold: the reserved
+  prefix sits in an identifier slot the host app owns, and the walk reaches UIKit interop subtrees, so
+  a node this library did not write can carry a payload of any size and would otherwise be parsed on
+  the main thread on every tap and folded into the event. An empty scope publishes no marker at all,
+  for the same reason an oversized one is dropped whole — a container with no readable scope is this
+  API's whole accessibility cost with none of its benefit.
+
+  `autograph-compose` now declares `compose.foundation` as an `api` dependency rather than
+  `implementation`: `BoxScope` is the wrapper's content receiver and so sits in the module's public
+  signature, and an `implementation` dependency reaches consumers at runtime only.
+
+  `autograph-uikit`'s `deepestAccessibilityHitPath` gained a parameter, so its klib signature is
+  **replaced rather than extended** — the five-argument form is gone from the dump. It is
+  `@AutographInternalApi` and both modules are released together from this repo, so the only way to
+  reach it is a graph that resolves `autograph-compose` and `autograph-uikit` at *different* versions
+  (adding `autograph-uikit` directly for the native tap pipeline, at a newer version than the compose
+  artifact pulls in). That fails at runtime with `IrLinkageError` on the first tap, not at link time —
+  the shape this repo measured for mixed-version klib diamonds. **Keep the two modules on the same
+  version.** The previous release changed this signature the same way, silently.
+
+### Changed
+
+- `Modifier.autocaptureScope` is deprecated in favour of `AutographElementScope`, and is removed at
+  1.0 ([#185]). It is not fixable in place: its documented canonical usage puts the scope on the
+  clickable's own chain, and iOS needs it on a layout node of its own, since two `testTag`s on one
+  node collapse to the first and the element would lose either its scope or its name. A wrapper
+  cannot be written that way. On Android the replacement applies the very same modifier node, so
+  switching changes nothing there, and the modifier keeps behaving exactly as before until removal —
+  including contributing nothing at all on iOS.
+
+### Fixed
+
+- An iOS tap on a `clickable` drawn outside its scope wrapper's own bounds — an overhanging badge, an
+  `offset` decoration — was dropped entirely rather than reported ([#185]). The accessibility walk
+  gates descent on geometric containment at every node below its starting one, so a container whose
+  own frame misses the tap prunes before its child is reached; Compose Multiplatform 1.11 publishing
+  traversal groups as containers made that latent gap newly reachable. Measured with an oracle: the
+  element's `onClick` fired and no event followed. The exemption is the narrowest one that fixes it —
+  an element carrying the reserved scope prefix, never a clickable one, and only on the Compose
+  pipeline. Left global it could have let a branch resolve around the Compose host, which is how the
+  two iOS pipelines avoid reporting one tap twice and is a privacy boundary rather than an
+  attribution detail.
+
 ## [0.5.0] - 2026-08-11
 
 ### Added
@@ -623,3 +712,4 @@ Initial release.
 [#174]: https://github.com/uny/autograph/issues/174
 [#176]: https://github.com/uny/autograph/issues/176
 [#179]: https://github.com/uny/autograph/issues/179
+[#185]: https://github.com/uny/autograph/issues/185

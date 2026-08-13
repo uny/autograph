@@ -5,11 +5,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.uikit.LocalUIView
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.uikit.AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX
 import dev.ynagai.autograph.uikit.AxPoint
 import dev.ynagai.autograph.uikit.accessibilityIdentifierOrNull
 import dev.ynagai.autograph.uikit.deepestAccessibilityHitPath
 import dev.ynagai.autograph.uikit.isAccessibilityDisabled
+import dev.ynagai.autograph.uikit.isAutographScopeContainer
 import dev.ynagai.autograph.uikit.nearestAccessibilityClickable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import platform.UIKit.UIScreen
 import platform.UIKit.UIView
 
@@ -45,16 +50,7 @@ internal actual fun rememberElementResolver(): ElementResolver {
     val view = LocalUIView.current
     val claims = LocalAutocaptureClaims.current
     return remember(view, claims) {
-        ElementResolver { root, position ->
-            // No scope: the UIKit bridge carries none of the custom semantics [autocaptureScope]
-            // writes, so there is nothing to read back off the hit path here — and none of the
-            // properties it does carry can stand in for one soundly, which is why this is left empty
-            // rather than approximated. That modifier's kdoc is the canonical account (#68). An empty
-            // scope leaves the tap attributed exactly as it was before it existed — the ambient
-            // `ScopeStack` still contributes, and simultaneously-mounted siblings there still drop
-            // rather than guess.
-            resolveIosElement(view, claims, root.localToWindow(position))?.let { AutocaptureTarget(it) }
-        }
+        ElementResolver { root, position -> resolveIosElement(view, claims, root.localToWindow(position)) }
     }
 }
 
@@ -70,7 +66,7 @@ internal fun resolveIosElement(
     view: UIView,
     claims: AutocaptureClaims?,
     position: Offset,
-): String? {
+): AutocaptureTarget? {
     if (claims != null) {
         if (claims.ignored.values.any { it.contains(position) }) return null
         // Suppress whatever this dispatch would have resolved to, not just the element that ran.
@@ -105,15 +101,68 @@ internal fun resolveIosElement(
         if (claims.instrumentedClickExecutedThisGeneration()) return null
     }
     val scale = UIScreen.mainScreen.scale.toFloat()
-    val path = deepestAccessibilityHitPath(view, view, AxPoint(position.x, position.y), scale) ?: return null
+    // `allowScopeContainerDescent` is turned on here and nowhere else. The walk starts at the Compose
+    // host, so it stays within one composition's subtree and never reaches a sibling of that host —
+    // which is the boundary the native pipeline arbitrates, so the exemption has none to cross. (It
+    // does reach UIKit interop subtrees hosted *inside* the composition, which are not Compose-owned;
+    // see deepestAccessibilityHitPath's kdoc for why that is bounded, and for what turning this on in
+    // the native pipeline would cost.)
+    val path = deepestAccessibilityHitPath(
+        view, view, AxPoint(position.x, position.y), scale, allowScopeContainerDescent = true,
+    ) ?: return null
     val nearestClickable = path.nearestAccessibilityClickable() ?: return null
     // A disabled element takes the hit and is vetoed here, exactly as Android's
     // resolveAutocaptureTarget vetoes SemanticsProperties.Disabled (#128) — measured on-device,
     // tapping one fires no handler at all, not even its enabled clickable parent's. Confined to the
     // resolved element, never asked of its ancestry. See isAccessibilityDisabled for both halves.
     if (nearestClickable.isAccessibilityDisabled()) return null
+    // A reserved identifier is Autograph's own marker, never a name the app chose, so it must not be
+    // reported as what the user touched. It reaches here only if an app put the prefix on something
+    // clickable — the scope wrappers this library emits carry no click action — and the element then
+    // resolves to no identifier at all and the tap drops, which is the fail-closed direction and is
+    // what AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX's kdoc promises.
+    if (nearestClickable.isAutographScopeContainer()) return null
     // No `label` argument: the accessibility label is never read — see accessibilityIdentifierOrNull's
     // kdoc in autograph-uikit for why falling back to it would defeat the "never read displayed text"
     // guarantee that Android's resolveAutocaptureTarget honors by only ever reading ContentDescription.
-    return identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = null)
+    val identifier =
+        identifierFrom(testTag = nearestClickable.accessibilityIdentifierOrNull(), role = null, label = null)
+            ?: return null
+    // Read off the SAME path the identifier came from. Deriving the scope from anywhere else — a
+    // positional registry, mount order — is what lets a tap be reported against one element carrying
+    // a neighbour's scope, the failure AutocaptureTarget's kdoc exists to rule out. `path` is
+    // root→hit node, so a deeper wrapper folds in later and wins a key clash, matching both Android's
+    // resolveAutocaptureTarget and how nested scopes compose everywhere else.
+    return AutocaptureTarget(identifier, path.scopeOnPath())
+}
+
+/**
+ * Merges every Autograph scope wrapper on this hit path, outer→inner.
+ *
+ * A payload that doesn't parse is skipped rather than propagated or thrown on. The identifier is the
+ * host app's to write and an app is free to put the reserved prefix on something of its own, so this
+ * runs against arbitrary strings on the main thread inside a tap handler; a wrong scope lands in
+ * analytics data looking true, and a crash costs the whole app. Dropping the entry leaves the tap
+ * attributed exactly as it would have been without the wrapper.
+ *
+ * [MAX_SCOPE_PAYLOAD_LENGTH] is enforced here as well as at the writer, and this is the side that
+ * matters. The writer's own scopes are already under it by construction; what this bounds is a payload
+ * this library did not write — the prefix sits in an identifier slot the host app owns, and the walk
+ * reaches UIKit interop subtrees too, so a foreign node can carry one of any size. Without the check
+ * here, one such node would put an unbounded `parseToJsonElement` on the main thread on *every* tap and
+ * fold an unbounded object straight into the event.
+ */
+@OptIn(AutographInternalApi::class)
+private fun List<Any>.scopeOnPath(): JsonObject = fold(EmptyJsonObject) { acc, node ->
+    val payload = node.accessibilityIdentifierOrNull()
+        ?.takeIf { it.startsWith(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX) }
+        ?.removePrefix(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX)
+        ?.takeIf { it.length <= MAX_SCOPE_PAYLOAD_LENGTH }
+        ?: return@fold acc
+    val parsed = runCatching { Json.parseToJsonElement(payload) as? JsonObject }.getOrNull() ?: return@fold acc
+    when {
+        parsed.isEmpty() -> acc
+        acc.isEmpty() -> parsed
+        else -> JsonObject(acc + parsed)
+    }
 }

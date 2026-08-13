@@ -2,8 +2,13 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.uikit.AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.cinterop.readValue
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import platform.CoreGraphics.CGRectMake
 import platform.CoreGraphics.CGRectZero
 import platform.UIKit.UIAccessibilityIdentificationProtocol
@@ -30,8 +35,10 @@ import kotlin.test.assertNull
  * `accessibilityFrame` is in points; tap positions are window-relative pixels (point *
  * [UIScreen.scale]), matching what `rememberElementResolver` produces via `root.localToWindow`.
  */
-@OptIn(ExperimentalForeignApi::class)
+@OptIn(ExperimentalForeignApi::class, AutographInternalApi::class)
 class ElementResolverIosTest {
+
+    private val scale: Double get() = UIScreen.mainScreen.scale
 
     // A bare UIView() doesn't statically conform to UIAccessibilityIdentificationProtocol in this
     // Kotlin/Native binding (unlike a real UIKit-driven accessibility element), so tests that need a
@@ -42,6 +49,185 @@ class ElementResolverIosTest {
         override fun setAccessibilityIdentifier(accessibilityIdentifier: String?) {
             identifier = accessibilityIdentifier
         }
+    }
+
+    /**
+     * A window, a scope wrapper carrying [payload] after the reserved prefix, and a button inside it.
+     * The wrapper is not clickable, matching what the scope composable emits — the traversal group
+     * Compose Multiplatform bridges publishes a container, never a control.
+     */
+    private fun buildScopedRoot(vararg payloads: String): Pair<UIView, Offset> {
+        val window = UIWindow()
+        window.setFrame(CGRectMake(0.0, 0.0, 200.0, 200.0))
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 200.0, 200.0)
+        window.addSubview(root)
+
+        var parent: UIView = root
+        for (payload in payloads) {
+            val wrapper = IdentifiableButtonView()
+            wrapper.setPointFrame(0.0, 0.0, 100.0, 100.0)
+            wrapper.setAccessibilityIdentifier(AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX + payload)
+            parent.addSubview(wrapper)
+            parent = wrapper
+        }
+
+        val button = IdentifiableButtonView()
+        button.setPointFrame(10.0, 10.0, 20.0, 20.0)
+        button.setAccessibilityIdentifier("share_button")
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        parent.addSubview(button)
+
+        return root to Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
+    }
+
+    @Test
+    fun readsTheScopeOffTheSamePathTheIdentifierCameFrom() {
+        val (root, position) = buildScopedRoot("""{"article_id":"42"}""")
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals("share_button", result?.identifier)
+        assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope)
+    }
+
+    /**
+     * The overhanging clickable, driven through **this** resolver rather than through the walk.
+     *
+     * `AccessibilityTreeTest` pins what `allowScopeContainerDescent` does; nothing pinned that this
+     * call site passes it. Every other fixture here puts the wrapper *around* the tap, so the
+     * containment gate never fires and the flag is inert in all of them — deleting
+     * `allowScopeContainerDescent = true` from `resolveIosElement` left both iOS suites green, while
+     * the drop this PR's fix exists to remove came straight back. Geometry is
+     * `descendsPastAScopeContainerThatDoesNotContainThePosition`'s, so the two are a matched pair
+     * across the module boundary.
+     */
+    @Test
+    fun resolvesAClickableDrawnOutsideItsScopeWrappersBounds() {
+        val window = UIWindow()
+        window.setFrame(CGRectMake(0.0, 0.0, 200.0, 200.0))
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 200.0, 200.0)
+        window.addSubview(root)
+
+        val wrapper = IdentifiableButtonView()
+        wrapper.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        wrapper.setAccessibilityIdentifier("""${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{"article_id":"42"}""")
+        root.addSubview(wrapper)
+
+        // Drawn outside the wrapper entirely — an overhanging badge, an `offset` decoration.
+        val badge = IdentifiableButtonView()
+        badge.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        badge.setAccessibilityIdentifier("badge")
+        badge.setAccessibilityTraits(UIAccessibilityTraitButton)
+        wrapper.addSubview(badge)
+
+        val position = Offset((55.0 * scale).toFloat(), (55.0 * scale).toFloat())
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals("badge", result?.identifier)
+        assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope)
+    }
+
+    /**
+     * The reader's half of the payload ceiling. The writer's is not enough on its own: the prefix sits
+     * in an identifier slot the host app owns, so a foreign node — an app view, a third-party SDK under
+     * a `UIKitView` — can carry one of any size, and without this the tap would parse it on the main
+     * thread and fold it into the event. Oversized is skipped like any unreadable payload; the second,
+     * in-bounds wrapper is the positive control that keeps this from passing vacuously.
+     */
+    @Test
+    fun skipsAScopePayloadOverTheCeiling() {
+        val oversized = """{"blob":"${"x".repeat(64 * 1024)}"}"""
+        val (root, position) = buildScopedRoot(oversized, """{"article_id":"42"}""")
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals("share_button", result?.identifier)
+        assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope)
+    }
+
+    /**
+     * Nesting composes outer→inner with the inner winning a key clash, the rule
+     * [resolveAutocaptureTarget] applies on Android. The path is root→hit node, so the deeper wrapper
+     * folds in later.
+     */
+    @Test
+    fun nestedScopesMergeWithTheInnerWinningAKeyClash() {
+        val (root, position) = buildScopedRoot(
+            """{"section":"feed","article_id":"outer"}""",
+            """{"article_id":"inner"}""",
+        )
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals(
+            JsonObject(mapOf("section" to JsonPrimitive("feed"), "article_id" to JsonPrimitive("inner"))),
+            result?.scope,
+        )
+    }
+
+    /**
+     * The identifier is the host app's to write, so this parses arbitrary strings on the main thread
+     * inside a tap handler. A payload that isn't an object is dropped, leaving the tap attributed as
+     * it would have been without the wrapper — never thrown on, and never propagated as a scope.
+     */
+    @Test
+    fun skipsAScopePayloadThatDoesNotParse() {
+        val (root, position) = buildScopedRoot("not json at all", """{"article_id":"42"}""")
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals("share_button", result?.identifier)
+        assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope)
+    }
+
+    /**
+     * The other half of that: a payload that parses perfectly well but isn't an object. Syntactically
+     * invalid JSON exercises the parser's throw path; these exercise the cast, which is a different
+     * branch and would otherwise be untested.
+     */
+    @Test
+    fun skipsAScopePayloadThatParsesToSomethingOtherThanAnObject() {
+        for (payload in listOf("[]", "null", "42", "\"a string\"")) {
+            val (root, position) = buildScopedRoot(payload, """{"article_id":"42"}""")
+
+            val result = resolveIosElement(root, claims = null, position)
+
+            assertEquals("share_button", result?.identifier, "payload=$payload")
+            assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope, "payload=$payload")
+        }
+    }
+
+    @Test
+    fun reportsAnEmptyScopeWhenNoWrapperIsOnThePath() {
+        val (root, position) = buildScopedRoot()
+
+        assertEquals(EmptyJsonObject, resolveIosElement(root, claims = null, position)?.scope)
+    }
+
+    /**
+     * The reserved prefix names an Autograph marker, never something the user touched. It can only
+     * reach the nearest-clickable slot if an app puts the prefix on a control of its own; the tap then
+     * drops rather than reporting a marker as an element.
+     */
+    @Test
+    fun neverReportsAReservedIdentifierAsTheTappedElement() {
+        val window = UIWindow()
+        window.setFrame(CGRectMake(0.0, 0.0, 200.0, 200.0))
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 200.0, 200.0)
+        window.addSubview(root)
+
+        val marker = IdentifiableButtonView()
+        marker.setPointFrame(0.0, 0.0, 100.0, 100.0)
+        marker.setAccessibilityIdentifier("${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{}")
+        marker.setAccessibilityTraits(UIAccessibilityTraitButton)
+        root.addSubview(marker)
+
+        val position = Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
+
+        assertNull(resolveIosElement(root, claims = null, position))
     }
 
     /** Opens a generation and records a [trackClick] execution in it, as a real tap would. */
@@ -91,7 +277,7 @@ class ElementResolverIosTest {
 
         val result = resolveIosElement(root, claims = null, position)
 
-        assertEquals("share_button", result)
+        assertEquals("share_button", result?.identifier)
     }
 
     @Test
@@ -133,7 +319,7 @@ class ElementResolverIosTest {
 
         val result = resolveIosElement(root, claims = null, position)
 
-        assertEquals("share_button", result)
+        assertEquals("share_button", result?.identifier)
     }
 
     @Test
@@ -207,7 +393,7 @@ class ElementResolverIosTest {
 
         val result = resolveIosElement(root, claims, position)
 
-        assertEquals("share_button", result)
+        assertEquals("share_button", result?.identifier)
     }
 
     /**
@@ -229,7 +415,7 @@ class ElementResolverIosTest {
 
         val result = resolveIosElement(root, claims, position)
 
-        assertEquals("share_button", result)
+        assertEquals("share_button", result?.identifier)
     }
 
     /**
@@ -245,7 +431,7 @@ class ElementResolverIosTest {
 
         claims.clearTapExecution()
 
-        assertEquals("share_button", resolveIosElement(root, claims, position))
+        assertEquals("share_button", resolveIosElement(root, claims, position)?.identifier)
     }
 
     /**
@@ -267,7 +453,7 @@ class ElementResolverIosTest {
 
         val result = resolveIosElement(root, claims, position)
 
-        assertEquals("share_button", result)
+        assertEquals("share_button", result?.identifier)
     }
 
     /**
@@ -294,7 +480,7 @@ class ElementResolverIosTest {
 
         val result = resolveIosElement(root, claims, position)
 
-        assertEquals("share_button", result)
+        assertEquals("share_button", result?.identifier)
     }
 
     /**
@@ -345,7 +531,7 @@ class ElementResolverIosTest {
         val onParent = Offset((50.0 * scale).toFloat(), (50.0 * scale).toFloat())
 
         assertNull(resolveIosElement(root, claims = null, onChild))
-        assertEquals("enabled_row", resolveIosElement(root, claims = null, onParent))
+        assertEquals("enabled_row", resolveIosElement(root, claims = null, onParent)?.identifier)
     }
 
     /** The confinement in the other direction: a disabled ancestor does not veto an enabled child. */
@@ -369,6 +555,6 @@ class ElementResolverIosTest {
 
         val position = Offset((15.0 * scale).toFloat(), (15.0 * scale).toFloat())
 
-        assertEquals("enabled_child", resolveIosElement(root, claims = null, position))
+        assertEquals("enabled_child", resolveIosElement(root, claims = null, position)?.identifier)
     }
 }

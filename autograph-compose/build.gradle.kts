@@ -32,7 +32,13 @@ kotlin {
             // public signature. LocalScopeStack itself stays internal.
             api(projects.autographContext)
             implementation(compose.runtime)
-            implementation(compose.foundation)
+            // `api`, not `implementation`, for the reason autograph-context is above: these types are
+            // in this module's public signature — `Modifier` on every tracking modifier, and `BoxScope`
+            // as AutographElementScope's content receiver. An `implementation` dependency lands in
+            // `runtimeElements` only (verified in the generated module metadata), so a consumer that
+            // does not declare compose.foundation itself cannot resolve the receiver and the API is
+            // uncallable. Almost every consumer declares it anyway; that is luck, not a contract.
+            api(compose.foundation)
             implementation(libs.jetbrains.lifecycle.runtime.compose)
             implementation(libs.jetbrains.navigation.compose)
         }

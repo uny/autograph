@@ -10,6 +10,8 @@ import kotlin.time.Duration.Companion.seconds
 import kotlin.time.TimeSource
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
+import platform.Foundation.setValue
+import platform.darwin.NSObject
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIAccessibilityTraitNotEnabled
 import platform.UIKit.UIAccessibilityTraitSelected
@@ -33,6 +35,16 @@ import platform.UIKit.setFrame
  */
 @OptIn(ExperimentalForeignApi::class, AutographInternalApi::class)
 class AccessibilityTreeTest {
+
+    /**
+     * Set through KVC rather than the property: cinterop does not model the conformance `UIView` gets
+     * from a category, so `UIView` is statically not a [UIAccessibilityIdentificationProtocol] and the
+     * property is unreachable — the same gap [accessibilityIdentifierOrNull] documents on the read
+     * side.
+     */
+    private fun UIView.setIdentifier(value: String) {
+        (this as NSObject).setValue(value, forKey = "accessibilityIdentifier")
+    }
 
     private fun UIView.setPointFrame(x: Double, y: Double, width: Double, height: Double) {
         setAccessibilityFrame(CGRectMake(x, y, width, height))
@@ -184,6 +196,112 @@ class AccessibilityTreeTest {
 
         assertEquals(listOf(root), path)
         assertNull(path?.nearestAccessibilityClickable())
+    }
+
+    @Test
+    fun descendsPastAScopeContainerThatDoesNotContainThePosition() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        // Same geometry as stillPrunesAnIntermediateContainerThatDoesNotContainThePosition above —
+        // the only difference is the reserved identifier, so this is a controlled pair rather than
+        // two unrelated fixtures.
+        val scope = UIView()
+        scope.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        scope.setIdentifier("${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{\"article_id\":\"42\"}")
+        root.addSubview(scope)
+
+        val button = UIView()
+        button.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        scope.addSubview(button)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale, allowScopeContainerDescent = true)
+
+        assertEquals(listOf(root, scope, button), path)
+        assertEquals(button, path?.nearestAccessibilityClickable())
+    }
+
+    @Test
+    fun doesNotReturnAScopeContainerAloneWhenNoDescendantContainsThePosition() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val scope = UIView()
+        scope.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        scope.setIdentifier("${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{}")
+        root.addSubview(scope)
+
+        // The exemption ungates the descent; it must not make the marker itself claim the tap. Nothing
+        // beneath it contains the position, so the walk owes the caller the root and nothing more.
+        val inert = UIView()
+        inert.setPointFrame(0.0, 0.0, 5.0, 5.0)
+        scope.addSubview(inert)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale, allowScopeContainerDescent = true)
+
+        assertEquals(listOf(root), path)
+    }
+
+    @Test
+    fun keepsTheGateOnAScopeContainerThatIsItselfClickable() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        // A host app is free to put the reserved prefix on something clickable. Exempting that would
+        // let it take a tap that landed outside its own frame, turning a drop into a misattribution.
+        val scope = UIView()
+        scope.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        scope.setIdentifier("${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{}")
+        scope.setAccessibilityTraits(UIAccessibilityTraitButton)
+        root.addSubview(scope)
+
+        val button = UIView()
+        button.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        scope.addSubview(button)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+        val path = deepestAccessibilityHitPath(root, root, position, scale, allowScopeContainerDescent = true)
+
+        assertEquals(listOf(root), path)
+        assertNull(path?.nearestAccessibilityClickable())
+    }
+
+    /**
+     * The exemption is off unless the caller asks for it, and the native pipeline never does. That is
+     * what keeps the ownership boundary intact by construction: [resolveNativeTapTarget] drops a tap
+     * whose path crosses a Compose host, and a branch that stopped pruning on containment could
+     * resolve *before* the branch through the host — so neither returned path would cross it, and a
+     * Compose-owned tap could be reported natively. The marker is an identifier the host app is free
+     * to write, so it can never stand as proof of who owns a subtree.
+     */
+    @Test
+    fun doesNotDescendPastAScopeContainerUnlessTheCallerOptsIn() {
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 100.0, 100.0)
+
+        val scope = UIView()
+        scope.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        scope.setIdentifier("${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{\"article_id\":\"42\"}")
+        root.addSubview(scope)
+
+        val button = UIView()
+        button.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        button.setAccessibilityTraits(UIAccessibilityTraitButton)
+        scope.addSubview(button)
+
+        val position = AxPoint(55f * scale, 55f * scale)
+
+        // Default — the native pipeline's call.
+        assertEquals(listOf(root), deepestAccessibilityHitPath(root, root, position, scale))
+        // The ownership walk's call, which passes preferClickableBranches = false, must not differ.
+        assertEquals(
+            listOf(root),
+            deepestAccessibilityHitPath(root, root, position, scale, preferClickableBranches = false),
+        )
     }
 
     @Test
