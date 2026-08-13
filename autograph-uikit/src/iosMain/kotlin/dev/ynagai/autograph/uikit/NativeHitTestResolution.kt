@@ -183,7 +183,7 @@ internal fun resolveNativeTapTargetByHitTest(
     if (AutographComposeHosts.containsAny(chain) || AutographIgnoredViews.containsAny(chain)) {
         return NativeHitTestResolution.Dropped
     }
-    if (hitView.hidesAnExcludedViewUnder(positionInWindowPoints, root)) return NativeHitTestResolution.Dropped
+    if (anExcludedViewIsDrawnUnder(positionInWindowPoints, root)) return NativeHitTestResolution.Dropped
     // Leaf-first, so `firstOrNull` is the innermost interactive view. `dropLast` removes [root] — see
     // the kdoc; hitChain always ends at it whenever it returns anything at all. `takeWhile` stops the
     // search at the first scroll view rather than stepping over it — see [isNativeInteractive].
@@ -197,7 +197,8 @@ internal fun resolveNativeTapTargetByHitTest(
 }
 
 /**
- * Whether the tap landed on top of a [AutographIgnoredViews]-excluded view that `hitTest` stepped over.
+ * Whether an [AutographIgnoredViews]-excluded view is the thing *drawn* under [point], following the
+ * frontmost visible branch down from [root].
  *
  * **This exists because the two paths mean different things, and the opt-out is defined in terms of the
  * one this resolver does not have.** `registerAutographIgnoredView` promises that a tap whose hit path
@@ -206,41 +207,55 @@ internal fun resolveNativeTapTargetByHitTest(
  * at a view that declines touches — the default for the two view types an app is most likely to exclude:
  * `UILabel` and `UIImageView` both ship with `isUserInteractionEnabled = false`. Measured: a `UILabel`
  * showing an email address, registered as ignored, inside an identified card carrying a tap recognizer
- * — the accessibility resolver drops the tap, and without this check `hitTest` reports the card. The
+ * — the accessibility resolver drops the tap, and without this check `hitTest` reported the card. The
  * opt-out silently stopped holding for the shape it is most often reached for.
  *
- * So the excluded set is asked of the views *under the point* below the receiver, not only of the
- * delivery chain: descend the receiver's subtree taking every view whose bounds contain the point,
- * whether or not it can receive a touch. Ancestors are already covered by the caller's
- * `containsAny(chain)`.
+ * So the excluded set is asked of what is *drawn* under the point rather than of what receives the
+ * touch. This walk is deliberately `hitTest`'s own algorithm with exactly one gate removed — descend
+ * the frontmost subview whose bounds contain the point, skipping `isHidden` and effectively transparent
+ * views as `hitTest` does, but **not** skipping a view that merely declines touches. That single
+ * difference is the whole divergence, so nothing else about which view "the tap landed on" changes.
  *
- * **One narrower shape is deliberately left uncovered**: an excluded, touch-declining view that is a
- * *sibling drawn over* the receiver rather than a descendant of it. Covering that needs a walk from [to]
- * over the whole tree, which would also drop taps on native content that merely happens to sit in front
- * of an excluded subtree — over-dropping where this under-drops. The descendant walk is the tight fix
- * for the measured shape; the sibling case is left to [resolveNativeTapTarget], which still applies its
- * own veto on a warm tree whenever this resolver answers
- * [Unresolved][NativeHitTestResolution.Unresolved]. Cold, it is a real residual gap.
+ * Following the frontmost branch rather than sweeping the whole subtree is what keeps this from
+ * over-dropping in the other direction: an excluded view *behind* the opaque thing the user actually
+ * tapped is not what they touched, and must not veto. It is also why an excluded view drawn over its
+ * sibling — not just one nested inside the hit view — is caught: the walk reaches whatever is in front
+ * at that point, wherever it sits in the hierarchy.
  *
- * [point] is in [to]'s coordinate space (a `UIWindow` in production), and is converted per node rather
- * than accumulated, so a transformed or offset ancestor cannot skew it.
+ * **Fail-closed on truncation.** Exceeding [MAX_HIT_CHAIN_DEPTH] vetoes rather than continuing. The
+ * depth is unreachable for a real UIKit hierarchy; the direction is what matters, because the wrong one
+ * would let an opt-out silently lapse.
+ *
+ * [point] is in [root]'s coordinate space (a `UIWindow` in production), and is converted per node
+ * rather than accumulated, so a transformed or offset ancestor cannot skew it.
  *
  * **Threading.** Main thread only.
  */
 @OptIn(ExperimentalForeignApi::class, AutographInternalApi::class)
-private fun UIView.hidesAnExcludedViewUnder(point: AxPoint, to: UIView): Boolean {
+private fun anExcludedViewIsDrawnUnder(point: AxPoint, root: UIView): Boolean {
     val cgPoint = CGPointMake(point.x.toDouble(), point.y.toDouble())
-    val stack = ArrayDeque<Pair<UIView, Int>>()
-    stack.addLast(this to 0)
-    while (stack.isNotEmpty()) {
-        val (view, depth) = stack.removeLast()
-        if (depth >= MAX_HIT_CHAIN_DEPTH) continue
-        if (!view.pointInside(view.convertPoint(cgPoint, fromView = to), withEvent = null)) continue
+    var view: UIView = root
+    var depth = 0
+    while (true) {
         if (AutographIgnoredViews.contains(view)) return true
-        view.subviews.forEach { subview -> (subview as? UIView)?.let { stack.addLast(it to depth + 1) } }
+        if (depth++ >= MAX_HIT_CHAIN_DEPTH) return true
+        val front = view.subviews
+            .filterIsInstance<UIView>()
+            .asReversed()
+            .firstOrNull { subview ->
+                !subview.hidden && subview.alpha > MINIMUM_VISIBLE_ALPHA &&
+                    subview.pointInside(subview.convertPoint(cgPoint, fromView = root), withEvent = null)
+            }
+            ?: return false
+        view = front
     }
-    return false
 }
+
+/**
+ * The alpha below which UIKit's own hit-testing treats a view as untappable, mirrored by
+ * [anExcludedViewIsDrawnUnder] so its walk diverges from `hitTest` in exactly one respect and no other.
+ */
+private const val MINIMUM_VISIBLE_ALPHA = 0.01
 
 /**
  * The view chain UIKit will deliver this touch along: [from] first, then each `superview` up to and
@@ -352,8 +367,11 @@ private const val MAX_HIT_CHAIN_DEPTH = 256
  * **Threading.** Main thread only.
  */
 private fun UIView.isNativeInteractive(): Boolean = when {
-    // Kept alongside the caller's barrier: this predicate is also the answer to "is this view itself a
-    // tappable element", and a scroll view is not one whichever way it was reached.
+    // Unreachable through the sole call site, which stops at the first scroll view before ever asking
+    // this — so no test holds this branch, and deleting it turns nothing red. Kept anyway, and the fact
+    // recorded rather than dressed up: the predicate has to answer "is this view itself a tappable
+    // element" correctly in its own right, or a second call site added later inherits the bug the
+    // barrier was introduced to fix.
     this is UIScrollView -> false
     this is UIControl -> true
     else -> gestureRecognizers

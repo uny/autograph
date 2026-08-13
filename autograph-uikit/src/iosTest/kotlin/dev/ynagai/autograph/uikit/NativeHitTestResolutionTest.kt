@@ -10,6 +10,7 @@ import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.setValue
+import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIButton
 import platform.UIKit.UILabel
 import platform.UIKit.UIScreen
@@ -17,6 +18,7 @@ import platform.UIKit.UIScrollView
 import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIView
 import platform.UIKit.setAccessibilityFrame
+import platform.UIKit.setAccessibilityTraits
 import platform.darwin.NSObject
 
 /**
@@ -500,6 +502,77 @@ class NativeHitTestResolutionTest {
             NativeHitTestResolution.Dropped,
             resolve(root, 15.0, 15.0),
             "an excluded view under the tap must veto it even when it cannot receive the touch",
+        )
+        // The divergence is the point, so it is asserted rather than assumed: give the same tree the
+        // accessibility frames that resolver needs and confirm it drops this tap too. Without this the
+        // test would keep passing if the two routes silently stopped disagreeing.
+        root.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
+        card.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
+        card.setAccessibilityTraits(UIAccessibilityTraitButton)
+        emailLabel.setAccessibilityFrame(CGRectMake(5.0, 5.0, 50.0, 20.0))
+        assertNull(
+            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
+            "the accessibility resolver honours the same opt-out — both routes must agree here",
+        )
+    }
+
+    /**
+     * The same divergence in its other shape: the excluded view is a *sibling drawn over* the tapped
+     * view rather than nested inside it. `hitTest` declines it for the same reason and returns the card
+     * behind, so a walk that only descended the hit view's own subtree would miss it — which is why the
+     * veto follows the frontmost drawn branch from the root instead.
+     */
+    @Test
+    fun honoursAnOptOutOnAViewDrawnOverTheTappedOne() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("profile_card")
+        root.addSubview(card)
+        // A sibling of the card, drawn on top of it, that cannot receive touches.
+        val emailOverlay = UILabel(frame = CGRectMake(0.0, 0.0, 50.0, 50.0)).identified("email_overlay")
+        root.addSubview(emailOverlay)
+
+        assertTarget("profile_card", resolve(root, 15.0, 15.0), "precondition")
+
+        registerIgnored(emailOverlay)
+
+        assertSame(NativeHitTestResolution.Dropped, resolve(root, 15.0, 15.0))
+    }
+
+    /**
+     * The other direction, and the reason the veto follows only the *frontmost* branch: an excluded view
+     * sitting behind the opaque thing the user actually tapped is not what they touched, so it must not
+     * veto. A sweep of everything under the point would drop this tap.
+     */
+    @Test
+    fun anOptOutBehindTheTappedViewDoesNotVetoIt() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val hidden = UILabel(frame = CGRectMake(0.0, 0.0, 50.0, 50.0)).identified("behind_label")
+        root.addSubview(hidden)
+        root.addSubview(view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("cover_card"))
+        registerIgnored(hidden)
+
+        assertTarget(
+            "cover_card",
+            resolve(root, 15.0, 15.0),
+            "an excluded view the user cannot see or reach must not veto the view drawn over it",
+        )
+    }
+
+    /** An excluded view that is hidden is not drawn, so it is not what the tap landed on. */
+    @Test
+    fun aHiddenOptOutDoesNotVetoTheTapUnderIt() {
+        val root = view(0.0, 0.0, 100.0, 100.0)
+        val card = view(0.0, 0.0, 100.0, 100.0).withTapRecognizer().identified("profile_card")
+        root.addSubview(card)
+        val errorLabel = UILabel(frame = CGRectMake(0.0, 0.0, 50.0, 50.0)).identified("error_label")
+        errorLabel.hidden = true
+        card.addSubview(errorLabel)
+        registerIgnored(errorLabel)
+
+        assertTarget(
+            "profile_card",
+            resolve(root, 15.0, 15.0),
+            "a hidden excluded view must not silently swallow taps on the card it sits over",
         )
     }
 

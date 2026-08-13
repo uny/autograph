@@ -9,6 +9,7 @@ import kotlin.test.BeforeTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
@@ -359,6 +360,10 @@ class NativeTapCaptureTest {
     fun aTapOnAUIKitControlIsReportedFromAColdTree() {
         val tracker = RecordingTracker()
         val scopeStack = ScopeStack()
+        // A non-empty stack, which is what makes the properties assertion below mean anything: an empty
+        // ScopeStack enriches to EmptyJsonObject, so asserting against it would pass just as well if
+        // `report` stopped enriching at all — the exact regression the assertion exists to catch.
+        scopeStack.push(screen = "Feed", section = "Header")
         val capture = AutographNativeTapCapture(tracker, scopeStack, "Element Clicked")
         val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
         root.addSubview(
@@ -376,6 +381,11 @@ class NativeTapCaptureTest {
             listOf(scopeStack.current().enrich(EmptyJsonObject)),
             tracker.properties,
             "a resolved tap must carry the shared scope stack's context, not bare empty properties",
+        )
+        assertNotEquals(
+            listOf(EmptyJsonObject),
+            tracker.properties,
+            "non-vacuity: the enriched properties must differ from what an unenriched call would send",
         )
         assertFalse(
             checkedAccessibilityTreeColdness,

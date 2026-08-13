@@ -135,7 +135,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   A view a developer excluded with `registerAutographIgnoredView` vetoes a tap on this route even when
   it cannot receive touches itself — the default for `UILabel` and `UIImageView`, and so the shape the
   opt-out is most often reached for. `hitTest` steps over such a view, which would otherwise have let
-  the new route report a tap the accessibility route correctly dropped.
+  the new route report a tap the accessibility route correctly dropped. The exclusion is checked against
+  what is *drawn* under the tap — `hitTest`'s own frontmost-branch walk with only the "declines touches"
+  gate removed — so an excluded view vetoes whether it is nested inside the tapped view or drawn over
+  it, while an excluded view sitting *behind* whatever the user actually tapped correctly does not.
 
   One documented UIKit behaviour turned out to be wrong and is corrected here. A disabled `UIControl`
   does not "still get returned by `hitTest` while suppressing its own action" — measured for a bare
