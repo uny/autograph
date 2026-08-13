@@ -417,7 +417,8 @@ final class NativeSampleUITests: XCTestCase {
 
     /// The #82 case, end to end: on a real SwiftUI `List` a full-screen `_UITouchPassthroughView`
     /// sits on top of the cells. The walk used to commit to it and never reach them, so every tap
-    /// resolved to nothing.
+    /// resolved to nothing. Still worth pinning after #189 moved resolution onto `hitTest`, since the
+    /// row is reached out of a scroll-view-backed container either way.
     func testNativeListRowAttribution() {
         let app = launchNativeSample()
         app.buttons["native_row_2"].tap()
@@ -492,10 +493,14 @@ final class NativeSampleUITests: XCTestCase {
         assertCaptureIsStillLive(app)
     }
 
-    /// A disabled control swallows the touch and runs no action, so reporting a click would invent an
-    /// event (#134, the iOS counterpart of #128). It is vetoed where the hit becomes an event, not by
-    /// narrowing the clickability predicate — narrowing it would hand the tap to whatever sits
-    /// underneath, which never received it either.
+    /// A disabled control runs no action, so reporting a click would invent an event (#134, the iOS
+    /// counterpart of #128).
+    ///
+    /// The mechanism changed under this test with #189 and is worth stating, because the assertion
+    /// looks identical either way: `hitTest` declines a disabled `UIControl` outright — measured, along
+    /// with its whole subtree — so it never reaches the resolver, where before a trait veto dropped it.
+    /// The touch passes through to whatever is drawn behind, which here is inert, so nothing is
+    /// reported. That is the same observable outcome by a different route.
     func testNativeDisabledButtonIsNotReported() {
         let app = launchNativeSample()
         let before = lastEventLabel(app)
@@ -507,6 +512,28 @@ final class NativeSampleUITests: XCTestCase {
             .tap()
 
         XCTAssertEqual(lastEventLabel(app), before)
+        assertCaptureIsStillLive(app)
+    }
+
+    /// **#191, end to end.** A SwiftUI `Button` carrying an `.accessibilityIdentifier` reports nothing.
+    ///
+    /// This is the one assertion in the suite that could only ever be made *here*. XCUITest is itself
+    /// an accessibility client, so the runner warms the very tree the removed resolver needed — which
+    /// is exactly why the old behaviour looked reliable in CI while dropping every SwiftUI tap on a
+    /// user's device. Running warm is therefore not a weakness of this test, it is the point: warm is
+    /// the condition under which the removed fallback *would* have fired, so a green assertion here is
+    /// evidence the fallback is genuinely gone rather than merely dormant.
+    func testNativeSwiftUIButtonIsNotReported() {
+        let app = launchNativeSample()
+        let before = lastEventLabel(app)
+
+        app.buttons["native_swiftui_button"].tap()
+
+        XCTAssertEqual(
+            lastEventLabel(app),
+            before,
+            "a SwiftUI element has no per-element backing view, so native capture must name nothing"
+        )
         assertCaptureIsStillLive(app)
     }
 }

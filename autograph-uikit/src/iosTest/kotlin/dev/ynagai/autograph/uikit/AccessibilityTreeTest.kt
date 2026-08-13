@@ -272,7 +272,7 @@ class AccessibilityTreeTest {
 
     /**
      * The exemption is off unless the caller asks for it, and the native pipeline never does. That is
-     * what keeps the ownership boundary intact by construction: [resolveNativeTapTarget] drops a tap
+     * what keeps the ownership boundary intact by construction: the native pipeline drops a tap
      * whose path crosses a Compose host, and a branch that stopped pruning on containment could
      * resolve *before* the branch through the host — so neither returned path would cross it, and a
      * Compose-owned tap could be reported natively. The marker is an identifier the host app is free

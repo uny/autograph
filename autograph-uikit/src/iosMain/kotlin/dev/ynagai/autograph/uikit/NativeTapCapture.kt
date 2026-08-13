@@ -20,36 +20,36 @@ import platform.UIKit.UIWindowDidBecomeVisibleNotification
 import platform.darwin.NSObjectProtocol
 
 /**
- * Starts reporting taps on native (UIKit/SwiftUI) content as [eventName], resolved by two resolvers in
- * order: [resolveNativeTapTargetByHitTest], which reads no accessibility state, and then
- * [resolveNativeTapTarget], which walks the accessibility tree.
+ * Starts reporting taps on native **UIKit** content as [eventName], resolved by
+ * [resolveNativeTapTargetByHitTest] — one resolver, which reads no accessibility state at any point.
  *
  * Opt-in, exactly as Compose autocapture is: observing every tap is a different privacy posture than
  * instrumenting individual elements, so nothing happens until an app calls this.
  *
- * **UIKit is covered in a cold process; SwiftUI is not** (#189, #135). UIKit and SwiftUI build the
- * accessibility element tree only once some accessibility client has run (VoiceOver, Voice Control, the
- * Accessibility Inspector, an XCUITest runner) — measured on a freshly created simulator and again on a
- * rebooted physical device. A `UIView.hitTest` never consults that tree, so a `UIControl` or a view with
- * an enabled single-tap recognizer resolves cold, **provided it carries an `accessibilityIdentifier`** —
- * that identifier is the only thing ever reported as a `target`, so an untagged control falls through
- * and is still dropped cold. SwiftUI has no per-element backing view for `hitTest` to find, so its
- * elements stay accessibility-only and every SwiftUI tap is dropped until a client has run. There is no
- * fix available from public API for that half, so anything on a SwiftUI surface that must not be lost
- * needs explicit instrumentation. Compose autocapture does not share the limitation.
+ * **UIKit is covered, in a cold process and a warm one alike. SwiftUI is not covered at all** (#189,
+ * #191). A `UIControl`, or a view carrying an enabled single-tap recognizer, resolves through
+ * `UIView.hitTest` — the path UIKit actually delivers the touch along — **provided it carries an
+ * `accessibilityIdentifier`**, which is the only thing ever reported as a `target`. An untagged control
+ * resolves to nothing. SwiftUI has no per-element backing view for `hitTest` to find (measured: a whole
+ * SwiftUI screen is a handful of `UIView`s, and `.accessibilityIdentifier` appears on none of them), and
+ * no public API offers another route, so **taps on a SwiftUI surface must be instrumented explicitly**
+ * with a `track()` call. Compose content has its own pipeline and is unaffected by any of this.
+ *
+ * **Why SwiftUI is not captured *warm* either, though it once was.** UIKit and SwiftUI build the
+ * accessibility element tree only when an accessibility client has run in the process — VoiceOver, Voice
+ * Control, the Accessibility Inspector, an XCUITest runner (#135, measured on a freshly created
+ * simulator and again on a rebooted physical device). Until #191 a second resolver walked that tree
+ * behind this one, which did name SwiftUI elements — but only in a process where such a client was
+ * running. That is not a partial capture, it is a **biased** one: the taps it recorded were exactly
+ * those made by assistive-technology users and by test automation, and its silence elsewhere is
+ * indistinguishable downstream from nobody having tapped. Data that is quietly conditioned on a user's
+ * assistive technology is worse to ship than no data, so the fallback was removed rather than kept for
+ * the population it happened to serve. (This also removed the misattribution that same walk produced:
+ * a UIView-backed SwiftUI container carrying an identifier could claim a tap on its own contents.)
  *
  * A tap that resolves to nothing is at least **not silently** lost: the first time it happens, an
- * `NSLog` line names the cold tree — see [warnOnceIfAccessibilityTreeIsCold] (#170) — so a developer
- * running the app during integration has something in the console instead of nothing.
- *
- * **A hybrid app's own Compose autocapture does not warm this pipeline either (#135, measured).**
- * `autograph-compose`'s iOS resolver activates CMP's accessibility bridge on tap (see
- * `AccessibilityTree.kt`), which is a *separate* on-demand activation from the one UIKit/SwiftUI gate
- * behind. In sequence, one process: a real Compose tap confirmed via `Element Clicked` in the same
- * process, immediately followed by a tap on an unrelated SwiftUI element, still resolved to nothing —
- * identical to a process no client had ever touched. So this pipeline's cold-inertness is not narrowed
- * to "pure-native apps with no Compose anywhere"; it applies to every hybrid app too, until a genuine
- * accessibility client has run in the process.
+ * `NSLog` line explains why — see [warnOnceIfANativeTapResolvedToNothing] — so a developer running the
+ * app during integration has something in the console instead of nothing.
  *
  * Pass the **same** [scopeStack] the app gives `AutographProvider` if it also renders Compose.
  * Sharing one stack is what lets a native tap carry the screen and scope a Compose screen pushed, and
@@ -183,21 +183,25 @@ public class AutographNativeTapCapture internal constructor(
      * single bad resolve or a throwing tracker must not leave the capture poisoned for the rest of
      * the app's life, and this runs on every tap the user makes.
      *
-     * **Two resolvers, `hitTest` first.** [resolveNativeTapTargetByHitTest] reads no accessibility
-     * state at all, so it answers in a cold process where [resolveNativeTapTarget] cannot — that is
-     * #189's whole point, and this is the only place the two are sequenced. The tri-state it returns
-     * is what makes the sequencing safe: only [NativeHitTestResolution.Unresolved] falls through, and
-     * a [NativeHitTestResolution.Dropped] must not, or a veto applied by one resolver would be undone
-     * by the other. See [NativeHitTestResolution].
+     * **One resolver, and it never reads accessibility state.** [resolveNativeTapTargetByHitTest] is
+     * the whole of native resolution: `hitTest` is the touch-delivery path itself rather than a
+     * geometric approximation of it, and it answers in a cold process. There used to be a second,
+     * accessibility-walking resolver behind it; #191 removed it, because the only population it still
+     * served was *warm* SwiftUI — see this file's header for why that is worse than not capturing.
      *
-     * The cold warning stays wired to the *final* nothing, and only on the fall-through branch. A tap
-     * this resolver deliberately dropped is not a symptom of a cold tree, and the check is spent once
-     * per process — so letting a vetoed tap consume it would print a misleading line and then never
-     * print the right one.
+     * **The tri-state survives the second resolver it was introduced for**, for a different reason
+     * that is easy to lose: it is what keeps the diagnostic honest. Only
+     * [NativeHitTestResolution.Unresolved] means "nothing here could be named", which is the one
+     * outcome worth telling a developer about. A [NativeHitTestResolution.Dropped] is this library
+     * working as asked — an ignored region, Compose-owned content, a reserved identifier — and in a
+     * hybrid app the very first tap is quite likely to be one, on Compose content that
+     * `autograph-compose` then reports perfectly well. Collapsing the two to a nullable `String` would
+     * spend the one-per-process warning on that tap and print a line blaming a pipeline that did
+     * nothing wrong, while the tap that genuinely needed the warning gets silence.
      *
      * Internal rather than private only so tests can drive it without a `UITouch` — the same reasoning
-     * as [attach]. Without that, the one line wiring #170's warning to a dropped tap has no coverage at
-     * all: a revert to `?: return` reads as a simplification and would pass every other test.
+     * as [attach]. Without that, the one line wiring the warning to an unresolved tap has no coverage
+     * at all: dropping it reads as a simplification and would pass every other test.
      */
     internal fun report(positionInWindowPoints: AxPoint, window: UIView) {
         try {
@@ -205,18 +209,14 @@ public class AutographNativeTapCapture internal constructor(
             // an already-instrumented window to alert level would otherwise keep having its taps
             // reported as ordinary app interactions — exactly what isCapturableWindow exists to stop.
             if (window is UIWindow && !window.isCapturableWindow()) return
-            // `scale` is mainScreen's, and must be — the accessibility frames this is compared
-            // against are converted out of mainScreen's coordinate space. See
-            // accessibilityBoundsInWindowPx, whose precondition this inherits.
+            // Pixels are the space AutographIgnoredBounds registers rectangles in; points are what
+            // hitTest takes. `scale` must be mainScreen's — see AxRect for why that space exists.
             val scale = UIScreen.mainScreen.scale.toFloat()
             val positionInWindowPx = AxPoint(positionInWindowPoints.x * scale, positionInWindowPoints.y * scale)
             when (val hit = resolveNativeTapTargetByHitTest(window, positionInWindowPoints, positionInWindowPx)) {
                 is NativeHitTestResolution.Target -> track(hit.identifier)
                 NativeHitTestResolution.Dropped -> return
-                NativeHitTestResolution.Unresolved -> {
-                    val target = resolveNativeTapTarget(window, positionInWindowPx, scale)
-                    if (target == null) warnOnceIfAccessibilityTreeIsCold(window) else track(target)
-                }
+                NativeHitTestResolution.Unresolved -> warnOnceIfANativeTapResolvedToNothing()
             }
         } catch (e: Exception) {
             // Swallowed: see kdoc above.
@@ -229,70 +229,62 @@ public class AutographNativeTapCapture internal constructor(
 }
 
 /**
- * Set the first time [warnOnceIfAccessibilityTreeIsCold] runs. See #170: the underlying cause is a
- * one-time process state (whether an accessibility client has ever run), not something that flips back
- * and forth, so nothing is gained by asking twice.
+ * Set the first time [warnOnceIfANativeTapResolvedToNothing] runs. What it reports is a property of the
+ * app's own view hierarchy — which surfaces are SwiftUI, which controls carry an identifier — so it does
+ * not change between taps and nothing is gained by logging it on every one.
  *
  * Global rather than per [AutographNativeTapCapture] instance: `NSLog` itself is process-wide, and an
  * app that installs, uninstalls and reinstalls this capture (e.g. around a tracker replaced on logout)
- * must not see the warning repeat just because a new instance runs the check for the first time again.
+ * must not see the warning repeat just because a new instance runs for the first time again.
  *
  * Main-thread-only, like the rest of this file, so no synchronization guards it.
  *
- * Internal rather than private only so tests can observe that a check happened — the same reasoning as
- * [AutographNativeTapCapture.attach]: nothing else in this file needs to read it.
+ * Internal rather than private only so tests can observe that the warning was spent — the same
+ * reasoning as [AutographNativeTapCapture.attach]: nothing else in this file needs to read it.
  */
-internal var checkedAccessibilityTreeColdness = false
+internal var warnedANativeTapResolvedToNothing = false
 
 /**
- * The first time any native tap resolves to nothing, checks whether the accessibility tree is cold
- * ([isAccessibilityTreeCold]) and, if so, logs once via `NSLog` — loud enough that a developer running
- * the app during integration sees it in the console instead of silent nothing. Never checks or logs
- * again after the first call, whatever the outcome.
+ * The first time a native tap resolves to nothing, logs once via `NSLog` — loud enough that a developer
+ * running the app during integration sees it in the console instead of silent nothing. Never logs again.
  *
- * Deliberately not gated on *which* of [resolveNativeTapTarget]'s five numbered drop reasons produced
- * the null (it has two further unnumbered vetoes besides). [isAccessibilityTreeCold] answers the
- * tree-wide question directly, and when the tree genuinely is cold every native tap drops for reason 1
- * — the walk finds nothing anywhere — so checking on any drop and gating the log on tree-wide coldness
- * reaches the same answer without [resolveNativeTapTarget] having to expose which case fired. A drop on
- * a *warm* tree, whichever reason produced it, correctly finds real elements elsewhere in the tree and
- * stays silent — this is what keeps an ordinary tap-missed-everything from logging on every miss.
+ * **No tree-wide check gates this any more, and that is the point of #191's change rather than a
+ * regression in precision.** The predecessor, `warnOnceIfAccessibilityTreeIsCold`, asked whether the
+ * accessibility tree had been built, because that was what decided whether a native tap could resolve.
+ * It no longer decides anything: [resolveNativeTapTargetByHitTest] never reads that tree, so a tap now
+ * resolves to nothing for reasons that have nothing to do with coldness — SwiftUI content, which has no
+ * per-element backing view at all, or a UIKit control carrying no `accessibilityIdentifier`. Keeping the
+ * coldness question would have gated the warning on a fact that is no longer causal: an app whose taps
+ * are all being lost on a *warm* tree would have been told nothing.
  *
- * [root] is the same [UIView] [resolveNativeTapTarget] was just asked to search — passing anything else
- * would check a different tree than the one that just dropped the tap.
+ * Only [NativeHitTestResolution.Unresolved] reaches here — never a
+ * [Dropped][NativeHitTestResolution.Dropped]. See [AutographNativeTapCapture.report] for why that
+ * distinction is load-bearing: a vetoed tap is this library working correctly, and letting one spend
+ * the single warning would print a misleading line and then never print the right one.
  *
- * The line it logs makes a claim about the *tree*, not about the tap that triggered it, and that is
- * deliberate. In a hybrid app the first drop is quite likely a tap on Compose content, which
- * [resolveNativeTapTarget] vetoes at the Compose-host boundary and `autograph-compose` then reports
- * perfectly well — blaming coldness for that particular tap would be wrong. What coldness does mean is
- * that *native* taps are being lost, which is true whichever tap happened to ask.
- *
- * Returns whether the warning was emitted — false both when the check was already spent and when the
- * tree came back warm. Internal, and returning at all, only so tests can drive it: whether the `NSLog`
- * line reaches a console is not observable headlessly, so the return value is what lets a test pin the
- * two things that are — that the coldness question is answered correctly, and that it is asked at most
- * once. On-device verification covers the rest (see the PR for #170).
+ * Returns whether the warning was emitted — false when it was already spent. Internal, and returning at
+ * all, only so tests can drive it: whether the `NSLog` line reaches a console is not observable
+ * headlessly, so the return value is what lets a test pin the thing that is — that it fires at most once.
  */
-internal fun warnOnceIfAccessibilityTreeIsCold(root: UIView): Boolean {
-    if (checkedAccessibilityTreeColdness) return false
-    checkedAccessibilityTreeColdness = true
-    if (!isAccessibilityTreeCold(root)) return false
+internal fun warnOnceIfANativeTapResolvedToNothing(): Boolean {
+    if (warnedANativeTapResolvedToNothing) return false
+    warnedANativeTapResolvedToNothing = true
     // One argument, no varargs: the `%@` interop path crashes with EXC_BAD_ACCESS inside NSLog's own
     // formatting machinery (see sample-shared's SampleLog.ios.kt). That makes this literal NSLog's
     // *format string*, so it must stay free of `%` — a stray conversion specifier reads whatever
     // follows on the stack and reintroduces the same crash class from the other side.
     NSLog(
-        "Autograph: a tap resolved to nothing, and the UIKit/SwiftUI accessibility tree looks cold — " +
-            "it has not been built yet in this process, so installAutographNativeTapCapture cannot " +
-            "resolve a SwiftUI tap until an accessibility client (VoiceOver, Voice Control, the " +
-            "Accessibility Inspector, or an XCUITest runner) has run once. UIKit is not affected: a " +
-            "UIControl, or a view with an enabled single-tap recognizer, resolves through hitTest even " +
-            "cold, as long as it carries an accessibilityIdentifier — an untagged one lands here too. " +
-            "This is expected, not a bug in your integration — see installAutographNativeTapCapture's " +
-            "kdoc for the full explanation. Taps you cannot afford to lose should be instrumented " +
-            "explicitly (Modifier.trackClick on Compose content, or an explicit tracker.track() call on " +
-            "native content) rather than relying on this capture alone. Compose content is unaffected " +
-            "and is still captured normally.",
+        "Autograph: a native tap resolved to nothing, so no event was sent for it. " +
+            "installAutographNativeTapCapture names an element from the view that actually receives " +
+            "the touch, which means it reports a UIKit control (a UIControl, or a view carrying an " +
+            "enabled single-tap recognizer) that also has an accessibilityIdentifier. Two common " +
+            "reasons a tap lands here: the control carries no accessibilityIdentifier, or the content " +
+            "is SwiftUI. SwiftUI is not covered at all — its elements have no per-element backing view " +
+            "for hit-testing to find, and there is no fix for that from public API — so taps on a " +
+            "SwiftUI surface must be instrumented explicitly with a track() call rather than left to " +
+            "this capture. This is expected, not a bug in your integration; see " +
+            "installAutographNativeTapCapture's kdoc for the full account. Compose content is " +
+            "unaffected and is still captured normally, by its own pipeline.",
     )
     return true
 }

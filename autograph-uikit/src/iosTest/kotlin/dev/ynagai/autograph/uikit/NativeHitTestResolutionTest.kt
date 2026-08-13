@@ -4,21 +4,21 @@ import dev.ynagai.autograph.AutographInternalApi
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
-import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.cinterop.useContents
 import platform.CoreGraphics.CGRectMake
 import platform.Foundation.setValue
-import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIButton
 import platform.UIKit.UILabel
 import platform.UIKit.UIScreen
 import platform.UIKit.UIScrollView
 import platform.UIKit.UITapGestureRecognizer
 import platform.UIKit.UIView
+import platform.UIKit.accessibilityFrame
+import platform.UIKit.accessibilityTraits
 import platform.UIKit.setAccessibilityFrame
-import platform.UIKit.setAccessibilityTraits
 import platform.darwin.NSObject
 
 /**
@@ -27,14 +27,11 @@ import platform.darwin.NSObject
  * **These fixtures set real `frame`s and nothing else** — no `accessibilityFrame`, no traits, no
  * `isAccessibilityElement`. That is not a shortcut, it is the point: it reproduces the cold process
  * measured on a physical device in #189, where UIKit had built no accessibility tree at all.
- * [resolvesAControlInATreeWithNoAccessibilityStateAtAll] asserts both halves — that this resolver names
- * the button *and* that [resolveNativeTapTarget] finds nothing in the very same tree — so the fixture's
- * coldness is checked rather than assumed, and the suite would notice if a future change let the
- * accessibility path start resolving these trees by accident.
+ * [resolvesAControlInATreeWithNoAccessibilityStateAtAll] checks that coldness directly rather than
+ * assuming it, so the suite would notice if a fixture drifted into publishing accessibility state.
  *
- * The reverse holds for the older [NativeTapResolutionTest] and its sibling registry suites: those
- * fixtures set only `accessibilityFrame`, so their views have zero real bounds, `hitTest` declines
- * every one of their taps, and they continue to exercise the accessibility resolver exactly as before.
+ * Since #191 this is the **only** native resolver, so these tests are the whole of native tap
+ * resolution rather than one of two routes through it.
  *
  * Positions are given in points; the pixel position is derived the way the production caller derives
  * it, so the [AutographIgnoredBounds] veto is exercised in its real space.
@@ -104,21 +101,29 @@ class NativeHitTestResolutionTest {
     /**
      * The whole of #189 in one test: a `UIControl` with an `accessibilityIdentifier` and **nothing
      * accessibility-related populated**, which is what a physical device was measured to look like
-     * before any accessibility client has run. The `hitTest` route names it; the accessibility route,
-     * asked about the identical tree, finds nothing at all.
+     * before any accessibility client has run. The `hitTest` route names it anyway.
      *
-     * The second assertion is the non-vacuity guard. Without it this test would keep passing if the
-     * fixture drifted into publishing accessibility state, and would then no longer be about coldness.
+     * The second assertion is the non-vacuity guard, and it has to be here: without it this test would
+     * keep passing if the fixture drifted into publishing accessibility state, and would then no longer
+     * be about coldness at all. It pins the cold signature directly — zero traits and an empty
+     * `accessibilityFrame`, exactly what was counted on the device — rather than by asking a second
+     * resolver, which is how it was written while one existed (#191 removed it).
      */
     @Test
     fun resolvesAControlInATreeWithNoAccessibilityStateAtAll() {
         val root = view(0.0, 0.0, 100.0, 100.0)
-        root.addSubview(controlAt(10.0, 10.0, 20.0, 20.0).identified("share_button"))
+        val control = controlAt(10.0, 10.0, 20.0, 20.0).identified("share_button")
+        root.addSubview(control)
 
         assertTarget("share_button", resolve(root, 15.0, 15.0))
-        assertNull(
-            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
-            "precondition: this tree is cold, so the accessibility resolver must find nothing in it",
+
+        val obj = control as NSObject
+        assertEquals(0uL, obj.accessibilityTraits(), "precondition: a cold control publishes no traits")
+        assertTrue(
+            obj.accessibilityFrame().useContents {
+                origin.x == 0.0 && origin.y == 0.0 && size.width == 0.0 && size.height == 0.0
+            },
+            "precondition: a cold control publishes an empty accessibilityFrame",
         )
     }
 
@@ -131,7 +136,7 @@ class NativeHitTestResolutionTest {
         assertTarget("tappable_card", resolve(root, 15.0, 15.0))
     }
 
-    /** Mirrors [NativeTapResolutionTest.attributesToTheInnermostClickable]; the two must agree here. */
+    /** A button inside a tappable row attributes to the button, not the row. */
     @Test
     fun attributesToTheInnermostInteractiveView() {
         val root = view(0.0, 0.0, 100.0, 100.0)
@@ -325,9 +330,9 @@ class NativeHitTestResolutionTest {
 
     /**
      * The same fact seen through nesting: the container is what UIKit delivers the touch to, so naming
-     * it is correct rather than a misattribution. [resolveNativeTapTarget] drops this shape, which is
-     * a genuine divergence between the two resolvers and the right way round — this one observed what
-     * UIKit did, the other inferred it from a trait.
+     * it is correct rather than a misattribution. The accessibility resolver removed in #191 dropped
+     * this shape instead, inferring inertness from a trait where this one observes what UIKit actually
+     * did — the divergence was real, and this is the right way round.
      */
     @Test
     fun namesTheInteractiveContainerOfADisabledControl() {
@@ -355,9 +360,10 @@ class NativeHitTestResolutionTest {
     }
 
     /**
-     * A disabled control alone over inert background falls through rather than dropping, so
-     * [resolveNativeTapTarget]'s `UIAccessibilityTraitNotEnabled` veto still gets its say on a warm
-     * tree. Fall-through, not a drop, is what keeps the two resolvers composable here.
+     * A disabled control alone over inert background is [NativeHitTestResolution.Unresolved] rather
+     * than [NativeHitTestResolution.Dropped]. Nothing ran, so nothing is reported either way; the
+     * distinction is kept because only `Unresolved` may spend the one-per-process diagnostic, and a tap
+     * that reached a disabled control is exactly the kind a developer would want explained.
      */
     @Test
     fun fallsThroughWhenTheOnlyThingUnderTheTapIsADisabledControl() {
@@ -479,10 +485,8 @@ class NativeHitTestResolutionTest {
      * the two diverge at a view that declines touches — which is the default for the two types an app is
      * most likely to exclude, `UILabel` and `UIImageView`.
      *
-     * Measured on the tree below: the accessibility resolver drops this tap, and before the fix the
-     * `hitTest` route reported `profile_card` — so the opt-out stopped holding for the shape it is most
-     * often reached for, and stopped holding *cold*, where the pipeline previously reported nothing.
-     * Both resolvers are asserted so the divergence is the thing under test rather than an assumption.
+     * Measured on the tree below: before the fix the `hitTest` route reported `profile_card` — so the
+     * opt-out stopped holding for the shape it is most often reached for.
      */
     @Test
     fun honoursAnOptOutOnAViewThatDeclinesTouches() {
@@ -503,25 +507,15 @@ class NativeHitTestResolutionTest {
             resolve(root, 15.0, 15.0),
             "an excluded view under the tap must veto it even when it cannot receive the touch",
         )
-        // The divergence is the point, so it is asserted rather than assumed: give the same tree the
-        // accessibility frames that resolver needs and confirm it drops this tap too.
-        root.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
-        card.setAccessibilityFrame(CGRectMake(0.0, 0.0, 100.0, 100.0))
-        card.setAccessibilityTraits(UIAccessibilityTraitButton)
-        emailLabel.setAccessibilityFrame(CGRectMake(5.0, 5.0, 50.0, 20.0))
-        assertNull(
-            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
-            "the accessibility resolver honours the same opt-out — both routes must agree here",
-        )
-        // Control arm: without it the null above could equally mean "this fixture resolves to nothing
+        // Control arm: without it the drop above could equally mean "this fixture resolves to nothing
         // for an unrelated reason", and the claim would be unbacked. Releasing the registration must
-        // bring the accessibility resolver back to naming the card.
+        // bring the resolver back to naming the card.
         registeredIgnores.forEach { it.unregister() }
         registeredIgnores.clear()
-        assertEquals(
+        assertTarget(
             "profile_card",
-            resolveNativeTapTarget(root, AxPoint(15f * scale, 15f * scale), scale),
-            "non-vacuity: the null above must be the opt-out's doing, not the fixture's",
+            resolve(root, 15.0, 15.0),
+            "non-vacuity: the drop above must be the opt-out's doing, not the fixture's",
         )
     }
 

@@ -112,7 +112,7 @@ import platform.darwin.NSObject
  * VoiceOver, the Accessibility Inspector) populates that frame and hides the whole failure, which is
  * why the `sample-ios` XCUITest suite passed throughout: its runner is itself such a client. See #135.
  *
- * This exemption does **not** rescue [resolveNativeTapTarget] in that state, and the reason is not the
+ * This exemption does **not** rescue a UIKit/SwiftUI walk in that state, and the reason is not the
  * one an earlier version of this note gave (it claimed the native walk's `UIWindow` reports a valid
  * frame when cold — measured false, it reports `CGRectZero` too). Cold, UIKit and SwiftUI have not built
  * an accessibility tree at all: the walk reaches only plain `UIView`s through `subviews`, every one of
@@ -121,7 +121,8 @@ import platform.darwin.NSObject
  * empty frame. Compose differs because Compose Multiplatform builds its bridged elements itself, on an
  * activation path that reading the tree is enough to trigger (see the note at the top of this file) —
  * those are present and correct while cold, which is why exempting the root is enough there and only
- * there. See [resolveNativeTapTarget] for what that costs the native pipeline.
+ * there. It cost the native pipeline its SwiftUI half, which is why #191 stopped that pipeline using
+ * this walk at all — see `installAutographNativeTapCapture`.
  *
  * **What the exemption does not loosen.** Two properties are preserved deliberately, because relaxing
  * the descent could otherwise turn a dropped event into a misattributed one — the worse failure:
@@ -184,8 +185,9 @@ import platform.darwin.NSObject
  *   element under a full-width strip — a SwiftUI button reported the same frame as an identical
  *   un-overlapped one, so the rescue above is absent and the tie-break is left to decide alone. That
  *   makes the same overlap that Compose disambiguates a candidate for misattribution here.
- *   Reproduced end to end through [resolveNativeTapTarget]. Measured for SwiftUI only; no UIKit
- *   hierarchy was run, and one trimmable geometry is not a sweep.
+ *   Measured for SwiftUI only; no UIKit hierarchy was run, and one trimmable geometry is not a sweep.
+ *   Since #191 this no longer reaches the native pipeline, which does not use this walk; it remains a
+ *   live concern for `autograph-compose`, whose iOS resolver does.
  *
  * **Do not reach for the obvious rankings.** Scored against the oracle — which element's handler
  * actually fired — over the five measured ambiguous cases, each is refuted: last-emitted (what this
@@ -197,9 +199,7 @@ import platform.darwin.NSObject
  * rules are not the whole space, but they are the ones worth not re-deriving.
  *
  * All of this is documented rather than fixed — this walk is shared API and its callers should know
- * the edge of the contract they depend on. Note in particular that any change here moves
- * [resolveNativeTapTarget] too, including the second walk it runs with [preferClickableBranches] off
- * to decide *ownership*, which is a privacy boundary and not a de-duplication nicety.
+ * the edge of the contract they depend on.
  *
  * **Clickable branches win over the tie-break.** Before z-order is consulted at all, a branch that
  * yields a clickable ([isAccessibilityButton]) is preferred over one that yields none; the reverse
@@ -223,9 +223,9 @@ import platform.darwin.NSObject
  * **[preferClickableBranches] turns the preference off**, restoring the plain topmost-branch descent.
  * That is not a compatibility shim: the preference answers "which element should this tap be
  * attributed to", and a caller asking "where did this tap visually land" needs the other answer.
- * [resolveNativeTapTarget] needs both — it decides Compose ownership from the topmost path, because
- * a preference for clickables would otherwise route the path around a Compose host and let the native
- * pipeline claim a tap that landed on Compose-owned content — and resolves the target from the
+ * The removed native resolver needed both — it decided Compose ownership from the topmost path,
+ * because a preference for clickables would otherwise route the path around a Compose host and let the
+ * native pipeline claim a tap that landed on Compose-owned content — and resolved the target from the
  * preferred one. Conflating the two is exactly the bug that motivated splitting them.
  *
  * [view] supplies the coordinate space and [scale] the point-to-pixel ratio — both are handed to
@@ -251,14 +251,14 @@ import platform.darwin.NSObject
  * gate, so a clickable drawn outside its scope wrapper still resolves. Confining it to the Compose
  * adapter is what keeps two other properties intact by construction rather than by argument:
  *
- * - **The ownership boundary.** [resolveNativeTapTarget] walks the whole window and drops a tap whose
+ * - **The ownership boundary.** The native pipeline walks the whole window and drops a tap whose
  *   path crosses a Compose host, which is how the two pipelines avoid reporting the same tap twice.
  *   A branch that no longer prunes on containment can resolve *before* the branch through the host,
  *   and neither returned path then crosses it — so a Compose-owned tap could be reported by the
  *   native pipeline. That is the privacy boundary this file warns about above, and the marker is an
  *   identifier the host app is free to write, so it cannot be treated as proof of who owns a subtree.
  *   The Compose walk starts *at* the Compose host, so it stays inside one composition's subtree and
- *   never reaches a sibling of that host — which is the boundary [resolveNativeTapTarget] arbitrates.
+ *   never reaches a sibling of that host — which is the boundary the native pipeline arbitrates.
  *   Note what that does *not* say: [accessibilityChildren] unions `accessibilityElements` with
  *   `subviews`, so the walk does descend into UIKit interop (`UIKitView`/`UIKitViewController`)
  *   subtrees hosted *inside* the composition, and those are not Compose-owned. The exemption can
@@ -291,7 +291,7 @@ public fun deepestAccessibilityHitPath(
 
 /**
  * Depth ceiling for the walks over this tree — [deepestAccessibilityHitPath] and
- * [isAccessibilityTreeCold]. Far above any real accessibility tree (UIKit
+ * [anyAccessibilityDescendant]. Far above any real accessibility tree (UIKit
  * hierarchies run tens of levels, not hundreds), so it never truncates a genuine walk — it exists
  * only to bound a pathological or adversarial one that the cycle check can't catch, such as a chain
  * that generates a fresh element at every level.
@@ -299,8 +299,8 @@ public fun deepestAccessibilityHitPath(
 private const val MAX_ACCESSIBILITY_TREE_DEPTH = 256
 
 /**
- * Total-work ceiling for one [deepestAccessibilityHitPath] or [isAccessibilityTreeCold] call, counted
- * in nodes examined.
+ * Total-work ceiling for one [deepestAccessibilityHitPath] or [anyAccessibilityDescendant] call,
+ * counted in nodes examined.
  *
  * [MAX_ACCESSIBILITY_TREE_DEPTH] bounds how *deep* the walk goes; this bounds how *wide*. The two
  * became different questions once the walk started exploring every branch of a clickable-free
@@ -463,84 +463,6 @@ public fun Any.accessibilityChildren(): List<Any> {
 }
 
 /**
- * Whether every node reachable from [root] (via [accessibilityChildren]) reports a zero
- * `accessibilityFrame` and no traits — the cold-process signature [resolveNativeTapTarget]'s "Known
- * limitation" section measures: UIKit/SwiftUI have not built the accessibility tree at all yet, so the
- * walk reaches only plain `UIView`s with nothing populated on them. See #170.
- *
- * Deliberately whole-tree, not tied to any one tap's position. A tap can resolve to nothing on a
- * *warm* tree too, simply by landing on genuinely empty background, and that is a different, far more
- * common case that should never produce a warning. Telling the two apart needs a question about the
- * tree as a whole — "has anything on it ever been populated" — which is what this answers and a
- * position-gated hit-test walk cannot.
- *
- * `accessibilityFrame` is read directly here, not through [accessibilityBoundsInWindowPx]: that
- * conversion can move a zero-size rect's origin away from zero when the source and destination
- * coordinate spaces differ, which would mask the exact all-zero signature this is checking for. The
- * raw, unconverted frame is what was measured cold.
- *
- * **The rule for every uncertain case is "evidence found, never evidence assumed".** Warmth has to be
- * *seen* on a node the walk actually reached and actually counts; everything else — a node it never
- * reached, a subtree it deliberately skips — contributes nothing and leaves the answer `true`. That one
- * rule decides all three cases below, and it is worth stating as a rule because the cases resolve in
- * directions that look inconsistent if each is argued from cost alone.
- *
- * **Fail-closed on the signature, which was measured against one app's 88-node cold tree.** A single
- * node anywhere publishing a trait bit or a non-zero frame answers `false`. An app — or a third-party
- * SDK inside it — that hand-publishes a `UIAccessibilityElement`, or calls
- * `setAccessibilityFrame`/`setAccessibilityTraits` on any view, therefore reads as warm in a genuinely
- * cold process, and since the caller spends its one-per-process check either way that suppresses the
- * warning for good. That is the rule applied honestly rather than an exception to it: the evidence was
- * found, and this check cannot tell who published it.
- *
- * **Compose-host subtrees are not evidence and are skipped** ([AutographComposeHosts]). This is what
- * makes the check correct in a *hybrid* app, which is the case the caller's kdoc calls out as equally
- * affected. The coldness this answers is UIKit/SwiftUI's, and CMP's bridged elements do not share it:
- * this very walk activates CMP's accessibility bridge on demand with no accessibility client running
- * (see this file's header, measured), so a Compose host publishes real frames and traits in a process
- * whose native half is stone cold. Descending into one would find that warmth and answer `false`,
- * suppressing the warning in exactly the app the warning is for. Compose's warmth is not evidence
- * *about this question*, so a host contributes none.
- *
- * Bounded the same way [deepestAccessibilityHitPath] is — same depth ceiling, same node budget, same
- * cycle guard — against the same host-supplied and possibly cyclic tree, for the same termination
- * reasons. (The budget is charged per child rather than on entry, so the starting node itself is not
- * counted; nothing downstream depends on the difference.) Exhausting a bound answers `true` (cold)
- * rather than `false` — the opposite of [anyAccessibilityDescendant]'s convention below, and again the
- * rule rather than an exception: a branch the walk never reached is not evidence of anything, so it
- * cannot be counted as warmth. Do not "fix" the inconsistency with the walk below;
- * `warmthHiddenPastTheDepthCeilingAnswersColdNotWarm` exists to catch that.
- *
- * **Threading.** Main thread only, for the same reason [deepestAccessibilityHitPath] is.
- */
-internal fun isAccessibilityTreeCold(root: Any): Boolean =
-    isAccessibilityTreeCold(root, ancestors = emptyList(), budget = intArrayOf(MAX_ACCESSIBILITY_NODE_VISITS))
-
-@OptIn(AutographInternalApi::class, ExperimentalForeignApi::class)
-private fun isAccessibilityTreeCold(node: Any, ancestors: List<Any>, budget: IntArray): Boolean {
-    if (ancestors.size >= MAX_ACCESSIBILITY_TREE_DEPTH) return true
-    // `==`, not `===`, for the reason deepestAccessibilityHitPath's cycle guard documents.
-    if (ancestors.any { it == node }) return true
-    // Compose-owned content answers a different question — see the kdoc. Skipped whole, not just
-    // unexamined: everything under a host is CMP's too, and CMP publishes real frames while cold.
-    if (AutographComposeHosts.containsAny(listOf(node))) return true
-    val obj = node as? NSObject
-    if (obj != null) {
-        if (obj.accessibilityTraits() != 0uL) return false
-        val isZeroFrame = obj.accessibilityFrame().useContents {
-            origin.x == 0.0 && origin.y == 0.0 && size.width == 0.0 && size.height == 0.0
-        }
-        if (!isZeroFrame) return false
-    }
-    val pathToNode = ancestors + node
-    for (child in node.accessibilityChildren()) {
-        if (budget[0]-- <= 0) return true
-        if (!isAccessibilityTreeCold(child, pathToNode, budget)) return false
-    }
-    return true
-}
-
-/**
  * Whether any **strict** descendant of this element publishes an accessibility frame satisfying
  * [predicate]. This element itself is never offered to [predicate].
  *
@@ -602,10 +524,11 @@ private fun Any.anyAccessibilityDescendant(
 /**
  * The innermost element on this hit path that is clickable, or null if none is.
  *
- * Both iOS capture pipelines attribute a tap this way — `autograph-compose` for Compose
- * Multiplatform, [resolveNativeTapTarget] for UIKit/SwiftUI — and they must agree: the same element
- * has to resolve the same way no matter which pipeline observed the tap, or a hybrid app reports one
- * button under two names. Searching from the leaf upward is what makes a button inside a tappable row
+ * `autograph-compose` attributes a tap this way. The native pipeline reached the same answer through
+ * this function until #191, and now reaches it along a `hitTest` chain instead
+ * ([resolveNativeTapTargetByHitTest], whose leaf-upward search is deliberately the same shape) — the
+ * two must still agree, or a hybrid app reports one button under two names. Searching from the leaf
+ * upward is what makes a button inside a tappable row
  * attribute to the button rather than the row.
  *
  * This lives here, next to the predicate it applies, so that agreement is a single definition rather
@@ -680,9 +603,10 @@ public fun Any.isAccessibilityButton(): Boolean =
  * UIKit ahead of it and needs no disabled veto of its own.
  *
  * So a disabled element keeps taking the hit and is vetoed at the point where a hit becomes an event:
- * [resolveNativeTapTarget] and `autograph-compose`'s `resolveIosElement`. **Both must apply it** — the
- * same element has to resolve the same way whichever pipeline observed the tap, or a hybrid app
- * reports one control under two behaviours. Note that unlike [nearestAccessibilityClickable] the veto
+ * `autograph-compose`'s `resolveIosElement`. The native pipeline reaches the same outcome without a
+ * veto of its own, because `hitTest` declines a disabled control outright — the same element has to
+ * resolve the same way whichever pipeline observed the tap, or a hybrid app reports one control under
+ * two behaviours. Note that unlike [nearestAccessibilityClickable] the veto
  * itself is not centralized, only this predicate is: a third resolution site would have to remember
  * to ask. The veto is confined to the element the tap resolves to and is never made subtree-wide: on
  * Android, whose `Disabled` semantics this mirrors, a disabled *ancestor* measurably does not block an

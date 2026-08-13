@@ -6,7 +6,7 @@ import dev.ynagai.autograph.AutographInternalApi
 
 /**
  * Window-space regions a developer has excluded from native tap autocapture by POSITION rather than by
- * view. [resolveNativeTapTarget] already holds the tap's window-pixel position, so it vetoes a tap that
+ * view. [resolveNativeTapTargetByHitTest] already holds the tap's window-pixel position, so it vetoes a tap that
  * falls in any registered region — no dependency on the view hierarchy, hit-testing, or the accessibility
  * walk.
  *
@@ -15,7 +15,7 @@ import dev.ynagai.autograph.AutographInternalApi
  * would either intercept touches (breaking the content) or perturb tap resolution without actually being
  * the registry's doing; a `GeometryReader` reports the content's window frame with no extra hittable
  * view, so exclusion here is purely positional. Rects are in **window pixels** (points × screen scale),
- * the same space as [resolveNativeTapTarget]'s `positionInWindowPx`.
+ * the same space as [resolveNativeTapTargetByHitTest]'s `positionInWindowPx`.
  *
  * **Main thread only**, like the tap pipeline it feeds.
  */

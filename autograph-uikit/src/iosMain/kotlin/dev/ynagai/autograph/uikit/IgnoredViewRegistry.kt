@@ -4,7 +4,7 @@ import platform.UIKit.UIView
 
 /**
  * The set of views a developer has excluded from native tap autocapture. Consulted by
- * [resolveNativeTapTarget]; populated through the public [registerAutographIgnoredView]. A separate
+ * [resolveNativeTapTargetByHitTest]; populated through the public [registerAutographIgnoredView]. A separate
  * [WeakViewRegistry] instance from [AutographComposeHosts] on purpose — "the developer opted this out"
  * and "this is Compose-owned" are different facts, and one must never disarm the other.
  *

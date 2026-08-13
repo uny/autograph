@@ -11,7 +11,7 @@ let ignoreSampleLaunchArgument = "-autograph-ignore-sample"
 /// which let a never-capturable button read as "successfully excluded".
 let ignoreBaselineLaunchArgument = "-autograph-ignore-baseline"
 
-/// A SwiftUI-only screen exercising the native tap opt-out end to end, through real synthetic touches.
+/// A SwiftUI screen exercising the native tap opt-out end to end, through real synthetic touches.
 ///
 /// Both the tap capture and the region registration go through `sample_shared` (see `NativeSampleIgnore`
 /// for why that single-framework routing is load-bearing), so the veto actually sees what the marker
@@ -19,6 +19,13 @@ let ignoreBaselineLaunchArgument = "-autograph-ignore-baseline"
 /// this drives the identical marker under a real touch pipeline, and adds what an in-process test can't:
 /// the wrapped button's action still fires (its tap counter increments) even though the tap is not
 /// autocaptured.
+///
+/// **The buttons are UIKit (`UIKitButton`) inside the SwiftUI layout, and that is now the point rather
+/// than an implementation detail.** #191 stopped native capture resolving SwiftUI elements, so a pure
+/// SwiftUI button could no longer serve as this suite's non-vacuity baseline — "the same button without
+/// the modifier IS captured" would simply be false. It also makes the screen demonstrate the region
+/// opt-out's remaining job precisely: excluding UIKit content that a SwiftUI subtree hosts, where no
+/// `UIView` reference is available to hand `registerAutographIgnoredView`.
 struct IgnoreSampleView: View {
     @StateObject private var events = NativeSampleEvents()
     @State private var shownTaps = 0
@@ -39,8 +46,8 @@ struct IgnoreSampleView: View {
             // A control that is never excluded: proves capture is live and that an un-ignored button is
             // reported. Also the neighbour that must keep reporting — the exclusion is one button's, not
             // the screen's.
-            Button("Shown") { shownTaps += 1 }
-                .accessibilityIdentifier("ignore_shown_button")
+            UIKitButton(title: "Shown", identifier: "ignore_shown_button") { shownTaps += 1 }
+                .frame(height: 32)
 
             ignoredButton
         }
@@ -53,8 +60,8 @@ struct IgnoreSampleView: View {
     }
 
     @ViewBuilder private var ignoredButton: some View {
-        let button = Button("Ignored") { ignoredTaps += 1 }
-            .accessibilityIdentifier("ignore_ignored_button")
+        let button = UIKitButton(title: "Ignored", identifier: "ignore_ignored_button") { ignoredTaps += 1 }
+            .frame(height: 32)
         if baseline {
             button
         } else {

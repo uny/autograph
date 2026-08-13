@@ -76,6 +76,40 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Changed
 
+- **iOS native tap capture no longer covers SwiftUI at all, and the accessibility resolver behind it
+  is removed** ([#191]). Since [#189] a `hitTest` resolver has handled UIKit without touching
+  accessibility state; behind it a second resolver walked the accessibility element tree, which UIKit
+  and SwiftUI build only once an accessibility client has run in the process. With UIKit already
+  covered, that fallback served exactly one remaining population — **SwiftUI in a process where
+  VoiceOver, Voice Control, the Accessibility Inspector or an XCUITest runner happened to be running.**
+
+  That is not partial capture, it is biased capture: the taps it recorded were the ones made by
+  assistive-technology users and by test automation, and downstream its silence is indistinguishable
+  from nobody having tapped. It also made a simulator you had run UI tests against look reliable while
+  the same build dropped every SwiftUI tap on a user's device. Analytics quietly conditioned on a
+  user's assistive technology is worse to ship than none, so it was removed rather than kept for the
+  population it happened to serve. **Instrument SwiftUI surfaces explicitly.**
+
+  Measured before removing, on a fresh simulator and on a warmed one, driving `hitTest` over a real
+  `UITableView`, a real `UICollectionView`, a SwiftUI `List`, `Form`, `Picker` and a plain `Button`:
+  no SwiftUI `.accessibilityIdentifier` appears anywhere in the view hierarchy, cold **or** warm. The
+  cold half was already known; the warm half is what confirms nothing is lost on the surviving path.
+
+  Two other things go with it. The container misattribution tracked as [#191]'s first item cannot
+  happen any more — it was the accessibility walk that let a UIView-backed SwiftUI container claim a
+  tap on its own contents. And the one-per-process console warning stopped asking whether the
+  accessibility tree is cold, since that no longer decides anything: it now fires on the first tap
+  that resolves to nothing, whatever the reason, and says what to do about it.
+
+  What is lost beyond SwiftUI is warm-only too: a `UITableViewCell` or `UICollectionViewCell` whose
+  selection is its delegate's, and `.onTapGesture` on a `Text`. Both resolved only on a warm tree
+  before, and both are listed as known gaps in the README.
+
+  API: `resolveNativeTapTarget` (`@AutographInternalApi`) is removed. The accessibility walk itself
+  (`deepestAccessibilityHitPath` and friends) is untouched — `autograph-compose`'s iOS resolver uses
+  it, and Compose taps resolve in a cold process, so Compose autocapture is unaffected on both
+  platforms.
+
 - `Modifier.autocaptureScope` is deprecated in favour of `AutographElementScope`, and is removed at
   1.0 ([#185]). It is not fixable in place: its documented canonical usage puts the scope on the
   clickable's own chain, and iOS needs it on a layout node of its own, since two `testTag`s on one
@@ -777,4 +811,5 @@ Initial release.
 [#176]: https://github.com/uny/autograph/issues/176
 [#179]: https://github.com/uny/autograph/issues/179
 [#185]: https://github.com/uny/autograph/issues/185
+[#191]: https://github.com/uny/autograph/issues/191
 [#189]: https://github.com/uny/autograph/issues/189
