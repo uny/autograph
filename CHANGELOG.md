@@ -43,12 +43,27 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Requires Compose Multiplatform 1.11 or newer for the iOS half; older versions bridge the wrapper as
   a flat sibling and the scope is silently absent.
 
+  The wrapper is a `Box` that propagates its constraints, minimums included, so it is layout-neutral —
+  with one exception it cannot be: modifiers that are parent data for the *enclosing* layout do not
+  cross it. `Modifier.weight` and `alignByBaseline` stop compiling when their element moves inside;
+  `align` and `matchParentSize` are `BoxScope` members and rebind to the wrapper. Documented at the API
+  and in the README migration note.
+
   On iOS a scope whose encoded form exceeds 2048 characters is dropped whole — it is parsed on the
   main thread inside a tap handler, so its size is a latency budget — and dropping it degrades to
   exactly what no wrapper does. Crossing the ceiling prints a one-line console diagnostic naming the
   size, once per process, because the drop is otherwise indistinguishable from a correctly configured
   app until someone reads the events. The number is a guard against the pathological, not a measured
-  budget.
+  budget. The same ceiling is applied when *reading*, which is the side that has to hold: the reserved
+  prefix sits in an identifier slot the host app owns, and the walk reaches UIKit interop subtrees, so
+  a node this library did not write can carry a payload of any size and would otherwise be parsed on
+  the main thread on every tap and folded into the event. An empty scope publishes no marker at all,
+  for the same reason an oversized one is dropped whole — a container with no readable scope is this
+  API's whole accessibility cost with none of its benefit.
+
+  `autograph-compose` now declares `compose.foundation` as an `api` dependency rather than
+  `implementation`: `BoxScope` is the wrapper's content receiver and so sits in the module's public
+  signature, and an `implementation` dependency reaches consumers at runtime only.
 
 ### Changed
 
