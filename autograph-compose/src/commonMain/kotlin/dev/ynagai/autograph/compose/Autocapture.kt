@@ -11,7 +11,7 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * Identification prefers `Modifier.testTag`, then the element's semantics role, then its
  * accessibility label — never its displayed text, to avoid capturing PII by default (on iOS, the
  * label step is skipped entirely; see the platform note below). Exclude a subtree entirely with
- * [autographIgnore]; attach per-element properties to the taps under one with
+ * [autographIgnore]; attach per-element properties to an element's taps by wrapping it in
  * [AutographElementScope], on both platforms.
  *
  * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer

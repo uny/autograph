@@ -118,9 +118,12 @@ internal val AutographScopeKey: SemanticsPropertyKey<JsonObject> = SemanticsProp
  */
 @Deprecated(
     "Superseded by AutographElementScope, which works on iOS as well. This modifier stays a complete " +
-        "no-op there and cannot be made to work in place: the canonical usage below puts it on the " +
+        "no-op there and cannot be made to work in place: its canonical usage puts it on the " +
         "clickable's own chain, and iOS needs the scope on a layout node of its own. Wrap the element " +
-        "instead. Removed in 1.0.",
+        "instead. Note before migrating: on iOS the replacement carries the scope in the element's " +
+        "accessibility identifier, so keys and values become readable by any accessibility client on " +
+        "the device. These values are invisible to everything today; do not migrate anything you " +
+        "would not put in a testTag. Removed in 1.0.",
     level = DeprecationLevel.WARNING,
 )
 @Suppress("DEPRECATION") // Delegating to its own overload, which is deprecated alongside it.
@@ -132,7 +135,9 @@ public fun Modifier.autocaptureScope(vararg properties: Pair<String, String>): M
  * booleans, nested objects) or that are already assembled as a [JsonObject].
  */
 @Deprecated(
-    "Superseded by AutographElementScope, which works on iOS as well. Removed in 1.0.",
+    "Superseded by AutographElementScope, which works on iOS as well. Note before migrating: on iOS " +
+        "the replacement carries the scope in the element's accessibility identifier, so keys and " +
+        "values become readable by any accessibility client on the device. Removed in 1.0.",
     level = DeprecationLevel.WARNING,
 )
 public fun Modifier.autocaptureScope(properties: JsonObject): Modifier =
