@@ -92,6 +92,62 @@ class ElementResolverIosTest {
     }
 
     /**
+     * The overhanging clickable, driven through **this** resolver rather than through the walk.
+     *
+     * `AccessibilityTreeTest` pins what `allowScopeContainerDescent` does; nothing pinned that this
+     * call site passes it. Every other fixture here puts the wrapper *around* the tap, so the
+     * containment gate never fires and the flag is inert in all of them — deleting
+     * `allowScopeContainerDescent = true` from `resolveIosElement` left both iOS suites green, while
+     * the drop this PR's fix exists to remove came straight back. Geometry is
+     * `descendsPastAScopeContainerThatDoesNotContainThePosition`'s, so the two are a matched pair
+     * across the module boundary.
+     */
+    @Test
+    fun resolvesAClickableDrawnOutsideItsScopeWrappersBounds() {
+        val window = UIWindow()
+        window.setFrame(CGRectMake(0.0, 0.0, 200.0, 200.0))
+        val root = UIView()
+        root.setPointFrame(0.0, 0.0, 200.0, 200.0)
+        window.addSubview(root)
+
+        val wrapper = IdentifiableButtonView()
+        wrapper.setPointFrame(0.0, 0.0, 10.0, 10.0)
+        wrapper.setAccessibilityIdentifier("""${AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX}{"article_id":"42"}""")
+        root.addSubview(wrapper)
+
+        // Drawn outside the wrapper entirely — an overhanging badge, an `offset` decoration.
+        val badge = IdentifiableButtonView()
+        badge.setPointFrame(50.0, 50.0, 20.0, 20.0)
+        badge.setAccessibilityIdentifier("badge")
+        badge.setAccessibilityTraits(UIAccessibilityTraitButton)
+        wrapper.addSubview(badge)
+
+        val position = Offset((55.0 * scale).toFloat(), (55.0 * scale).toFloat())
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals("badge", result?.identifier)
+        assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope)
+    }
+
+    /**
+     * The reader's half of the payload ceiling. The writer's is not enough on its own: the prefix sits
+     * in an identifier slot the host app owns, so a foreign node — an app view, a third-party SDK under
+     * a `UIKitView` — can carry one of any size, and without this the tap would parse it on the main
+     * thread and fold it into the event. Oversized is skipped like any unreadable payload; the second,
+     * in-bounds wrapper is the positive control that keeps this from passing vacuously.
+     */
+    @Test
+    fun skipsAScopePayloadOverTheCeiling() {
+        val oversized = """{"blob":"${"x".repeat(64 * 1024)}"}"""
+        val (root, position) = buildScopedRoot(oversized, """{"article_id":"42"}""")
+
+        val result = resolveIosElement(root, claims = null, position)
+
+        assertEquals("share_button", result?.identifier)
+        assertEquals(JsonObject(mapOf("article_id" to JsonPrimitive("42"))), result?.scope)
+    }
+
+    /**
      * Nesting composes outer→inner with the inner winning a key clash, the rule
      * [resolveAutocaptureTarget] applies on Android. The path is root→hit node, so the deeper wrapper
      * folds in later.

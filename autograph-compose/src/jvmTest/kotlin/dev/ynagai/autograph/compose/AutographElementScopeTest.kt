@@ -14,6 +14,9 @@ import androidx.compose.ui.test.ComposeUiTest
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.down
+import androidx.compose.ui.test.up
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.EmptyJsonObject
@@ -112,6 +115,7 @@ class AutographElementScopeTest {
      */
     @Test
     fun scopesAClickableDrawnOutsideTheWrappersOwnBounds() = runComposeUiTest {
+        var clicks = 0
         setContent {
             AutographElementScope("article_id" to "42") {
                 Box(Modifier.size(20.dp)) {
@@ -120,14 +124,22 @@ class AutographElementScopeTest {
                             .testTag("badge")
                             .offset(x = 30.dp, y = 30.dp)
                             .requiredSize(20.dp)
-                            .clickable {},
+                            .clickable { clicks++ },
                     )
                 }
             }
         }
         waitForIdle()
 
-        val target = semanticsRoot().resolveTapAt(centreOf("badge"))
+        // The pointer oracle [AutocaptureScopeTest] holds its own overhang test to, and for the same
+        // reason: `centreOf` reads the semantics tree `resolveTapAt` walks, so without this the two
+        // sides move together and the test would keep passing if a real tap stopped reaching the badge.
+        val centre = centreOf("badge")
+        onRoot().performTouchInput { down(centre); up() }
+        waitForIdle()
+        assertEquals(1, clicks, "precondition: the real pointer reaches the overhanging child")
+
+        val target = semanticsRoot().resolveTapAt(centre)
         assertEquals("badge", target?.identifier)
         assertEquals("42", target?.scope?.get("article_id")?.jsonPrimitive?.content)
     }
