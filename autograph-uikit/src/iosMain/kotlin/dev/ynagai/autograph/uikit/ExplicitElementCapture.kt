@@ -9,7 +9,7 @@ import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Explicit click instrumentation for **Swift** callers — the receiving end of the `AutographUI`
- * Swift product's `AutographButton` / `autograph.tracked(_:)`.
+ * Swift product's `AutographButton` and `autograph.track(_:)`.
  *
  * ## Why this exists at all
  *

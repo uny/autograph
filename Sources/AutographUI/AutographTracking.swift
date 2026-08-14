@@ -15,14 +15,18 @@ import os
 ///     .autographScreenCapture(screenCapture)
 ///     .autographElementCapture(AutographElementCapture(tracker: tracker, scopeStack: stack))
 ///
-/// // At each instrumented control:
-/// struct SaveButton: View {
+/// // For a button you can edit, reach for ``AutographButton`` — it records for you:
+/// AutographButton("Save", event: "save_tapped", target: "save_button") { save() }
+///
+/// // Everywhere else, record from inside the action:
+/// struct DeleteButton: View {
 ///     @Environment(\.autograph) private var autograph
 ///
 ///     var body: some View {
-///         Button("Save", action: autograph.tracked("save_tapped", target: "save_button") {
-///             save()
-///         })
+///         Button("Delete", role: .destructive) {
+///             autograph.track("delete_tapped", target: "delete_button")
+///             delete()
+///         }
 ///     }
 /// }
 /// ```
@@ -47,8 +51,18 @@ public struct AutographTracking {
 
     /// Records a click named [event].
     ///
-    /// Prefer ``tracked(_:properties:target:_:)``, which attaches this to a control's action for you.
-    /// Call this directly only where there is no action closure to wrap.
+    /// This is the general escape hatch: call it from inside whatever already handles the interaction —
+    /// a `Button` whose initializer ``AutographButton`` does not mirror (`role:`, `systemImage`), a
+    /// component you cannot edit, an `.onTapGesture`. For a button you *can* edit, ``AutographButton``
+    /// is shorter and cannot be wired up wrongly.
+    ///
+    /// - Important: **Call this before the work the interaction triggers**, as ``AutographButton`` does
+    ///   internally. If recording throws there is then no event but the action still happens, and a
+    ///   missing event beats a broken button. Recording afterwards inverts that.
+    ///
+    /// Nothing here can tell whether its caller is a real interaction: invoked from a timer or a
+    /// completion handler it records a click nobody performed. Keep the call inside the handler that
+    /// the user's touch actually reaches.
     public func track(
         _ event: String,
         properties: [String: String] = [:],
@@ -78,27 +92,6 @@ public struct AutographTracking {
         capture.clickedJson(name: event, propertiesJson: propertiesJson, scope: scope, target: target)
     }
 
-    /// Wraps [action] so the event is recorded and *then* the action runs — the order
-    /// `Modifier.trackClick` uses on the Compose side, and for the same reason: if recording throws
-    /// there is no event but the action still happens, and a missing event beats a broken button.
-    ///
-    /// - Important: **Pass the returned closure only to a control's action.** It is an ordinary closure,
-    ///   so calling it from anywhere else — a timer, a completion handler, an `onOpenURL` that reuses the
-    ///   same handler — records a click that no one performed. That is the one thing this form cannot
-    ///   defend against, and it is why instrumenting a control's own action is the shape to reach for
-    ///   first; use this where the control is yours (a design-system button that takes an action) or
-    ///   where the action must stay a plain closure.
-    public func tracked(
-        _ event: String,
-        properties: [String: String] = [:],
-        target: String? = nil,
-        _ action: @escaping () -> Void
-    ) -> () -> Void {
-        {
-            track(event, properties: properties, target: target)
-            action()
-        }
-    }
 }
 
 // MARK: - Environment plumbing

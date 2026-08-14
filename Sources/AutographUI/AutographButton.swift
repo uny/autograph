@@ -13,16 +13,21 @@ import SwiftUI
 /// this product. Scope, screen and section attach exactly as they do for
 /// ``AutographTracking/track(_:properties:target:)`` — see ``AutographTracking``.
 ///
-/// ## Why this and not just the decorator
+/// ## Why this and not ``AutographTracking/track(_:properties:target:)``
 ///
-/// ``AutographTracking/tracked(_:properties:target:_:)`` hands back a plain closure, and a closure
-/// cannot prove who called it: reuse the same handler from a deep link or a completion block and the
-/// event is recorded for a tap nobody made. This SDK has already refused two designs for producing
-/// exactly that kind of phantom event, so the shape that cannot produce one is the shape to reach for
-/// first. Here the tracking lives inside the button's own action and is unreachable from anywhere else.
+/// Nothing you call by hand can prove its caller was a real interaction — reached from a timer or a
+/// completion block, ``AutographTracking/track(_:properties:target:)`` records a click nobody made, and
+/// this SDK has already refused two designs for producing exactly that kind of phantom event. Here the
+/// recording lives inside the button's own action, where no other code can reach it, and the order
+/// (record, then act) is fixed by the type rather than left to the call site.
 ///
-/// The decorator remains for the cases this type cannot reach — most importantly a design-system button
-/// of your own that takes an action, which no wrapper of `Button` can instrument from the outside.
+/// This is not the only path, because it cannot be: a component you cannot edit, or a `Button`
+/// initializer this does not mirror, still needs instrumenting. That is what
+/// ``AutographTracking/track(_:properties:target:)`` is for. Reach for it second, not first.
+///
+/// A design-system button of your own is **not** one of those cases: swapping the `Button` inside your
+/// component for this one is appearance-neutral, down to a custom `ButtonStyle`'s `isPressed` — measured,
+/// not assumed. The cost there is threading an event name through your component's API, not restyling it.
 ///
 /// ## What this deliberately does not mirror
 ///
@@ -30,10 +35,13 @@ import SwiftUI
 /// conveniences — `systemImage`, `role:`, `LocalizedStringResource` — are **not** mirrored, and are not
 /// going to be: each arrived in a different iOS version, so chasing parity means an availability-gated
 /// overload per convenience, growing with every SDK release, for sugar the caller can already express.
-/// For those, wrap a literal `Button` with the decorator instead:
+/// For those, keep the literal `Button` and record inside its action:
 ///
 /// ```swift
-/// Button("Delete", role: .destructive, action: autograph.tracked("delete_tapped") { delete() })
+/// Button("Delete", role: .destructive) {
+///     autograph.track("delete_tapped")
+///     delete()
+/// }
 /// ```
 ///
 /// Modifiers applied from outside reach the underlying `Button` normally — `.disabled`, `.buttonStyle`,

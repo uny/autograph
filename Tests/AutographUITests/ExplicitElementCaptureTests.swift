@@ -4,7 +4,7 @@ import SwiftUI
 import XCTest
 
 /// Exercises `AutographUI`'s explicit instrumentation — the `@Environment(\.autograph)` handle,
-/// `.autographScope`, and the `tracked(_:)` decorator — **through the umbrella framework, from Swift**,
+/// `.autographScope`, and `track(_:properties:target:)` — **through the umbrella framework, from Swift**,
 /// the exact path a consuming app drives.
 ///
 /// The tests that host a real `UIHostingController` are the load-bearing ones: the lexical scope channel
@@ -38,22 +38,17 @@ final class ExplicitElementCaptureTests: XCTestCase {
         AutographElementCapture(tracker: tracker, scopeStack: stack)
     }
 
-    /// The decorator records **before** it calls the action, matching `Modifier.trackClick`'s order.
-    /// The observed sequence is the assertion: checking only that both happened would pass either way.
-    func testTrackedRecordsBeforeItRunsTheAction() {
+    /// A recorded event carries its name, its call-site properties and its target.
+    func testTheHandleRecordsNamePropertiesAndTarget() {
         let tracker = RecordingTracker()
-        var sequence: [String] = []
-        tracker.onTrack = { _ in sequence.append("tracked") }
 
         var handle = AutographTracking()
         handle.capture = capture(tracker)
+        handle.track("save_tapped", properties: ["plan": "pro"], target: "save_button")
 
-        let action = handle.tracked("save_tapped", target: "save_button") { sequence.append("action") }
-        action()
-
-        XCTAssertEqual(sequence, ["tracked", "action"])
         XCTAssertEqual(tracker.events.map(\.name), ["save_tapped"])
         XCTAssertEqual(tracker.events.first?.target, "save_button")
+        XCTAssertEqual(tracker.events.first?.properties["plan"], "pro")
     }
 
     /// A screen on the shared stack reaches an explicit event — the half of attribution that is

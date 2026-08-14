@@ -76,29 +76,32 @@ final class AutographButtonTests: XCTestCase {
         window.isHidden = true
     }
 
-    /// The scope a subtree carries reaches an event recorded from inside an ``AutographButton``, the same
-    /// way it reaches a decorated closure — the two entry points must not diverge in what they attach.
+    /// The event an ``AutographButton`` records carries the subtree's scope, exactly as one recorded by
+    /// hand does — the two entry points must not diverge in what they attach.
     ///
-    /// Driven through the handle the button itself reads, rather than a synthesized tap: the wiring under
-    /// test is "what the button's action attaches", and the button's action calls exactly this.
+    /// Driven through the handle the button reads rather than through the button, because **the button's
+    /// action cannot be reached from a unit test**: a `UITouch` has no constructible form, and activating
+    /// it through the accessibility action was tried and does not work headlessly — SwiftUI exposes no
+    /// activatable element until an accessibility client has warmed the process (the cold-tree behaviour
+    /// #134/#135 measured). A test that skipped on that would report "covered" while never running, so
+    /// what a real activation proves — that the action is wired to the recording, that recording happens
+    /// **before** the caller's work, and that a disabled button records nothing — is the XCUITest's job,
+    /// and is not claimed here.
     @MainActor
-    func testTheButtonAndTheDecoratorAttachTheSameContext() {
+    func testTheButtonAttachesTheSameContextAsRecordingByHand() {
         let tracker = RecordingTracker()
-        let capture = AutographElementCapture(tracker: tracker, scopeStack: ScopeStack())
 
         var handle = AutographTracking()
-        handle.capture = capture
+        handle.capture = AutographElementCapture(tracker: tracker, scopeStack: ScopeStack())
         handle.scope = ["article_id": "42"]
 
-        // What AutographButton's action does...
         handle.track("save_tapped", properties: ["plan": "pro"], target: "save_button")
-        // ...and what the decorator does.
-        handle.tracked("save_tapped", properties: ["plan": "pro"], target: "save_button") {}()
 
-        XCTAssertEqual(tracker.events.count, 2)
-        XCTAssertEqual(tracker.events[0].properties, tracker.events[1].properties)
-        XCTAssertEqual(tracker.events[0].target, tracker.events[1].target)
-        XCTAssertEqual(tracker.events[0].properties["article_id"], "\"42\"")
+        let event = try? XCTUnwrap(tracker.events.first)
+        XCTAssertEqual(event?.name, "save_tapped")
+        XCTAssertEqual(event?.target, "save_button")
+        XCTAssertEqual(event?.properties["article_id"], "\"42\"")
+        XCTAssertEqual(event?.properties["plan"], "\"pro\"")
     }
 
     @MainActor
