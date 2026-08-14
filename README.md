@@ -146,7 +146,17 @@ AutographProvider(tracker, autocapture = AutocaptureConfig()) {
   `ComposeUIViewController`. Open it in Xcode and run, or
   `xcodebuild build -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=<device>"`.
   Its Run Script build phase calls `./gradlew :sample-shared:embedAndSignAppleFrameworkForXcode`
-  automatically, so no separate Gradle step is needed first.
+  automatically, so no separate Gradle step is needed first. Its native and SwiftUI screens are reached
+  by launch argument rather than in-app navigation (see `ContentView.swift`), so each is independent of
+  taps on the others.
+
+  One of those screens — the explicit SwiftUI instrumentation sample — additionally links the shipped
+  `AutographUI` product, and therefore `Autograph.xcframework`, alongside `sample_shared`. That is the
+  only way to exercise `AutographButton` itself: unlike `.autographScreen`, it has no Kotlin half, so a
+  shape-identical copy driven through a `sample_shared` facade would verify only the copy. Building the
+  sample therefore needs `./gradlew :autograph-apple:assembleAutographReleaseXCFramework` first (see
+  [the note on the umbrella](#ios-autographsegmentswift) for why the two frameworks cannot share state —
+  that screen shares none, using its own tracker, stack and capture throughout).
 
 ### Scoped context
 
@@ -308,7 +318,7 @@ table is the whole picture, because a gap here produces **no event at all** — 
 | Compose — iOS | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
 | Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
 | iOS native — UIKit | ✅ `installAutographNativeTapCapture` — for identified controls; **cell selection is not covered, see below** | ✅ `installAutographNativeScreenCapture` |
-| iOS native — SwiftUI | ❌ **not captured — instrument explicitly, see below** | ✅ [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) |
+| iOS native — SwiftUI | ❌ **not captured — instrument explicitly with [`AutographButton`](#ios-swiftui-clicks-with-autographbutton)** | ✅ [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) |
 | Android native — View / XML | ❌ **not captured** ([#63](https://github.com/uny/autograph/issues/63)) | ✅ `installAutographNativeScreenCapture` (Activity / Fragment) |
 
 The asymmetry worth stating plainly: **a hybrid Android app gets `Screen Viewed` for its non-Compose
@@ -521,7 +531,9 @@ other, and the resolver consults a registry that has never heard of your exclusi
 are captured, with nothing logged. Reach `registerAutographIgnoredView` / `.autographIgnore()` and
 `installAutographNativeTapCapture` through the same framework — which the umbrella gives you by
 construction, and which is why this repo's own sample registers through `sample_shared` (the framework it
-installs capture from) rather than through the umbrella.
+installs capture from) rather than through the umbrella, even though the sample app links both. Its one
+umbrella-linked screen is *explicit* instrumentation only: no capture is installed there and no registry
+is consulted, so there is nothing for a second copy to be out of step with.
 
 `Package.swift` lives at the repository root (not a subdirectory) specifically so external apps
 can add it the normal way, `.package(url: "https://github.com/uny/autograph.git", from: "…")` —
@@ -534,6 +546,89 @@ Its `Autograph` binary target picks one of two sources depending on what's on di
   changes included.
 - **External consumers**: otherwise, falls back to a checksummed download from that version's
   GitHub Release asset (`Autograph.xcframework.zip`).
+
+## iOS: SwiftUI clicks with `AutographButton`
+
+SwiftUI taps are **not** autocaptured and cannot be — see [the warning above](#what-is-and-isnt-captured)
+for what was measured and why the partial-credit version was removed. Instrument them explicitly. This
+section is for the SwiftUI parts of an app whose screens are mostly Compose: Compose content keeps using
+`Modifier.trackClick`, and nothing here changes it.
+
+Two entry points, and one question chooses between them: **can you edit the component's API?**
+
+| Situation | Use |
+|:--|:--|
+| A `Button` in your own code, or your own design-system button | `AutographButton` |
+| A component you cannot edit, or a `Button` initializer `AutographButton` does not mirror (`role:`, `systemImage`) | `autograph.track(…)` inside the action |
+
+```kotlin
+// Kotlin, in your shared module: expose a capture built on the SAME ScopeStack you hand
+// AutographProvider / the native capture / AutographScreenCapture.
+fun makeElementCapture(tracker: Tracker, scopeStack: ScopeStack) =
+    AutographElementCapture(tracker, scopeStack)
+```
+
+```swift
+import AutographUI
+
+// Once, at the root — beside `.autographScreenCapture`:
+ContentView().autographElementCapture(capture)
+
+// A button you can edit — the recommended path:
+AutographButton("Save", event: "Recipe Saved", target: "save_button") { save() }
+
+// Anything else — record from inside the handler the touch actually reaches:
+Button("Delete", role: .destructive) {
+    autograph.track("Recipe Deleted", target: "delete_button")  // record FIRST, then act
+    delete()
+}
+```
+
+`autograph` is `@Environment(\.autograph)`. A missing `.autographElementCapture(_:)` is **loud** — it
+traps in debug and logs a fault in release, rather than silently dropping every event. "At the root"
+is meant literally: a modifier reads the environment its *parent* supplies, so providing the capture
+and instrumenting a button in the same modifier chain leaves the button with nothing — put the
+provider above the view that uses it, as with `.autographScreenCapture`.
+
+**Why `AutographButton` first.** Nothing you call by hand can prove its caller was a real interaction:
+reached from a timer or a completion block, `track` records a click nobody made — the exact phantom
+event two rejected designs produced. Inside `AutographButton` the recording lives in the button's own
+action, where no other code can reach it, and "record, then act" is fixed by the type rather than left
+to the call site. So a **disabled** `AutographButton` records nothing, because SwiftUI runs no action
+for it. Both properties are pinned by UI tests driving real touches (`SwiftUIExplicitUITests`), which is
+the only level that can observe them.
+
+**What it deliberately does not mirror.** A free-form label or a title, and that is the whole contract.
+`Button`'s other conveniences — `systemImage`, `role:`, `LocalizedStringResource` — each arrived in a
+different iOS version, so mirroring them means an availability-gated overload per convenience, growing
+with every SDK release, for sugar you can already express. Keeping that line is what holds this API at
+an **iOS 13** floor. Modifiers from outside reach the underlying `Button` normally (`.disabled`,
+`.buttonStyle`, `.controlSize`), and it composes inside `.alert`, `.confirmationDialog`, `Menu`,
+`.contextMenu`, `.swipeActions` and `.toolbar` exactly as a literal `Button` does — measured, not
+assumed.
+
+A **design-system button of your own** is not an exception: swapping the `Button` inside your component
+for this one is appearance-neutral, down to a custom `ButtonStyle`'s `isPressed`. The cost is threading
+an event name through your component's API, not restyling anything.
+
+**Scope.** `.autographScope(["row_id": id])` attaches properties to every explicit event recorded inside
+that subtree — the SwiftUI counterpart of Compose's `AutographScope`. Nesting merges outer-then-inner,
+and a call site's own `properties` win over both. It travels **lexically**, through the environment,
+which is what lets sibling subtrees — a list's rows, split panes — each carry their own scope. (The
+shared `ScopeStack` deliberately drops sibling scopes it cannot choose between, since an autocaptured
+tap carries no evidence of which sibling it hit; an explicit call site knows.) `screen` and `section`
+still come from the stack, where there is only ever one current screen to read.
+
+> [!NOTE]
+> `.autographScope` affects **explicit** instrumentation only. It does not reach autocapture of UIKit
+> hosted below it in a `UIViewRepresentable` — that resolves its scope from the shared `ScopeStack`, and
+> nothing is pushed there.
+
+Properties that are not all strings go through `track(_:propertiesJson:target:)` as a JSON object
+literal. `Tracker.track` takes a Kotlin `JsonObject`, and the umbrella does not export
+kotlinx-serialization-json, so `JsonElement` reaches Swift as an opaque class with no initializer —
+there is nothing for a Swift caller to build. The conversion therefore lives on the Kotlin side, over
+values Swift can express.
 
 ## iOS: SwiftUI screens with `.autographScreen`
 
