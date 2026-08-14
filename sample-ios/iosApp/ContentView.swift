@@ -205,6 +205,8 @@ struct ContentView: View {
             NativeScreensRootView()
         } else if arguments.contains(swiftUIScreensLaunchArgument) {
             SwiftUIScreensView()
+        } else if arguments.contains(swiftUIExplicitLaunchArgument) {
+            SwiftUIExplicitSampleView()
         } else {
             ComposeView()
         }
