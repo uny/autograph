@@ -736,6 +736,206 @@ final class SwiftUIScreensUITests: XCTestCase {
     }
 }
 
+/// Coverage for **explicit SwiftUI instrumentation** — `AutographButton` and `autograph.track(_:)` —
+/// driven through real synthetic touches (`SwiftUIExplicitSampleView` in `SwiftUIExplicitSample.swift`).
+///
+/// Unlike every other suite here, this one exercises the shipped `AutographUI` product **itself**: the
+/// sample app links `Autograph.xcframework` through the local SwiftPM package for this screen. That is
+/// the whole reason the suite exists. Three of its claims cannot be reached any other way:
+///
+/// - **A `.disabled` `AutographButton` records nothing.** SwiftUI runs no action for a disabled button
+///   and the recording lives inside that action — but "the action did not run" is only observable by
+///   actually touching a disabled button. Both designs this API replaced (`.simultaneousGesture`, an
+///   `isEnabled` environment gate) recorded a phantom event here and looked fine in unit tests.
+/// - **Recording precedes the caller's action.** `AutographButton` fixes the order by construction, and
+///   the ordered log below is what shows it happening in that order under a real tap.
+/// - **A touch actually fires it.** A unit test can only invoke the action directly; activating a
+///   button through accessibility is unavailable headless (measured — such a test always skips, and a
+///   skipping test grants false confidence, so none was written).
+///
+/// Scope attribution is asserted here too, though it is not exclusive to this level: the sibling-row
+/// case is the shape that made the scope channel lexical rather than stack-resolved.
+final class SwiftUIExplicitUITests: XCTestCase {
+    override func setUpWithError() throws {
+        continueAfterFailure = false
+    }
+
+    private func launch() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["-autograph-swiftui-explicit"]
+        app.launch()
+        return app
+    }
+
+    private func trackLog(_ app: XCUIApplication) -> String {
+        app.staticTexts["swiftui_explicit_track_log_label"].label
+    }
+
+    private func lastProps(_ app: XCUIApplication) -> String {
+        app.staticTexts["swiftui_explicit_props_label"].label
+    }
+
+    /// Blocks until the last-event label names [target].
+    ///
+    /// The same split the Compose suite above uses, for the same reason: this waits on a *positive*
+    /// claim (the tap produced this target), where arriving late and arriving are the same thing, and
+    /// the ordered-log assertion that follows is read eagerly so a duplicate fails instead of being
+    /// waited out.
+    private func waitForLastEventTarget(
+        _ app: XCUIApplication,
+        _ target: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let expected = "Last event target: \(target)"
+        let seen = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", expected),
+            object: app.staticTexts["swiftui_explicit_last_event_label"]
+        )
+        if XCTWaiter().wait(for: [seen], timeout: 15) != .completed {
+            XCTFail(
+                "expected \(expected), last saw \(app.staticTexts["swiftui_explicit_last_event_label"].label)",
+                file: file,
+                line: line
+            )
+        }
+    }
+
+    /// The recommended path records exactly one event, carrying its target.
+    ///
+    /// The log starts empty here — this screen fires no impressions — so the assertion states the whole
+    /// history, and a second event from the same tap would fail it.
+    func testAutographButtonRecordsExactlyOnce() {
+        let app = launch()
+        app.buttons["swiftui_plain_button"].tap()
+        waitForLastEventTarget(app, "swiftui_plain_button")
+        XCTAssertEqual(trackLog(app), "Tracks: Recipe Saved:swiftui_plain_button")
+        // The button's own `properties:` argument, pinned nowhere else: this is the only
+        // `AutographButton` in the app that fires carrying one, so dropping the argument inside
+        // `AutographButton.body` is a regression that only this assertion can see.
+        XCTAssertTrue(
+            lastProps(app).contains("\"surface\":\"list\""),
+            "AutographButton's call-site properties did not reach the event: \(lastProps(app))"
+        )
+    }
+
+    /// **The invariant this API exists for.** A disabled `AutographButton` records nothing, because the
+    /// recording is inside an action SwiftUI never runs.
+    ///
+    /// The assertion is the *exact* ordered log after a known-good tap on either side of the disabled
+    /// one. A phantom event would land between them and break the match — which a bare "the label did
+    /// not change" could miss, since it cannot distinguish an event that has not been appended yet.
+    func testDisabledAutographButtonRecordsNothing() {
+        let app = launch()
+
+        // A known-good tap first, so the baseline is a value this wiring produced rather than the
+        // initial label — otherwise a screen where nothing was wired up at all would pass.
+        app.buttons["swiftui_plain_button"].tap()
+        waitForLastEventTarget(app, "swiftui_plain_button")
+
+        let disabled = app.buttons["swiftui_disabled_button"]
+        // This test asserts an ABSENCE and its tap is a coordinate tap, which does not require
+        // hittability — so a fixture pushed off screen would be tapped at a coordinate that is nowhere
+        // and the absence would hold for the wrong reason.
+        XCTAssertTrue(
+            app.windows.firstMatch.frame.contains(disabled.frame),
+            "swiftui_disabled_button must be fully on screen or this test passes vacuously — "
+                + "its frame \(disabled.frame) is outside \(app.windows.firstMatch.frame)"
+        )
+        // A coordinate tap, not `.tap()`: XCUITest considers a disabled button non-hittable, while the
+        // touch is still delivered — which is the whole state under test.
+        disabled.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+
+        // A second known-good tap. Besides proving the wiring is still live, it gives any phantom event
+        // from the disabled tap time to land — and it would land *before* this entry, so the exact log
+        // below fails on it.
+        app.buttons["swiftui_plain_button"].tap()
+        let expected = "Tracks: Recipe Saved:swiftui_plain_button|Recipe Saved:swiftui_plain_button"
+        let settled = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", expected),
+            object: app.staticTexts["swiftui_explicit_track_log_label"]
+        )
+        if XCTWaiter().wait(for: [settled], timeout: 15) != .completed {
+            XCTFail("a disabled AutographButton recorded an event: \(trackLog(app))")
+        }
+    }
+
+    /// The recording happens **before** the caller's action, which `AutographButton` fixes by
+    /// construction. The button's action appends to the same ordered log the tracker writes to, so the
+    /// order is two entries rather than a claim in a doc.
+    func testRecordingPrecedesTheAction() {
+        let app = launch()
+        app.buttons["swiftui_order_button"].tap()
+        waitForLastEventTarget(app, "swiftui_order_button")
+        XCTAssertEqual(
+            trackLog(app),
+            "Tracks: Recipe Saved:swiftui_order_button|action:swiftui_order_button",
+            "the action ran before the recording — a failure to record would then also lose the event"
+        )
+    }
+
+    /// The escape hatch, on the `role:` initializer `AutographButton` deliberately does not mirror:
+    /// `autograph.track` called from inside the button's own action, carrying call-site properties.
+    func testInlineTrackRecordsFromTheButtonAction() {
+        let app = launch()
+        app.buttons["swiftui_inline_button"].tap()
+        waitForLastEventTarget(app, "swiftui_inline_button")
+        XCTAssertEqual(trackLog(app), "Tracks: Recipe Deleted:swiftui_inline_button")
+        XCTAssertTrue(
+            lastProps(app).contains("\"plan\":\"pro\""),
+            "call-site properties missing: \(lastProps(app))"
+        )
+    }
+
+    /// Sibling rows each carrying their own `.autographScope` attribute exactly — the shape that made
+    /// the scope channel lexical. Resolved from the shared `ScopeStack` instead, both rows' scopes would
+    /// be dropped: `resolveScope()` discards frames that are neither's ancestor, because an autocaptured
+    /// tap carries no evidence of which sibling it hit. An explicit call site does.
+    func testSiblingScopesAttributeToTheirOwnRow() {
+        let app = launch()
+
+        app.buttons["swiftui_row_1_button"].tap()
+        waitForLastEventTarget(app, "swiftui_row_1_button")
+        XCTAssertTrue(
+            lastProps(app).contains("\"row_id\":\"row_1\""),
+            "row 1's scope did not reach its event: \(lastProps(app))"
+        )
+
+        app.buttons["swiftui_row_2_button"].tap()
+        waitForLastEventTarget(app, "swiftui_row_2_button")
+        XCTAssertTrue(
+            lastProps(app).contains("\"row_id\":\"row_2\""),
+            "row 2 was attributed to the wrong sibling's scope: \(lastProps(app))"
+        )
+    }
+
+    /// Nested scopes merge outer-then-inner: the inner wins the key they share, and the outer's other
+    /// keys survive.
+    func testNestedScopesMergeInnerOverOuter() {
+        let app = launch()
+        app.buttons["swiftui_nested_button"].tap()
+        waitForLastEventTarget(app, "swiftui_nested_button")
+        let props = lastProps(app)
+        XCTAssertTrue(props.contains("\"row_id\":\"inner\""), "the inner scope should win row_id: \(props)")
+        XCTAssertTrue(props.contains("\"extra\":\"kept\""), "the inner scope's other key was lost: \(props)")
+        XCTAssertTrue(props.contains("\"route\":\"feed\""), "the outer scope's other key was lost: \(props)")
+    }
+
+    /// An explicit event carries the screen `.autographScreen` pushed onto the shared `ScopeStack` — the
+    /// half of attribution that is still read dynamically, and the reason the element capture and the
+    /// screen capture must be built on the *same* stack.
+    func testExplicitEventsCarryTheScreen() {
+        let app = launch()
+        app.buttons["swiftui_plain_button"].tap()
+        // Pin the props to this tap's own event before reading them.
+        waitForLastEventTarget(app, "swiftui_plain_button")
+        XCTAssertTrue(
+            lastProps(app).contains("\"screen\":\"SwiftUIExplicit\""),
+            "screen missing from props: \(lastProps(app))"
+        )
+    }
+}
+
 /// Coverage for #65's native **screen** capture — the `viewDidAppear:` swizzle — on a real UIKit
 /// `UIViewController` hierarchy (`NativeScreensRootView` in `ContentView.swift`).
 ///

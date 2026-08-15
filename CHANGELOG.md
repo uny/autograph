@@ -10,6 +10,64 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- **Explicit click instrumentation for SwiftUI**: `AutographButton` and `autograph.track(…)` in the
+  `AutographUI` product, over a new Kotlin `AutographElementCapture`. SwiftUI elements are not
+  autocaptured and cannot be ([#191]), so this is not a fallback there — it is the whole story.
+
+  Swift could not attach properties to an event at all before this. `Tracker.track` takes a
+  `JsonObject`, and the umbrella exports core/context/uikit/segment but not
+  kotlinx-serialization-json, so `JsonPrimitive` has no Objective-C counterpart and `JsonElement`
+  arrives as an opaque class with no initializer: a Swift caller could pass an empty dictionary and
+  nothing else. `AutographElementCapture` converts on the Kotlin side from values Swift can express —
+  `[String: String]`, or a JSON object literal for numbers, booleans and nesting. Exporting the
+  serialization library instead would have put a third party's whole surface into this SDK's public
+  Objective-C API.
+
+  **Two entry points, chosen by one question: can you edit the component's API?** `AutographButton`
+  where you can, `autograph.track` inside the handler where you cannot (or for a `Button` initializer
+  it does not mirror). Prefer the first: nothing called by hand can prove its caller was a real
+  interaction — reached from a timer or a completion block, `track` records a click nobody made, the
+  exact phantom event two rejected designs produced. Inside `AutographButton` the recording lives in
+  the button's own action, and record-then-act is fixed by the type rather than by the call site.
+
+  Three of its properties are pinned only by UI tests driving **real touches** (`SwiftUIExplicitUITests`),
+  because no unit test can reach them: a `.disabled` button records nothing, the recording precedes the
+  action, and a touch fires it at all. Activating a button through accessibility is unavailable in a
+  headless process — measured; such a test always skips, and a skipping test grants false confidence,
+  so none was written. The sample app therefore links the shipped `AutographUI` product itself, rather
+  than a shape-identical copy driven through a facade the way `.autographScreen`'s sample does: that
+  modifier is glue over a Kotlin facade, while `AutographButton` has no Kotlin half, so a copy would
+  verify only the copy.
+
+  Scope is **passed in per call rather than read from `ScopeStack`**, which is the load-bearing
+  decision. `resolveScope()` drops sibling frames that are neither's ancestor, because an autocaptured
+  tap carries no evidence of which sibling it hit — and a list whose rows each own a scope is exactly
+  that shape. An explicit call site knows precisely which row it is, so `.autographScope` accumulates
+  lexically through the SwiftUI environment (the analogue of Compose's `ScopedTracker`) and hands the
+  result over. Screen and section are still read from the stack: at most one screen is current, so the
+  ambiguity that forces the drop cannot arise, and the stack is the only place a SwiftUI screen name
+  lives. `.autographScope` reaches **explicit** instrumentation only — not autocapture of UIKit hosted
+  below it in a `UIViewRepresentable`, which resolves from the stack, where nothing is pushed.
+
+  `AutographButton` mirrors a free-form label or a title and nothing else. `systemImage`, `role:` and
+  `LocalizedStringResource` each arrived in a different iOS version, so mirroring them means an
+  availability-gated overload per convenience, growing with every SDK release, for sugar the caller can
+  already express — and holding that line is what leaves this API with no `@available` annotation of
+  its own. (The effective floor is **iOS 15**, set by `Autograph.xcframework`'s `minos 15.0`, not by
+  this API.) Modifiers applied from outside reach the underlying `Button` normally, and it composes
+  inside `.alert`,
+  `.confirmationDialog`, `Menu`, `.contextMenu`, `.swipeActions` and `.toolbar` exactly as a literal
+  `Button` does; swapping the `Button` inside a design-system button of your own is appearance-neutral
+  down to a custom `ButtonStyle`'s `isPressed`. All measured across seven container kinds and eight
+  styles, not assumed.
+
+  A missing `.autographElementCapture(_:)` is loud — it traps in debug and logs a fault in release —
+  rather than silently dropping every event.
+
+  A decorator form (`Button { … }.tracked("event")`) was built and **removed** before release: it
+  cannot prevent the phantom event that motivates `AutographButton`, so it added a third way to do the
+  same thing with none of the guarantee.
+
 - `AutographElementScope { … }` attaches per-element properties to autocaptured taps on **both**
   Android and iOS ([#185]). The iOS half was declared impossible and [#68] was closed on it: the
   bridged accessibility tree was measured flat, leaving no ancestry for a scope to ride, and the

@@ -124,6 +124,13 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
+      # The sample app links AutographUI (and so Autograph.xcframework) for its explicit SwiftUI
+      # instrumentation screen — the only way to exercise the shipped `AutographButton` itself, since
+      # it has no Kotlin half a facade could stand in for. Without this step Package.swift falls back
+      # to downloading the last *released* umbrella, which predates that API and fails to compile.
+      - name: Build Autograph.xcframework
+        run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
+
       # xcodebuild exercises sample-shared's embedAndSignAppleFrameworkForXcode path, which Gradle's
       # `build` does not. `test` also runs iosAppUITests for autocapture hit-testing behavior that
       # compose.uiTest cannot cover.

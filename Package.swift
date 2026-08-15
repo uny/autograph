@@ -16,6 +16,18 @@ import PackageDescription
 //    Release asset.
 private let localXCFrameworkPath = "autograph-apple/build/XCFrameworks/release/Autograph.xcframework"
 
+// Resolved against THIS FILE, never the current directory. `binaryTarget(path:)` takes a
+// package-relative path, but `fileExists` takes a process-relative one, and those are the same thing
+// only when the manifest happens to be evaluated from the package root. The SwiftPM CLI chdirs there,
+// so `swift build` at the root always agreed; Xcode resolving an `XCLocalSwiftPackageReference` does
+// not, so `sample-ios/iosApp.xcodeproj` opened in Xcode.app silently took the download branch and
+// failed to compile against the last *released* umbrella — while the same build from the repo root
+// succeeded, which is why CI could never see it. Measured, both directions.
+private let localXCFrameworkAbsolutePath = URL(fileURLWithPath: #filePath)
+    .deletingLastPathComponent()
+    .appendingPathComponent(localXCFrameworkPath)
+    .path
+
 // Don't hand-edit these ahead of a release — CD owns them. Kotlin/Native's build output isn't
 // reproducible across separate builds, so a release's checksum is only knowable from the build
 // that produces the zip actually being released; there is nothing to pre-compute and no mismatch
@@ -29,7 +41,7 @@ private let localXCFrameworkPath = "autograph-apple/build/XCFrameworks/release/A
 private let releaseVersion = "0.5.0"
 private let releaseChecksum = "67690bfa82892d2e8d897483ef2ef57796bdb849dd671141f69c32229c039cb9"
 
-private let autographTarget: Target = FileManager.default.fileExists(atPath: localXCFrameworkPath)
+private let autographTarget: Target = FileManager.default.fileExists(atPath: localXCFrameworkAbsolutePath)
     ? .binaryTarget(name: "Autograph", path: localXCFrameworkPath)
     : .binaryTarget(
         name: "Autograph",

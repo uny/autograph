@@ -6,6 +6,13 @@
 // - Show declarations: true
 
 // Library unique name: <dev.ynagai.autograph:autograph-uikit>
+final class dev.ynagai.autograph.uikit/AutographElementCapture { // dev.ynagai.autograph.uikit/AutographElementCapture|null[0]
+    constructor <init>(dev.ynagai.autograph/Tracker, dev.ynagai.autograph.context/ScopeStack) // dev.ynagai.autograph.uikit/AutographElementCapture.<init>|<init>(dev.ynagai.autograph.Tracker;dev.ynagai.autograph.context.ScopeStack){}[0]
+
+    final fun clicked(kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin/String? = ...) // dev.ynagai.autograph.uikit/AutographElementCapture.clicked|clicked(kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.String?){}[0]
+    final fun clickedJson(kotlin/String, kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin/String? = ...) // dev.ynagai.autograph.uikit/AutographElementCapture.clickedJson|clickedJson(kotlin.String;kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.String?){}[0]
+}
+
 final class dev.ynagai.autograph.uikit/AutographIgnoredBoundsRegistration { // dev.ynagai.autograph.uikit/AutographIgnoredBoundsRegistration|null[0]
     final fun clear() // dev.ynagai.autograph.uikit/AutographIgnoredBoundsRegistration.clear|clear(){}[0]
     final fun unregister() // dev.ynagai.autograph.uikit/AutographIgnoredBoundsRegistration.unregister|unregister(){}[0]
