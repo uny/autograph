@@ -725,7 +725,7 @@ region whatever a future version learns to resolve there.
 - iOS **15.0** or later, for the Swift package. This is not a design choice but a property of the
   binary: Kotlin/Native builds `Autograph.xcframework` at `minos 15.0` by default, and every Swift
   product links it, so `Package.swift` declares the same floor rather than a lower one SwiftPM would
-  accept and the binary would then fail to honour. No Swift API here carries an `@available`
+  accept and the binary would then fail to honour. No Swift API here carries an `@available` version
   annotation of its own
 - Targets: **Android**, **JVM**, and **iOS** — device `iosArm64` and the Apple-Silicon simulator
   `iosSimulatorArm64`. The Intel-Mac simulator (`iosX64`) is intentionally not shipped: Apple-Silicon
