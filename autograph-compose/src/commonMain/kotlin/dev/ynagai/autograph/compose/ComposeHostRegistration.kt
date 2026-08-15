@@ -18,8 +18,15 @@ import androidx.compose.runtime.Composable
  * with [autographIgnore]. The exclusion lives in Compose-side state the native pipeline cannot see, so
  * nothing downstream would catch it.
  *
- * Android needs none of this: its native pipeline, if any, has no equivalent shared tree to collide
- * over — `SemanticsOwner` hit-testing is Compose's own.
+ * Android needs none of this, and the reason is stronger than a missing shared tree: its native
+ * pipeline resolves a tap to the root of the *pressed* `View` subtree, and Compose routes pointer
+ * input itself without ever setting the View pressed state. A tap on Compose-rendered content
+ * therefore resolves to nothing over there — not by an exclusion that could be forgotten, but because
+ * the state it reads was never written. What the argument does not cover is an `AndroidView` interop
+ * subtree: that is real View content, so a clickable one presses like any other and is reported over
+ * there when it carries a developer-set id — and [autographIgnore] around it cannot say otherwise,
+ * because that exclusion is Compose-side state, which is exactly the blindness described above. See
+ * `installAutographNativeTapCapture` in `autograph-android`.
  */
 @Composable
 internal expect fun RegisterComposeHostForNativeCapture()
