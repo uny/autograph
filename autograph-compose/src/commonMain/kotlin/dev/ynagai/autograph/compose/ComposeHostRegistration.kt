@@ -20,9 +20,12 @@ import androidx.compose.runtime.Composable
  *
  * Android needs none of this, and the reason is stronger than a missing shared tree: its native
  * pipeline resolves a tap to the root of the *pressed* `View` subtree, and Compose routes pointer
- * input itself without ever setting the View pressed state. A tap on Compose content therefore
- * resolves to nothing over there — not by an exclusion that could be forgotten, but because the state
- * it reads was never written. See `installAutographNativeTapCapture` in `autograph-android`.
+ * input itself without ever setting the View pressed state. A tap on Compose-rendered content
+ * therefore resolves to nothing over there — not by an exclusion that could be forgotten, but because
+ * the state it reads was never written. What the argument does not cover is an `AndroidView` interop
+ * subtree: that is real View content, so it presses like any other and is named over there, and
+ * [autographIgnore] around it cannot suppress that — `View.isAutographIgnored` on the view is what
+ * does. See `installAutographNativeTapCapture` in `autograph-android`.
  */
 @Composable
 internal expect fun RegisterComposeHostForNativeCapture()
