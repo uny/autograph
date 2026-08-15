@@ -15,6 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlin.time.TimeSource
@@ -25,6 +26,7 @@ private class RecordingTransport(
     var envelopes: EnvelopeSource? = null
     val calls = mutableListOf<Triple<String, String, Envelope?>>()
     val trackedProperties = mutableListOf<JsonObject>()
+    val identifiedTraits = mutableListOf<JsonObject>()
 
     override fun connect(envelopes: EnvelopeSource) {
         this.envelopes = envelopes
@@ -41,6 +43,7 @@ private class RecordingTransport(
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         calls += Triple("identify", userId, envelope)
+        identifiedTraits += traits.asJsonObject()
     }
 }
 
@@ -125,6 +128,56 @@ class AutographTrackerTest {
         // All delivered, and stamped in call order despite the async hand-off.
         assertEquals(listOf("track", "screen", "identify"), transport.calls.map { it.first })
         assertEquals(listOf(1L, 2L, 3L), transport.calls.map { it.third?.seq })
+    }
+
+    /**
+     * [asJsonObject] is the single narrowing every entry point funnels through, and its wrapping
+     * branch is the one that actually runs on the path #193 is about — every Kotlin caller passes a
+     * real [JsonObject] and short-circuits, so nothing else in the suite reaches it with entries.
+     */
+    @Test
+    fun asJsonObjectWrapsAForeignMapWithoutLosingEntriesAndPassesAJsonObjectThrough() {
+        val foreign: Map<String, JsonElement> =
+            mutableMapOf("a" to JsonPrimitive("1"), "b" to JsonPrimitive(2))
+
+        val wrapped = foreign.asJsonObject()
+        assertEquals("1", wrapped["a"]?.jsonPrimitive?.content)
+        assertEquals("2", wrapped["b"]?.jsonPrimitive?.content)
+        assertEquals(2, wrapped.size)
+        assertEquals("""{"a":"1","b":2}""", wrapped.toString(), "must stringify as JSON, not as a map")
+
+        // A JsonObject is handed back as-is — the check that keeps this free for Kotlin callers.
+        val already = JsonObject(mapOf("a" to JsonPrimitive("1")))
+        assertSame(already, already.asJsonObject())
+    }
+
+    /**
+     * The properties/traits parameters are the `Map` *interface* (#193), so a caller may legally
+     * hand over a map it still owns and keeps mutating. Every entry point must therefore snapshot
+     * on the caller's thread at call time — not later, on the delivery dispatcher, which would
+     * record values the app never fired and can tear the copy under a concurrent mutation.
+     */
+    @Test
+    fun propertiesAreSnapshotAtCallTimeNotWhenTheDispatcherDelivers() = runTest {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = StandardTestDispatcher(testScheduler)
+        }
+
+        val properties = mutableMapOf<String, JsonElement>("plan" to JsonPrimitive("free"))
+        val traits = mutableMapOf<String, JsonElement>("plan" to JsonPrimitive("free"))
+        tracker.track("Upgraded", properties)
+        tracker.identify("u1", traits)
+        // The caller reuses its own maps the instant the fire-and-forget calls return.
+        properties["plan"] = JsonPrimitive("pro")
+        traits["plan"] = JsonPrimitive("pro")
+
+        advanceUntilIdle()
+
+        assertEquals("free", transport.trackedProperties.single()["plan"]?.jsonPrimitive?.content)
+        assertEquals("free", transport.identifiedTraits.single()["plan"]?.jsonPrimitive?.content)
     }
 
     @Test

@@ -221,8 +221,13 @@ internal class AutographTracker(
         return false
     }
 
-    override fun identify(userId: String, traits: Map<String, JsonElement>): Unit =
-        deliver { transport.identify(userId, traits.asJsonObject(), it) }
+    // Narrowed here rather than inside [deliver]'s lambda: [traits] is the `Map` interface, so it
+    // may be a map the caller still owns and mutates, and the lambda runs later on the dispatcher.
+    // track/screen snapshot eagerly above for the same reason.
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {
+        val snapshot = traits.asJsonObject()
+        deliver { transport.identify(userId, snapshot, it) }
+    }
 
     // Lifecycle/control calls are infrequent (not per-event) and stay synchronous. notifyBackground
     // in particular is a durability checkpoint that must persist the session before the app is
