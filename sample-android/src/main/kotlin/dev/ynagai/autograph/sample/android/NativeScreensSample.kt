@@ -79,6 +79,14 @@ public object NativeTapLog {
      * reached the island at all, that assertion would also pass if the tap had missed it entirely.
      */
     public val composeClicks: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
+
+    /**
+     * Clicks a `View`'s own `OnClickListener` handled, which the capture never sees. Same job as
+     * [composeClicks], for the opt-out cases: "an excluded view reports nothing" would pass just as
+     * well if the touch had missed the view, so those assertions are paired with a witness that it
+     * did not.
+     */
+    public val viewClicks: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
 }
 
 /**

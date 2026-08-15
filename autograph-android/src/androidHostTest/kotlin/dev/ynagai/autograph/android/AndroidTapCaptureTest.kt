@@ -162,6 +162,99 @@ class AndroidTapCaptureTest {
         assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(root))
     }
 
+    // --- isAutographIgnored -----------------------------------------------------------------------
+
+    @Test
+    fun `an ignored view reports nothing`() {
+        val root = Button(context()).apply {
+            id = appOwnedId
+            isPressed = true
+            isAutographIgnored = true
+        }
+
+        assertEquals(TapResolution.Ignored, resolveTapTarget(root))
+    }
+
+    @Test
+    fun `ignoring a container excludes the clickables inside it`() {
+        // The point of the marker: excluding a region must not require finding every clickable in it.
+        val button = Button(context()).apply {
+            id = appOwnedId
+            isPressed = true
+        }
+        val section = FrameLayout(context()).apply {
+            isAutographIgnored = true
+            addView(button)
+        }
+        val root = FrameLayout(context()).apply { addView(section) }
+
+        assertEquals(TapResolution.Ignored, resolveTapTarget(root))
+    }
+
+    @Test
+    fun `ignoring one subtree leaves its siblings reporting`() {
+        val root = FrameLayout(context()).apply {
+            addView(FrameLayout(context()).apply { isAutographIgnored = true })
+            addView(Button(context()).apply { id = appOwnedId; isPressed = true })
+        }
+
+        assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(root))
+    }
+
+    @Test
+    fun `the mark can be taken back, because RecyclerView recycles views`() {
+        // A ViewHolder binding a mixed list writes `false` as often as `true`; a one-way mark would
+        // leak the exclusion onto whatever row inherited the view.
+        val root = Button(context()).apply {
+            id = appOwnedId
+            isPressed = true
+            isAutographIgnored = true
+        }
+        root.isAutographIgnored = false
+
+        assertTrue(!root.isAutographIgnored)
+        assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(root))
+    }
+
+    @Test
+    fun `an ignored view with no id is Ignored, not Unresolved`() {
+        // Which is what keeps it from spending the one-shot diagnostic: the app excluded this region
+        // deliberately, and telling it that a tap "resolved to nothing" would blame an integration
+        // that is fine, and then never print the line for the integration that isn't.
+        val root = Button(context()).apply {
+            isPressed = true
+            isAutographIgnored = true
+        }
+
+        assertEquals(TapResolution.Ignored, resolveTapTarget(root))
+    }
+
+    @Test
+    fun `the marker does not disturb the view's own tag`() {
+        // It is stored under a resource id private to this library, so an app using View.setTag for
+        // its own purposes — the common case — is unaffected in both directions.
+        val root = Button(context()).apply {
+            tag = "the app's own tag"
+            isAutographIgnored = true
+        }
+
+        assertEquals("the app's own tag", root.tag)
+        assertTrue(root.isAutographIgnored)
+    }
+
+    @Test
+    fun `an ignored tap sends no event and spends no diagnostic`() {
+        val (activity, capture) = install()
+        pressedButton(activity)
+        activity.findViewById<View>(appOwnedId).isAutographIgnored = true
+
+        activity.window.callback!!.dispatchTouchEvent(touchUp())
+
+        assertTrue(recorded.isEmpty())
+        assertTrue(!warnedATapResolvedToNothing)
+        capture.uninstall()
+    }
+
     // --- the capture itself -----------------------------------------------------------------------
 
     @Test

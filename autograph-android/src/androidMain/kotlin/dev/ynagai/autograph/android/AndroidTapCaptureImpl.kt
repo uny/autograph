@@ -145,7 +145,10 @@ internal class AndroidTapCapture(
                     tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject), resolution.identifier)
                     return true
                 }
-                TapResolution.Ambiguous -> Unit
+                // Neither spends the gesture, for the same reason a touch-up that resolved to nothing
+                // does not: an excluded view a stray finger happens to lift from must not consume the
+                // gesture that the real tap, on a view the app did not exclude, is still going to report.
+                TapResolution.Ambiguous, TapResolution.Ignored -> Unit
                 TapResolution.Unresolved -> warnOnceIfATapResolvedToNothing()
             }
         } catch (_: Throwable) {

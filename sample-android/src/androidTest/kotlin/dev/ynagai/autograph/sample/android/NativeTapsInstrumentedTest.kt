@@ -3,6 +3,7 @@ package dev.ynagai.autograph.sample.android
 import androidx.test.core.app.ActivityScenario
 import androidx.test.espresso.Espresso.onView
 import androidx.test.espresso.action.ViewActions.click
+import androidx.test.espresso.action.ViewActions.scrollTo
 import androidx.test.espresso.action.ViewActions.swipeUp
 import androidx.test.espresso.matcher.ViewMatchers.withId
 import androidx.test.espresso.matcher.ViewMatchers.withText
@@ -31,6 +32,7 @@ class NativeTapsInstrumentedTest {
     fun clearLog() {
         NativeTapLog.targets.clear()
         NativeTapLog.composeClicks.clear()
+        NativeTapLog.viewClicks.clear()
     }
 
     @Test
@@ -111,6 +113,26 @@ class NativeTapsInstrumentedTest {
         withTapScreen { onView(withId(R.id.tap_scroller)).perform(swipeUp()) }
 
         assertEquals(emptyList<String>(), NativeTapLog.targets.toList())
+    }
+
+    @Test
+    fun aViewTheAppExcludedReportsNothing() {
+        withTapScreen { onView(withId(R.id.tap_ignored)).perform(scrollTo(), click()) }
+
+        assertEquals(emptyList<String>(), NativeTapLog.targets.toList())
+        // ...and the button was really clicked, so the assertion above is about the exclusion rather
+        // than about the touch having missed.
+        assertEquals(listOf("tap_ignored"), NativeTapLog.viewClicks.toList())
+    }
+
+    @Test
+    fun aClickableInsideAnExcludedContainerReportsNothing() {
+        // The mark is on the container only. Excluding a region must not mean marking every clickable
+        // in it, which is the whole reason the check walks ancestors.
+        withTapScreen { onView(withId(R.id.tap_ignored_child)).perform(scrollTo(), click()) }
+
+        assertEquals(emptyList<String>(), NativeTapLog.targets.toList())
+        assertEquals(listOf("tap_ignored_child"), NativeTapLog.viewClicks.toList())
     }
 
     private fun withTapScreen(interact: () -> Unit) {

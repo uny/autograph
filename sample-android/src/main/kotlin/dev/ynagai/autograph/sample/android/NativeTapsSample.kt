@@ -25,6 +25,7 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
+import dev.ynagai.autograph.android.isAutographIgnored
 
 /**
  * A plain View/XML screen demonstrating `autograph-android`'s native **tap** capture, and the target
@@ -34,7 +35,8 @@ import androidx.recyclerview.widget.RecyclerView
  * assert them against the shipped pipeline rather than a reimplementation of it: an identified button,
  * an unidentified one, a compound row whose id is on the parent, a disabled control, two overlapping
  * views whose z-order disagrees with their child order, nested clickables, a Compose island, a
- * `ListView`, a `RecyclerView`, and enough height to scroll.
+ * `ListView`, a `RecyclerView`, a view the app excluded with `isAutographIgnored`, a clickable inside
+ * an excluded container, and enough height to scroll.
  *
  * `ComponentActivity` rather than `Activity` because the `ComposeView` needs a `ViewTreeLifecycleOwner`.
  * That also makes this a Compose host, so the screen capture deliberately skips it — the Compose
@@ -65,6 +67,8 @@ public class NativeTapsActivity : ComponentActivity() {
         column.addView(nestedClickables())
         column.addView(list())
         column.addView(recycler())
+        column.addView(ignoredButton())
+        column.addView(ignoredSection())
 
         return ScrollView(this).apply {
             id = R.id.tap_scroller
@@ -167,6 +171,30 @@ public class NativeTapsActivity : ComponentActivity() {
             layoutManager = LinearLayoutManager(context)
             adapter = RowAdapter()
             layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 260)
+        }
+
+    /** Excluded by the app: it is clicked, and handles the click, but the capture reports nothing. */
+    private fun ignoredButton(): View =
+        Button(this).apply {
+            text = "Ignored button"
+            id = R.id.tap_ignored
+            isAutographIgnored = true
+            setOnClickListener { NativeTapLog.viewClicks.add("tap_ignored") }
+        }
+
+    /** The mark is on the container; the clickable inside it is not marked and is excluded anyway. */
+    private fun ignoredSection(): View =
+        LinearLayout(this).apply {
+            id = R.id.tap_ignored_section
+            orientation = LinearLayout.VERTICAL
+            isAutographIgnored = true
+            addView(
+                Button(context).apply {
+                    text = "Inside an ignored section"
+                    id = R.id.tap_ignored_child
+                    setOnClickListener { NativeTapLog.viewClicks.add("tap_ignored_child") }
+                },
+            )
         }
 
     private class RowAdapter : RecyclerView.Adapter<RowAdapter.Holder>() {

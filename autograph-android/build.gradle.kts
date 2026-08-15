@@ -26,6 +26,13 @@ kotlin {
         namespace = "dev.ynagai.autograph.android"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
+        // Off by default in the KMP library plugin, which otherwise generates an *empty* resource set
+        // for androidMain and no R class. The module ships exactly one resource — the id used as the
+        // `View.setTag` key for the opt-out marker — and `setTag` rejects any key that is not a real
+        // application resource id, so there is no way to have the marker without this.
+        androidResources {
+            enable = true
+        }
         withHostTest {
             // Robolectric needs the merged Android resources/manifest on the unit-test classpath.
             isIncludeAndroidResources = true

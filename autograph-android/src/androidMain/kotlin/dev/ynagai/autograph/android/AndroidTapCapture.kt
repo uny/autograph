@@ -41,12 +41,17 @@ import dev.ynagai.autograph.context.ScopeStack
  * runtime: an AAR's resources are merged into the application package at build time, so a Material or
  * AppCompat id looks exactly like one of the app's own and is reported the same way.
  *
- * ## No per-element opt-out on this surface yet
+ * ## Excluding a region, and when you have to
  *
- * Compose has `Modifier.autographIgnore()` and UIKit has `registerAutographIgnoredView`; this capture
- * has no equivalent in this release. An editable `TextView` is clickable, so a tap that merely focuses
- * `@+id/password` or `@+id/card_cvv` reports that id. Until the opt-out lands, either do not install
- * this on a screen with sensitive fields, or leave those views without a developer-set id.
+ * Set [isAutographIgnored] on a view to exclude it and everything under it, the same way
+ * `Modifier.autographIgnore()` excludes a Compose subtree and `registerAutographIgnoredView` excludes
+ * a `UIView`. Marking a container is enough; there is no need to mark each clickable inside it. It is
+ * a settable property rather than a one-way mark because `RecyclerView` recycles views — see its own
+ * documentation.
+ *
+ * **A screen with sensitive fields needs it.** An editable `TextView` is clickable, so a tap that
+ * merely focuses `@+id/password` or `@+id/card_cvv` reports that id. Nothing here infers which fields
+ * are sensitive; mark them, or the region holding them.
  *
  * ## What is not captured — none of it silently, all of it by construction
  *
@@ -158,9 +163,10 @@ internal var warnedATapResolvedToNothing = false
  * The first time a tap resolves to nothing, logs once — loud enough that a developer running the app
  * during integration sees it instead of silent nothing. Never logs again.
  *
- * Only [TapResolution.Unresolved] reaches here, never [TapResolution.Ambiguous]: a declined
- * multi-touch is this library refusing to guess, and letting one spend the single warning would
- * print a line blaming an integration that is fine, and then never print the right one.
+ * Only [TapResolution.Unresolved] reaches here, never [TapResolution.Ambiguous] or
+ * [TapResolution.Ignored]: a declined multi-touch is this library refusing to guess and an ignored
+ * view is the app's own instruction, and letting either spend the single warning would print a line
+ * blaming an integration that is fine, and then never print the right one.
  */
 internal fun warnOnceIfATapResolvedToNothing(): Boolean {
     if (warnedATapResolvedToNothing) return false

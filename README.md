@@ -74,7 +74,7 @@ SPI is vendor-neutral.
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, `AutographScope` for screen-scoped event context, and opt-in autocapture of taps (Android and iOS). |
 | `autograph-context` | The ambient scope / screen-context stack that autocapture reads at tap time. Framework-agnostic (no Compose dependency), so native UIKit / SwiftUI / Android View surfaces can push context too. `autograph-compose` mirrors `AutographScope` and `TrackedScreen` into it for you — you only touch this module directly when instrumenting a non-Compose surface. |
 | `autograph-uikit` | iOS-only, and two mechanisms rather than one. Native (non-Compose) taps are mapped to an element through `UIView.hitTest`, which needs no accessibility state and so works in a cold process; the accessibility-tree walk in the same module is what `autograph-compose`'s iOS resolver uses for Compose Multiplatform. `installAutographNativeTapCapture`, `installAutographNativeScreenCapture`, and the tap opt-outs `registerAutographIgnoredView` / `registerAutographIgnoredBounds` are supported public API. The rest of the module is `@AutographInternalApi` — don't depend on it directly. |
-| `autograph-android` | Android-only, and the non-Compose half of an Android app: Compose content on Android is served by `autograph-compose`, not by this. Two mechanisms. `installAutographNativeScreenCapture` auto-emits `Screen Viewed` from `Activity` / `Fragment` lifecycle; `installAutographNativeTapCapture` reports taps on View/XML content, naming the view that actually received the touch by its resource id. Both are opt-in, and a hybrid app runs them beside the Compose pipeline — see [What is and isn't captured](#what-is-and-isnt-captured) for what tap capture does not reach. |
+| `autograph-android` | Android-only, and the non-Compose half of an Android app: Compose content on Android is served by `autograph-compose`, not by this. Two mechanisms. `installAutographNativeScreenCapture` auto-emits `Screen Viewed` from `Activity` / `Fragment` lifecycle; `installAutographNativeTapCapture` reports taps on View/XML content, naming the view that actually received the touch by its resource id, with `View.isAutographIgnored` as its opt-out. Both are opt-in, and a hybrid app runs them beside the Compose pipeline — see [What is and isn't captured](#what-is-and-isnt-captured) for what tap capture does not reach. |
 | `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
 | `autograph-schema` | Generates typed `Tracker.track<EventName>(...)` extension functions from a JSON Schema tracking-plan document, as a compile-time alternative to `EventValidator` (see [Typed event schemas](#typed-event-schemas) below). |
 
@@ -404,11 +404,10 @@ pressed — and reported by its resource id, so the gaps follow from that rather
   `text_input_end_icon` — a name shared by every text field in your app, and by every other Material
   app. Read `target` as "the resource entry name of the view that was pressed", not as "an identifier
   the app author chose".
-- **There is no per-element opt-out on this surface yet.** Compose has `Modifier.autographIgnore()`
-  and UIKit has `registerAutographIgnoredView`; the Android View capture has no equivalent in this
-  release. That matters because an editable `TextView` is clickable, so a tap that merely focuses
-  `@+id/password` or `@+id/card_cvv` reports that id. Until the opt-out lands, either do not install
-  this on a screen with sensitive fields, or give those views no developer-set id.
+- **Sensitive fields are not inferred — mark them.** An editable `TextView` is clickable, so a tap
+  that merely focuses `@+id/password` or `@+id/card_cvv` reports that id. Nothing here guesses which
+  fields those are: exclude them, or the region holding them, with
+  [`View.isAutographIgnored`](#android-excluding-native-content-from-tap-capture).
 - **A `ListView` row reports the list, not the row**: `AbsListView` presses both, and a platform row
   layout's id is the shared `text1`, so the list's own id is the better of the two answers available. A
   `RecyclerView` row is an ordinary pressed view and reports its own id.
@@ -427,6 +426,9 @@ pressed — and reported by its resource id, so the gaps follow from that rather
 Compose content inside a View tree needs no special handling and gets none: Compose routes pointer
 input itself and never sets the View pressed state, so a tap on a `ComposeView` resolves to nothing in
 this pipeline and is reported exactly once, by `autograph-compose`.
+
+To keep a region out of the stream deliberately, see
+[Android: excluding native content from tap capture](#android-excluding-native-content-from-tap-capture).
 
 Every event now carries — this shape is the stable envelope contract described above:
 
@@ -766,6 +768,39 @@ those controls are captured normally and the region veto is what excludes them w
 `UIView` reference SwiftUI does not hand you. Keeping it is also the safe direction: it holds the
 region whatever a future version learns to resolve there.
 
+## Android: excluding native content from tap capture
+
+The View counterpart of `Modifier.autographIgnore()`, and the same **privacy** control: a subtree that
+must not be autocaptured. Explicit tracking inside an excluded subtree still fires — this only stops
+`installAutographNativeTapCapture` from reporting taps there on its own.
+
+```kotlin
+import dev.ynagai.autograph.android.isAutographIgnored
+
+// Excludes this view and everything under it.
+cardNumberField.isAutographIgnored = true
+```
+
+Marking a **container** is enough; there is no need to find and mark each clickable inside it. A tap is
+always attributed to the root of the pressed subtree, so the exclusion is checked on that view and its
+ancestors — which is exactly the set of marks that can apply to it. (The flip side: a mark on a
+non-clickable *child* of a clickable row does nothing, because a tap there is attributed to the row.)
+
+It is a settable property rather than a one-way mark because `RecyclerView` recycles views. A holder
+binding a mixed list must be able to take the mark back, or the exclusion leaks onto whatever row
+inherited the view:
+
+```kotlin
+override fun onBindViewHolder(holder: RowHolder, position: Int) {
+    val row = items[position]
+    holder.itemView.isAutographIgnored = row.isSensitive
+}
+```
+
+An excluded tap is not counted as a failure to resolve, so it never triggers the one-shot "a tap
+resolved to nothing" diagnostic. The marker is stored as a view tag under a resource id private to this
+library, so `View.getTag()` and any other library's tags are untouched.
+
 ## Requirements
 
 - Kotlin **2.4.10** (UUIDv7 generation comes from the standard library)
@@ -792,7 +827,8 @@ region whatever a future version learns to resolve there.
 - [x] Autocapture on Android (opt-in `AutocaptureConfig` on `AutographProvider`)
 - [x] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
 - [x] Native (non-Compose) capture for hybrid apps: iOS UIKit taps, iOS + Android screen views,
-  and the tap opt-outs (`registerAutographIgnoredView`, SwiftUI `.autographIgnore()`)
+  and the tap opt-outs (`registerAutographIgnoredView`, SwiftUI `.autographIgnore()`,
+  `View.isAutographIgnored`)
 - [x] Native taps on the Android View system ([#63](https://github.com/uny/autograph/issues/63)) —
   `installAutographNativeTapCapture`; see the gaps it does not reach, above
 - [x] `sample-android` runnable sample app
