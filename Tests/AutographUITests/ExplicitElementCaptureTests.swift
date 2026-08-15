@@ -51,6 +51,27 @@ final class ExplicitElementCaptureTests: XCTestCase {
         XCTAssertEqual(tracker.events.first?.properties["plan"], "pro")
     }
 
+    /// The JSON overload forwards each argument to the slot it names.
+    ///
+    /// Worth its own test because every argument here is a `String` on both sides of the bridge: swapping
+    /// `name` and `propertiesJson` — or dropping `scope` — compiles cleanly, and the Kotlin-side coverage
+    /// of `clickedJson` cannot see a Swift wrapper that called it wrongly.
+    func testTheJsonOverloadForwardsNameScopeAndProperties() {
+        let tracker = RecordingTracker()
+
+        var handle = AutographTracking()
+        handle.capture = capture(tracker)
+        handle.scope = ["article_id": "42"]
+        handle.track("save_tapped", propertiesJson: #"{"count":3,"ok":true}"#, target: "save_button")
+
+        XCTAssertEqual(tracker.events.map(\.name), ["save_tapped"])
+        XCTAssertEqual(tracker.events.first?.target, "save_button")
+        let properties = tracker.events.first?.properties
+        XCTAssertEqual(properties?["count"], "3", "a non-string value must survive the JSON path")
+        XCTAssertEqual(properties?["ok"], "true")
+        XCTAssertEqual(properties?["article_id"], "42", "the ambient scope must reach a JSON-properties event")
+    }
+
     /// A screen on the shared stack reaches an explicit event — the half of attribution that is
     /// deliberately still read dynamically.
     ///

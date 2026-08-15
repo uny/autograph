@@ -130,7 +130,15 @@ private struct SwiftUIExplicitContent: View {
             Text("Last event props: \(wiring.lastProps)")
                 .accessibilityIdentifier("swiftui_explicit_props_label")
 
-            AutographButton("Plain", event: "Recipe Saved", target: "swiftui_plain_button") {}
+            // Carries a call-site property deliberately: this is the ONLY `AutographButton` in the app
+            // that fires with one, and without it `AutographButton.body` could drop `properties:` on the
+            // floor with every test still green — the button's own parameter would be pinned nowhere.
+            AutographButton(
+                "Plain",
+                event: "Recipe Saved",
+                properties: ["surface": "list"],
+                target: "swiftui_plain_button"
+            ) {}
                 .accessibilityIdentifier("swiftui_plain_button")
 
             // The invariant `AutographButton` exists to guarantee: SwiftUI runs no action for a disabled
@@ -161,10 +169,14 @@ private struct SwiftUIExplicitContent: View {
             }
 
             // Nesting: the inner scope wins the key it shares, and the outer one survives alongside it.
+            // The outer scope carries `route` — a key of its OWN — because that is the half a shared key
+            // cannot pin: with `row_id` alone on the outside, replacing the merge with a plain assignment
+            // would still produce row_id=inner plus the inner's other keys, and pass. Not `section`: that
+            // is reserved and written from the stack, so it would tie this to the screen carrying none.
             AutographButton("Nested", event: "Recipe Saved", target: "swiftui_nested_button") {}
                 .accessibilityIdentifier("swiftui_nested_button")
                 .autographScope(["row_id": "inner", "extra": "kept"])
-                .autographScope(["row_id": "outer"])
+                .autographScope(["row_id": "outer", "route": "feed"])
         }
         // Only the screen name here — both captures come from the parent, which is what lets this
         // modifier see one at all.

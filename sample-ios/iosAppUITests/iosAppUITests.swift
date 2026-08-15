@@ -810,6 +810,13 @@ final class SwiftUIExplicitUITests: XCTestCase {
         app.buttons["swiftui_plain_button"].tap()
         waitForLastEventTarget(app, "swiftui_plain_button")
         XCTAssertEqual(trackLog(app), "Tracks: Recipe Saved:swiftui_plain_button")
+        // The button's own `properties:` argument, pinned nowhere else: this is the only
+        // `AutographButton` in the app that fires carrying one, so dropping the argument inside
+        // `AutographButton.body` is a regression that only this assertion can see.
+        XCTAssertTrue(
+            lastProps(app).contains("\"surface\":\"list\""),
+            "AutographButton's call-site properties did not reach the event: \(lastProps(app))"
+        )
     }
 
     /// **The invariant this API exists for.** A disabled `AutographButton` records nothing, because the
@@ -910,7 +917,8 @@ final class SwiftUIExplicitUITests: XCTestCase {
         waitForLastEventTarget(app, "swiftui_nested_button")
         let props = lastProps(app)
         XCTAssertTrue(props.contains("\"row_id\":\"inner\""), "the inner scope should win row_id: \(props)")
-        XCTAssertTrue(props.contains("\"extra\":\"kept\""), "the outer scope's other key was lost: \(props)")
+        XCTAssertTrue(props.contains("\"extra\":\"kept\""), "the inner scope's other key was lost: \(props)")
+        XCTAssertTrue(props.contains("\"route\":\"feed\""), "the outer scope's other key was lost: \(props)")
     }
 
     /// An explicit event carries the screen `.autographScreen` pushed onto the shared `ScopeStack` — the
