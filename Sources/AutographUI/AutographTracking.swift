@@ -80,6 +80,13 @@ public struct AutographTracking {
     /// A `[String: String]` cannot carry numbers, booleans or nested objects, and Swift cannot construct
     /// the Kotlin `JsonObject` the tracker takes, so this is the escape hatch. Text that does not parse to
     /// a JSON *object* loses the properties but still records the event.
+    ///
+    /// - Important: **A literal, not a template.** Nothing here escapes anything, and the loss is silent
+    ///   in both directions: interpolating a value that contains a `"` makes the text unparseable and
+    ///   drops *every* property of that event with no diagnostic, while a value crafted to close the
+    ///   string can add keys you did not write — including `screen`/`section`, which are overwritten from
+    ///   the stack only when a screen is actually current. Build the object from values you control, and
+    ///   pass anything user-supplied through ``track(_:properties:target:)`` instead.
     public func track(
         _ event: String,
         propertiesJson: String,
@@ -104,7 +111,11 @@ public extension EnvironmentValues {
 
     /// The explicit instrumentation handle. Reads the ``AutographElementCapture`` and the scope that
     /// ``SwiftUICore/View/autographScope(_:)`` accumulated above this view.
-    var autograph: AutographTracking {
+    ///
+    /// Read-only from outside this module: ``AutographTracking`` has no public initializer, so a public
+    /// setter would advertise a capability nothing can use. Set it with
+    /// ``SwiftUICore/View/autographElementCapture(_:)``.
+    internal(set) var autograph: AutographTracking {
         get { self[AutographTrackingKey.self] }
         set { self[AutographTrackingKey.self] = newValue }
     }

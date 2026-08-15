@@ -76,8 +76,11 @@ public struct AutographButton<Label: View>: View {
     public var body: some View {
         Button {
             // Record first, then run the caller's action — the order `Modifier.trackClick` uses on the
-            // Compose side, and for the same reason: if recording fails there is no event but the button
-            // still works, and a missing event beats a broken button.
+            // Compose side, and for the same reason: a *tracker* failure is swallowed on the Kotlin side,
+            // so there is no event but the button still works, and a missing event beats a broken button.
+            // The one exception is deliberate and debug-only: a missing `.autographElementCapture(_:)`
+            // traps in `track`, so `action()` below never runs. That is the wiring bug the trap exists to
+            // surface, and it cannot reach a release build, where the same path logs and returns.
             autograph.track(event, properties: properties, target: target)
             action()
         } label: {
