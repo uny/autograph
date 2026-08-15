@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-08-16
+
 ### Added
 
 - **Tap autocapture for Android View / XML content** ([#63]), via
@@ -939,7 +941,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/uny/autograph/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/uny/autograph/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/uny/autograph/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/uny/autograph/compare/v0.3.0...v0.4.0
