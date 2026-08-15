@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ids for the native tap-capture demo. Declared as resources rather than generated with
+     View.generateViewId(), because the resource entry name is what `installAutographNativeTapCapture`
+     reports as `target` — a generated id has no resource entry behind it and is skipped. -->
+<resources>
+    <item name="tap_button" type="id" />
+    <item name="tap_row" type="id" />
+    <item name="tap_row_label" type="id" />
+    <item name="tap_disabled" type="id" />
+    <item name="tap_under" type="id" />
+    <item name="tap_over" type="id" />
+    <item name="tap_compose_host" type="id" />
+    <item name="tap_nested_parent" type="id" />
+    <item name="tap_nested_child" type="id" />
+    <item name="tap_list" type="id" />
+    <item name="tap_recycler" type="id" />
+    <item name="tap_recycler_row" type="id" />
+    <item name="tap_scroller" type="id" />
+</resources>

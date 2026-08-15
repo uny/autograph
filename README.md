@@ -74,7 +74,7 @@ SPI is vendor-neutral.
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, `AutographScope` for screen-scoped event context, and opt-in autocapture of taps (Android and iOS). |
 | `autograph-context` | The ambient scope / screen-context stack that autocapture reads at tap time. Framework-agnostic (no Compose dependency), so native UIKit / SwiftUI / Android View surfaces can push context too. `autograph-compose` mirrors `AutographScope` and `TrackedScreen` into it for you — you only touch this module directly when instrumenting a non-Compose surface. |
 | `autograph-uikit` | iOS-only, and two mechanisms rather than one. Native (non-Compose) taps are mapped to an element through `UIView.hitTest`, which needs no accessibility state and so works in a cold process; the accessibility-tree walk in the same module is what `autograph-compose`'s iOS resolver uses for Compose Multiplatform. `installAutographNativeTapCapture`, `installAutographNativeScreenCapture`, and the tap opt-outs `registerAutographIgnoredView` / `registerAutographIgnoredBounds` are supported public API. The rest of the module is `@AutographInternalApi` — don't depend on it directly. |
-| `autograph-android` | Android-only. Native (non-Compose) screen capture: `installAutographNativeScreenCapture` auto-emits `Screen Viewed` from `Activity` / `Fragment` lifecycle, so a hybrid app's View/XML screens are tracked alongside its Compose ones. Taps on Android View content are *not* captured — see [What is and isn't captured](#what-is-and-isnt-captured). |
+| `autograph-android` | Android-only, and the non-Compose half of an Android app: Compose content on Android is served by `autograph-compose`, not by this. Two mechanisms. `installAutographNativeScreenCapture` auto-emits `Screen Viewed` from `Activity` / `Fragment` lifecycle; `installAutographNativeTapCapture` reports taps on View/XML content, naming the view that actually received the touch by its resource id. Both are opt-in, and a hybrid app runs them beside the Compose pipeline — see [What is and isn't captured](#what-is-and-isnt-captured) for what tap capture does not reach. |
 | `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
 | `autograph-schema` | Generates typed `Tracker.track<EventName>(...)` extension functions from a JSON Schema tracking-plan document, as a compile-time alternative to `EventValidator` (see [Typed event schemas](#typed-event-schemas) below). |
 
@@ -319,12 +319,7 @@ table is the whole picture, because a gap here produces **no event at all** — 
 | Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
 | iOS native — UIKit | ✅ `installAutographNativeTapCapture` — for identified controls; **cell selection is not covered, see below** | ✅ `installAutographNativeScreenCapture` |
 | iOS native — SwiftUI | ❌ **not captured — instrument explicitly with [`AutographButton`](#ios-swiftui-clicks-with-autographbutton)** | ✅ [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) |
-| Android native — View / XML | ❌ **not captured** ([#63](https://github.com/uny/autograph/issues/63)) | ✅ `installAutographNativeScreenCapture` (Activity / Fragment) |
-
-The asymmetry worth stating plainly: **a hybrid Android app gets `Screen Viewed` for its non-Compose
-screens but no `Element Clicked` for taps on them**, while the same app on iOS gets both. If that gap
-matters to you, say so on [#63](https://github.com/uny/autograph/issues/63) — it is deferred for want of
-a demand signal, not for a technical reason.
+| Android native — View / XML | ✅ `installAutographNativeTapCapture` — for views carrying a resource id; **dialogs and popups are not covered, see below** | ✅ `installAutographNativeScreenCapture` (Activity / Fragment) |
 
 > [!WARNING]
 > **iOS native tap capture does not cover SwiftUI at all** ([#135](https://github.com/uny/autograph/issues/135),
@@ -381,6 +376,57 @@ want in the stream. Also unreported: a `UIKitView` hosted inside Compose (exclud
 boundary, unresolvable by Compose).
 `UIControl` target-action taps used to be listed here; they resolve since
 [#189](https://github.com/uny/autograph/issues/189), because `hitTest` names the control directly.
+
+Known gaps *within* **Android View** tap capture ([#63](https://github.com/uny/autograph/issues/63)).
+A tap is resolved to the **root of the pressed subtree** — the view Android's own touch dispatch marked
+pressed — and reported by its resource id, so the gaps follow from that rather than from a heuristic:
+
+- **Clicks that never travel through touch dispatch are invisible.** A view whose `OnTouchListener`
+  consumes the gesture and calls `performClick()` itself (the pattern Android lint recommends), a
+  `GestureDetector`-driven custom view, and — the one worth stating loudest — a click made with a
+  **keyboard, a D-pad, or an accessibility service's `ACTION_CLICK`**. That last one means this
+  capture's silence is not evenly spread across users: someone driving the app with TalkBack or a
+  hardware keyboard produces no taps at all, which downstream looks the same as not tapping. It is the
+  mirror image of why the iOS accessibility-tree resolver was removed, so it is stated here rather than
+  discovered later.
+- **Dialogs and `PopupWindow`s**, and so a `Spinner`'s dropdown, an overflow menu, and an
+  `AutoCompleteTextView`'s suggestions. Each renders in a window this capture is not attached to. This
+  is a boundary this library chose, not a platform impossibility: covering them means either reflection
+  into framework internals or an explicit per-window registration API, and neither is in this release.
+- **Views with no id at all.** A view built in code without an id, an id from `View.generateViewId()`
+  (which has no resource entry behind it), and ids owned by the `android` package — the `text1` that
+  every `simple_list_item_1` row in the app shares — are all skipped rather than reported under a name
+  that means nothing.
+- **An id from a library is reported as if you had chosen it.** Only the `android` package is
+  excluded, and it is the only one that *can* be: an AAR's resources are merged into your application
+  package at build time, so at runtime a Material or AppCompat id is indistinguishable from one of
+  yours. A tap on the password-visibility toggle inside a `TextInputLayout` reports
+  `text_input_end_icon` — a name shared by every text field in your app, and by every other Material
+  app. Read `target` as "the resource entry name of the view that was pressed", not as "an identifier
+  the app author chose".
+- **There is no per-element opt-out on this surface yet.** Compose has `Modifier.autographIgnore()`
+  and UIKit has `registerAutographIgnoredView`; the Android View capture has no equivalent in this
+  release. That matters because an editable `TextView` is clickable, so a tap that merely focuses
+  `@+id/password` or `@+id/card_cvv` reports that id. Until the opt-out lands, either do not install
+  this on a screen with sensitive fields, or give those views no developer-set id.
+- **A `ListView` row reports the list, not the row**: `AbsListView` presses both, and a platform row
+  layout's id is the shared `text1`, so the list's own id is the better of the two answers available. A
+  `RecyclerView` row is an ordinary pressed view and reports its own id.
+- **Multi-touch on two separate elements** reports at most one of them, and which one is not
+  guaranteed. At most one event is sent per gesture, so a press cannot be double-counted because a
+  second finger was resting on the screen — but the pressed state is global to the hierarchy rather
+  than per pointer, so a lifting finger cannot be attributed to a particular element. Whether the
+  surviving element is reported at all depends on whether the framework's posted press-release
+  runnable happens to run between the two touch-ups, which is input batching, not something this
+  library controls.
+- **A long press consumed by an `OnLongClickListener` is reported as a tap** on that element. The
+  framework's "this long press was handled" flag is private, and the only public proxy — press duration
+  — would drop *real* clicks, because a long press on a view whose listener returns `false` does fire
+  one. The element named is right; the gesture kind is not.
+
+Compose content inside a View tree needs no special handling and gets none: Compose routes pointer
+input itself and never sets the View pressed state, so a tap on a `ComposeView` resolves to nothing in
+this pipeline and is reported exactly once, by `autograph-compose`.
 
 Every event now carries — this shape is the stable envelope contract described above:
 
@@ -747,8 +793,8 @@ region whatever a future version learns to resolve there.
 - [x] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
 - [x] Native (non-Compose) capture for hybrid apps: iOS UIKit taps, iOS + Android screen views,
   and the tap opt-outs (`registerAutographIgnoredView`, SwiftUI `.autographIgnore()`)
-- [ ] Native taps on the Android View system ([#63](https://github.com/uny/autograph/issues/63)) — the
-  one hybrid gap left; deferred for want of a demand signal, so say so on the issue if you need it
+- [x] Native taps on the Android View system ([#63](https://github.com/uny/autograph/issues/63)) —
+  `installAutographNativeTapCapture`; see the gaps it does not reach, above
 - [x] `sample-android` runnable sample app
 - [x] iOS sample app
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking
