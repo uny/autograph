@@ -193,6 +193,10 @@ class AndroidTapCaptureTest {
 
     @Test
     fun `ignoring one subtree leaves its siblings reporting`() {
+        // What this actually pins is that the check walks *ancestors* and not the whole tree: an
+        // implementation that looked for any mark anywhere under the root would fail here. Deleting
+        // the exclusion outright does not — a sibling mark is unreachable from the walk by
+        // construction, which is the property being asserted.
         val root = FrameLayout(context()).apply {
             addView(FrameLayout(context()).apply { isAutographIgnored = true })
             addView(Button(context()).apply { id = appOwnedId; isPressed = true })
@@ -307,6 +311,30 @@ class AndroidTapCaptureTest {
         // real tap still to come in it.
         val (activity, capture) = install()
         activity.setContentView(Button(activity).apply { id = appOwnedId }) // present, but not pressed
+        val gesture = SystemClock.uptimeMillis()
+
+        activity.window.callback!!.dispatchTouchEvent(pointerUpIn(gesture, gesture + 10))
+        pressedButton(activity)
+        activity.window.callback!!.dispatchTouchEvent(upIn(gesture, gesture + 20))
+
+        assertEquals(listOf("Element Clicked" to "fragment_container_view_tag"), recorded)
+        capture.uninstall()
+    }
+
+    @Test
+    fun `a touch-up on an excluded view leaves the gesture reportable`() {
+        // The same claim as the test above, for the other resolution that sends nothing: an excluded
+        // view a stray finger happens to lift from must not consume the gesture that the real tap, on
+        // a view the app did not exclude, is still going to report. Without this, folding `Ignored`
+        // into the reporting branch passes every other test in this file.
+        val (activity, capture) = install()
+        activity.setContentView(
+            Button(activity).apply {
+                id = appOwnedId
+                isPressed = true
+                isAutographIgnored = true
+            },
+        )
         val gesture = SystemClock.uptimeMillis()
 
         activity.window.callback!!.dispatchTouchEvent(pointerUpIn(gesture, gesture + 10))

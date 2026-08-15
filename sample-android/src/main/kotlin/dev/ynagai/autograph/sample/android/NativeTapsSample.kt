@@ -67,16 +67,19 @@ public class NativeTapsActivity : ComponentActivity() {
         column.addView(nestedClickables())
         column.addView(list())
         column.addView(recycler())
+        // The spacer goes before the excluded views deliberately. `aScrollReportsNothing` swipes from
+        // the bottom of the viewport, and anything that pushes real content down to that line makes
+        // that test pass because the view under the finger was excluded rather than because a scroll
+        // cancels the press — the same assertion, no longer pinning the same thing. Below the spacer,
+        // nothing added here can reach the first screen on any device. Both excluded views are reached
+        // by `scrollTo()` in the tests, so their position costs nothing.
+        column.addView(TextView(this).apply { text = "scroll me"; height = 2000 })
         column.addView(ignoredButton())
         column.addView(ignoredSection())
 
         return ScrollView(this).apply {
             id = R.id.tap_scroller
-            addView(
-                column.apply {
-                    addView(TextView(context).apply { text = "scroll me"; height = 2000 })
-                },
-            )
+            addView(column)
         }
     }
 

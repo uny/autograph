@@ -410,7 +410,8 @@ pressed — and reported by its resource id, so the gaps follow from that rather
   [`View.isAutographIgnored`](#android-excluding-native-content-from-tap-capture).
 - **A `ListView` row reports the list, not the row**: `AbsListView` presses both, and a platform row
   layout's id is the shared `text1`, so the list's own id is the better of the two answers available. A
-  `RecyclerView` row is an ordinary pressed view and reports its own id.
+  `RecyclerView` row is an ordinary pressed view and reports its own id. This is also why marking a
+  `ListView` *row* with `View.isAutographIgnored` does nothing — exclude the list itself.
 - **Multi-touch on two separate elements** reports at most one of them, and which one is not
   guaranteed. At most one event is sent per gesture, so a press cannot be double-counted because a
   second finger was resting on the screen — but the pressed state is global to the hierarchy rather
@@ -783,8 +784,15 @@ cardNumberField.isAutographIgnored = true
 
 Marking a **container** is enough; there is no need to find and mark each clickable inside it. A tap is
 always attributed to the root of the pressed subtree, so the exclusion is checked on that view and its
-ancestors — which is exactly the set of marks that can apply to it. (The flip side: a mark on a
-non-clickable *child* of a clickable row does nothing, because a tap there is attributed to the row.)
+ancestors — which is exactly the set of marks that can apply to it.
+
+The flip side, and it has teeth: a mark **below** the view a tap resolves to is never consulted. That
+covers the harmless case — a mark on a non-clickable *child* of a clickable row does nothing, because
+a tap there is attributed to the row — and one that is not harmless: **a mark on a `ListView` row is a
+no-op**. `AbsListView` presses the list as well as the row, so a row tap resolves to the list, and a
+row marked in `getView()` is still reported under the list's own id. Mark the `ListView` itself.
+`RecyclerView` is unaffected — a row there is an ordinary pressed view, and is what the tap resolves
+to.
 
 It is a settable property rather than a one-way mark because `RecyclerView` recycles views. A holder
 binding a mixed list must be able to take the mark back, or the exclusion leaks onto whatever row
@@ -797,9 +805,21 @@ override fun onBindViewHolder(holder: RowHolder, position: Int) {
 }
 ```
 
-An excluded tap is not counted as a failure to resolve, so it never triggers the one-shot "a tap
-resolved to nothing" diagnostic. The marker is stored as a view tag under a resource id private to this
-library, so `View.getTag()` and any other library's tags are untouched.
+**It does not cross into Compose, in either direction.** A `ComposeView` inside a marked subtree is
+served by `autograph-compose`, which resolves taps through the Compose semantics tree and never sees a
+View tag — so its taps are still autocaptured. The mirror holds too: an `AndroidView` inside a
+`Modifier.autographIgnore()` subtree is an ordinary pressed View to this capture. A region that
+straddles the two pipelines has to be marked on **both** sides.
+
+A tap that *resolves* to an excluded view is not counted as a failure to resolve, so it does not
+trigger the one-shot "a tap resolved to nothing" diagnostic. A tap inside an excluded region that
+presses nothing at all — blank space, a disabled control, Compose content — is indistinguishable from
+any other unresolved tap and can still spend it.
+
+The marker is stored as a view tag keyed by a resource id this library declares, so `View.getTag()` and
+any other library's tags are untouched. Resource ids merge by name across the whole application,
+though, so an app or a dependency that declares its own `autograph_ignore` id shares the key — the
+isolation is the name, not a namespace.
 
 ## Requirements
 

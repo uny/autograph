@@ -52,11 +52,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   is enough — the exclusion is checked on the resolved target and its ancestors, which is exactly the
   set of marks that can apply to a tap.
 
+  Two boundaries the word "under" does not reach, both documented in the README. A mark *below* the
+  view a tap resolves to is never consulted, which makes a mark on a `ListView` **row** a no-op —
+  `AbsListView` presses the list too, so a row tap resolves to the list; mark the list itself
+  (`RecyclerView` rows are unaffected). And it does not cross into Compose in either direction: a
+  `ComposeView` inside a marked subtree is served by `autograph-compose`, which reads semantics and
+  not View tags, so a region spanning both pipelines must be marked on both.
+
   A settable property rather than a one-way mark, because `RecyclerView` recycles views: a holder
   binding a mixed list has to be able to take the mark back, or the exclusion leaks onto whatever row
-  inherited the view. An excluded tap is not counted as a failure to resolve, so it never spends the
-  one-shot "a tap resolved to nothing" diagnostic. The marker is a view tag under a resource id
-  private to this library, so `View.getTag()` and other libraries' tags are untouched.
+  inherited the view. A tap that *resolves* to an excluded view is not counted as a failure to
+  resolve, so it does not spend the one-shot "a tap resolved to nothing" diagnostic — a tap inside an
+  excluded region that presses nothing at all still can, being indistinguishable from any other
+  unresolved tap. The marker is a view tag keyed by a resource id this library declares, so
+  `View.getTag()` and other libraries' tags are untouched; ids merge by name, so an app declaring its
+  own `autograph_ignore` shares the key.
+
+  **Packaging note:** `autograph-android` now ships Android resources (that one id, and the generated
+  `R` class) where every release through 0.6.0 shipped none. Nothing to do on upgrade, but a build
+  that gates on resource merging or artifact contents will see the change.
 
 ### Fixed
 

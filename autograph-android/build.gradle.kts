@@ -28,8 +28,12 @@ kotlin {
         minSdk = libs.versions.android.minSdk.get().toInt()
         // Off by default in the KMP library plugin, which otherwise generates an *empty* resource set
         // for androidMain and no R class. The module ships exactly one resource — the id used as the
-        // `View.setTag` key for the opt-out marker — and `setTag` rejects any key that is not a real
-        // application resource id, so there is no way to have the marker without this.
+        // `View.setTag` key for the opt-out marker.
+        //
+        // Not because the framework demands a declared resource: `setTag` only rejects keys whose
+        // package byte is < 2 (`key ushr 24`), so any large enough integer is accepted. It is because
+        // the key namespace is shared with every other library in the app, and a real merged resource
+        // id is the only way to pick one that cannot collide with someone else's.
         androidResources {
             enable = true
         }

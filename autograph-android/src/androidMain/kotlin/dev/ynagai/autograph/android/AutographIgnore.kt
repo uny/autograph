@@ -12,6 +12,20 @@ import android.view.View
  * `Tracker.track` the app makes from its own click listener is unaffected — this only stops
  * [installAutographNativeTapCapture] from reporting taps here on its own.
  *
+ * ## Two boundaries the word "under" does not reach, and both matter
+ *
+ * **A mark below the view a tap resolves to is never consulted** — see [isExcludedFromAutocapture]
+ * for why it cannot be. Usually harmless (a mark on a non-clickable label inside a clickable row does
+ * nothing, because the tap is attributed to the row), but for `AbsListView` it is not: a `ListView`
+ * presses itself as well as the row, so a row tap resolves to the *list*, and a row marked in
+ * `getView()` is still reported under the list's id. Mark the `ListView` itself. `RecyclerView` rows
+ * are ordinary pressed views and are unaffected.
+ *
+ * **This does not cross into Compose.** A `ComposeView` inside a marked subtree is served by
+ * `autograph-compose`, which resolves taps through the Compose semantics tree and never reads a View
+ * tag, so its taps are still autocaptured; and an `AndroidView` inside a `Modifier.autographIgnore()`
+ * subtree is an ordinary pressed View here. A region spanning both pipelines must be marked on both.
+ *
  * ## A settable property, not a one-way mark, because views are recycled
  *
  * `RecyclerView` hands the same `View` instance to a different item, so a marker that could only be
@@ -28,16 +42,21 @@ import android.view.View
  * ## Threading
  *
  * Main thread only, like every other `View` property, and for the same reason: the tap capture reads
- * it during touch dispatch.
+ * it during touch dispatch. Specifically it is read *after* the app's own handling of the touch-up,
+ * because that dispatch is what sets the pressed state the target is derived from — so a view that
+ * clears its own mark while handling `ACTION_UP` is read as unmarked for that very tap. Set the mark
+ * when the content is built or bound, not from inside a touch handler.
  *
- * Stored as a view tag under a resource id private to this library, so it does not disturb
- * [View.getTag] or any other library's tags.
+ * Stored as a view tag keyed by a resource id this library declares, so it does not disturb
+ * [View.getTag] or any other library's tags. Resource ids merge by name across the application,
+ * though: an app or dependency declaring its own `autograph_ignore` id shares this key.
  */
 public var View.isAutographIgnored: Boolean
     get() = getTag(R.id.autograph_ignore) == true
     set(value) {
-        // Cleared rather than tagged `false`: an untagged view and a view tagged `false` mean the same
-        // thing, and holding no reference is the cheaper of the two ways to say it.
+        // Tagged `null` rather than `false` so the getter's `== true` is the whole rule, and an
+        // untagged view and an un-marked one are literally the same state rather than two states that
+        // have to agree. (`setTag` stores the null; it does not drop the key.)
         setTag(R.id.autograph_ignore, if (value) true else null)
     }
 
