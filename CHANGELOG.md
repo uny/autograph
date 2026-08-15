@@ -188,6 +188,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   a binary it cannot run. Nothing enforced the declared floor, which is why the mismatch survived
   through 0.5.0 unnoticed.
 
+  **Compatibility.** SwiftPM will now refuse to resolve this package for a consumer whose manifest
+  declares an iOS deployment target below 15.0 — raise it to `.iOS(.v15)`. Such a consumer was already
+  linking a binary it could not run, so nothing that worked stops working.
+
   Lowering the binary instead was considered and rejected. Apple's toolchain does not stand in the way
   — Xcode 26.3's SDK compiles a `-target arm64-apple-ios13.0` Swift module without so much as a
   warning, measured — but Kotlin/Native offers no supported way to set an iOS deployment target, only
@@ -197,8 +201,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   The raised floor also removes the availability plumbing the false floor required: the four
   `@available(iOS 14.0, *)` annotations on `.autographScreen` and its modifier, and the
   `#available(iOS 14.0, *)` gate that kept `Logger` reachable in `autograph.track`'s missing-capture
-  diagnostic. No Swift API in this package now carries an `@available` annotation of its own, and the
-  README's Requirements section states the iOS minimum for the first time.
+  diagnostic. No Swift API in this package now carries an `@available` version annotation of its own,
+  and the README's Requirements section states the iOS minimum for the first time.
 
 - **iOS native tap capture now works on UIKit in a cold process** ([#189]). Native taps resolved
   through the accessibility element tree, which UIKit and SwiftUI build only once an accessibility
