@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-15
+
 ### Added
 
 - **Explicit click instrumentation for SwiftUI**: `AutographButton` and `autograph.track(…)` in the
@@ -822,7 +824,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/uny/autograph/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/uny/autograph/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/uny/autograph/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/uny/autograph/compare/v0.2.0...v0.3.0
