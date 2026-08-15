@@ -2,7 +2,6 @@
 
 package dev.ynagai.autograph.android
 
-import dev.ynagai.autograph.asJsonObject
 import android.app.Activity
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -14,6 +13,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

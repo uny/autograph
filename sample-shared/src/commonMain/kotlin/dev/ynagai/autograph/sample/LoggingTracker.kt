@@ -1,7 +1,7 @@
 package dev.ynagai.autograph.sample
 
-import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -25,21 +25,23 @@ internal class LoggingTracker(
     private val onScreen: (name: String, properties: JsonObject) -> Unit = { _, _ -> },
 ) : Tracker {
     override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
-        sampleLog("track name=$name target=$target properties.asJsonObject()=$properties.asJsonObject()")
+        val props = properties.asJsonObject()
+        sampleLog("track name=$name target=$target properties=$props")
         // `target` stays a positional argument: the autocapture pipelines pass it alongside
-        // `properties.asJsonObject()`, not merged into it, so a test observing the target reads it here directly.
+        // `properties`, not merged into it, so a test observing the target reads it here directly.
         // `name` is handed over too — see [appendTrackLog] for why the target alone cannot tell a
         // double report from a single one (#151).
-        onTrack(name, properties.asJsonObject(), target)
+        onTrack(name, props, target)
     }
 
     override fun screen(name: String, properties: Map<String, JsonElement>) {
-        sampleLog("screen name=$name properties.asJsonObject()=$properties.asJsonObject()")
-        onScreen(name, properties.asJsonObject())
+        val props = properties.asJsonObject()
+        sampleLog("screen name=$name properties=$props")
+        onScreen(name, props)
     }
 
     override fun identify(userId: String, traits: Map<String, JsonElement>) {
-        sampleLog("identify userId=$userId traits.asJsonObject()=$traits.asJsonObject()")
+        sampleLog("identify userId=$userId traits=${traits.asJsonObject()}")
     }
 }
 

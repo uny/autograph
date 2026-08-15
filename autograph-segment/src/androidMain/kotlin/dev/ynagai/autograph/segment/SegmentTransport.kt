@@ -1,12 +1,12 @@
 package dev.ynagai.autograph.segment
 
-import dev.ynagai.autograph.asJsonObject
 import com.segment.analytics.kotlin.core.Analytics
 import com.segment.analytics.kotlin.core.BaseEvent
 import com.segment.analytics.kotlin.core.platform.Plugin
 import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.EnvelopeSource
 import dev.ynagai.autograph.Transport
+import dev.ynagai.autograph.asJsonObject
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

@@ -1,7 +1,7 @@
 package dev.ynagai.autograph.uikit
 
-import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import kotlin.test.Test
 import kotlin.test.assertEquals

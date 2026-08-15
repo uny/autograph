@@ -42,10 +42,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   a `JsonObject`-only operation without an explicit conversion, so the unsound path can no longer be
   written by accident.
 
-  **Kotlin callers are unaffected** — `JsonObject` *is* a `Map<String, JsonElement>`, so every
-  existing call site compiles and behaves identically. **Kotlin implementers of `Tracker`,
-  `Transport` or `EventValidator` must widen their overrides** to match; there is no deprecation
-  window, per the pre-1.0 policy in [ADR 0001](docs/adr/0001-public-api-evolution.md).
+  **Kotlin call sites are unaffected at the source level** — `JsonObject` *is* a
+  `Map<String, JsonElement>`, so every existing call compiles and behaves identically. It is still
+  a **binary** break: the descriptor changes from `…JsonObject;…` to `…java/util/Map;…`, so a
+  prebuilt library compiled against 0.6.0 that calls `Tracker.track` fails with `NoSuchMethodError`
+  (and `IrLinkageError` on Kotlin/Native) until it is recompiled. **Kotlin implementers of
+  `Tracker`, `Transport` or `EventValidator` must widen their overrides** to match.
+
+  There is no deprecation window. [ADR 0001](docs/adr/0001-public-api-evolution.md) governs how the
+  public API may evolve *after 1.0* — its ABI guarantee for `autograph-core`/`autograph-context`
+  binds from that release onward, and it deliberately leaves signature changes before then
+  unconstrained ("the window to decide … is before 1.0"). This is such a change, shipped in a 0.x
+  release.
 
   This does not make non-empty properties expressible from Swift — `JsonElement` still has no
   Objective-C initializer, so a Swift caller can still only pass an empty dictionary. That is the

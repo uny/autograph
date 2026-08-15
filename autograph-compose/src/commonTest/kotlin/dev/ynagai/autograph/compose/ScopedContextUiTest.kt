@@ -1,6 +1,5 @@
 package dev.ynagai.autograph.compose
 
-import dev.ynagai.autograph.asJsonObject
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -11,6 +10,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

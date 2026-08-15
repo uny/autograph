@@ -1,6 +1,5 @@
 package dev.ynagai.autograph.compose
 
-import dev.ynagai.autograph.asJsonObject
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -23,6 +22,7 @@ import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -34,8 +34,8 @@ private class ElementRecordingTracker : Tracker {
     val tracked = mutableListOf<Triple<String, JsonObject, String?>>()
     val names: List<String> get() = tracked.map { it.first }
     override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
-        // Mirrors AutographTracker.track's real merge of target into properties.asJsonObject() (see
-        // Autograph.kt's withTarget), so assertions here read properties.asJsonObject() the same way a real
+        // Mirrors AutographTracker.track's real merge of target into properties (see
+        // Autograph.kt's withTarget), so assertions here read properties the same way a real
         // Tracker's callers would observe them.
         val merged = target?.let { JsonObject(properties.asJsonObject() + ("target" to kotlinx.serialization.json.JsonPrimitive(it))) } ?: properties.asJsonObject()
         tracked += Triple(name, merged, target)

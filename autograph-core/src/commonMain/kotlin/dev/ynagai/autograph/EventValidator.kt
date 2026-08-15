@@ -1,7 +1,6 @@
 package dev.ynagai.autograph
 
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Checks a `track`/`screen` event against an app-defined tracking-plan contract — a fixed set of

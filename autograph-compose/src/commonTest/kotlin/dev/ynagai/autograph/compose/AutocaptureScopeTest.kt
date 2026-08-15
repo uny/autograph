@@ -1,6 +1,5 @@
 package dev.ynagai.autograph.compose
 
-import dev.ynagai.autograph.asJsonObject
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject

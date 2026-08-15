@@ -13,7 +13,9 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * ## Why this exists at all
  *
- * [Tracker.track] takes a [JsonObject], and **Swift cannot build one**. `Autograph.xcframework`
+ * [Tracker.track] takes a `Map<String, JsonElement>` — the interface rather than [JsonObject], since
+ * declaring the subtype made a Swift dictionary crash the process (#193) — and **Swift still cannot
+ * build a [JsonElement] to put in it**. `Autograph.xcframework`
  * exports core/context/uikit/segment but not `kotlinx-serialization-json`, so `JsonPrimitive` has no
  * Objective-C counterpart and `JsonElement` arrives as an opaque class with no initializer: a Swift
  * caller can pass an empty properties dictionary and nothing else. Exporting the serialization

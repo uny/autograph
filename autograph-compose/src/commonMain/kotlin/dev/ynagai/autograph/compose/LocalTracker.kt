@@ -14,7 +14,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 /**
  * The ambient [Tracker] for the composition. Provide it with [AutographProvider];
