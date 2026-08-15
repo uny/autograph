@@ -4,10 +4,11 @@ import android.view.View
 import android.view.ViewGroup
 
 /**
- * What resolving a tap on Android View content produced. Tri-state for the same reason iOS's
- * `NativeHitTestResolution` is: only [Unresolved] means "nothing here could be named", which is the
- * one outcome worth telling a developer about once. [Ambiguous] is this library declining to guess,
- * and spending the single diagnostic on it would print a misleading line.
+ * What resolving a tap on Android View content produced. Several kinds of "no event" for the same
+ * reason iOS's `NativeHitTestResolution` is: only [Unresolved] means "nothing here could be named",
+ * which is the one outcome worth telling a developer about once. [Ambiguous] is this library
+ * declining to guess and [Ignored] is the app's own instruction, and spending the single diagnostic
+ * on either would print a misleading line.
  */
 internal sealed interface TapResolution {
     /** The tap named [identifier], which is a developer-set view id. */
@@ -18,6 +19,13 @@ internal sealed interface TapResolution {
 
     /** More than one element was being touched (multi-touch); attributing to one would be a guess. */
     data object Ambiguous : TapResolution
+
+    /**
+     * The target was excluded by the app with [isAutographIgnored]. Distinct from [Unresolved]
+     * because it is an answered question, not an unanswered one: an app that deliberately excluded a
+     * region must not be told, once, that its integration produced a tap naming nothing.
+     */
+    data object Ignored : TapResolution
 }
 
 /**
@@ -38,6 +46,9 @@ internal sealed interface TapResolution {
  * row the finger landed, which the deepest-node rule was not. Nested clickables still resolve to the
  * inner one, because that same method deliberately does not propagate into a clickable child.
  *
+ * **The app can veto the answer.** A resolved target that carries [isAutographIgnored], on itself or
+ * on any ancestor, becomes [TapResolution.Ignored] and reports nothing.
+ *
  * **Must be called synchronously while the `ACTION_UP` dispatch is still on the stack.** `View`
  * clears its pressed state from a *posted* runnable, so anything that waits for the next main-loop
  * message — including the `post` that would be needed to observe the click itself — sees nothing.
@@ -54,6 +65,9 @@ internal fun resolveTapTarget(root: View): TapResolution {
     } else {
         TapResolution.Ambiguous
     }
+    // Before the identifier, not after: a view the app excluded reports nothing whether or not it has
+    // an id, and an excluded view without one must not spend the single "resolved to nothing" warning.
+    if (isExcludedFromAutocapture(view)) return TapResolution.Ignored
     return view.developerSetIdentifier()?.let(TapResolution::Target) ?: TapResolution.Unresolved
 }
 

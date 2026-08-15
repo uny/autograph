@@ -16,4 +16,7 @@
     <item name="tap_recycler" type="id" />
     <item name="tap_recycler_row" type="id" />
     <item name="tap_scroller" type="id" />
+    <item name="tap_ignored" type="id" />
+    <item name="tap_ignored_section" type="id" />
+    <item name="tap_ignored_child" type="id" />
 </resources>

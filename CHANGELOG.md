@@ -31,8 +31,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   like the `text1` shared by every `simple_list_item_1` row. It is the entry name of whatever was
   pressed, though, not proof the app author chose it: an AAR's resources are merged into the
   application package at build time, so a Material or AppCompat id cannot be told apart from one of
-  yours at runtime and is reported the same way. This surface also has **no per-element opt-out yet** —
-  the README says what that costs on a screen with sensitive fields.
+  yours at runtime and is reported the same way. Exclude what should not be reported with
+  `View.isAutographIgnored`, below — an editable `TextView` is clickable, so a tap that merely focuses
+  a password field reports its id.
 
   Compose content inside a View tree needs no de-duplication and gets none: Compose routes pointer
   input itself and never sets the View pressed state, so those taps resolve to nothing here and stay
@@ -44,6 +45,32 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   D-pad and accessibility-service clicks. One case is a misreport rather than a hole, and is listed
   there too: a long press consumed by an `OnLongClickListener` *is* reported, as a tap on the right
   element — the element named is correct, the gesture kind is not.
+
+- **`View.isAutographIgnored`** ([#63]), the View counterpart of Compose's
+  `Modifier.autographIgnore()`: a view carrying it, and everything under it, is excluded from the tap
+  autocapture above. Explicit tracking inside an excluded subtree is unaffected. Marking a *container*
+  is enough — the exclusion is checked on the resolved target and its ancestors, which is exactly the
+  set of marks that can apply to a tap.
+
+  Two boundaries the word "under" does not reach, both documented in the README. A mark *below* the
+  view a tap resolves to is never consulted, which makes a mark on a `ListView` **row** a no-op —
+  `AbsListView` presses the list too, so a row tap resolves to the list; mark the list itself
+  (`RecyclerView` rows are unaffected). And it does not cross into Compose in either direction: a
+  `ComposeView` inside a marked subtree is served by `autograph-compose`, which reads semantics and
+  not View tags, so a region spanning both pipelines must be marked on both.
+
+  A settable property rather than a one-way mark, because `RecyclerView` recycles views: a holder
+  binding a mixed list has to be able to take the mark back, or the exclusion leaks onto whatever row
+  inherited the view. A tap that *resolves* to an excluded view is not counted as a failure to
+  resolve, so it does not spend the one-shot "a tap resolved to nothing" diagnostic — a tap inside an
+  excluded region that presses nothing at all still can, being indistinguishable from any other
+  unresolved tap. The marker is a view tag keyed by a resource id this library declares, so
+  `View.getTag()` and other libraries' tags are untouched; ids merge by name, so an app declaring its
+  own `autograph_ignore` shares the key.
+
+  **Packaging note:** `autograph-android` now ships Android resources (that one id, and the generated
+  `R` class) where every release through 0.6.0 shipped none. Nothing to do on upgrade, but a build
+  that gates on resource merging or artifact contents will see the change.
 
 ### Fixed
 
