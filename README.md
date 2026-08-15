@@ -653,7 +653,7 @@ Native screen capture auto-emits `Screen Viewed` for UIKit `UIViewController` tr
 `viewDidAppear:` swizzle). It cannot see **SwiftUI** screens: every SwiftUI screen is one
 system-bundle `UIHostingController`, and `NavigationStack` swaps its destinations inside that single
 host with no per-destination `viewDidAppear:`. So SwiftUI screens name themselves, using the
-`AutographUI` product (iOS 14+):
+`AutographUI` product:
 
 ```kotlin
 // Kotlin, in your shared module: expose a capture built on the SAME ScopeStack you hand
@@ -722,6 +722,11 @@ region whatever a future version learns to resolve there.
   `Modifier.onVisibilityChanged`)
 - Android `compileSdk` **37** or later, for consumers of `autograph-compose` — required by the
   `androidx.lifecycle` 2.11.0 it depends on
+- iOS **15.0** or later, for the Swift package. This is not a design choice but a property of the
+  binary: Kotlin/Native builds `Autograph.xcframework` at `minos 15.0` by default, and every Swift
+  product links it, so `Package.swift` declares the same floor rather than a lower one SwiftPM would
+  accept and the binary would then fail to honour. No Swift API here carries an `@available` version
+  annotation of its own
 - Targets: **Android**, **JVM**, and **iOS** — device `iosArm64` and the Apple-Silicon simulator
   `iosSimulatorArm64`. The Intel-Mac simulator (`iosX64`) is intentionally not shipped: Apple-Silicon
   simulators cover current development, and adding a target costs a Kotlin/Native link on every CI run,
