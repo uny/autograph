@@ -1,6 +1,8 @@
 package dev.ynagai.autograph.sample
 
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.Tracker
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -22,22 +24,22 @@ internal class LoggingTracker(
     private val onTrack: (name: String, properties: JsonObject, target: String?) -> Unit = { _, _, _ -> },
     private val onScreen: (name: String, properties: JsonObject) -> Unit = { _, _ -> },
 ) : Tracker {
-    override fun track(name: String, properties: JsonObject, target: String?) {
-        sampleLog("track name=$name target=$target properties=$properties")
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
+        sampleLog("track name=$name target=$target properties.asJsonObject()=$properties.asJsonObject()")
         // `target` stays a positional argument: the autocapture pipelines pass it alongside
-        // `properties`, not merged into it, so a test observing the target reads it here directly.
+        // `properties.asJsonObject()`, not merged into it, so a test observing the target reads it here directly.
         // `name` is handed over too — see [appendTrackLog] for why the target alone cannot tell a
         // double report from a single one (#151).
-        onTrack(name, properties, target)
+        onTrack(name, properties.asJsonObject(), target)
     }
 
-    override fun screen(name: String, properties: JsonObject) {
-        sampleLog("screen name=$name properties=$properties")
-        onScreen(name, properties)
+    override fun screen(name: String, properties: Map<String, JsonElement>) {
+        sampleLog("screen name=$name properties.asJsonObject()=$properties.asJsonObject()")
+        onScreen(name, properties.asJsonObject())
     }
 
-    override fun identify(userId: String, traits: JsonObject) {
-        sampleLog("identify userId=$userId traits=$traits")
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {
+        sampleLog("identify userId=$userId traits.asJsonObject()=$traits.asJsonObject()")
     }
 }
 

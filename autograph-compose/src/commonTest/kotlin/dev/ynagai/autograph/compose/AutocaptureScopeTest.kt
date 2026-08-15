@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.compose
 
+import dev.ynagai.autograph.asJsonObject
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +30,7 @@ import androidx.compose.ui.zIndex
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -41,12 +43,12 @@ import kotlin.test.assertNull
 private class ScopeCaptureTracker : Tracker {
     val trackedProps = mutableListOf<JsonObject>()
     val trackedTargets = mutableListOf<String?>()
-    override fun track(name: String, properties: JsonObject, target: String?) {
-        trackedProps += properties
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
+        trackedProps += properties.asJsonObject()
         trackedTargets += target
     }
-    override fun screen(name: String, properties: JsonObject) {}
-    override fun identify(userId: String, traits: JsonObject) {}
+    override fun screen(name: String, properties: Map<String, JsonElement>) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {}
 }
 
 private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.content

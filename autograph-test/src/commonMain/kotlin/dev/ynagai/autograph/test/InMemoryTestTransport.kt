@@ -1,8 +1,10 @@
 package dev.ynagai.autograph.test
 
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.EnvelopeSource
 import dev.ynagai.autograph.Transport
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -51,16 +53,16 @@ public class InMemoryTestTransport : Transport {
 
     override fun connect(envelopes: EnvelopeSource) {}
 
-    override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
-        recorded += RecordedEvent(Kind.TRACK, name, properties, envelope)
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        recorded += RecordedEvent(Kind.TRACK, name, properties.asJsonObject(), envelope)
     }
 
-    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
-        recorded += RecordedEvent(Kind.SCREEN, name, properties, envelope)
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        recorded += RecordedEvent(Kind.SCREEN, name, properties.asJsonObject(), envelope)
     }
 
-    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
-        recorded += RecordedEvent(Kind.IDENTIFY, userId, traits, envelope)
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
+        recorded += RecordedEvent(Kind.IDENTIFY, userId, traits.asJsonObject(), envelope)
     }
 
     override fun flush() {

@@ -1,5 +1,6 @@
 package dev.ynagai.autograph
 
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -21,5 +22,5 @@ import kotlinx.serialization.json.JsonObject
  */
 public fun interface EventValidator {
     /** Returns null when [name]/[properties] are valid, or a human-readable reason otherwise. */
-    public fun validate(name: String, properties: JsonObject): String?
+    public fun validate(name: String, properties: Map<String, JsonElement>): String?
 }

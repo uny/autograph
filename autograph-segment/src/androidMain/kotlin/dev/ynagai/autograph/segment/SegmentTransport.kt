@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.segment
 
+import dev.ynagai.autograph.asJsonObject
 import com.segment.analytics.kotlin.core.Analytics
 import com.segment.analytics.kotlin.core.BaseEvent
 import com.segment.analytics.kotlin.core.platform.Plugin
@@ -7,6 +8,7 @@ import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.EnvelopeSource
 import dev.ynagai.autograph.Transport
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -38,16 +40,16 @@ public class SegmentTransport(
         analytics.add(AutographPlugin(envelopes))
     }
 
-    override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
-        analytics.track(name, properties)
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        analytics.track(name, properties.asJsonObject())
     }
 
-    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
-        analytics.screen(name, properties)
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        analytics.screen(name, properties.asJsonObject())
     }
 
-    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
-        analytics.identify(userId, traits)
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
+        analytics.identify(userId, traits.asJsonObject())
     }
 
     override fun flush() {

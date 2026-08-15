@@ -1,5 +1,6 @@
 package dev.ynagai.autograph
 
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -34,19 +35,22 @@ public class DebugTransport(
         delegate.connect(envelopes)
     }
 
-    override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
-        logEvent("track", name, properties, envelope)
-        delegate.track(name, properties, envelope)
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        val props = properties.asJsonObject()
+        logEvent("track", name, props, envelope)
+        delegate.track(name, props, envelope)
     }
 
-    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
-        logEvent("screen", name, properties, envelope)
-        delegate.screen(name, properties, envelope)
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        val props = properties.asJsonObject()
+        logEvent("screen", name, props, envelope)
+        delegate.screen(name, props, envelope)
     }
 
-    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
-        logEvent("identify", userId, traits, envelope)
-        delegate.identify(userId, traits, envelope)
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
+        val props = traits.asJsonObject()
+        logEvent("identify", userId, props, envelope)
+        delegate.identify(userId, props, envelope)
     }
 
     override fun flush() {
@@ -57,7 +61,7 @@ public class DebugTransport(
         delegate.reset()
     }
 
-    private fun logEvent(kind: String, name: String, properties: JsonObject, envelope: Envelope?) {
+    private fun logEvent(kind: String, name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         log("Autograph [$kind] \"$name\" properties=$properties envelope=${envelope?.toJson()}")
     }
 }

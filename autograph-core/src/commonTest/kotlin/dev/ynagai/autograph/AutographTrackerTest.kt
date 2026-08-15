@@ -6,6 +6,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -29,16 +30,16 @@ private class RecordingTransport(
         this.envelopes = envelopes
     }
 
-    override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         calls += Triple("track", name, envelope)
-        trackedProperties += properties
+        trackedProperties += properties.asJsonObject()
     }
 
-    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         calls += Triple("screen", name, envelope)
     }
 
-    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         calls += Triple("identify", userId, envelope)
     }
 }
@@ -62,9 +63,9 @@ private class FakePipelineTransport(
     }
 
     // The core passes envelope = null (stampsInPipeline); stamping is deferred into the pipeline.
-    override fun track(name: String, properties: JsonObject, envelope: Envelope?) = enqueueStamp(name)
-    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) = enqueueStamp(name)
-    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) = enqueueStamp(userId)
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) = enqueueStamp(name)
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) = enqueueStamp(name)
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) = enqueueStamp(userId)
 
     private fun enqueueStamp(name: String) {
         scope.launch { stamped += name to envelopes.stamp() }
@@ -350,10 +351,10 @@ class AutographTrackerTest {
         val logs = mutableListOf<String>()
         val throwing = object : Transport {
             override fun connect(envelopes: EnvelopeSource) {}
-            override fun track(name: String, properties: JsonObject, envelope: Envelope?): Unit =
+            override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?): Unit =
                 throw IllegalStateException("boom")
-            override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {}
-            override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {}
+            override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {}
+            override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {}
         }
         val tracker = Autograph {
             transport(throwing)
@@ -399,10 +400,10 @@ class AutographTrackerTest {
         val throwing = object : Transport {
             override val stampsInPipeline: Boolean = true
             override fun connect(envelopes: EnvelopeSource) {}
-            override fun track(name: String, properties: JsonObject, envelope: Envelope?): Unit =
+            override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?): Unit =
                 throw IllegalStateException("pipeline boom")
-            override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {}
-            override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {}
+            override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {}
+            override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {}
         }
         val tracker = Autograph {
             transport(throwing)
@@ -523,7 +524,7 @@ class AutographTrackerTest {
 private class SlowRecordingTransport(private val perEventMillis: Int = 2) : Transport {
     val names = mutableListOf<String>()
 
-    override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         val start = TimeSource.Monotonic.markNow()
         @Suppress("ControlFlowWithEmptyBody")
         while (start.elapsedNow().inWholeMilliseconds < perEventMillis) {
@@ -531,11 +532,11 @@ private class SlowRecordingTransport(private val perEventMillis: Int = 2) : Tran
         names += name
     }
 
-    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         names += name
     }
 
-    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         names += userId
     }
 }

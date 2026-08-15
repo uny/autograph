@@ -32,7 +32,7 @@ abstract fun interface dev.ynagai.autograph/EventIdGenerator { // dev.ynagai.aut
 }
 
 abstract fun interface dev.ynagai.autograph/EventValidator { // dev.ynagai.autograph/EventValidator|null[0]
-    abstract fun validate(kotlin/String, kotlinx.serialization.json/JsonObject): kotlin/String? // dev.ynagai.autograph/EventValidator.validate|validate(kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
+    abstract fun validate(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>): kotlin/String? // dev.ynagai.autograph/EventValidator.validate|validate(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
 }
 
 abstract interface dev.ynagai.autograph/EnvelopeSource { // dev.ynagai.autograph/EnvelopeSource|null[0]
@@ -51,9 +51,9 @@ abstract interface dev.ynagai.autograph/SeqStore { // dev.ynagai.autograph/SeqSt
 }
 
 abstract interface dev.ynagai.autograph/Tracker { // dev.ynagai.autograph/Tracker|null[0]
-    abstract fun identify(kotlin/String, kotlinx.serialization.json/JsonObject = ...) // dev.ynagai.autograph/Tracker.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
-    abstract fun screen(kotlin/String, kotlinx.serialization.json/JsonObject = ...) // dev.ynagai.autograph/Tracker.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject){}[0]
-    abstract fun track(kotlin/String, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ...) // dev.ynagai.autograph/Tracker.track|track(kotlin.String;kotlinx.serialization.json.JsonObject;kotlin.String?){}[0]
+    abstract fun identify(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> = ...) // dev.ynagai.autograph/Tracker.identify|identify(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
+    abstract fun screen(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> = ...) // dev.ynagai.autograph/Tracker.screen|screen(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
+    abstract fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> = ..., kotlin/String? = ...) // dev.ynagai.autograph/Tracker.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;kotlin.String?){}[0]
     open fun close() // dev.ynagai.autograph/Tracker.close|close(){}[0]
     open fun flush() // dev.ynagai.autograph/Tracker.flush|flush(){}[0]
     open fun notifyBackground() // dev.ynagai.autograph/Tracker.notifyBackground|notifyBackground(){}[0]
@@ -65,9 +65,9 @@ abstract interface dev.ynagai.autograph/Transport { // dev.ynagai.autograph/Tran
     open val stampsInPipeline // dev.ynagai.autograph/Transport.stampsInPipeline|{}stampsInPipeline[0]
         open fun <get-stampsInPipeline>(): kotlin/Boolean // dev.ynagai.autograph/Transport.stampsInPipeline.<get-stampsInPipeline>|<get-stampsInPipeline>(){}[0]
 
-    abstract fun identify(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/Transport.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
-    abstract fun screen(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/Transport.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
-    abstract fun track(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/Transport.track|track(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    abstract fun identify(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/Transport.identify|identify(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
+    abstract fun screen(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/Transport.screen|screen(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
+    abstract fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/Transport.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
     open fun connect(dev.ynagai.autograph/EnvelopeSource) // dev.ynagai.autograph/Transport.connect|connect(dev.ynagai.autograph.EnvelopeSource){}[0]
     open fun flush() // dev.ynagai.autograph/Transport.flush|flush(){}[0]
     open fun reset() // dev.ynagai.autograph/Transport.reset|reset(){}[0]
@@ -137,10 +137,10 @@ final class dev.ynagai.autograph/DebugTransport : dev.ynagai.autograph/Transport
 
     final fun connect(dev.ynagai.autograph/EnvelopeSource) // dev.ynagai.autograph/DebugTransport.connect|connect(dev.ynagai.autograph.EnvelopeSource){}[0]
     final fun flush() // dev.ynagai.autograph/DebugTransport.flush|flush(){}[0]
-    final fun identify(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun identify(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.identify|identify(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
     final fun reset() // dev.ynagai.autograph/DebugTransport.reset|reset(){}[0]
-    final fun screen(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
-    final fun track(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.track|track(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun screen(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.screen|screen(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
+    final fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
 }
 
 final class dev.ynagai.autograph/Envelope { // dev.ynagai.autograph/Envelope|null[0]
@@ -218,6 +218,7 @@ final object dev.ynagai.autograph/EventId { // dev.ynagai.autograph/EventId|null
 final val dev.ynagai.autograph/EmptyJsonObject // dev.ynagai.autograph/EmptyJsonObject|{}EmptyJsonObject[0]
     final fun <get-EmptyJsonObject>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/EmptyJsonObject.<get-EmptyJsonObject>|<get-EmptyJsonObject>(){}[0]
 
+final fun (kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>).dev.ynagai.autograph/asJsonObject(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/asJsonObject|asJsonObject@kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>(){}[0]
 final fun dev.ynagai.autograph/Autograph(kotlin/Function1<dev.ynagai.autograph/AutographConfig, kotlin/Unit>): dev.ynagai.autograph/Tracker // dev.ynagai.autograph/Autograph|Autograph(kotlin.Function1<dev.ynagai.autograph.AutographConfig,kotlin.Unit>){}[0]
 final fun dev.ynagai.autograph/createEnvelope(kotlin/String, kotlin/String, kotlin/Long, kotlin/Long?, kotlin/Long?, kotlin/String, kotlin/String, kotlin/String? = ...): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/createEnvelope|createEnvelope(kotlin.String;kotlin.String;kotlin.Long;kotlin.Long?;kotlin.Long?;kotlin.String;kotlin.String;kotlin.String?){}[0]
 final fun dev.ynagai.autograph/platformSeqStore(): dev.ynagai.autograph/SeqStore // dev.ynagai.autograph/platformSeqStore|platformSeqStore(){}[0]

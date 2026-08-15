@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.compose
 
+import dev.ynagai.autograph.asJsonObject
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.size
@@ -19,6 +20,7 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -31,18 +33,18 @@ import kotlin.test.assertTrue
 private class AutocaptureRecordingTracker : Tracker {
     val tracked = mutableListOf<Pair<String, String?>>()
     val trackedProps = mutableListOf<JsonObject>()
-    override fun track(name: String, properties: JsonObject, target: String?) {
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
         tracked += name to target
-        trackedProps += properties
+        trackedProps += properties.asJsonObject()
     }
-    override fun screen(name: String, properties: JsonObject) {}
-    override fun identify(userId: String, traits: JsonObject) {}
+    override fun screen(name: String, properties: Map<String, JsonElement>) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {}
 }
 
 private class ThrowingTracker : Tracker {
-    override fun track(name: String, properties: JsonObject, target: String?): Unit = throw RuntimeException("boom")
-    override fun screen(name: String, properties: JsonObject) {}
-    override fun identify(userId: String, traits: JsonObject) {}
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?): Unit = throw RuntimeException("boom")
+    override fun screen(name: String, properties: Map<String, JsonElement>) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {}
 }
 
 /**

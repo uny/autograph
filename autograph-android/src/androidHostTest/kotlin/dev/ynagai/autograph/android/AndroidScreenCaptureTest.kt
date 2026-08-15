@@ -2,6 +2,7 @@
 
 package dev.ynagai.autograph.android
 
+import dev.ynagai.autograph.asJsonObject
 import android.app.Activity
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -14,6 +15,7 @@ import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
@@ -82,12 +84,12 @@ class AndroidScreenCaptureTest {
     /** Records each `Screen Viewed` as "name:previous" (previous = "(none)" when absent). */
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<String>()
-        override fun track(name: String, properties: JsonObject, target: String?) = Unit
-        override fun screen(name: String, properties: JsonObject) {
-            val previous = (properties["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
+        override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
+        override fun screen(name: String, properties: Map<String, JsonElement>) {
+            val previous = (properties.asJsonObject()["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
             screens += "$name:$previous"
         }
-        override fun identify(userId: String, traits: JsonObject) = Unit
+        override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
 
     private val tracker = RecordingTracker()

@@ -9,8 +9,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -172,14 +174,14 @@ internal class ScopedTracker(
     val scope: JsonObject,
 ) : Tracker {
 
-    override fun track(name: String, properties: JsonObject, target: String?): Unit =
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?): Unit =
         delegate.track(name, mergeScope(scope, properties), target)
 
-    override fun screen(name: String, properties: JsonObject): Unit =
+    override fun screen(name: String, properties: Map<String, JsonElement>): Unit =
         delegate.screen(name, mergeScope(scope, properties))
 
     // Traits describe the user, not the screen — the scope is deliberately not applied.
-    override fun identify(userId: String, traits: JsonObject): Unit =
+    override fun identify(userId: String, traits: Map<String, JsonElement>): Unit =
         delegate.identify(userId, traits)
 
     override fun notifyForeground(): Unit = delegate.notifyForeground()
@@ -196,5 +198,5 @@ internal class ScopedTracker(
  * Returns [properties] with [scope] merged underneath: a scope entry fills a key the call site did
  * not set, and an explicit call-site entry wins on a clash (`scope + properties`, right wins).
  */
-internal fun mergeScope(scope: JsonObject, properties: JsonObject): JsonObject =
-    if (scope.isEmpty()) properties else JsonObject(scope + properties)
+internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>): JsonObject =
+    if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)

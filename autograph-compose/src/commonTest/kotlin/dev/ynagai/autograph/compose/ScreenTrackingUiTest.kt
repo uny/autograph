@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.compose
 
+import dev.ynagai.autograph.asJsonObject
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
@@ -13,6 +14,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -22,11 +24,11 @@ import kotlin.test.assertNull
 private class RecordingTracker : Tracker {
     val screens = mutableListOf<Pair<String, JsonObject>>()
     val names: List<String> get() = screens.map { it.first }
-    override fun track(name: String, properties: JsonObject, target: String?) {}
-    override fun screen(name: String, properties: JsonObject) {
-        screens += name to properties
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {}
+    override fun screen(name: String, properties: Map<String, JsonElement>) {
+        screens += name to properties.asJsonObject()
     }
-    override fun identify(userId: String, traits: JsonObject) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {}
 }
 
 private fun JsonObject.previousScreen(): String? = this["previous_screen"]?.jsonPrimitive?.content

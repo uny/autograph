@@ -1,5 +1,6 @@
 package dev.ynagai.autograph
 
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -11,6 +12,11 @@ import kotlinx.serialization.json.JsonObject
  * [track], [screen], and [identify] are fire-and-forget and safe to call from any thread,
  * including the main thread: stamping and its disk persistence run on an internal serial
  * dispatcher, so they never block the caller. Events are still stamped in call order.
+ *
+ * **Properties are declared `Map<String, JsonElement>`, not `JsonObject`, and must stay that way.**
+ * `JsonObject` is a subtype of that map, and Kotlin/Native hands a Swift dictionary into a Map
+ * subtype unchecked — the call then dies with SIGSEGV instead of raising anything catchable (#193).
+ * Narrow it with [asJsonObject] inside the implementation if you need a `JsonObject`.
  */
 public interface Tracker {
 
@@ -24,13 +30,17 @@ public interface Tracker {
      * `"target"` entry already in [properties] is overwritten. Omit for events with no
      * meaningful originating element (e.g. lifecycle events).
      */
-    public fun track(name: String, properties: JsonObject = EmptyJsonObject, target: String? = null)
+    public fun track(
+        name: String,
+        properties: Map<String, JsonElement> = EmptyJsonObject,
+        target: String? = null,
+    )
 
     /** Records a screen view. */
-    public fun screen(name: String, properties: JsonObject = EmptyJsonObject)
+    public fun screen(name: String, properties: Map<String, JsonElement> = EmptyJsonObject)
 
     /** Associates the current user with [userId] and optional [traits]. */
-    public fun identify(userId: String, traits: JsonObject = EmptyJsonObject)
+    public fun identify(userId: String, traits: Map<String, JsonElement> = EmptyJsonObject)
 
     /**
      * Signals that the app moved to the foreground. Drives session-timeout bookkeeping.
@@ -73,3 +83,24 @@ public interface Tracker {
 
 /** An empty [JsonObject], useful as a default for event properties. */
 public val EmptyJsonObject: JsonObject = JsonObject(emptyMap())
+
+/**
+ * Narrows a properties map to a [JsonObject], wrapping only when it is not already one.
+ *
+ * **This exists because a public parameter may not be declared `JsonObject` if Swift can reach it.**
+ * Kotlin/Native bridges a Swift dictionary to `NSDictionaryAsKMap` — a runtime wrapper implementing
+ * `kotlin.collections.Map` — and passes it into a parameter declared as a Map *subtype* with no
+ * check at all. The header still renders that parameter as a plain `NSDictionary` (it is one, by
+ * supertype), so the call compiles and the object arrives non-null; reading it through the declared
+ * type then reads a layout the object does not have, and the process dies with SIGSEGV rather than a
+ * Kotlin exception — no `Uncaught Kotlin exception:` line, no crash report (#193). Whether a given
+ * call survives is an accident of whether anything happens to touch the value through its declared
+ * type, so "it works today" is not evidence of safety.
+ *
+ * Declaring the interface type instead makes the bridge convert properly, in both directions, and
+ * costs one `is` check here. Kotlin callers are unaffected: [JsonObject] *is* a
+ * `Map<String, JsonElement>`, so they keep passing exactly what they passed before, and the check
+ * below short-circuits for them.
+ */
+public fun Map<String, JsonElement>.asJsonObject(): JsonObject =
+    this as? JsonObject ?: JsonObject(toMap())

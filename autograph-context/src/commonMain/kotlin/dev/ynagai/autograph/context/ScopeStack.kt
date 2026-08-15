@@ -1,7 +1,9 @@
 package dev.ynagai.autograph.context
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.asJsonObject
 import kotlin.concurrent.Volatile
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -78,12 +80,12 @@ public class ScopeStack {
      * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order.
      */
     public fun push(
-        scope: JsonObject = EmptyJsonObject,
+        scope: Map<String, JsonElement> = EmptyJsonObject,
         screen: String? = null,
         section: String? = null,
         parent: ScopeHandle? = null,
     ): ScopeHandle {
-        val frame = ScopeFrame(scope, screen, section, parent?.frame)
+        val frame = ScopeFrame(scope.asJsonObject(), screen, section, parent?.frame)
         frames.add(frame)
         snapshot = recompute()
         return ScopeHandle(frame)
@@ -102,13 +104,14 @@ public class ScopeStack {
      */
     public fun update(
         handle: ScopeHandle,
-        scope: JsonObject = EmptyJsonObject,
+        scope: Map<String, JsonElement> = EmptyJsonObject,
         screen: String? = null,
         section: String? = null,
         parent: ScopeHandle? = null,
     ) {
         val frame = handle.frame
         if (frames.none { it === frame }) return
+        val newScope = scope.asJsonObject()
         // A parent that this frame already encloses would close the lineage into a cycle, and the
         // ancestry walks in [resolveScope] — which run on the main thread inside every mutation —
         // would spin forever on it. Only reparenting can produce one (at [push] the frame does not
@@ -120,12 +123,12 @@ public class ScopeStack {
         // also keeps "parent links form a forest" true for every reader of [frames].
         val requested = parent?.frame
         val parentFrame = if (requested != null && frame.encloses(requested)) null else requested
-        if (frame.scope == scope && frame.screen == screen && frame.section == section &&
+        if (frame.scope == newScope && frame.screen == screen && frame.section == section &&
             frame.parent === parentFrame
         ) {
             return
         }
-        frame.scope = scope
+        frame.scope = newScope
         frame.screen = screen
         frame.section = section
         // Revised in place, like the other fields: a frame moved to a new lineage (e.g. a
@@ -258,8 +261,8 @@ public class AmbientContext internal constructor(
      * under those reserved keys (overwriting any same-named entry) — the same precedence the Compose
      * path applies via its scope decorator and `withScreenContext`.
      */
-    public fun enrich(properties: JsonObject): JsonObject {
-        var result = if (scope.isEmpty()) properties else JsonObject(scope + properties)
+    public fun enrich(properties: Map<String, JsonElement>): JsonObject {
+        var result = if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)
         if (screen != null) result = JsonObject(result + ("screen" to JsonPrimitive(screen)))
         if (section != null) result = JsonObject(result + ("section" to JsonPrimitive(section)))
         return result
