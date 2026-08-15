@@ -393,15 +393,32 @@ pressed — and reported by its resource id, so the gaps follow from that rather
   `AutoCompleteTextView`'s suggestions. Each renders in a window this capture is not attached to. This
   is a boundary this library chose, not a platform impossibility: covering them means either reflection
   into framework internals or an explicit per-window registration API, and neither is in this release.
-- **Views with no developer-set id.** A view built in code without an id, an id from
-  `View.generateViewId()` (which has no resource entry behind it), and ids owned by the `android`
-  package — the `text1` that every `simple_list_item_1` row in the app shares — are all skipped rather
-  than reported under a name that means nothing.
+- **Views with no id at all.** A view built in code without an id, an id from `View.generateViewId()`
+  (which has no resource entry behind it), and ids owned by the `android` package — the `text1` that
+  every `simple_list_item_1` row in the app shares — are all skipped rather than reported under a name
+  that means nothing.
+- **An id from a library is reported as if you had chosen it.** Only the `android` package is
+  excluded, and it is the only one that *can* be: an AAR's resources are merged into your application
+  package at build time, so at runtime a Material or AppCompat id is indistinguishable from one of
+  yours. A tap on the password-visibility toggle inside a `TextInputLayout` reports
+  `text_input_end_icon` — a name shared by every text field in your app, and by every other Material
+  app. Read `target` as "the resource entry name of the view that was pressed", not as "an identifier
+  the app author chose".
+- **There is no per-element opt-out on this surface yet.** Compose has `Modifier.autographIgnore()`
+  and UIKit has `registerAutographIgnoredView`; the Android View capture has no equivalent in this
+  release. That matters because an editable `TextView` is clickable, so a tap that merely focuses
+  `@+id/password` or `@+id/card_cvv` reports that id. Until the opt-out lands, either do not install
+  this on a screen with sensitive fields, or give those views no developer-set id.
 - **A `ListView` row reports the list, not the row**: `AbsListView` presses both, and a platform row
   layout's id is the shared `text1`, so the list's own id is the better of the two answers available. A
   `RecyclerView` row is an ordinary pressed view and reports its own id.
-- **Multi-touch on two separate elements** reports neither — a lifting finger cannot be attributed to
-  one of them, and guessing is worse than silence.
+- **Multi-touch on two separate elements** reports at most one of them, and which one is not
+  guaranteed. At most one event is sent per gesture, so a press cannot be double-counted because a
+  second finger was resting on the screen — but the pressed state is global to the hierarchy rather
+  than per pointer, so a lifting finger cannot be attributed to a particular element. Whether the
+  surviving element is reported at all depends on whether the framework's posted press-release
+  runnable happens to run between the two touch-ups, which is input batching, not something this
+  library controls.
 - **A long press consumed by an `OnLongClickListener` is reported as a tap** on that element. The
   framework's "this long press was handled" flag is private, and the only public proxy — press duration
   — would drop *real* clicks, because a long press on a view whose listener returns `false` does fire
@@ -776,8 +793,8 @@ region whatever a future version learns to resolve there.
 - [x] Autocapture on iOS (walks the native accessibility tree Compose Multiplatform bridges its semantics into)
 - [x] Native (non-Compose) capture for hybrid apps: iOS UIKit taps, iOS + Android screen views,
   and the tap opt-outs (`registerAutographIgnoredView`, SwiftUI `.autographIgnore()`)
-- [ ] Native taps on the Android View system ([#63](https://github.com/uny/autograph/issues/63)) — the
-  one hybrid gap left; deferred for want of a demand signal, so say so on the issue if you need it
+- [x] Native taps on the Android View system ([#63](https://github.com/uny/autograph/issues/63)) —
+  `installAutographNativeTapCapture`; see the gaps it does not reach, above
 - [x] `sample-android` runnable sample app
 - [x] iOS sample app
 - [ ] Navigation 3 `NavEntryDecorator` for automatic screen tracking

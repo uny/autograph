@@ -34,7 +34,19 @@ import dev.ynagai.autograph.context.ScopeStack
  * actually fired in every case. See [resolveTapTarget].
  *
  * `target` is the view's resource entry name and nothing else — never displayed text, never a
- * `contentDescription`. A view with no developer-set id reports nothing.
+ * `contentDescription`. A view with no id reports nothing.
+ *
+ * Read that as "the entry name of the view that was pressed", not as "a name the app author chose".
+ * Only the `android` package can be excluded, because it is the only one still distinguishable at
+ * runtime: an AAR's resources are merged into the application package at build time, so a Material or
+ * AppCompat id looks exactly like one of the app's own and is reported the same way.
+ *
+ * ## No per-element opt-out on this surface yet
+ *
+ * Compose has `Modifier.autographIgnore()` and UIKit has `registerAutographIgnoredView`; this capture
+ * has no equivalent in this release. An editable `TextView` is clickable, so a tap that merely focuses
+ * `@+id/password` or `@+id/card_cvv` reports that id. Until the opt-out lands, either do not install
+ * this on a screen with sensitive fields, or leave those views without a developer-set id.
  *
  * ## What is not captured — none of it silently, all of it by construction
  *
@@ -53,8 +65,12 @@ import dev.ynagai.autograph.context.ScopeStack
  * - **Compose content**, which has its own pipeline. Nothing special is done to exclude it and none
  *   is needed: Compose routes pointer input itself and never sets the View pressed state, so a tap
  *   on a `ComposeView` resolves to nothing here and is reported exactly once, by `autograph-compose`.
- * - **Multi-touch on separate elements.** With two fingers down on two views, a pointer lifting
- *   cannot be attributed to one of them, so nothing is reported for it.
+ * - **Multi-touch on separate elements.** At most one event is sent per gesture — the pressed state
+ *   is global to the hierarchy rather than per pointer, so two touch-ups of one gesture cannot be
+ *   told apart and reporting each separately would double-count a press whenever a second finger was
+ *   merely resting on the screen. With two fingers genuinely down on two views, that means at most
+ *   one of them is reported and which one is not guaranteed: it depends on whether the framework's
+ *   posted press-release runnable runs between the two touch-ups, which is input batching.
  * - **A `ListView` row reports the list, not the row.** `AbsListView` presses both, and the row of a
  *   platform row layout carries a platform id (`text1`) shared by every list in the app, so the
  *   list's own id is the better of the two available answers. A `RecyclerView` row is an ordinary
@@ -66,13 +82,25 @@ import dev.ynagai.autograph.context.ScopeStack
  * press on a view whose listener returns `false` does fire a click. The element named is correct;
  * the gesture kind is not.
  *
+ * ## Only Activities that resume after this call are covered
+ *
+ * `registerActivityLifecycleCallbacks` does not replay, and the only wrap sites are the resumed
+ * callbacks, so an Activity **already on screen** when this is called is never wrapped: every tap on
+ * it is dropped until the user navigates away and back, and no diagnostic fires, because the capture
+ * never sees the touch at all. Install from `Application.onCreate()` — no Activity exists yet, so
+ * nothing is missed. Installing later (behind a consent prompt, after a remote-config fetch) is the
+ * shape that silently loses the first screen. Same limitation, and same remedy, as
+ * [installAutographNativeScreenCapture].
+ *
  * ## Threading
  *
  * Main thread only, to install, to [AutographNativeTapCapture.uninstall], and throughout — the
  * lifecycle callbacks and touch dispatch are both delivered there.
  *
- * Keep the returned handle: it is the only way to [AutographNativeTapCapture.uninstall], and the
- * capture holds [tracker] and [scopeStack] strongly until then.
+ * Keep the returned handle: it is the only way to [AutographNativeTapCapture.uninstall]. Note that
+ * uninstalling stops the reporting but does not drop the references: a retired wrapper stays in its
+ * window's callback chain (see [AutographNativeTapCapture.uninstall] for why it must), and it holds
+ * this capture — and so [tracker] and [scopeStack] — until that window is destroyed.
  */
 @AutographInternalApi
 public fun installAutographNativeTapCapture(

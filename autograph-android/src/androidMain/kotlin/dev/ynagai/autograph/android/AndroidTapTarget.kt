@@ -76,9 +76,17 @@ private fun collectPressedRoots(view: View, acc: MutableList<View>) {
 }
 
 /**
- * The view's resource entry name, or null when it has none that a developer chose.
+ * The view's resource entry name, or null when it has none worth reporting.
  *
- * Three ways a view has no such name, and all three are real:
+ * **Not the same as "a name the developer chose", and it cannot be.** An AAR's resources are merged
+ * into the application package at build time, so at runtime a Material or AppCompat id is
+ * indistinguishable from one declared in the app's own `res/` — `getResourcePackageName` returns the
+ * application package for both. The `android` filter below is therefore the only package exclusion
+ * that is even possible, not a first cut at a broader one. This module's own test suite is the
+ * demonstration: it uses `androidx.fragment.R.id.fragment_container_view_tag`, a *library* id, as its
+ * "app-owned" fixture, and that id is duly reported.
+ *
+ * Three ways a view has no reportable name, and all three are real:
  * - [View.NO_ID] — a view built in code without an id, which is most of them in a hand-rolled layout.
  * - An id from `View.generateViewId()`, which is a valid non-[View.NO_ID] value with **no resource
  *   entry behind it**, so `getResourceEntryName` throws rather than returning null.

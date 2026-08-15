@@ -43,7 +43,12 @@ class TapHostActivity : Activity()
 @Config(sdk = [36])
 class AndroidTapCaptureTest {
 
-    /** An id that belongs to the module under test rather than to the platform. */
+    /**
+     * A non-platform id, which is all `developerSetIdentifier` can actually distinguish. That this is
+     * a *library* id and is nonetheless reported is not an accident of the fixture — it is the
+     * behaviour: AAR resources merge into the application package, so only the `android` package
+     * stays separable at runtime. See `developerSetIdentifier`'s kdoc.
+     */
     private val appOwnedId = androidx.fragment.R.id.fragment_container_view_tag
 
     private val recorded = mutableListOf<Pair<String, String?>>()
@@ -171,6 +176,55 @@ class AndroidTapCaptureTest {
     }
 
     @Test
+    fun `one gesture reports once, however many pointers lift in it`() {
+        // The shape a stray second finger produces, and the reason the gesture guard is keyed on
+        // downTime rather than on each touch-up: the pressed state is global to the hierarchy, not
+        // per pointer, so the ACTION_POINTER_UP a resting finger lifts with resolves to the button
+        // the *other* finger is still holding — and then the real ACTION_UP resolves to it again.
+        // Reporting per touch-up sent that one press twice.
+        val (activity, capture) = install()
+        pressedButton(activity)
+        val gesture = SystemClock.uptimeMillis()
+
+        activity.window.callback!!.dispatchTouchEvent(pointerUpIn(gesture, gesture + 10))
+        activity.window.callback!!.dispatchTouchEvent(upIn(gesture, gesture + 20))
+
+        assertEquals(listOf("Element Clicked" to "fragment_container_view_tag"), recorded)
+        capture.uninstall()
+    }
+
+    @Test
+    fun `the next gesture is still reported`() {
+        // The guard must collapse one gesture, not silence everything after the first tap.
+        val (activity, capture) = install()
+        pressedButton(activity)
+        val first = SystemClock.uptimeMillis()
+
+        activity.window.callback!!.dispatchTouchEvent(upIn(first, first))
+        activity.window.callback!!.dispatchTouchEvent(upIn(first + 500, first + 500))
+
+        assertEquals(2, recorded.size)
+        capture.uninstall()
+    }
+
+    @Test
+    fun `a touch-up that resolved to nothing leaves the gesture reportable`() {
+        // Why the guard is spent by a report rather than by a touch-up: a first pointer lifting off
+        // Compose content, or off a view with no id, must not consume the gesture and silence the
+        // real tap still to come in it.
+        val (activity, capture) = install()
+        activity.setContentView(Button(activity).apply { id = appOwnedId }) // present, but not pressed
+        val gesture = SystemClock.uptimeMillis()
+
+        activity.window.callback!!.dispatchTouchEvent(pointerUpIn(gesture, gesture + 10))
+        pressedButton(activity)
+        activity.window.callback!!.dispatchTouchEvent(upIn(gesture, gesture + 20))
+
+        assertEquals(listOf("Element Clicked" to "fragment_container_view_tag"), recorded)
+        capture.uninstall()
+    }
+
+    @Test
     fun `a second capture in the same chain does not double-count`() {
         // The shape another SDK's Window.Callback wrapper produces: it wraps ours, a later resume
         // wraps that, and the one MotionEvent travels through two of our wrappers.
@@ -191,9 +245,9 @@ class AndroidTapCaptureTest {
     @Test
     fun `re-wrapping retires the previous wrapper rather than leaving two live`() {
         // Pins the retire step on its own. Without this, only the integration test above covers it —
-        // and the MotionEvent-identity guard masks the retire there, so removing the retire entirely
-        // still passed (measured with a deliberate mutation). Two live wrappers would double-count
-        // any pair of events the identity guard does not happen to collapse.
+        // and the per-gesture guard masks the retire there, so removing the retire entirely still
+        // passed (measured with a deliberate mutation). Two live wrappers would double-count any pair
+        // of events that guard does not happen to collapse.
         val (activity, capture) = install()
         val first = activity.window.callback as TapWindowCallback
         activity.window.callback = PassThrough(first)
@@ -259,6 +313,19 @@ class AndroidTapCaptureTest {
         val now = SystemClock.uptimeMillis()
         return MotionEvent.obtain(now, now, MotionEvent.ACTION_UP, 1f, 1f, 0)
     }
+
+    /** The final pointer of the gesture that began at [downTime] lifting. */
+    private fun upIn(downTime: Long, eventTime: Long): MotionEvent =
+        MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_UP, 1f, 1f, 0)
+
+    /**
+     * A non-final pointer of the gesture that began at [downTime] lifting. The capture reads only
+     * `actionMasked` and `downTime`, so carrying the pointer-up action on a one-pointer event is an
+     * accurate stand-in and avoids depending on how faithfully Robolectric models a real two-pointer
+     * MotionEvent.
+     */
+    private fun pointerUpIn(downTime: Long, eventTime: Long): MotionEvent =
+        MotionEvent.obtain(downTime, eventTime, MotionEvent.ACTION_POINTER_UP, 1f, 1f, 0)
 
     /** Stands in for another SDK's callback wrapper. */
     private class PassThrough(private val delegate: Window.Callback) : Window.Callback by delegate

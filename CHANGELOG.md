@@ -26,18 +26,24 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   pressed state down into non-clickable children, so a tap on a label inside a clickable row would
   name the label.
 
-  `target` is the view's resource entry name and never displayed text. Views with no developer-set id
-  are skipped — including ids from `View.generateViewId()`, which have no resource entry at all, and
-  platform ids like the `text1` shared by every `simple_list_item_1` row.
+  `target` is the view's resource entry name and never displayed text. Views with no id are skipped —
+  including ids from `View.generateViewId()`, which have no resource entry at all, and platform ids
+  like the `text1` shared by every `simple_list_item_1` row. It is the entry name of whatever was
+  pressed, though, not proof the app author chose it: an AAR's resources are merged into the
+  application package at build time, so a Material or AppCompat id cannot be told apart from one of
+  yours at runtime and is reported the same way. This surface also has **no per-element opt-out yet** —
+  the README says what that costs on a screen with sensitive fields.
 
   Compose content inside a View tree needs no de-duplication and gets none: Compose routes pointer
   input itself and never sets the View pressed state, so those taps resolve to nothing here and stay
   the Compose pipeline's exactly once.
 
   What it does not reach is listed in the README rather than left to be discovered: dialogs and
-  popups (a `Spinner` dropdown, an overflow menu), multi-touch on two elements, a long press consumed
-  by an `OnLongClickListener`, and — the one with a bias rather than a hole — any click that does not
-  travel through touch dispatch, including keyboard, D-pad and accessibility-service clicks.
+  popups (a `Spinner` dropdown, an overflow menu), multi-touch on two elements, and — the one with a
+  bias rather than a hole — any click that does not travel through touch dispatch, including keyboard,
+  D-pad and accessibility-service clicks. One case is a misreport rather than a hole, and is listed
+  there too: a long press consumed by an `OnLongClickListener` *is* reported, as a tap on the right
+  element — the element named is correct, the gesture kind is not.
 
 ### Fixed
 

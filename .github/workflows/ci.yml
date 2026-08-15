@@ -139,11 +139,16 @@ jobs:
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=$device"
 
-  # On-demand only (workflow_dispatch): the Android on-device smoke for #65's native screen capture —
-  # the coverage Robolectric cannot give (real framework, real windowing, a real back button). An
-  # emulator job is slow and flaky, and autograph-android's Robolectric suite already covers the logic
-  # on every PR, so this is a manual gate rather than a per-PR one. Runs on Linux (KVM) since the task
-  # only needs the Android targets of its KMP dependencies, not the iOS ones.
+  # On-demand only (workflow_dispatch): the Android on-device smokes for #65's native screen capture
+  # and #63's native tap capture — the coverage Robolectric cannot give (real framework, real
+  # windowing, a real back button, real touch dispatch). An emulator job is slow and flaky, so this is
+  # a manual gate rather than a per-PR one. Runs on Linux (KVM) since the task only needs the Android
+  # targets of its KMP dependencies, not the iOS ones.
+  #
+  # Know what the per-PR gate therefore does NOT cover: the Robolectric suite pins how a *given*
+  # pressed hierarchy resolves, by setting `isPressed` by hand. That the framework's touch dispatch
+  # produces that hierarchy in the first place — the premise the whole tap capture rests on — is only
+  # exercised here. Run this job when changing AndroidTapCapture/AndroidTapTarget.
   android-instrumented:
     name: android-instrumented
     if: github.event_name == 'workflow_dispatch'
