@@ -25,7 +25,9 @@ import androidx.compose.runtime.Composable
  * the state it reads was never written. What the argument does not cover is an `AndroidView` interop
  * subtree: that is real View content, so a clickable one presses like any other and is reported over
  * there when it carries a developer-set id — and [autographIgnore] around it cannot say otherwise,
- * because that exclusion is Compose-side state, which is exactly the blindness described above. See
+ * because that exclusion is Compose-side state, which is exactly the blindness described above. The
+ * opt-out that does reach it is `View.isAutographIgnored`, set on the interop view itself — it is a
+ * View tag, so it is written where the pipeline that reports this content actually looks. See
  * `installAutographNativeTapCapture` in `autograph-android`.
  */
 @Composable
