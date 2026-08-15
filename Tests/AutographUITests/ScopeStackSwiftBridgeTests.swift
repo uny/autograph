@@ -56,4 +56,59 @@ final class ScopeStackSwiftBridgeTests: XCTestCase {
         let enriched = stack.current().enrich(properties: [:])
         XCTAssertEqual(enriched.count, 1, "expected the reserved screen key to be written")
     }
+
+    // MARK: - Tracker / Transport
+
+    /// Records what the Kotlin core hands a transport, so the Swift-entered dictionary can be
+    /// followed all the way through. Implementing `Transport` in Swift is itself half the point:
+    /// it is the direction `@HiddenFromObjC` would have broken.
+    private final class RecordingTransport: Transport {
+        var calls: [String] = []
+        // Kotlin's default bodies do not survive into Objective-C — every member is `@required`
+        // there — so a Swift implementer restates them.
+        var stampsInPipeline: Bool { true }
+        func connect(envelopes: EnvelopeSource) {}
+        func flush() {}
+        func reset() {}
+        func track(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement], envelope: Envelope?) {
+            calls.append("track:\(name):\(properties.count)")
+        }
+        func screen(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement], envelope: Envelope?) {
+            calls.append("screen:\(name):\(properties.count)")
+        }
+        func identify(userId: String, traits: [String: Kotlinx_serialization_jsonJsonElement], envelope: Envelope?) {
+            calls.append("identify:\(userId):\(traits.count)")
+        }
+    }
+
+    /// `Tracker.track`/`screen`/`identify` take the same widened parameter as `ScopeStack.push` and
+    /// carry the same warning in their kdoc, but nothing called them *from Swift* — so re-narrowing
+    /// any of them to `JsonObject` would compile, pass every Kotlin test (Kotlin callers always pass
+    /// a real `JsonObject`) and reintroduce the crash. Same process-death signal as above.
+    func testTrackerAcceptsSwiftDictionariesOnEveryEntryPoint() {
+        let transport = RecordingTransport()
+        let tracker = AutographKt.Autograph { config in config.transport(transport: transport) }
+        defer { tracker.close() }
+
+        tracker.track(name: "Upgraded", properties: [:], target: "cta")
+        tracker.screen(name: "Checkout", properties: [:])
+        tracker.identify(userId: "u1", traits: [:])
+
+        // stampsInPipeline = true, so delivery is synchronous on this thread.
+        XCTAssertEqual(transport.calls, ["track:Upgraded:1", "screen:Checkout:0", "identify:u1:0"])
+    }
+
+    /// The `Transport` half, entered directly rather than through the core — `DebugTransport` is a
+    /// public Kotlin implementation Swift can construct, so it exercises the widened parameter
+    /// without the core narrowing the dictionary first.
+    func testTransportAcceptsASwiftDictionary() {
+        let delegate = RecordingTransport()
+        let debug = DebugTransport(delegate: delegate, log: { _ in })
+
+        debug.track(name: "Upgraded", properties: [:], envelope: nil)
+        debug.screen(name: "Checkout", properties: [:], envelope: nil)
+        debug.identify(userId: "u1", traits: [:], envelope: nil)
+
+        XCTAssertEqual(delegate.calls, ["track:Upgraded:0", "screen:Checkout:0", "identify:u1:0"])
+    }
 }
