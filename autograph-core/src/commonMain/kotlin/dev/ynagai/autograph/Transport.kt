@@ -1,5 +1,6 @@
 package dev.ynagai.autograph
 
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 
 /**
@@ -56,11 +57,14 @@ public interface Transport {
     /** Called once during setup, before any events are sent. */
     public fun connect(envelopes: EnvelopeSource) {}
 
-    public fun track(name: String, properties: JsonObject, envelope: Envelope?)
+    // Properties are the `Map` interface rather than `JsonObject` deliberately, and implementations
+    // must keep it that way: Kotlin/Native passes a Swift dictionary into a Map *subtype* unchecked,
+    // and reading it there is a SIGSEGV, not a catchable failure (#193). Narrow with `asJsonObject()`.
+    public fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?)
 
-    public fun screen(name: String, properties: JsonObject, envelope: Envelope?)
+    public fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?)
 
-    public fun identify(userId: String, traits: JsonObject, envelope: Envelope?)
+    public fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?)
 
     public fun flush() {}
 

@@ -39,10 +39,10 @@ public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Tr
 	public fun connect (Ldev/ynagai/autograph/EnvelopeSource;)V
 	public fun flush ()V
 	public fun getStampsInPipeline ()Z
-	public fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun identify (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 	public fun reset ()V
-	public fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
-	public fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
+	public fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 }
 
 public final class dev/ynagai/autograph/Envelope {
@@ -92,7 +92,7 @@ public abstract interface class dev/ynagai/autograph/EventIdGenerator {
 }
 
 public abstract interface class dev/ynagai/autograph/EventValidator {
-	public abstract fun validate (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)Ljava/lang/String;
+	public abstract fun validate (Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
 }
 
 public final class dev/ynagai/autograph/InMemorySeqStore : dev/ynagai/autograph/SeqStore {
@@ -178,29 +178,30 @@ public final class dev/ynagai/autograph/SessionInfo {
 public abstract interface class dev/ynagai/autograph/Tracker {
 	public fun close ()V
 	public fun flush ()V
-	public abstract fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
-	public static synthetic fun identify$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public abstract fun identify (Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun identify$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public fun notifyBackground ()V
 	public fun notifyForeground ()V
 	public fun reset ()V
-	public abstract fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;)V
-	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
-	public abstract fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;)V
-	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;ILjava/lang/Object;)V
+	public abstract fun screen (Ljava/lang/String;Ljava/util/Map;)V
+	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+	public abstract fun track (Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;)V
+	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class dev/ynagai/autograph/Tracker$DefaultImpls {
 	public static fun close (Ldev/ynagai/autograph/Tracker;)V
 	public static fun flush (Ldev/ynagai/autograph/Tracker;)V
-	public static synthetic fun identify$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
+	public static synthetic fun identify$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
 	public static fun notifyBackground (Ldev/ynagai/autograph/Tracker;)V
 	public static fun notifyForeground (Ldev/ynagai/autograph/Tracker;)V
 	public static fun reset (Ldev/ynagai/autograph/Tracker;)V
-	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;ILjava/lang/Object;)V
-	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ljava/lang/String;ILjava/lang/Object;)V
+	public static synthetic fun screen$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ljava/util/Map;ILjava/lang/Object;)V
+	public static synthetic fun track$default (Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ljava/util/Map;Ljava/lang/String;ILjava/lang/Object;)V
 }
 
 public final class dev/ynagai/autograph/TrackerKt {
+	public static final fun asJsonObject (Ljava/util/Map;)Lkotlinx/serialization/json/JsonObject;
 	public static final fun getEmptyJsonObject ()Lkotlinx/serialization/json/JsonObject;
 }
 
@@ -208,10 +209,10 @@ public abstract interface class dev/ynagai/autograph/Transport {
 	public fun connect (Ldev/ynagai/autograph/EnvelopeSource;)V
 	public fun flush ()V
 	public fun getStampsInPipeline ()Z
-	public abstract fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public abstract fun identify (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 	public fun reset ()V
-	public abstract fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
-	public abstract fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public abstract fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
+	public abstract fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 }
 
 public final class dev/ynagai/autograph/Transport$DefaultImpls {

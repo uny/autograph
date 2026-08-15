@@ -24,10 +24,10 @@ public final class dev/ynagai/autograph/test/InMemoryTestTransport : dev/ynagai/
 	public final fun getFlushCount ()I
 	public final fun getResetCount ()I
 	public fun getStampsInPipeline ()Z
-	public fun identify (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun identify (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 	public fun reset ()V
-	public fun screen (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
-	public fun track (Ljava/lang/String;Lkotlinx/serialization/json/JsonObject;Ldev/ynagai/autograph/Envelope;)V
+	public fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
+	public fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 }
 
 public final class dev/ynagai/autograph/test/InMemoryTestTransport$Kind : java/lang/Enum {

@@ -1,6 +1,6 @@
 package dev.ynagai.autograph
 
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 
 /**
  * Checks a `track`/`screen` event against an app-defined tracking-plan contract — a fixed set of
@@ -21,5 +21,5 @@ import kotlinx.serialization.json.JsonObject
  */
 public fun interface EventValidator {
     /** Returns null when [name]/[properties] are valid, or a human-readable reason otherwise. */
-    public fun validate(name: String, properties: JsonObject): String?
+    public fun validate(name: String, properties: Map<String, JsonElement>): String?
 }

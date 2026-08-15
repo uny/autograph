@@ -14,7 +14,7 @@ final class dev.ynagai.autograph.context/AmbientContext { // dev.ynagai.autograp
     final val section // dev.ynagai.autograph.context/AmbientContext.section|{}section[0]
         final fun <get-section>(): kotlin/String? // dev.ynagai.autograph.context/AmbientContext.section.<get-section>|<get-section>(){}[0]
 
-    final fun enrich(kotlinx.serialization.json/JsonObject): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.context/AmbientContext.enrich|enrich(kotlinx.serialization.json.JsonObject){}[0]
+    final fun enrich(kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.context/AmbientContext.enrich|enrich(kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
 }
 
 final class dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.context/ScopeHandle|null[0]
@@ -26,9 +26,9 @@ final class dev.ynagai.autograph.context/ScopeStack { // dev.ynagai.autograph.co
         final fun <get-screenHistory>(): dev.ynagai.autograph.context/ScreenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory.<get-screenHistory>|<get-screenHistory>(){}[0]
 
     final fun current(): dev.ynagai.autograph.context/AmbientContext // dev.ynagai.autograph.context/ScopeStack.current|current(){}[0]
-    final fun push(kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/String? = ..., dev.ynagai.autograph.context/ScopeHandle? = ...): dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.context/ScopeStack.push|push(kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.String?;dev.ynagai.autograph.context.ScopeHandle?){}[0]
+    final fun push(kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> = ..., kotlin/String? = ..., kotlin/String? = ..., dev.ynagai.autograph.context/ScopeHandle? = ...): dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.context/ScopeStack.push|push(kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;kotlin.String?;kotlin.String?;dev.ynagai.autograph.context.ScopeHandle?){}[0]
     final fun remove(dev.ynagai.autograph.context/ScopeHandle) // dev.ynagai.autograph.context/ScopeStack.remove|remove(dev.ynagai.autograph.context.ScopeHandle){}[0]
-    final fun update(dev.ynagai.autograph.context/ScopeHandle, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/String? = ..., dev.ynagai.autograph.context/ScopeHandle? = ...) // dev.ynagai.autograph.context/ScopeStack.update|update(dev.ynagai.autograph.context.ScopeHandle;kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.String?;dev.ynagai.autograph.context.ScopeHandle?){}[0]
+    final fun update(dev.ynagai.autograph.context/ScopeHandle, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> = ..., kotlin/String? = ..., kotlin/String? = ..., dev.ynagai.autograph.context/ScopeHandle? = ...) // dev.ynagai.autograph.context/ScopeStack.update|update(dev.ynagai.autograph.context.ScopeHandle;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;kotlin.String?;kotlin.String?;dev.ynagai.autograph.context.ScopeHandle?){}[0]
 }
 
 final class dev.ynagai.autograph.context/ScreenHistory { // dev.ynagai.autograph.context/ScreenHistory|null[0]

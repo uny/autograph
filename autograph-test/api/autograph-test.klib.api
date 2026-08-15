@@ -24,10 +24,10 @@ final class dev.ynagai.autograph.test/InMemoryTestTransport : dev.ynagai.autogra
     final fun clear() // dev.ynagai.autograph.test/InMemoryTestTransport.clear|clear(){}[0]
     final fun connect(dev.ynagai.autograph/EnvelopeSource) // dev.ynagai.autograph.test/InMemoryTestTransport.connect|connect(dev.ynagai.autograph.EnvelopeSource){}[0]
     final fun flush() // dev.ynagai.autograph.test/InMemoryTestTransport.flush|flush(){}[0]
-    final fun identify(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.identify|identify(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun identify(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.identify|identify(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
     final fun reset() // dev.ynagai.autograph.test/InMemoryTestTransport.reset|reset(){}[0]
-    final fun screen(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.screen|screen(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
-    final fun track(kotlin/String, kotlinx.serialization.json/JsonObject, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.track|track(kotlin.String;kotlinx.serialization.json.JsonObject;dev.ynagai.autograph.Envelope?){}[0]
+    final fun screen(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.screen|screen(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
+    final fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph.test/InMemoryTestTransport.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
 
     final enum class Kind : kotlin/Enum<dev.ynagai.autograph.test/InMemoryTestTransport.Kind> { // dev.ynagai.autograph.test/InMemoryTestTransport.Kind|null[0]
         enum entry IDENTIFY // dev.ynagai.autograph.test/InMemoryTestTransport.Kind.IDENTIFY|null[0]

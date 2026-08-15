@@ -10,7 +10,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
@@ -21,13 +23,13 @@ import kotlin.test.assertTrue
 private class ScopeUiRecordingTracker : Tracker {
     val tracks = mutableListOf<Pair<String, JsonObject>>()
     val screens = mutableListOf<Pair<String, JsonObject>>()
-    override fun track(name: String, properties: JsonObject, target: String?) {
-        tracks += name to properties
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
+        tracks += name to properties.asJsonObject()
     }
-    override fun screen(name: String, properties: JsonObject) {
-        screens += name to properties
+    override fun screen(name: String, properties: Map<String, JsonElement>) {
+        screens += name to properties.asJsonObject()
     }
-    override fun identify(userId: String, traits: JsonObject) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {}
 }
 
 private fun JsonObject.str(key: String): String? = this[key]?.jsonPrimitive?.content

@@ -635,10 +635,15 @@ still come from the stack, where there is only ever one current screen to read.
 > nothing is pushed there.
 
 Properties that are not all strings go through `track(_:propertiesJson:target:)` as a JSON object
-literal. `Tracker.track` takes a Kotlin `JsonObject`, and the umbrella does not export
+literal. `Tracker.track` takes a `Map<String, JsonElement>`, and the umbrella does not export
 kotlinx-serialization-json, so `JsonElement` reaches Swift as an opaque class with no initializer —
 there is nothing for a Swift caller to build. The conversion therefore lives on the Kotlin side, over
 values Swift can express.
+
+(That parameter is deliberately the `Map` interface and not `JsonObject`, which is a subtype of it.
+Kotlin/Native converts an incoming Swift dictionary for the mapped collection type but hands it to a
+Map *subtype* unchecked, and reading it there is a SIGSEGV rather than a catchable error — see
+[#193](https://github.com/uny/autograph/issues/193).)
 
 ## iOS: SwiftUI screens with `.autographScreen`
 

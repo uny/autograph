@@ -3,6 +3,7 @@ package dev.ynagai.autograph.uikit
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
@@ -13,6 +14,7 @@ import kotlin.test.assertNotEquals
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIAccessibilityTraitButton
@@ -497,22 +499,22 @@ private class RecordingTracker : Tracker {
     val names = mutableListOf<String>()
     val properties = mutableListOf<JsonObject>()
 
-    override fun track(name: String, properties: JsonObject, target: String?) {
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
         targets += target
         names += name
-        this.properties += properties
+        this.properties += properties.asJsonObject()
     }
 
-    override fun screen(name: String, properties: JsonObject) = Unit
+    override fun screen(name: String, properties: Map<String, JsonElement>) = Unit
 
-    override fun identify(userId: String, traits: JsonObject) = Unit
+    override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
 }
 
 /** Stands in for a real tracker where the test asserts on the capture's plumbing, not on its output. */
 private class NoopTracker : Tracker {
-    override fun track(name: String, properties: JsonObject, target: String?) = Unit
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
 
-    override fun screen(name: String, properties: JsonObject) = Unit
+    override fun screen(name: String, properties: Map<String, JsonElement>) = Unit
 
-    override fun identify(userId: String, traits: JsonObject) = Unit
+    override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
 }

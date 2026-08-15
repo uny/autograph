@@ -75,11 +75,13 @@ final class ExplicitElementCaptureTests: XCTestCase {
     /// A screen on the shared stack reaches an explicit event — the half of attribution that is
     /// deliberately still read dynamically.
     ///
-    /// The screen is pushed through `AutographScreenCapture`, not `ScopeStack.push`, because that is both
-    /// the real path (`.autographScreen` drives it) and the only one available: `push` takes a
-    /// `JsonObject` for its scope, which Swift cannot construct — passing a dictionary **crashes at
-    /// runtime** rather than failing to compile. Same root cause as the properties bridge this feature
-    /// exists to provide (see `AutographElementCapture`'s kdoc).
+    /// The screen is pushed through `AutographScreenCapture`, not `ScopeStack.push`, because that is
+    /// the real path — `.autographScreen` drives it. `push` is no longer *unavailable*: it used to
+    /// declare its scope as `JsonObject`, so passing a dictionary crashed the process at runtime, and
+    /// #193 widened it to `Map<String, JsonElement>` (see `ScopeStackSwiftBridgeTests`). What remains
+    /// is that Swift cannot construct a `JsonElement`, so only an empty scope is expressible — the
+    /// same root cause as the properties bridge this feature exists to provide (see
+    /// `AutographElementCapture`'s kdoc).
     func testScreenFromTheSharedStackIsAttached() {
         let tracker = RecordingTracker()
         let stack = ScopeStack()

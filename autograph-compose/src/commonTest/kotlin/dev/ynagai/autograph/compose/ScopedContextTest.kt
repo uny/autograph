@@ -2,6 +2,8 @@ package dev.ynagai.autograph.compose
 
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.asJsonObject
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -20,16 +22,16 @@ private class ScopeRecordingTracker : Tracker {
     var foregrounded = 0
     var backgrounded = 0
 
-    override fun track(name: String, properties: JsonObject, target: String?) {
-        tracks += Triple(name, properties, target)
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
+        tracks += Triple(name, properties.asJsonObject(), target)
     }
 
-    override fun screen(name: String, properties: JsonObject) {
-        screens += name to properties
+    override fun screen(name: String, properties: Map<String, JsonElement>) {
+        screens += name to properties.asJsonObject()
     }
 
-    override fun identify(userId: String, traits: JsonObject) {
-        identifies += userId to traits
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {
+        identifies += userId to traits.asJsonObject()
     }
 
     override fun flush() {

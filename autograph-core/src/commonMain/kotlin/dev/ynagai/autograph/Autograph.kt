@@ -9,6 +9,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlin.concurrent.Volatile
@@ -188,14 +189,16 @@ internal class AutographTracker(
         }
     }
 
-    override fun track(name: String, properties: JsonObject, target: String?) {
-        if (!isValid(name, properties)) return
-        deliver { transport.track(name, withTarget(properties, target), it) }
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
+        val props = properties.asJsonObject()
+        if (!isValid(name, props)) return
+        deliver { transport.track(name, withTarget(props, target), it) }
     }
 
-    override fun screen(name: String, properties: JsonObject) {
-        if (!isValid(name, properties)) return
-        deliver { transport.screen(name, properties, it) }
+    override fun screen(name: String, properties: Map<String, JsonElement>) {
+        val props = properties.asJsonObject()
+        if (!isValid(name, props)) return
+        deliver { transport.screen(name, props, it) }
     }
 
     /**
@@ -218,8 +221,13 @@ internal class AutographTracker(
         return false
     }
 
-    override fun identify(userId: String, traits: JsonObject): Unit =
-        deliver { transport.identify(userId, traits, it) }
+    // Narrowed here rather than inside [deliver]'s lambda: [traits] is the `Map` interface, so it
+    // may be a map the caller still owns and mutates, and the lambda runs later on the dispatcher.
+    // track/screen snapshot eagerly above for the same reason.
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {
+        val snapshot = traits.asJsonObject()
+        deliver { transport.identify(userId, snapshot, it) }
+    }
 
     // Lifecycle/control calls are infrequent (not per-event) and stay synchronous. notifyBackground
     // in particular is a durability checkpoint that must persist the session before the app is

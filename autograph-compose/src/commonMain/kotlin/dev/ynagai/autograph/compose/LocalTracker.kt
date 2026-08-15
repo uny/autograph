@@ -13,7 +13,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
-import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonElement
 
 /**
  * The ambient [Tracker] for the composition. Provide it with [AutographProvider];
@@ -110,7 +110,7 @@ private object MissingTracker : Tracker {
         }
     }
 
-    override fun track(name: String, properties: JsonObject, target: String?): Unit = warn()
-    override fun screen(name: String, properties: JsonObject): Unit = warn()
-    override fun identify(userId: String, traits: JsonObject): Unit = warn()
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?): Unit = warn()
+    override fun screen(name: String, properties: Map<String, JsonElement>): Unit = warn()
+    override fun identify(userId: String, traits: Map<String, JsonElement>): Unit = warn()
 }

@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -137,16 +138,16 @@ class AutocaptureClaimsGenerationTest {
 }
 
 private class NoopTracker : Tracker {
-    override fun track(name: String, properties: JsonObject, target: String?) {}
-    override fun screen(name: String, properties: JsonObject) {}
-    override fun identify(userId: String, traits: JsonObject) {}
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {}
+    override fun screen(name: String, properties: Map<String, JsonElement>) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {}
 }
 
 /** Runs [onTrack] from inside `track`, so a test can observe state as the tracker sees it. */
 private class ProbingTracker(private val onTrack: () -> Unit) : Tracker {
-    override fun track(name: String, properties: JsonObject, target: String?) = onTrack()
-    override fun screen(name: String, properties: JsonObject) {}
-    override fun identify(userId: String, traits: JsonObject) {}
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = onTrack()
+    override fun screen(name: String, properties: Map<String, JsonElement>) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>) {}
 }
 
 /**

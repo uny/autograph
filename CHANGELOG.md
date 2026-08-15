@@ -8,6 +8,57 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Calling `ScopeStack.push` from Swift no longer kills the process** ([#193]). It was the
+  framework-independent way for a native surface to contribute scope and screen frames, and it was
+  unusable: the call compiled, then the app died at runtime — with an **empty** dictionary too.
+
+  The cause is not what the issue guessed. Kotlin/Native converts a Swift dictionary to
+  `NSDictionaryAsKMap`, a runtime wrapper implementing `kotlin.collections.Map`, and passes it into a
+  parameter declared as a Map **subtype** — `JsonObject` — with no check whatsoever. Measured
+  directly, by a probe typed `Any?`: what arrives is non-null, `isMap=true`, `isJsonObject=false`.
+  The generated header still renders the parameter as a plain `NSDictionary`, because by supertype it
+  is one, so nothing about the API looks wrong from Swift. Reading that object through its declared
+  type then reads a layout it does not have and the process dies with **SIGSEGV — not a Kotlin
+  exception**, which is why no `Uncaught Kotlin exception:` line, no log entry and no crash report
+  ever appeared, and why the issue could not capture one.
+
+  So this was a type-safety hole, not a single broken function. `AmbientContext.enrich` took the same
+  parameter type and survived **by accident**: it short-circuits on its own empty scope and returns
+  the argument untouched, never reading it through the declared type. `push` stored it and
+  `resolveScope` dereferenced it. A call that happened to work was no evidence the API was sound.
+
+### Changed
+
+- **Every public API that accepted a `JsonObject` now declares `Map<String, JsonElement>`** —
+  `Tracker.track` / `screen` / `identify`, `Transport.track` / `screen` / `identify`,
+  `EventValidator.validate`, `ScopeStack.push` / `update`, and `AmbientContext.enrich` — with a new
+  `Map<String, JsonElement>.asJsonObject()` doing the one conversion at each entry point.
+
+  Declaring the interface rather than a subtype of it is what makes the bridge convert correctly, in
+  **both** directions, so the fix covers the Swift-implements-the-interface direction as well as the
+  Swift-calls-it one. It is also self-enforcing: with the parameter typed `Map`, a body cannot reach
+  a `JsonObject`-only operation without an explicit conversion, so the unsound path can no longer be
+  written by accident.
+
+  **Kotlin call sites are unaffected at the source level** — `JsonObject` *is* a
+  `Map<String, JsonElement>`, so every existing call compiles and behaves identically. It is still
+  a **binary** break: the descriptor changes from `…JsonObject;…` to `…java/util/Map;…`, so a
+  prebuilt library compiled against 0.6.0 that calls `Tracker.track` fails with `NoSuchMethodError`
+  (and `IrLinkageError` on Kotlin/Native) until it is recompiled. **Kotlin implementers of
+  `Tracker`, `Transport` or `EventValidator` must widen their overrides** to match.
+
+  There is no deprecation window. [ADR 0001](docs/adr/0001-public-api-evolution.md) governs how the
+  public API may evolve *after 1.0* — its ABI guarantee for `autograph-core`/`autograph-context`
+  binds from that release onward, and it deliberately leaves signature changes before then
+  unconstrained ("the window to decide … is before 1.0"). This is such a change, shipped in a 0.x
+  release.
+
+  This does not make non-empty properties expressible from Swift — `JsonElement` still has no
+  Objective-C initializer, so a Swift caller can still only pass an empty dictionary. That is the
+  separate gap `AutographElementCapture` works around, and it is tracked by [#94].
+
 ## [0.6.0] - 2026-08-15
 
 ### Added
@@ -901,4 +952,5 @@ Initial release.
 [#185]: https://github.com/uny/autograph/issues/185
 [#189]: https://github.com/uny/autograph/issues/189
 [#191]: https://github.com/uny/autograph/issues/191
+[#193]: https://github.com/uny/autograph/issues/193
 [#195]: https://github.com/uny/autograph/issues/195

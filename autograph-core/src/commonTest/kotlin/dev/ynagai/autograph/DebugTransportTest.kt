@@ -1,5 +1,6 @@
 package dev.ynagai.autograph
 
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -17,15 +18,15 @@ private class FakeTransport(override val stampsInPipeline: Boolean = false) : Tr
         connected = envelopes
     }
 
-    override fun track(name: String, properties: JsonObject, envelope: Envelope?) {
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         calls += "track:$name"
     }
 
-    override fun screen(name: String, properties: JsonObject, envelope: Envelope?) {
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         calls += "screen:$name"
     }
 
-    override fun identify(userId: String, traits: JsonObject, envelope: Envelope?) {
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         calls += "identify:$userId"
     }
 

@@ -16,8 +16,10 @@ import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import java.util.concurrent.CopyOnWriteArrayList
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -60,12 +62,12 @@ public object NativeScreenLog {
 
 /** Records each `Screen Viewed` as "name:previous_screen" into [NativeScreenLog]. */
 internal object NativeScreenLogTracker : Tracker {
-    override fun track(name: String, properties: JsonObject, target: String?): Unit = Unit
-    override fun screen(name: String, properties: JsonObject) {
-        val previous = (properties["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?): Unit = Unit
+    override fun screen(name: String, properties: Map<String, JsonElement>) {
+        val previous = (properties.asJsonObject()["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
         NativeScreenLog.record("$name:$previous")
     }
-    override fun identify(userId: String, traits: JsonObject): Unit = Unit
+    override fun identify(userId: String, traits: Map<String, JsonElement>): Unit = Unit
 }
 
 /** Single-Activity host: a screen-view log on top, a fragment container below. */
