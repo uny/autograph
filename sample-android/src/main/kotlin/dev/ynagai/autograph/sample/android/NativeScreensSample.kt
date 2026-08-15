@@ -15,6 +15,7 @@ import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
+import dev.ynagai.autograph.android.installAutographNativeTapCapture
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
@@ -35,11 +36,19 @@ import kotlinx.serialization.json.JsonPrimitive
 public class NativeSampleApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // One stack for both captures, as the install kdocs ask for: it is what lets a native screen
+        // scope the taps made on it, and what keeps `previous_screen` continuous across Compose↔native.
+        val scopeStack = ScopeStack()
         installAutographNativeScreenCapture(
             application = this,
-            tracker = NativeScreenLogTracker,
-            scopeStack = ScopeStack(),
+            tracker = NativeSampleTracker,
+            scopeStack = scopeStack,
             fragmentScreenName = { it.javaClass.simpleName },
+        )
+        installAutographNativeTapCapture(
+            application = this,
+            tracker = NativeSampleTracker,
+            scopeStack = scopeStack,
         )
     }
 }
@@ -60,9 +69,26 @@ public object NativeScreenLog {
     public fun text(): String = if (entries.isEmpty()) "(none yet)" else entries.joinToString("|")
 }
 
-/** Records each `Screen Viewed` as "name:previous_screen" into [NativeScreenLog]. */
-internal object NativeScreenLogTracker : Tracker {
-    override fun track(name: String, properties: Map<String, JsonElement>, target: String?): Unit = Unit
+/** The ordered log of captured tap targets, observable by the instrumented smoke. */
+public object NativeTapLog {
+    public val targets: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
+
+    /**
+     * Clicks the Compose island handled itself. Its only purpose is to keep the smoke's "the View
+     * pipeline reports nothing for Compose content" assertion honest: without a witness that the tap
+     * reached the island at all, that assertion would also pass if the tap had missed it entirely.
+     */
+    public val composeClicks: CopyOnWriteArrayList<String> = CopyOnWriteArrayList()
+}
+
+/**
+ * Records each `Screen Viewed` as "name:previous_screen" into [NativeScreenLog], and each captured
+ * tap's `target` into [NativeTapLog].
+ */
+internal object NativeSampleTracker : Tracker {
+    override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
+        NativeTapLog.targets.add(target ?: "(no target)")
+    }
     override fun screen(name: String, properties: Map<String, JsonElement>) {
         val previous = (properties.asJsonObject()["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
         NativeScreenLog.record("$name:$previous")

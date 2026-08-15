@@ -8,6 +8,37 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **Tap autocapture for Android View / XML content** ([#63]), via
+  `installAutographNativeTapCapture` in `autograph-android`. Opt-in, like every other autocapture
+  surface, and it closes the last asymmetry in the support table: a hybrid Android app now gets
+  `Element Clicked` for its non-Compose screens, not only `Screen Viewed`.
+
+  **It is not a hit test, and that is the whole design.** Touch dispatch already marks the view it
+  delivered to as pressed, so the target is the *root of the pressed subtree* rather than whatever a
+  geometric walk finds under the finger. Measured against such a walk on the same taps, on a device:
+  the walk named the wrong sibling of an elevation-reordered overlapping pair (Android dispatches by
+  Z, not by child order), named a **disabled** button no click ever reached, and named an element at
+  the end of a **scroll** — three phantom or wrong events that the pressed-state rule does not have,
+  because dispatch answered all three questions before it ran. Reading the deepest pressed view
+  instead of the root is also wrong, and measurably so: `ViewGroup.dispatchSetPressed` propagates the
+  pressed state down into non-clickable children, so a tap on a label inside a clickable row would
+  name the label.
+
+  `target` is the view's resource entry name and never displayed text. Views with no developer-set id
+  are skipped — including ids from `View.generateViewId()`, which have no resource entry at all, and
+  platform ids like the `text1` shared by every `simple_list_item_1` row.
+
+  Compose content inside a View tree needs no de-duplication and gets none: Compose routes pointer
+  input itself and never sets the View pressed state, so those taps resolve to nothing here and stay
+  the Compose pipeline's exactly once.
+
+  What it does not reach is listed in the README rather than left to be discovered: dialogs and
+  popups (a `Spinner` dropdown, an overflow menu), multi-touch on two elements, a long press consumed
+  by an `OnLongClickListener`, and — the one with a bias rather than a hole — any click that does not
+  travel through touch dispatch, including keyboard, D-pad and accessibility-service clicks.
+
 ### Fixed
 
 - **Calling `ScopeStack.push` from Swift no longer kills the process** ([#193]). It was the
@@ -914,6 +945,7 @@ Initial release.
 [#58]: https://github.com/uny/autograph/issues/58
 [#60]: https://github.com/uny/autograph/issues/60
 [#62]: https://github.com/uny/autograph/issues/62
+[#63]: https://github.com/uny/autograph/issues/63
 [#64]: https://github.com/uny/autograph/issues/64
 [#65]: https://github.com/uny/autograph/issues/65
 [#67]: https://github.com/uny/autograph/issues/67

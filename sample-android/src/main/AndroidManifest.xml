@@ -15,5 +15,9 @@
         <activity
             android:name=".NativeScreensActivity"
             android:exported="true" />
+        <!-- The non-Compose native tap-capture demo, launched directly by the instrumented smoke. -->
+        <activity
+            android:name=".NativeTapsActivity"
+            android:exported="true" />
     </application>
 </manifest>
