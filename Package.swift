@@ -51,10 +51,17 @@ private let autographTarget: Target = FileManager.default.fileExists(atPath: loc
 
 let package = Package(
     name: "Autograph",
+    // iOS 15 is not a preference, it is what the binary is: Kotlin/Native 2.4.10 builds
+    // Autograph.xcframework at `minos 15.0` (its default for the iOS targets — nothing in the Gradle
+    // build sets a deployment target), so every Swift product here links a 15.0 binary. Declaring less
+    // would let SwiftPM accept a consumer that cannot run what it just linked, which is exactly what
+    // this line used to do at `.v13`. Raise it in step with the umbrella, not independently.
+    //
     // Autograph.xcframework only ships iOS device/simulator slices, so this package is iOS-only in
     // practice; macOS/tvOS/watchOS minimums are declared solely to satisfy SwiftPM's manifest-level
-    // compatibility check against the analytics-swift dependency's own minimums.
-    platforms: [.iOS(.v13), .macOS(.v10_15), .tvOS(.v13), .watchOS(.v7)],
+    // compatibility check against the analytics-swift dependency's own minimums, and describe no
+    // binary of ours.
+    platforms: [.iOS(.v15), .macOS(.v10_15), .tvOS(.v13), .watchOS(.v7)],
     products: [
         .library(name: "AutographSegmentSwift", targets: ["AutographSegmentSwift"]),
         // The Swift-side UI sugar over the Kotlin capture — `.autographScreen("Name")` for SwiftUI.

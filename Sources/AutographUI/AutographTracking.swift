@@ -154,20 +154,13 @@ private enum AutographTrackingDiagnostics {
     /// Loud on a missing capture, matching ``AutographScreen``'s handling: trap in debug, where it is a
     /// wiring bug the developer should see at once, and log at fault level in release so the silence of
     /// "no events" is at least traceable.
-    ///
-    /// The availability check is around the *logging only*, deliberately: `Logger` needs iOS 14, but
-    /// nothing else in this file does, and gating the whole explicit-instrumentation API on 14 to reach a
-    /// diagnostic would raise the floor of a working feature for the sake of a log line. Below 14 the
-    /// debug trap still fires, which is where a missing capture actually gets noticed.
     static func missingCapture(_ event: String) {
         assertionFailure(
             "`autograph.track(\"\(event)\")` has no AutographElementCapture in its environment — call "
                 + "`.autographElementCapture(_:)` above it. No event was recorded."
         )
-        if #available(iOS 14.0, *) {
-            Logger(subsystem: "dev.ynagai.autograph", category: "AutographUI").fault(
-                "`autograph.track(\"\(event, privacy: .public)\")` has no capture in its environment; event dropped."
-            )
-        }
+        Logger(subsystem: "dev.ynagai.autograph", category: "AutographUI").fault(
+            "`autograph.track(\"\(event, privacy: .public)\")` has no capture in its environment; event dropped."
+        )
     }
 }

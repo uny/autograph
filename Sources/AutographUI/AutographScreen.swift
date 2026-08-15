@@ -31,7 +31,6 @@ public extension View {
     ///
     /// Requires ``SwiftUICore/View/autographScreenCapture(_:)`` above it; without it, this warns (and
     /// traps in debug) rather than silently doing nothing.
-    @available(iOS 14.0, *)
     func autographScreen(_ name: String) -> some View {
         modifier(AutographScreenModifier(name: name))
     }
@@ -55,7 +54,6 @@ extension EnvironmentValues {
 
 // MARK: - The modifier
 
-@available(iOS 14.0, *)
 struct AutographScreenModifier: ViewModifier {
     let name: String
 
@@ -93,7 +91,6 @@ struct AutographScreenModifier: ViewModifier {
 }
 
 /// Equatable key so `onChange` fires when either the name or the capture *instance* changes.
-@available(iOS 14.0, *)
 private struct ScreenBinding: Equatable {
     let name: String
     let captureID: ObjectIdentifier?
@@ -104,7 +101,6 @@ private struct ScreenBinding: Equatable {
     }
 }
 
-@available(iOS 14.0, *)
 private enum AutographScreenDiagnostics {
     private static let log = Logger(subsystem: "dev.ynagai.autograph", category: "AutographUI")
 

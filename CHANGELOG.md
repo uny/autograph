@@ -181,6 +181,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- **The Swift package now declares the iOS floor it actually has: 15.0, not 13.0** ([#195]). Every
+  Swift product links `Autograph.xcframework`, which Kotlin/Native builds at `minos 15.0` — its
+  default for the iOS targets, and nothing in the Gradle build sets a deployment target. The manifest
+  nevertheless declared `.iOS(.v13)`, so SwiftPM would accept an iOS 13 or 14 consumer and let it link
+  a binary it cannot run. Nothing enforced the declared floor, which is why the mismatch survived
+  through 0.5.0 unnoticed.
+
+  Lowering the binary instead was considered and rejected. Apple's toolchain does not stand in the way
+  — Xcode 26.3's SDK compiles a `-target arm64-apple-ios13.0` Swift module without so much as a
+  warning, measured — but Kotlin/Native offers no supported way to set an iOS deployment target, only
+  the internal `-Xoverride-konan-properties`; iOS 13 and 14 devices are essentially absent by now, and
+  a compiler-internal override is a poor trade for them.
+
+  The raised floor also removes the availability plumbing the false floor required: the four
+  `@available(iOS 14.0, *)` annotations on `.autographScreen` and its modifier, and the
+  `#available(iOS 14.0, *)` gate that kept `Logger` reachable in `autograph.track`'s missing-capture
+  diagnostic. No Swift API in this package now carries an `@available` annotation of its own, and the
+  README's Requirements section states the iOS minimum for the first time.
+
 - **iOS native tap capture now works on UIKit in a cold process** ([#189]). Native taps resolved
   through the accessibility element tree, which UIKit and SwiftUI build only once an accessibility
   client has asked for it — so until VoiceOver, Voice Control, the Accessibility Inspector or an
@@ -875,3 +894,4 @@ Initial release.
 [#185]: https://github.com/uny/autograph/issues/185
 [#189]: https://github.com/uny/autograph/issues/189
 [#191]: https://github.com/uny/autograph/issues/191
+[#195]: https://github.com/uny/autograph/issues/195
