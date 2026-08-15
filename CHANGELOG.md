@@ -52,8 +52,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `AutographButton` mirrors a free-form label or a title and nothing else. `systemImage`, `role:` and
   `LocalizedStringResource` each arrived in a different iOS version, so mirroring them means an
   availability-gated overload per convenience, growing with every SDK release, for sugar the caller can
-  already express — and holding that line is what keeps this API at an **iOS 13** floor. Modifiers
-  applied from outside reach the underlying `Button` normally, and it composes inside `.alert`,
+  already express — and holding that line is what leaves this API with no `@available` annotation of
+  its own. (The effective floor is **iOS 15**, set by `Autograph.xcframework`'s `minos 15.0`, not by
+  this API.) Modifiers applied from outside reach the underlying `Button` normally, and it composes
+  inside `.alert`,
   `.confirmationDialog`, `Menu`, `.contextMenu`, `.swipeActions` and `.toolbar` exactly as a literal
   `Button` does; swapping the `Button` inside a design-system button of your own is appearance-neutral
   down to a custom `ButtonStyle`'s `isPressed`. All measured across seven container kinds and eight

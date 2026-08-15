@@ -578,17 +578,24 @@ ContentView().autographElementCapture(capture)
 AutographButton("Save", event: "Recipe Saved", target: "save_button") { save() }
 
 // Anything else — record from inside the handler the touch actually reaches:
-Button("Delete", role: .destructive) {
-    autograph.track("Recipe Deleted", target: "delete_button")  // record FIRST, then act
-    delete()
+struct DeleteButton: View {
+    @Environment(\.autograph) private var autograph
+
+    var body: some View {
+        Button("Delete", role: .destructive) {
+            autograph.track("Recipe Deleted", target: "delete_button")  // record FIRST, then act
+            delete()
+        }
+    }
 }
 ```
 
-`autograph` is `@Environment(\.autograph)`. A missing `.autographElementCapture(_:)` is **loud** — it
-traps in debug and logs a fault in release, rather than silently dropping every event. "At the root"
-is meant literally: a modifier reads the environment its *parent* supplies, so providing the capture
-and instrumenting a button in the same modifier chain leaves the button with nothing — put the
-provider above the view that uses it, as with `.autographScreenCapture`.
+A missing `.autographElementCapture(_:)` is **loud** — it traps in debug and logs a fault in release,
+rather than silently dropping every event. Provide it once above your instrumented views; a view reads
+the environment supplied to it, so `.autographElementCapture` applied anywhere at or above an
+`AutographButton` reaches it, including on the button itself. (`.autographScreen` is the one that
+genuinely needs a *parent* to supply its capture — it is a `ViewModifier`, so it reads the environment
+at its own position, above whatever `.autographScreenCapture` it is chained after.)
 
 **Why `AutographButton` first.** Nothing you call by hand can prove its caller was a real interaction:
 reached from a timer or a completion block, `track` records a click nobody made — the exact phantom
@@ -601,9 +608,12 @@ the only level that can observe them.
 **What it deliberately does not mirror.** A free-form label or a title, and that is the whole contract.
 `Button`'s other conveniences — `systemImage`, `role:`, `LocalizedStringResource` — each arrived in a
 different iOS version, so mirroring them means an availability-gated overload per convenience, growing
-with every SDK release, for sugar you can already express. Keeping that line is what holds this API at
-an **iOS 13** floor. Modifiers from outside reach the underlying `Button` normally (`.disabled`,
-`.buttonStyle`, `.controlSize`), and it composes inside `.alert`, `.confirmationDialog`, `Menu`,
+with every SDK release, for sugar you can already express. Keeping that line is what leaves this API
+with no `@available` annotation of its own. The effective floor is **iOS 15**, set by
+`Autograph.xcframework` (Kotlin/Native builds it at `minos 15.0`), not by this API — which is why the
+`role:` example above, an iOS 15 initializer, needs no gate. Modifiers from outside reach the
+underlying `Button` normally (`.disabled`, `.buttonStyle`, `.controlSize`), and it composes inside
+`.alert`, `.confirmationDialog`, `Menu`,
 `.contextMenu`, `.swipeActions` and `.toolbar` exactly as a literal `Button` does — measured, not
 assumed.
 
