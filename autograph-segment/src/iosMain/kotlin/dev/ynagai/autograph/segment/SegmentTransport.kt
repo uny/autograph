@@ -2,8 +2,8 @@ package dev.ynagai.autograph.segment
 
 import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.Transport
+import dev.ynagai.autograph.asJsonObject
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.JsonObject
 
 /**
  * Bridge to Segment's `analytics-swift` SDK, implemented in Swift by the app.
@@ -34,19 +34,24 @@ public class SegmentTransport(
     // enrichment closures, so unlike Android there is no in-pipeline stamping.
     override val stampsInPipeline: Boolean get() = false
 
+    // `asJsonObject()` is what makes the payload JSON, and it is load-bearing rather than tidy:
+    // the parameter is the `Map` interface (#193), and only `JsonObject.toString()` emits JSON —
+    // any other map renders as `{k=v}`, which the Swift adapter's decoder rejects, silently
+    // dropping every property. The compiler cannot enforce this one, because `toString()` is
+    // legal on `Map` too.
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
-        bridge.track(name, properties.toString(), envelope?.eventId.orEmpty(), envelope?.toJson()?.toString().orEmpty())
+        bridge.track(name, properties.asJsonObject().toString(), envelope?.eventId.orEmpty(), envelope?.toJson()?.toString().orEmpty())
     }
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
-        bridge.screen(name, properties.toString(), envelope?.eventId.orEmpty(), envelope?.toJson()?.toString().orEmpty())
+        bridge.screen(name, properties.asJsonObject().toString(), envelope?.eventId.orEmpty(), envelope?.toJson()?.toString().orEmpty())
     }
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         // Forward the stamped envelope like track/screen: the core advanced the sequence
         // counter for this identify (stampsInPipeline=false), so dropping the envelope would
         // leave a phantom gap and strip the event_id. Matches the Android in-pipeline path.
-        bridge.identify(userId, traits.toString(), envelope?.eventId.orEmpty(), envelope?.toJson()?.toString().orEmpty())
+        bridge.identify(userId, traits.asJsonObject().toString(), envelope?.eventId.orEmpty(), envelope?.toJson()?.toString().orEmpty())
     }
 
     override fun flush() {
