@@ -10,6 +10,31 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Changed
 
+- **The Kotlin floor is now 2.3, down from 2.4.10** ([#205]) — any `2.3.x` consumer, though the
+  library itself is built with 2.3.21. KSP has no Kotlin 2.4 release, and
+  the Kotlin plugin version is project-wide — so the old floor locked out every consumer that needs
+  KSP and targets iOS (Room on KMP among them) with no version combination that could satisfy both.
+  A klib carries its producing compiler's ABI version, so 0.7.0's iOS artifacts are rejected outright
+  by a 2.3 toolchain: *"Skipping … having incompatible ABI version '2.4.0'"*. Consumers already on
+  2.4 are unaffected — the compatibility runs the other way.
+
+  The only thing that required 2.4 was one stdlib call, at two sites. `autograph-core` now generates
+  UUIDv7 itself (`UuidV7Generator`, internal — no public API changed, and the `api/` dumps are
+  unchanged). **The `event_id` format and its ordering guarantee are the same**: still UUIDv7 per
+  RFC 9562, still sorting in generation order. Ids minted inside a single millisecond are ordered by
+  a monotonic counter in `rand_a` (RFC 9562 §6.2 method 3) rather than by chance, and randomness
+  still comes from the same cryptographically-strong source that backs `EventId.UuidV4`.
+
+  Compose Multiplatform stays at 1.11.1 — it requires only Kotlin 2.3 — so nothing about the iOS
+  accessibility bridging or the impression path moves with this.
+
+  **One thing does move that is not source-level: `Autograph.xcframework`'s deployment target.**
+  Nothing in the Gradle build sets one, so it is Kotlin/Native's default — `minos 15.0` under
+  2.4.10, `minos 14.0` under 2.3.21. The Swift package keeps declaring `.iOS(.v15)`: over-declaring
+  turns away a consumer the binary would have run, which is the harmless direction, and lowering it
+  needs the iOS-15-API-without-`@available` sites in `AutographUI` audited first. Nothing to do for
+  consumers on iOS 15+; iOS 14 support is a follow-up decision, not a side effect of this change.
+
 - **The Android `compileSdk` floor is now 35, down from 37, and jetbrains `lifecycle` drops to
   2.9.6** ([#205]). The 37 requirement was never Compose Multiplatform's — CMP 1.11.1's own metadata
   asks for lifecycle 2.9.6, and it was Autograph's explicit 2.11.0 pin whose AAR metadata forced 37

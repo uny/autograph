@@ -32,6 +32,20 @@ with `./gradlew :<module>:updateKotlinAbi` and verify with `:checkKotlinAbi`. Tw
 are not covered — `autograph-schema` and `autograph-android` — so a public change there
 needs the rules below applied by hand; ADR 0001 §1 says why.
 
+**Leave the `enabled.set(true)` inside those `abiValidation { }` blocks alone — including if the
+Kotlin floor rises again.** It looks redundant and is not: on KGP 2.3 an empty block registers the
+tasks and then leaves them `SKIPPED` and out of `check`'s task graph, so `./gradlew build` passes
+without validating anything. That is the same vacuous green ADR 0001 §1 calls "worse than nothing"
+for `autograph-android`, and nothing announces it — you have to go looking for the task in the build
+log. Measured while lowering the floor (#205): `abiValidation {}` runs the checks under 2.4.10 and
+skips them under 2.3.21, so the behaviour turns on the KGP version rather than on the call form.
+Setting `enabled` explicitly is what makes it independent of both, which is the point — a future
+bump back to 2.4 is not a reason to drop it, since the next move down would silently disarm the gate
+again.
+
+If you touch these blocks, check the gate still fires rather than trusting a green build:
+`./gradlew :autograph-core:checkKotlinAbi` must print the task, not `SKIPPED`.
+
 **An API dump change in a PR is a review checkpoint, not a formality.** Before adding
 anything public, read [ADR 0001 — How the public API may evolve after 1.0](docs/adr/0001-public-api-evolution.md).
 It classifies each public type by who constructs and who implements it, and the
@@ -52,6 +66,20 @@ If a change does not fit those rules, say so in the PR rather than working aroun
 the rules exist to make the cost visible, and some changes are worth paying it.
 
 ## Bumping dependencies
+
+**The `kotlin` version in `gradle/libs.versions.toml` sets the floor every consumer must compile at,
+so raising it is a compatibility decision and not a dependency chore.** A klib carries the ABI
+version of the compiler that produced it, so a consumer's Kotlin/Native toolchain must be at least as
+new — at *minor* granularity, which is why building with 2.3.21 still leaves 2.3.20 consumers (where
+KSP is) able to link. The Kotlin plugin version is also project-wide, so a floor above the newest KSP
+release locks out every project that needs KSP, whatever else it is willing to do. That is why the
+floor sits on the 2.3 line rather than 2.4.x
+([#205](https://github.com/uny/autograph/issues/205)), and why `autograph-core` owns
+[`UuidV7Generator`](autograph-core/src/commonMain/kotlin/dev/ynagai/autograph/UuidV7Generator.kt)
+instead of calling 2.4's `Uuid.generateV7()`. Before bumping `kotlin`, check that
+[KSP](https://github.com/google/ksp/releases) has shipped for the target *minor*, and say so in the
+PR. Bumping the patch within a supported minor is the ordinary chore this warning is not about.
+Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
 
 **`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
 each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise

@@ -3,7 +3,6 @@ package dev.ynagai.autograph
 import kotlinx.atomicfu.locks.SynchronizedObject
 import kotlinx.atomicfu.locks.synchronized
 import kotlin.time.Instant
-import kotlin.uuid.Uuid
 
 internal const val SDK_ID: String = "autograph/$AUTOGRAPH_VERSION"
 
@@ -29,6 +28,8 @@ internal class Stamper(
 ) : EnvelopeSource {
 
     private val lock = SynchronizedObject()
+    /** Owns its own counter state, driven by the injected [clock] rather than wall time. */
+    private val sessionIdGen = UuidV7Generator(clock)
     private val chunk: Long = when (persistence) {
         is SeqPersistence.EveryEvent -> 1
         is SeqPersistence.Chunked -> persistence.chunk
@@ -159,7 +160,7 @@ internal class Stamper(
     }
 
     private fun startNewSession(now: Long) {
-        sessionId = Uuid.generateV7().toString()
+        sessionId = sessionIdGen.next().toString()
         sessionStart = now
         lastActivity = now
         sessionSeq = 0
