@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-08-21
+
 ### Changed
 
 - **The Kotlin floor is now 2.3, down from 2.4.10** ([#205]) — any `2.3.x` consumer, though the
@@ -980,7 +982,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/uny/autograph/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/uny/autograph/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/uny/autograph/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/uny/autograph/compare/v0.4.0...v0.5.0
