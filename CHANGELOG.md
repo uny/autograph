@@ -10,7 +10,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Changed
 
-- **The Kotlin floor is now 2.3.21, down from 2.4.10** ([#205]). KSP has no Kotlin 2.4 release, and
+- **The Kotlin floor is now 2.3, down from 2.4.10** ([#205]) — any `2.3.x` consumer, though the
+  library itself is built with 2.3.21. KSP has no Kotlin 2.4 release, and
   the Kotlin plugin version is project-wide — so the old floor locked out every consumer that needs
   KSP and targets iOS (Room on KMP among them) with no version combination that could satisfy both.
   A klib carries its producing compiler's ABI version, so 0.7.0's iOS artifacts are rejected outright

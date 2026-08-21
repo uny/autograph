@@ -52,7 +52,11 @@ internal class UuidV7Generator(private val nowMillis: () -> Long) {
     private var counter = 0
 
     fun next(): Uuid = synchronized(lock) {
-        val now = nowMillis()
+        // Coerced before it is compared, not just before it is encoded: `unix_ts_ms` holds 48 bits,
+        // and a device clock set before 1970 reports negative milliseconds. Treating -1 and 0 as
+        // distinct rising values would encode them as 0xffffffffffff then 0x000000000000 — an id
+        // that sorts before every id already issued.
+        val now = nowMillis().coerceIn(0L, MAX_TIMESTAMP)
         // A clock that jumps backwards must not produce a regressing id, so hold the timestamp and
         // keep counting instead: correctness here is ordering, not tracking wall time exactly.
         if (now > lastMillis) {
@@ -60,9 +64,14 @@ internal class UuidV7Generator(private val nowMillis: () -> Long) {
             counter = seedCounter()
         } else if (counter >= COUNTER_MASK) {
             // Saturated — 4096 ids inside one millisecond. Borrow from the next millisecond rather
-            // than repeat a (timestamp, counter) pair.
-            lastMillis += 1
-            counter = seedCounter()
+            // than repeat a (timestamp, counter) pair, unless the field itself is exhausted: past
+            // MAX_TIMESTAMP (year 10889) there is nothing left to borrow, and holding costs only
+            // ordering *within* that millisecond. Ids stay unique either way — that is rand_b's
+            // job, not the counter's.
+            if (lastMillis < MAX_TIMESTAMP) {
+                lastMillis += 1
+                counter = seedCounter()
+            }
         } else {
             counter += 1
         }
@@ -70,6 +79,8 @@ internal class UuidV7Generator(private val nowMillis: () -> Long) {
     }
 
     private companion object {
+        /** The largest value `unix_ts_ms`'s 48 bits can hold. */
+        const val MAX_TIMESTAMP = (1L shl 48) - 1
         const val COUNTER_MASK = 0xFFF
         /** Seeds into the low half of the counter's range, leaving 2048 increments of headroom. */
         const val SEED_MASK = 0x7FF

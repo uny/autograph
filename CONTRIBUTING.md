@@ -53,16 +53,18 @@ the rules exist to make the cost visible, and some changes are worth paying it.
 
 ## Bumping dependencies
 
-**The `kotlin` version in `gradle/libs.versions.toml` *is* the floor every consumer must compile at,
-so raising it is a compatibility decision and not a dependency chore.** A KMP consumer needs a
-Kotlin at least as new as the one that produced our klib metadata, and the Kotlin plugin version is
-project-wide — so a floor above the newest KSP release locks out every project that needs KSP,
-whatever else it is willing to do. That is why the floor sits at 2.3.21 rather than 2.4.x
+**The `kotlin` version in `gradle/libs.versions.toml` sets the floor every consumer must compile at,
+so raising it is a compatibility decision and not a dependency chore.** A klib carries the ABI
+version of the compiler that produced it, so a consumer's Kotlin/Native toolchain must be at least as
+new — at *minor* granularity, which is why building with 2.3.21 still leaves 2.3.20 consumers (where
+KSP is) able to link. The Kotlin plugin version is also project-wide, so a floor above the newest KSP
+release locks out every project that needs KSP, whatever else it is willing to do. That is why the
+floor sits on the 2.3 line rather than 2.4.x
 ([#205](https://github.com/uny/autograph/issues/205)), and why `autograph-core` owns
 [`UuidV7Generator`](autograph-core/src/commonMain/kotlin/dev/ynagai/autograph/UuidV7Generator.kt)
 instead of calling 2.4's `Uuid.generateV7()`. Before bumping `kotlin`, check that
-[KSP](https://github.com/google/ksp/releases) has shipped for the target version, and say so in the
-PR. Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
+[KSP](https://github.com/google/ksp/releases) has shipped for the target *minor*, and say so in the
+PR. Bumping the patch within a supported minor is the ordinary chore this warning is not about. Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
 
 **A `composeMultiplatform` version bump in `gradle/libs.versions.toml` needs a manual cold-device
 check before merging — CI cannot catch a regression here.** iOS Compose autocapture depends on an

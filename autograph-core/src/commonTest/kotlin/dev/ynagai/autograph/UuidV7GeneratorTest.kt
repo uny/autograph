@@ -86,6 +86,34 @@ class UuidV7GeneratorTest {
     }
 
     @Test
+    fun aClockCrossingTheEpochDoesNotRegress() {
+        // A device clock set before 1970 reports negative milliseconds, which do not fit the 48-bit
+        // unix_ts_ms field. Encoding -1 and then 0 unclamped would sort the second id first.
+        var millis = -5L
+        val generator = UuidV7Generator { millis }
+        val ids = List(20) { generator.next().toString().also { millis += 1 } }
+        assertEquals(ids, ids.sorted(), "ids must not regress across the epoch boundary")
+        assertEquals(ids.size, ids.toSet().size, "ids must be unique")
+    }
+
+    @Test
+    fun aClockBeyondTheEncodableRangeStaysAValidUuidV7() {
+        val id = UuidV7Generator { Long.MAX_VALUE }.next()
+        assertEquals((1L shl 48) - 1, id.timestampMillis(), "the timestamp must not overflow its field")
+        assertEquals('7', id.toString()[14], "version nibble must survive a clamped timestamp")
+    }
+
+    @Test
+    fun idsStayUniqueOnceTheTimestampFieldIsExhausted() {
+        // Past the encodable range there is nothing left to borrow on counter saturation, so
+        // ordering within that millisecond degrades — but rand_b, not the counter, is what keeps
+        // ids unique, so uniqueness must survive.
+        val generator = UuidV7Generator { Long.MAX_VALUE }
+        val ids = List(10_000) { generator.next().toString() }
+        assertEquals(ids.size, ids.toSet().size, "ids must be unique even with the counter pinned")
+    }
+
+    @Test
     fun twoGeneratorsDoNotShareCounterState() {
         // Stamper drives its own instance off an injected clock; a test clock frozen in the past
         // must not be perturbed by, or perturb, the wall-clock instance behind EventId.UuidV7.
