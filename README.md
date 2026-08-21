@@ -823,7 +823,13 @@ isolation is the name, not a namespace.
 
 ## Requirements
 
-- Kotlin **2.4.10** (UUIDv7 generation comes from the standard library)
+- Kotlin **2.3.21**. Held deliberately below 2.4, not left behind: a klib carries the ABI version of
+  the compiler that produced it, so a library built on 2.4 cannot be linked by a 2.3 Kotlin/Native
+  toolchain at all. Since the Kotlin plugin version is project-wide and KSP has no 2.4 release, a 2.4
+  floor locked out every consumer that needs KSP and targets iOS — Room on KMP among them — with
+  nothing they could do about it. Autograph therefore generates its own UUIDv7 rather than calling
+  2.4's `Uuid.generateV7()` ([#205](https://github.com/uny/autograph/issues/205)). Consumers already
+  on 2.4 are unaffected; the compatibility runs the other way
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
 - Android `compileSdk` **37** or later, for consumers of `autograph-compose` — required by the

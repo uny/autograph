@@ -53,6 +53,17 @@ the rules exist to make the cost visible, and some changes are worth paying it.
 
 ## Bumping dependencies
 
+**The `kotlin` version in `gradle/libs.versions.toml` *is* the floor every consumer must compile at,
+so raising it is a compatibility decision and not a dependency chore.** A KMP consumer needs a
+Kotlin at least as new as the one that produced our klib metadata, and the Kotlin plugin version is
+project-wide — so a floor above the newest KSP release locks out every project that needs KSP,
+whatever else it is willing to do. That is why the floor sits at 2.3.21 rather than 2.4.x
+([#205](https://github.com/uny/autograph/issues/205)), and why `autograph-core` owns
+[`UuidV7Generator`](autograph-core/src/commonMain/kotlin/dev/ynagai/autograph/UuidV7Generator.kt)
+instead of calling 2.4's `Uuid.generateV7()`. Before bumping `kotlin`, check that
+[KSP](https://github.com/google/ksp/releases) has shipped for the target version, and say so in the
+PR. Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
+
 **A `composeMultiplatform` version bump in `gradle/libs.versions.toml` needs a manual cold-device
 check before merging — CI cannot catch a regression here.** iOS Compose autocapture depends on an
 undocumented CMP implementation detail: the accessibility-tree activation call site that autograph's

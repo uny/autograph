@@ -8,6 +8,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Changed
+
+- **The Kotlin floor is now 2.3.21, down from 2.4.10** ([#205]). KSP has no Kotlin 2.4 release, and
+  the Kotlin plugin version is project-wide — so the old floor locked out every consumer that needs
+  KSP and targets iOS (Room on KMP among them) with no version combination that could satisfy both.
+  A klib carries its producing compiler's ABI version, so 0.7.0's iOS artifacts are rejected outright
+  by a 2.3 toolchain: *"Skipping … having incompatible ABI version '2.4.0'"*. Consumers already on
+  2.4 are unaffected — the compatibility runs the other way.
+
+  The only thing that required 2.4 was one stdlib call, at two sites. `autograph-core` now generates
+  UUIDv7 itself (`UuidV7Generator`, internal — no public API changed, and the `api/` dumps are
+  unchanged). **The `event_id` format and its ordering guarantee are the same**: still UUIDv7 per
+  RFC 9562, still sorting in generation order. Ids minted inside a single millisecond are ordered by
+  a monotonic counter in `rand_a` (RFC 9562 §6.2 method 3) rather than by chance, and randomness
+  still comes from the same cryptographically-strong source that backs `EventId.UuidV4`.
+
+  Compose Multiplatform stays at 1.11.1 — it requires only Kotlin 2.3 — so nothing about the iOS
+  accessibility bridging or the impression path moves with this.
+
 ## [0.7.0] - 2026-08-16
 
 ### Added
@@ -1022,3 +1041,4 @@ Initial release.
 [#191]: https://github.com/uny/autograph/issues/191
 [#193]: https://github.com/uny/autograph/issues/193
 [#195]: https://github.com/uny/autograph/issues/195
+[#205]: https://github.com/uny/autograph/issues/205
