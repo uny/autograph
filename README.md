@@ -659,8 +659,8 @@ the only level that can observe them.
 different iOS version, so mirroring them means an availability-gated overload per convenience, growing
 with every SDK release, for sugar you can already express. Keeping that line is what leaves this API
 with no `@available` annotation of its own. The effective floor is **iOS 15**, set by
-`Autograph.xcframework` (Kotlin/Native builds it at `minos 15.0`), not by this API — which is why the
-`role:` example above, an iOS 15 initializer, needs no gate. Modifiers from outside reach the
+`Package.swift`, not by this API — which is why the `role:` example above, an iOS 15 initializer,
+needs no gate. Modifiers from outside reach the
 underlying `Button` normally (`.disabled`, `.buttonStyle`, `.controlSize`), and it composes inside
 `.alert`, `.confirmationDialog`, `Menu`,
 `.contextMenu`, `.swipeActions` and `.toolbar` exactly as a literal `Button` does — measured, not
@@ -823,16 +823,27 @@ isolation is the name, not a namespace.
 
 ## Requirements
 
-- Kotlin **2.4.10** (UUIDv7 generation comes from the standard library)
+- Kotlin **2.3** or later — any `2.3.x`, not only the `2.3.21` this library is built with. A klib
+  carries the ABI version of the compiler that produced it, and that version tracks the Kotlin
+  *minor*, so `2.3.21` output links from a `2.3.20` toolchain (verified) while a `2.4.10` build is
+  rejected outright by any 2.3 one. That distinction is the point of the floor: KSP has no Kotlin 2.4
+  release and the Kotlin plugin version is project-wide, so a 2.4 floor locked out every consumer
+  that needs KSP and targets iOS — Room on KMP among them, whose KSP builds sit on 2.3.20 — with
+  nothing they could do about it. Autograph therefore generates its own UUIDv7 rather than calling
+  2.4's `Uuid.generateV7()` ([#205](https://github.com/uny/autograph/issues/205)). Consumers already
+  on 2.4 are unaffected; the compatibility runs the other way
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
 - Android `compileSdk` **37** or later, for consumers of `autograph-compose` — required by the
   `androidx.lifecycle` 2.11.0 it depends on
-- iOS **15.0** or later, for the Swift package. This is not a design choice but a property of the
-  binary: Kotlin/Native builds `Autograph.xcframework` at `minos 15.0` by default, and every Swift
-  product links it, so `Package.swift` declares the same floor rather than a lower one SwiftPM would
-  accept and the binary would then fail to honour. No Swift API here carries an `@available` version
-  annotation of its own
+- iOS **15.0** or later, for the Swift package — the floor `Package.swift` declares. It used to be
+  read straight off the binary, since Kotlin/Native's default deployment target was `minos 15.0` and
+  nothing in the Gradle build overrides it; on the 2.3 toolchain that default is `minos 14.0`, so
+  from the next release the declared floor sits one version *above* what the framework would run.
+  That is the safe direction — SwiftPM turning away a consumer beats accepting one the binary cannot
+  honour — and `.v15` is kept until the Swift sources that rely on iOS 15 APIs without an
+  `@available` gate are audited. No Swift API here carries an `@available` version annotation of its
+  own
 - Targets: **Android**, **JVM**, and **iOS** — device `iosArm64` and the Apple-Silicon simulator
   `iosSimulatorArm64`. The Intel-Mac simulator (`iosX64`) is intentionally not shipped: Apple-Silicon
   simulators cover current development, and adding a target costs a Kotlin/Native link on every CI run,

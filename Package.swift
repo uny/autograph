@@ -51,11 +51,18 @@ private let autographTarget: Target = FileManager.default.fileExists(atPath: loc
 
 let package = Package(
     name: "Autograph",
-    // iOS 15 is not a preference, it is what the binary is: Kotlin/Native 2.4.10 builds
-    // Autograph.xcframework at `minos 15.0` (its default for the iOS targets — nothing in the Gradle
-    // build sets a deployment target), so every Swift product here links a 15.0 binary. Declaring less
-    // would let SwiftPM accept a consumer that cannot run what it just linked, which is exactly what
-    // this line used to do at `.v13`. Raise it in step with the umbrella, not independently.
+    // `minos` is whatever Kotlin/Native defaults to — nothing in the Gradle build sets a deployment
+    // target — so it moves when the compiler moves, and the compiler just did. `minVersion.ios` in
+    // the toolchain's own `konan.properties` is 15.0 for 2.4.10 but **14.0 for the 2.3.21 this
+    // library now builds with** (#205), so releases from here on ship a 14.0 binary where 0.7.0
+    // shipped a 15.0 one.
+    //
+    // `.v15` is kept deliberately rather than lowered with it. Over-declaring is the safe direction
+    // — SwiftPM refuses a consumer the binary would have run, rather than accepting one it cannot,
+    // which is what this line used to do at `.v13`. Lowering it to `.v14` is a real decision, not
+    // bookkeeping: `AutographUI` uses iOS 15 APIs with no `@available` gate precisely because this
+    // floor made gating unnecessary (see README's `role:` note), so `.v14` needs those audited
+    // first. Until then this declares a floor above the binary's, on purpose.
     //
     // Autograph.xcframework only ships iOS device/simulator slices, so this package is iOS-only in
     // practice; macOS/tvOS/watchOS minimums are declared solely to satisfy SwiftPM's manifest-level
