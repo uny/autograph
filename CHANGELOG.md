@@ -28,6 +28,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Compose Multiplatform stays at 1.11.1 — it requires only Kotlin 2.3 — so nothing about the iOS
   accessibility bridging or the impression path moves with this.
 
+  **One thing does move that is not source-level: `Autograph.xcframework`'s deployment target.**
+  Nothing in the Gradle build sets one, so it is Kotlin/Native's default — `minos 15.0` under
+  2.4.10, `minos 14.0` under 2.3.21. The Swift package keeps declaring `.iOS(.v15)`: over-declaring
+  turns away a consumer the binary would have run, which is the harmless direction, and lowering it
+  needs the iOS-15-API-without-`@available` sites in `AutographUI` audited first. Nothing to do for
+  consumers on iOS 15+; iOS 14 support is a follow-up decision, not a side effect of this change.
+
 ## [0.7.0] - 2026-08-16
 
 ### Added

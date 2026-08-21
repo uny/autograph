@@ -32,6 +32,14 @@ with `./gradlew :<module>:updateKotlinAbi` and verify with `:checkKotlinAbi`. Tw
 are not covered — `autograph-schema` and `autograph-android` — so a public change there
 needs the rules below applied by hand; ADR 0001 §1 says why.
 
+**Leave the `enabled.set(true)` inside those `abiValidation { }` blocks alone.** It looks
+redundant and is not: KGP 2.3 defaults `enabled` to false, so an empty block registers the tasks
+and then leaves them `SKIPPED` and out of `check`'s task graph — `./gradlew build` passes without
+validating anything, which is the same vacuous green ADR 0001 §1 calls "worse than nothing" for
+`autograph-android`. Nothing announces it; you have to go looking for the task in the build log.
+Kotlin 2.4's no-arg `abiValidation()` turned it on implicitly, which is why the flag was not there
+before the floor moved to 2.3.
+
 **An API dump change in a PR is a review checkpoint, not a formality.** Before adding
 anything public, read [ADR 0001 — How the public API may evolve after 1.0](docs/adr/0001-public-api-evolution.md).
 It classifies each public type by who constructs and who implements it, and the

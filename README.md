@@ -659,8 +659,8 @@ the only level that can observe them.
 different iOS version, so mirroring them means an availability-gated overload per convenience, growing
 with every SDK release, for sugar you can already express. Keeping that line is what leaves this API
 with no `@available` annotation of its own. The effective floor is **iOS 15**, set by
-`Autograph.xcframework` (Kotlin/Native builds it at `minos 15.0`), not by this API — which is why the
-`role:` example above, an iOS 15 initializer, needs no gate. Modifiers from outside reach the
+`Package.swift`, not by this API — which is why the `role:` example above, an iOS 15 initializer,
+needs no gate. Modifiers from outside reach the
 underlying `Button` normally (`.disabled`, `.buttonStyle`, `.controlSize`), and it composes inside
 `.alert`, `.confirmationDialog`, `Menu`,
 `.contextMenu`, `.swipeActions` and `.toolbar` exactly as a literal `Button` does — measured, not
@@ -836,11 +836,14 @@ isolation is the name, not a namespace.
   `Modifier.onVisibilityChanged`)
 - Android `compileSdk` **37** or later, for consumers of `autograph-compose` — required by the
   `androidx.lifecycle` 2.11.0 it depends on
-- iOS **15.0** or later, for the Swift package. This is not a design choice but a property of the
-  binary: Kotlin/Native builds `Autograph.xcframework` at `minos 15.0` by default, and every Swift
-  product links it, so `Package.swift` declares the same floor rather than a lower one SwiftPM would
-  accept and the binary would then fail to honour. No Swift API here carries an `@available` version
-  annotation of its own
+- iOS **15.0** or later, for the Swift package — the floor `Package.swift` declares. It used to be
+  read straight off the binary, since Kotlin/Native's default deployment target was `minos 15.0` and
+  nothing in the Gradle build overrides it; on the 2.3 toolchain that default is `minos 14.0`, so
+  from the next release the declared floor sits one version *above* what the framework would run.
+  That is the safe direction — SwiftPM turning away a consumer beats accepting one the binary cannot
+  honour — and `.v15` is kept until the Swift sources that rely on iOS 15 APIs without an
+  `@available` gate are audited. No Swift API here carries an `@available` version annotation of its
+  own
 - Targets: **Android**, **JVM**, and **iOS** — device `iosArm64` and the Apple-Silicon simulator
   `iosSimulatorArm64`. The Intel-Mac simulator (`iosX64`) is intentionally not shipped: Apple-Silicon
   simulators cover current development, and adding a target costs a Kotlin/Native link on every CI run,
