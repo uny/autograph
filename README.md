@@ -826,8 +826,12 @@ isolation is the name, not a namespace.
 - Kotlin **2.4.10** (UUIDv7 generation comes from the standard library)
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
-- Android `compileSdk` **37** or later, for consumers of `autograph-compose` — required by the
-  `androidx.lifecycle` 2.11.0 it depends on
+- Android `compileSdk` **35** or later, for consumers of the Android artifacts. Kept as low as the
+  published modules' own dependencies allow, since it is a hard requirement on every consumer's
+  build: `compileSdk` 36 needs a newer AGP than 35 does, and the projects most likely to be pinned
+  to an older AGP are the same ones the Kotlin floor above is about
+  ([#205](https://github.com/uny/autograph/issues/205)). The demo app in `sample-android` compiles
+  against 36 for a dependency of its own; that does not reach consumers
 - iOS **15.0** or later, for the Swift package. This is not a design choice but a property of the
   binary: Kotlin/Native builds `Autograph.xcframework` at `minos 15.0` by default, and every Swift
   product links it, so `Package.swift` declares the same floor rather than a lower one SwiftPM would

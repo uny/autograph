@@ -8,6 +8,19 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Changed
+
+- **The Android `compileSdk` floor is now 35, down from 37, and jetbrains `lifecycle` drops to
+  2.9.6** ([#205]). The 37 requirement was never Compose Multiplatform's — CMP 1.11.1's own metadata
+  asks for lifecycle 2.9.6, and it was Autograph's explicit 2.11.0 pin whose AAR metadata forced 37
+  on every consumer. Since `compileSdk` 36 also needs a newer AGP than 35 does, this reaches the
+  projects most likely to be pinned to an older toolchain — the same ones the Kotlin floor change is
+  about. Compose Multiplatform stays at 1.11.1.
+
+  `sample-android` and `sample-shared` now compile against their own `android-sampleCompileSdk` (36,
+  for the demo app's `androidx.activity` dependency), so a sample's dependencies can no longer raise
+  the published floor.
+
 ## [0.7.0] - 2026-08-16
 
 ### Added
@@ -1022,3 +1035,4 @@ Initial release.
 [#191]: https://github.com/uny/autograph/issues/191
 [#193]: https://github.com/uny/autograph/issues/193
 [#195]: https://github.com/uny/autograph/issues/195
+[#205]: https://github.com/uny/autograph/issues/205

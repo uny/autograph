@@ -8,7 +8,7 @@ plugins {
 kotlin {
     androidLibrary {
         namespace = "dev.ynagai.autograph.sample.shared"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        compileSdk = libs.versions.android.sampleCompileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
     }
 

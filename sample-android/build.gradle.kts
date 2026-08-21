@@ -5,12 +5,12 @@ plugins {
 
 android {
     namespace = "dev.ynagai.autograph.sample.android"
-    compileSdk = libs.versions.android.compileSdk.get().toInt()
+    compileSdk = libs.versions.android.sampleCompileSdk.get().toInt()
 
     defaultConfig {
         applicationId = "dev.ynagai.autograph.sample.android"
         minSdk = libs.versions.android.minSdk.get().toInt()
-        targetSdk = libs.versions.android.compileSdk.get().toInt()
+        targetSdk = libs.versions.android.sampleCompileSdk.get().toInt()
         versionCode = 1
         versionName = "1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"

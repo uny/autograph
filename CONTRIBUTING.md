@@ -53,6 +53,13 @@ the rules exist to make the cost visible, and some changes are worth paying it.
 
 ## Bumping dependencies
 
+**`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
+each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
+it only when a dependency of a *published* module actually demands it, and prefer pinning that
+dependency lower — a newer `compileSdk` also implies a newer AGP, which is precisely what a
+KSP-constrained project may not have. The samples have their own `android-sampleCompileSdk` key so
+their dependencies cannot push the floor up.
+
 **A `composeMultiplatform` version bump in `gradle/libs.versions.toml` needs a manual cold-device
 check before merging — CI cannot catch a regression here.** iOS Compose autocapture depends on an
 undocumented CMP implementation detail: the accessibility-tree activation call site that autograph's

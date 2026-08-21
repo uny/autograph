@@ -43,7 +43,7 @@ class SecondHarnessFragment : Fragment()
  * PR-E adds a narrow instrumented smoke for those once it has a real install to exercise.
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36]) // Robolectric 4.16's newest shipped framework (< compileSdk 37, which it can't shadow yet).
+@Config(sdk = [36]) // Robolectric 4.16's newest shipped framework — deliberately above compileSdk 35.
 class LifecycleHarnessTest {
 
     @Test
