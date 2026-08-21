@@ -38,8 +38,7 @@ class TapHostActivity : Activity()
  * revert one.
  */
 @RunWith(RobolectricTestRunner::class)
-// Pinned like the screen-capture tests: the module's targetSdk is ahead of Robolectric's newest
-// supported SDK image.
+// Pinned like the screen-capture tests — see LifecycleHarnessTest for why 36 is the ceiling.
 @Config(sdk = [36])
 class AndroidTapCaptureTest {
 

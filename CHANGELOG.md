@@ -35,6 +35,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   needs the iOS-15-API-without-`@available` sites in `AutographUI` audited first. Nothing to do for
   consumers on iOS 15+; iOS 14 support is a follow-up decision, not a side effect of this change.
 
+- **The Android `compileSdk` floor is now 35, down from 37, and jetbrains `lifecycle` drops to
+  2.9.6** ([#205]). The 37 requirement was never Compose Multiplatform's — CMP 1.11.1's own metadata
+  asks for lifecycle 2.9.6, and it was Autograph's explicit 2.11.0 pin whose AAR metadata forced 37
+  on every consumer. Since `compileSdk` 36 also needs a newer AGP than 35 does, this reaches the
+  projects most likely to be pinned to an older toolchain — the ones blocked by an upstream release
+  they do not control, which is what [#205] is about. Compose Multiplatform stays at 1.11.1.
+
+  `sample-android` now compiles against its own `android-sampleCompileSdk` (36, which its
+  `androidx.activity` dependency demands), so a demo app's dependencies can no longer raise the
+  published floor. `sample-shared` stays on the library floor, where it doubles as a build-level
+  check that a Compose consumer can compile at 35.
+
 ## [0.7.0] - 2026-08-16
 
 ### Added

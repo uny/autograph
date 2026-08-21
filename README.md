@@ -834,8 +834,12 @@ isolation is the name, not a namespace.
   on 2.4 are unaffected; the compatibility runs the other way
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
-- Android `compileSdk` **37** or later, for consumers of `autograph-compose` — required by the
-  `androidx.lifecycle` 2.11.0 it depends on
+- Android `compileSdk` **35** or later, for consumers of the Android artifacts. Kept as low as the
+  published modules' own dependencies allow, since it is a hard requirement on every consumer's
+  build: `compileSdk` 36 needs a newer AGP than 35 does, and a project pinned to an older AGP is
+  usually pinned by an upstream release it does not control
+  ([#205](https://github.com/uny/autograph/issues/205)). The demo app in `sample-android` compiles
+  against 36 for a dependency of its own; that does not reach consumers
 - iOS **15.0** or later, for the Swift package — the floor `Package.swift` declares. It used to be
   read straight off the binary, since Kotlin/Native's default deployment target was `minos 15.0` and
   nothing in the Gradle build overrides it; on the 2.3 toolchain that default is `minos 14.0`, so

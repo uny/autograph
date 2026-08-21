@@ -8,7 +8,7 @@ atomicfu = "0.33.0"
 kotlinxIo = "0.9.1"
 analyticsKotlin = "1.26.0"
 navigationCompose = "2.9.2"
-lifecycle = "2.11.0"
+lifecycle = "2.9.6"
 androidxStartup = "1.2.0"
 robolectric = "4.16.1"
 androidxFragment = "1.8.9"
@@ -20,7 +20,14 @@ junit = "4.13.2"
 publish = "0.37.0"
 dokka = "2.2.0"
 
-android-compileSdk = "37"
+# The published floor: this becomes `minCompileSdk` in the AAR metadata, so it is what every
+# Android consumer must compile against. Kept as low as the libraries' own dependencies allow —
+# see CONTRIBUTING.md.
+android-compileSdk = "35"
+# sample-android only, which pulls androidx.activity 1.11.0 — its activity-ktx demands 36, so at 35
+# the app fails checkDebugAarMetadata. Deliberately separate: a demo app's dependency must not raise
+# the floor for consumers. Nothing else uses this key; sample-shared stays on android-compileSdk.
+android-sampleCompileSdk = "36"
 android-minSdk = "24"
 
 [libraries]
