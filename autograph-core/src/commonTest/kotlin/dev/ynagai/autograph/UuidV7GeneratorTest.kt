@@ -12,8 +12,16 @@ import kotlin.uuid.Uuid
 
 private const val FIXED_MILLIS = 1_700_000_000_000L
 
+private const val MAX_TIMESTAMP = (1L shl 48) - 1
+
 /** The 48-bit `unix_ts_ms` field. */
 private fun Uuid.timestampMillis(): Long = toLongs { mostSignificantBits, _ -> mostSignificantBits ushr 16 }
+
+/** Everything that orders one id against another: `unix_ts_ms` plus the `rand_a` counter. */
+private fun Uuid.sortablePrefix(): Long = toLongs { mostSignificantBits, _ -> mostSignificantBits }
+
+/** The `rand_a` counter, which orders ids sharing a millisecond. */
+private fun Uuid.counter(): Int = toLongs { mostSignificantBits, _ -> (mostSignificantBits and 0xFFF).toInt() }
 
 class UuidV7GeneratorTest {
 
@@ -32,8 +40,10 @@ class UuidV7GeneratorTest {
 
     @Test
     fun idsMintedInsideOneMillisecondStillSortInGenerationOrder() {
-        // The case a naive timestamp-plus-random layout fails: with the clock frozen, only the
-        // rand_a counter can order these.
+        // The case a naive timestamp-plus-random layout fails. 10k ids outrun one millisecond's
+        // 4096 counter values, so the clock being frozen does not mean the counter orders all of
+        // them — it orders each borrowed millisecond's ~2-4k, and the borrowed timestamp orders the
+        // groups. Shrinking the count below ~2k would drop the borrow path this also covers.
         val generator = UuidV7Generator { FIXED_MILLIS }
         val ids = List(10_000) { generator.next().toString() }
         assertEquals(ids, ids.sorted(), "ids minted in one millisecond must sort in generation order")
@@ -79,10 +89,18 @@ class UuidV7GeneratorTest {
     fun concurrentCallersNeverGetTheSameId() = runTest {
         val generator = UuidV7Generator { FIXED_MILLIS }
         val ids = withContext(Dispatchers.Default) {
-            List(8) { async { List(2_000) { generator.next().toString() } } }.awaitAll()
+            List(8) { async { List(2_000) { generator.next() } } }.awaitAll()
         }.flatten()
         assertEquals(16_000, ids.size)
-        assertEquals(ids.size, ids.toSet().size, "the lock must serialise counter increments")
+        assertEquals(ids.size, ids.map { it.toString() }.toSet().size, "ids must be unique")
+        // Uniqueness alone cannot see the lock: rand_b is 62 fresh random bits per id, so 16k ids
+        // stay distinct even with `synchronized` deleted. The (timestamp, counter) prefix is the
+        // part the lock actually protects — racing `counter += 1` writes duplicate one pair.
+        assertEquals(
+            ids.size,
+            ids.map { it.sortablePrefix() }.toSet().size,
+            "the lock must serialise counter increments, so every (timestamp, counter) pair is unique",
+        )
     }
 
     @Test
@@ -99,18 +117,57 @@ class UuidV7GeneratorTest {
     @Test
     fun aClockBeyondTheEncodableRangeStaysAValidUuidV7() {
         val id = UuidV7Generator { Long.MAX_VALUE }.next()
-        assertEquals((1L shl 48) - 1, id.timestampMillis(), "the timestamp must not overflow its field")
-        assertEquals('7', id.toString()[14], "version nibble must survive a clamped timestamp")
+        assertTrue(
+            id.timestampMillis() in 0L..MAX_TIMESTAMP,
+            "the timestamp must land inside its 48-bit field, got ${id.timestampMillis()}",
+        )
+        assertEquals('7', id.toString()[14], "version nibble must survive an unusable timestamp")
     }
 
     @Test
-    fun idsStayUniqueOnceTheTimestampFieldIsExhausted() {
-        // Past the encodable range there is nothing left to borrow on counter saturation, so
-        // ordering within that millisecond degrades — but rand_b, not the counter, is what keeps
-        // ids unique, so uniqueness must survive.
-        val generator = UuidV7Generator { Long.MAX_VALUE }
-        val ids = List(10_000) { generator.next().toString() }
-        assertEquals(ids.size, ids.toSet().size, "ids must be unique even with the counter pinned")
+    fun oneUnusableClockReadingDoesNotPinTheGeneratorForever() {
+        // An out-of-range reading must not be *adopted* as the timestamp. Clamping it down to
+        // MAX_TIMESTAMP would leave lastMillis at the ceiling for good: every later reading then
+        // fails `now > lastMillis`, the counter saturates, and the exhausted-field branch has
+        // nothing to borrow — so a single garbage reading (a wrong-unit clock handing over
+        // nanoseconds, say) would cost ordering permanently, even after the clock is corrected.
+        var millis = Long.MAX_VALUE
+        val generator = UuidV7Generator { millis }
+        generator.next()
+        millis = FIXED_MILLIS
+        val ids = List(6_000) { generator.next().toString() }
+        assertEquals(ids, ids.sorted(), "ordering must recover once the clock is usable again")
+        assertEquals(ids.size, ids.toSet().size, "ids must be unique")
+    }
+
+    @Test
+    fun theTimestampFieldNeverWrapsOnceItIsExhausted() {
+        // A clock that genuinely reads the ceiling is the one way to exhaust the field, and there
+        // the saturation branch must stop borrowing: `lastMillis + 1` would be 1 shl 48, whose
+        // `shl 16` is 0, so unix_ts_ms would wrap and every later id would sort before all of them.
+        // Ordering inside that millisecond is what is given up; uniqueness is rand_b's job.
+        val generator = UuidV7Generator { MAX_TIMESTAMP }
+        val ids = List(10_000) { generator.next() }
+        assertTrue(
+            ids.all { it.timestampMillis() == MAX_TIMESTAMP },
+            "the timestamp must stay pinned at the ceiling, never wrap to 0",
+        )
+        assertEquals(
+            ids.size,
+            ids.map { it.toString() }.toSet().size,
+            "ids must be unique even with the counter pinned",
+        )
+    }
+
+    @Test
+    fun eachMillisecondsFirstCounterIsSeededRandomlyIntoTheLowHalf() {
+        // The counter starts partway in rather than at 0, so an id does not hand over its ordinal
+        // within the millisecond — and only into the low half, leaving increment headroom. Both
+        // halves of that matter: reset-to-zero leaks the ordinal, a full-range seed would make the
+        // generator borrow future milliseconds under ordinary load.
+        val seeds = List(200) { UuidV7Generator { FIXED_MILLIS }.next().counter() }
+        assertTrue(seeds.all { it in 0..0x7FF }, "a seed must leave 2048 increments of headroom, got ${seeds.max()}")
+        assertTrue(seeds.toSet().size > 100, "seeds must be random, saw only ${seeds.toSet().size} distinct in 200")
     }
 
     @Test

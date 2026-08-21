@@ -28,16 +28,22 @@ import kotlin.uuid.Uuid
  * +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
  * ```
  *
- * On each new millisecond the counter is re-seeded randomly rather than reset to zero, so an id
- * does not advertise how many preceded it — but only into the low half of its range, leaving room
- * to increment. Ordering does not depend on the seed: within a millisecond the counter only ever
- * increases, and across milliseconds the timestamp does.
+ * On each new millisecond the counter is re-seeded randomly rather than reset to zero, into the low
+ * half of its range so there is room left to increment. Ordering does not depend on the seed:
+ * within a millisecond the counter only ever increases, and across milliseconds the timestamp does.
+ * The seed also stops an id from advertising how many preceded it in that millisecond — but only
+ * over the seedable half: a `rand_a` above [SEED_MASK] still proves at least `rand_a - SEED_MASK`
+ * ids came before it, so this blurs the count rather than hiding it.
  *
  * Randomness comes from [Uuid.random], not `kotlin.random.Random`, so `rand_b` and the counter
  * seed carry the same cryptographic quality the stdlib gives [EventId.UuidV4] on every platform.
  *
- * Each instance owns its counter state and its clock, so a caller with an injected clock (see
- * [Stamper]) cannot have its ids perturbed by another caller reading wall time.
+ * Each *instance* owns its counter state and its clock, so a caller with an injected clock (see
+ * [Stamper]) cannot have its ids perturbed by another caller reading wall time. Note what that does
+ * and does not buy: [EventId.UuidV7] deliberately shares one process-wide instance across every
+ * tracker, which is what makes `event_id` monotonic process-wide, and which equally means the
+ * `rand_a` gap between two ids counts the ids minted in between for *all* destinations, not just
+ * the one holding them.
  *
  * @param nowMillis the clock, in Unix epoch milliseconds.
  */
@@ -52,11 +58,7 @@ internal class UuidV7Generator(private val nowMillis: () -> Long) {
     private var counter = 0
 
     fun next(): Uuid = synchronized(lock) {
-        // Coerced before it is compared, not just before it is encoded: `unix_ts_ms` holds 48 bits,
-        // and a device clock set before 1970 reports negative milliseconds. Treating -1 and 0 as
-        // distinct rising values would encode them as 0xffffffffffff then 0x000000000000 — an id
-        // that sorts before every id already issued.
-        val now = nowMillis().coerceIn(0L, MAX_TIMESTAMP)
+        val now = usableMillis(nowMillis())
         // A clock that jumps backwards must not produce a regressing id, so hold the timestamp and
         // keep counting instead: correctness here is ordering, not tracking wall time exactly.
         if (now > lastMillis) {
@@ -64,10 +66,11 @@ internal class UuidV7Generator(private val nowMillis: () -> Long) {
             counter = seedCounter()
         } else if (counter >= COUNTER_MASK) {
             // Saturated — 4096 ids inside one millisecond. Borrow from the next millisecond rather
-            // than repeat a (timestamp, counter) pair, unless the field itself is exhausted: past
-            // MAX_TIMESTAMP (year 10889) there is nothing left to borrow, and holding costs only
-            // ordering *within* that millisecond. Ids stay unique either way — that is rand_b's
-            // job, not the counter's.
+            // than repeat a (timestamp, counter) pair, unless the field itself is exhausted: at
+            // MAX_TIMESTAMP (year 10889) there is nothing left to borrow. Ordering is then lost
+            // for as long as the clock stays there — and only ordering; ids remain unique, which is
+            // rand_b's job rather than the counter's. Getting here takes a clock that genuinely
+            // reads the ceiling: a merely out-of-range reading cannot, see [usableMillis].
             if (lastMillis < MAX_TIMESTAMP) {
                 lastMillis += 1
                 counter = seedCounter()
@@ -76,6 +79,27 @@ internal class UuidV7Generator(private val nowMillis: () -> Long) {
             counter += 1
         }
         buildUuid(lastMillis, counter)
+    }
+
+    /**
+     * Maps a raw clock reading onto the 48 bits `unix_ts_ms` actually has — resolved *before* the
+     * comparison in [next] rather than at encoding time, since comparing raw values would let -1
+     * and 0 count as a rising clock and encode as `0xffffffffffff` then `0x000000000000`, an id
+     * sorting before every id already issued.
+     *
+     * A reading past the ceiling is treated as **unusable rather than clamped down to it**, and
+     * that distinction is the whole point of this function. Adopting MAX_TIMESTAMP would pin
+     * `lastMillis` at the ceiling for the rest of the process: every later reading — a corrected
+     * one included — then fails `now > lastMillis`, so the counter saturates and the
+     * exhausted-field branch has nothing left to borrow. One garbage reading would cost ordering
+     * permanently, and a wrong-unit clock handing over micro- or nanoseconds is a realistic way to
+     * produce exactly one. Holding the last good millisecond instead sends the reading down the
+     * same counter path a backwards jump takes, so the cost lasts only as long as the bad clock.
+     */
+    private fun usableMillis(raw: Long): Long = when {
+        raw < 0L -> 0L
+        raw > MAX_TIMESTAMP -> maxOf(lastMillis, 0L)
+        else -> raw
     }
 
     private companion object {
