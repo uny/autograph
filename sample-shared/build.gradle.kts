@@ -9,9 +9,10 @@ kotlin {
     androidLibrary {
         namespace = "dev.ynagai.autograph.sample.shared"
         // The library floor, deliberately — not `android-sampleCompileSdk`. Nothing here needs 36,
-        // so staying on the published key makes this module CI's live check that a Compose consumer
-        // can build at the floor the README advertises. Moving it to 36 would also make platform 36
-        // a prerequisite for sample-ios, which reaches this project through Xcode's embed phase.
+        // and staying on the published key is what makes this module a live check that a *Compose*
+        // consumer can build at the floor the README advertises: CI's `build -x :sample-shared:assemble`
+        // still runs :sample-shared:compileAndroidMain and checkAndroidMainAarMetadata (the exclusion
+        // drops packaging, not the Android compile), which no library module can demonstrate itself.
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
     }
