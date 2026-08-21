@@ -32,13 +32,19 @@ with `./gradlew :<module>:updateKotlinAbi` and verify with `:checkKotlinAbi`. Tw
 are not covered — `autograph-schema` and `autograph-android` — so a public change there
 needs the rules below applied by hand; ADR 0001 §1 says why.
 
-**Leave the `enabled.set(true)` inside those `abiValidation { }` blocks alone.** It looks
-redundant and is not: KGP 2.3 defaults `enabled` to false, so an empty block registers the tasks
-and then leaves them `SKIPPED` and out of `check`'s task graph — `./gradlew build` passes without
-validating anything, which is the same vacuous green ADR 0001 §1 calls "worse than nothing" for
-`autograph-android`. Nothing announces it; you have to go looking for the task in the build log.
-Kotlin 2.4's no-arg `abiValidation()` turned it on implicitly, which is why the flag was not there
-before the floor moved to 2.3.
+**Leave the `enabled.set(true)` inside those `abiValidation { }` blocks alone — including if the
+Kotlin floor rises again.** It looks redundant and is not: on KGP 2.3 an empty block registers the
+tasks and then leaves them `SKIPPED` and out of `check`'s task graph, so `./gradlew build` passes
+without validating anything. That is the same vacuous green ADR 0001 §1 calls "worse than nothing"
+for `autograph-android`, and nothing announces it — you have to go looking for the task in the build
+log. Measured while lowering the floor (#205): `abiValidation {}` runs the checks under 2.4.10 and
+skips them under 2.3.21, so the behaviour turns on the KGP version rather than on the call form.
+Setting `enabled` explicitly is what makes it independent of both, which is the point — a future
+bump back to 2.4 is not a reason to drop it, since the next move down would silently disarm the gate
+again.
+
+If you touch these blocks, check the gate still fires rather than trusting a green build:
+`./gradlew :autograph-core:checkKotlinAbi` must print the task, not `SKIPPED`.
 
 **An API dump change in a PR is a review checkpoint, not a formality.** Before adding
 anything public, read [ADR 0001 — How the public API may evolve after 1.0](docs/adr/0001-public-api-evolution.md).

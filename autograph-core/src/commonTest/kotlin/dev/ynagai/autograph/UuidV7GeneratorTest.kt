@@ -115,12 +115,15 @@ class UuidV7GeneratorTest {
     }
 
     @Test
-    fun aClockBeyondTheEncodableRangeStaysAValidUuidV7() {
+    fun aClockBeyondTheEncodableRangeFallsBackToTheLastGoodMillisecond() {
+        // Asserting merely "inside the 48-bit field" would prove nothing: timestampMillis() is
+        // `msb ushr 16`, so every possible Long lands in 0..MAX_TIMESTAMP by construction and even
+        // a pure Uuid.random() would pass. The behaviour worth pinning is *which* value: an
+        // unusable reading yields the last good millisecond, and on a first call there is none, so
+        // it is 0 — not MAX_TIMESTAMP, which is what clamping would have given and what pinned the
+        // generator permanently.
         val id = UuidV7Generator { Long.MAX_VALUE }.next()
-        assertTrue(
-            id.timestampMillis() in 0L..MAX_TIMESTAMP,
-            "the timestamp must land inside its 48-bit field, got ${id.timestampMillis()}",
-        )
+        assertEquals(0L, id.timestampMillis(), "an unusable first reading must not be clamped up to the ceiling")
         assertEquals('7', id.toString()[14], "version nibble must survive an unusable timestamp")
     }
 
