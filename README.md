@@ -828,8 +828,8 @@ isolation is the name, not a namespace.
   `Modifier.onVisibilityChanged`)
 - Android `compileSdk` **35** or later, for consumers of the Android artifacts. Kept as low as the
   published modules' own dependencies allow, since it is a hard requirement on every consumer's
-  build: `compileSdk` 36 needs a newer AGP than 35 does, and the projects most likely to be pinned
-  to an older AGP are the same ones the Kotlin floor above is about
+  build: `compileSdk` 36 needs a newer AGP than 35 does, and a project pinned to an older AGP is
+  usually pinned by an upstream release it does not control
   ([#205](https://github.com/uny/autograph/issues/205)). The demo app in `sample-android` compiles
   against 36 for a dependency of its own; that does not reach consumers
 - iOS **15.0** or later, for the Swift package. This is not a design choice but a property of the

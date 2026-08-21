@@ -24,8 +24,9 @@ dokka = "2.2.0"
 # Android consumer must compile against. Kept as low as the libraries' own dependencies allow —
 # see CONTRIBUTING.md.
 android-compileSdk = "35"
-# The demo app only, which pulls androidx.activity 1.11.0 (needs 36). Deliberately separate: a
-# sample's dependency must not raise the floor for consumers.
+# sample-android only, which pulls androidx.activity 1.11.0 — its activity-ktx demands 36, so at 35
+# the app fails checkDebugAarMetadata. Deliberately separate: a demo app's dependency must not raise
+# the floor for consumers. Nothing else uses this key; sample-shared stays on android-compileSdk.
 android-sampleCompileSdk = "36"
 android-minSdk = "24"
 

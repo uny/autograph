@@ -57,8 +57,15 @@ the rules exist to make the cost visible, and some changes are worth paying it.
 each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
 it only when a dependency of a *published* module actually demands it, and prefer pinning that
 dependency lower — a newer `compileSdk` also implies a newer AGP, which is precisely what a
-KSP-constrained project may not have. The samples have their own `android-sampleCompileSdk` key so
-their dependencies cannot push the floor up.
+KSP-constrained project may not have. `sample-android` has its own `android-sampleCompileSdk` key so
+the demo app's dependencies cannot push the floor up; `sample-shared` deliberately stays on
+`android-compileSdk`, which is what makes CI prove a Compose consumer can build at the floor.
+
+One trap when the offending dependency is `lifecycle`: Compose Multiplatform's own module metadata
+already `requires` a specific jetbrains `lifecycle` version — CMP 1.11.1 asks for 2.9.6 — and Gradle
+resolves to the highest request in the graph. So the catalog value changes nothing unless it sits
+*above* what CMP asks for, which is exactly how the old 2.11.0 pin dragged the floor to 37. Check
+what CMP already requires before pinning it yourself.
 
 **A `composeMultiplatform` version bump in `gradle/libs.versions.toml` needs a manual cold-device
 check before merging — CI cannot catch a regression here.** iOS Compose autocapture depends on an
