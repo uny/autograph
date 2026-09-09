@@ -42,7 +42,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `installAutographNativeScreenCapture`: `show()`/`hide()` dispatches no callback, so a hidden
   excluded fragment keeps masking until it detaches; and an excluded fragment added as a *sibling*
   into another container of the same `FragmentManager` — an embedded mini-player rather than a cover
-  — masks the screen beside it. Both leave a screen absent, never wrong.
+  — masks the screen beside it. A third: a `DialogFragment` that builds its content in
+  `onCreateDialog()` has a null `Fragment.view` and is indistinguishable from a retained worker
+  fragment, so it is skipped rather than masked and still reports the screen behind it. None of the
+  three reports a *wrong* screen where masking would have been right; they leave one absent, or leave
+  that much of [#216] unfixed.
 
 - **Native Android autocapture attributed a tap to the screen the user had just left**, whenever the
   screen they returned to never stopped. `installAutographNativeScreenCapture` removes a screen's

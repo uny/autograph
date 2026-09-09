@@ -83,7 +83,12 @@ import dev.ynagai.autograph.context.ScopeStack
  * keeps masking until it is detached or its Activity is destroyed. And an excluded fragment added as
  * a *sibling* into another container of the same `FragmentManager` — an embedded mini-player or
  * banner rather than a cover — masks the screen it sits beside; only nesting (`parentFragment`) is a
- * containment signal a `FragmentManager` gives, and a sibling has none.
+ * containment signal a `FragmentManager` gives, and a sibling has none. A third belongs to the
+ * headless rule: a `DialogFragment` that builds its content in `onCreateDialog()` rather than
+ * `onCreateView()` has a null `Fragment.view`, is indistinguishable here from a retained worker
+ * fragment, and so is skipped rather than masked — measured, such a dialog reports the screen behind
+ * it. (`DialogFragment`s that do override `onCreateView` mask correctly, including when shown through
+ * a child `FragmentManager`.)
  *
  * ## Rotation
  *
