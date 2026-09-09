@@ -45,8 +45,13 @@ internal class AndroidScreenCapture(
     // The "no screen here" frames (see maskScreen in ScopeStack). Kept apart from the screen frames
     // above, not folded into them: onScreenResumed dedups on membership of THOSE maps, so a frame that
     // doubled as both would make every first resume look like a re-resume.
+    //
+    // The fragment masks live on each FragmentCallbacks instance rather than here, and deliberately:
+    // they are the one thing that must be released when the host Activity is destroyed, and this class
+    // cannot enumerate that Activity's fragments at that moment (a fragment removed with
+    // addToBackStack is no longer in `fm.fragments`). One map per Activity's callbacks is complete by
+    // construction. See the sweep in onActivityDestroyed.
     private val activityMasks = java.util.WeakHashMap<Activity, ScopeHandle>()
-    private val fragmentMasks = java.util.WeakHashMap<Fragment, ScopeHandle>()
 
     // Screens whose next resume is a configuration-change re-creation, not a fresh view. Keyed by class
     // name because the leaving instance and the re-created one are different objects. Emit is skipped
@@ -55,7 +60,7 @@ internal class AndroidScreenCapture(
 
     private class FragmentRegistration(
         val fragmentManager: FragmentManager,
-        val callbacks: FragmentManager.FragmentLifecycleCallbacks,
+        val callbacks: FragmentCallbacks,
     )
 
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
@@ -74,12 +79,18 @@ internal class AndroidScreenCapture(
 
     override fun onActivityResumed(activity: Activity) {
         if (!active) return
-        activityMasks[activity]?.let(::activateMask)
+        // Evaluated once and shared with onScreenResumed: the mask exists for a screen this capture
+        // *structurally* declines (a Compose host, a fragment-hosting shell), NOT for one the adopter
+        // opted out of by returning null from activityScreenName. That callback is documented as "opt
+        // a screen out", and an opt-out that also blanked the screen underneath would be a different,
+        // undocumented contract. So the name is never consulted here.
+        val capturable = isCapturableActivity(activity)
+        if (!capturable) activityMasks[activity]?.let(::activateMask)
         onScreenResumed(
             frames = activityFrames,
             key = activity,
             className = activity.javaClass.name,
-            isCapturable = { isCapturableActivity(activity) },
+            isCapturable = { capturable },
             screenName = { activityScreenName(activity) },
         )
     }
@@ -95,15 +106,38 @@ internal class AndroidScreenCapture(
         removeFrame(activityFrames, activity) // backstop if stop was skipped
         removeFrame(activityMasks, activity)
         fragmentRegistrations.remove(activity)?.let {
+            // BEFORE unregistering, and that order is load-bearing: this callback is dispatched from
+            // Activity.onDestroy(), which FragmentActivity calls via super.onDestroy() *before*
+            // mFragments.dispatchDestroy(). So onFragmentDetached / onFragmentDestroyed never fire for
+            // the fragments still attached here, and the masks they own would otherwise stay on the
+            // ScopeStack for the life of the process — one per fragment per rotation, each of them
+            // masking, and each walked by recompute() on every push.
+            it.callbacks.releaseMasks()
             it.fragmentManager.unregisterFragmentLifecycleCallbacks(it.callbacks)
         }
     }
 
+    override fun onActivityPaused(activity: Activity) {
+        if (!active) return
+        // Symmetric with the activation at resume: a mask may not outlive the moment its surface is
+        // the one on display. An Activity that is stopped-but-not-destroyed (reordered to back rather
+        // than finished) would otherwise keep masking the Activity the user actually returned to.
+        activityMasks[activity]?.let(::deactivateMask)
+    }
+
     override fun onActivityStarted(activity: Activity) = Unit
-    override fun onActivityPaused(activity: Activity) = Unit
     override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
 
     private inner class FragmentCallbacks : FragmentManager.FragmentLifecycleCallbacks() {
+        /** This Activity's fragment masks — see the note at [activityMasks] for why they live here. */
+        private val fragmentMasks = java.util.WeakHashMap<Fragment, ScopeHandle>()
+
+        /** Drops every mask this Activity's fragments own. Called before the callbacks unregister. */
+        fun releaseMasks() {
+            fragmentMasks.values.forEach(scopeStack::remove)
+            fragmentMasks.clear()
+        }
+
         override fun onFragmentAttached(fm: FragmentManager, f: Fragment, context: Context) {
             if (!active) return
             fragmentMasks[f] = pushInertMask()
@@ -128,14 +162,40 @@ internal class AndroidScreenCapture(
 
         override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
             if (!active) return
-            activateMask(f)
+            // Evaluated once and shared with onScreenResumed. Two gates decide whether this surface
+            // masks, and both only ever *narrow* the mask — which is what makes them safe: a surface
+            // that does not mask resolves exactly as it did before masks existed.
+            //
+            //  - `capturable`: the mask is for a screen this capture *structurally* declines. Returning
+            //    null from fragmentScreenName is documented as "opt a screen out"; an opt-out that also
+            //    blanked the screen underneath would be a different, undocumented contract. So the name
+            //    is never consulted here.
+            //  - `hasFramedAncestor`: a mask asserts "the surface on display names no screen", which
+            //    presumes this surface *covers* the screen it hides. A fragment nested inside another
+            //    fragment that has a live screen frame cannot cover its own host — it is a section of
+            //    that screen, not a replacement for it — so masking there would blank a screen that
+            //    names itself perfectly well and is on display.
+            val capturable = isCapturableFragment(f)
+            if (!capturable && !hasFramedAncestor(f)) activateMask(f)
             onScreenResumed(
                 frames = fragmentFrames,
                 key = f,
                 className = f.javaClass.name,
-                isCapturable = { isCapturableFragment(f) },
+                isCapturable = { capturable },
                 screenName = { fragmentScreenName(f) },
             )
+        }
+
+        override fun onFragmentPaused(fm: FragmentManager, f: Fragment) {
+            if (!active) return
+            // Symmetric with the activation at resume, and the fix for the mask outliving its surface.
+            // Pause — not stop — because the shapes that strand a mask never reach stop: a ViewPager2
+            // page demoted to STARTED and a fragment `detach`ed both pause only. Un-masking can only
+            // reveal frames that were already on the stack, so the worst it can do is leave more of
+            // #216 unfixed (a permission prompt pauses an unnamed host, and the screen underneath
+            // answers again for that window) — never report a screen that would have been right
+            // without masks at all.
+            fragmentMasks[f]?.let(this@AndroidScreenCapture::deactivateMask)
         }
 
         override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
@@ -154,6 +214,24 @@ internal class AndroidScreenCapture(
         private fun activateMask(f: Fragment) {
             fragmentMasks[f]?.let(this@AndroidScreenCapture::activateMask)
         }
+    }
+
+    /**
+     * Whether some fragment *containing* [f] currently has a live screen frame.
+     *
+     * Containment, unlike stack position, is the question a mask actually wants answered: an excluded
+     * fragment nested inside a named one is part of that screen, not a surface covering it. Walking
+     * `parentFragment` is the one containment signal a `FragmentManager` gives for free — it says
+     * nothing about a *sibling* added into another container of the same manager, which is why a
+     * non-covering sibling is a documented residual rather than something this catches.
+     */
+    private fun hasFramedAncestor(f: Fragment): Boolean {
+        var parent = f.parentFragment
+        while (parent != null) {
+            if (fragmentFrames.containsKey(parent)) return true
+            parent = parent.parentFragment
+        }
+        return false
     }
 
     /**
@@ -185,6 +263,17 @@ internal class AndroidScreenCapture(
     /** Switches a reserved mask on, in place — see [pushInertMask]. */
     private fun activateMask(handle: ScopeHandle) {
         scopeStack.maskScreen(handle)
+    }
+
+    /**
+     * Switches a mask back off, in place, keeping its reserved position for the next resume.
+     *
+     * Off, not removed: the position was reserved at attach precisely because no later hook is early
+     * enough (see [pushInertMask]), and a surface that pauses can come back — a pager page scrolled
+     * to and back, a fragment `detach`ed and `attach`ed — without ever passing through attach again.
+     */
+    private fun deactivateMask(handle: ScopeHandle) {
+        scopeStack.unmaskScreen(handle)
     }
 
     /**
@@ -260,9 +349,8 @@ internal class AndroidScreenCapture(
         fragmentFrames.clear()
         activityMasks.values.forEach(scopeStack::remove)
         activityMasks.clear()
-        fragmentMasks.values.forEach(scopeStack::remove)
-        fragmentMasks.clear()
         fragmentRegistrations.values.forEach {
+            it.callbacks.releaseMasks()
             it.fragmentManager.unregisterFragmentLifecycleCallbacks(it.callbacks)
         }
         fragmentRegistrations.clear()

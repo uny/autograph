@@ -354,4 +354,69 @@ class ScopeStackTest {
         stack.maskScreen(mask)
         assertNull(stack.current().screen)
     }
+
+    @Test
+    fun a_foreign_handle_is_not_masked_on_its_own_stack_either() {
+        // The guard is `frames.none { it === frame }` on the RECEIVER, so the interesting assertion is
+        // on the other stack: a cross-stack call must not quietly flip a frame someone else owns.
+        val other = ScopeStack()
+        other.push(screen = "Feed")
+        val foreign = other.push()
+        ScopeStack().maskScreen(foreign)
+        other.update(foreign, scope = props("a" to "1")) // forces a recompute on the owning stack
+        assertEquals("Feed", other.current().screen)
+    }
+
+    // --- unmaskScreen ----------------------------------------------------------------------------
+
+    @Test
+    fun unmasking_reveals_the_screen_beneath_without_moving_the_frame() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed", section = "top")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+
+        stack.unmaskScreen(mask)
+        assertEquals("Feed", stack.current().screen)
+        assertEquals("top", stack.current().section, "the section beneath comes back too")
+
+        // The frame kept its position, so re-masking hides the same thing again — which is what lets a
+        // capture pipeline reserve a position once at attach and toggle it across resume/pause.
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+    }
+
+    @Test
+    fun unmasking_leaves_a_screen_pushed_above_the_mask_alone() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        stack.push(screen = "Detail")
+        stack.unmaskScreen(mask)
+        assertEquals("Detail", stack.current().screen)
+    }
+
+    @Test
+    fun unmasking_an_unknown_removed_or_unmasked_handle_is_a_noop() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val never = stack.push()
+        stack.unmaskScreen(never) // never masked
+        val removed = stack.push()
+        stack.remove(removed)
+        stack.unmaskScreen(removed)
+        stack.unmaskScreen(ScopeStack().push())
+        assertEquals("Feed", stack.current().screen)
+    }
+
+    @Test
+    fun unmasking_leaves_the_frames_own_scope_alone() {
+        val stack = ScopeStack()
+        val mask = stack.push(scope = props("article_id" to "42"))
+        stack.maskScreen(mask)
+        stack.unmaskScreen(mask)
+        assertEquals(props("article_id" to "42"), stack.current().scope)
+    }
 }

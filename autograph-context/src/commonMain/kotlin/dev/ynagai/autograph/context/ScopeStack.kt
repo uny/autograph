@@ -31,8 +31,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * same context and share one `previous_screen` chain. That stack is then yours to replace when the
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
- * **Threading.** [push], [update], and [remove] must be called from the main thread ([push] and
- * [remove] mutate the frame list; [update] mutates a frame's contents). [current] is lock-free and
+ * **Threading.** [push], [update], [remove], [maskScreen] and [unmaskScreen] must be called from the
+ * main thread ([push] and [remove] mutate the frame list; [update], [maskScreen] and [unmaskScreen]
+ * mutate a frame's contents and republish the snapshot). [current] is lock-free and
  * safe from any thread: it returns an immutable snapshot that is republished atomically on every
  * mutation, so a background reader always sees a whole, consistent context — never a half-applied
  * one.
@@ -154,14 +155,22 @@ public class ScopeStack {
      * the unnamed surface is attributed to the screen the user just left. That is a wrong value, not a
      * missing one, and it survives every schema check.
      *
-     * **Masking is deliberately separate from [push], and one-way.** A capture pipeline reserves the
-     * frame's *position* early — before the surface's own content can push anything, so that content
-     * which does name a screen still wins — and masks only once that surface is the one actually on
-     * display. A frame that masked from the moment it was pushed would blank the screen on display
-     * whenever a sibling was merely *attached*: a pager caching an off-screen page is the measured
-     * example. Since [push] happens before the pipeline knows either answer, the two steps cannot be
-     * folded into one. [update] leaves the mask alone for the same reason — a pipeline revising a
-     * frame's contents must not silently un-mask it.
+     * **Masking is deliberately separate from [push], and reversible only through [unmaskScreen].** A
+     * capture pipeline reserves the frame's *position* early — before the surface's own content can
+     * push anything, so that content which does name a screen still wins — and masks only once that
+     * surface is the one actually on display. A frame that masked from the moment it was pushed would
+     * blank the screen on display whenever a sibling was merely *attached*: a pager caching an
+     * off-screen page is the measured example. Since [push] happens before the pipeline knows either
+     * answer, the two steps cannot be folded into one. [update] leaves the mask alone for the same
+     * reason — a pipeline revising a frame's contents must not silently un-mask it; only the explicit
+     * [unmaskScreen] does that.
+     *
+     * **A mask must not outlive the moment its surface is the one on display.** Position is fixed at
+     * [push] time, but "which surface answers" is not: a sibling that resumes later pushes *below* a
+     * mask reserved earlier, so a mask left standing after its own surface stopped being foreground
+     * hides a screen that is legitimately on display — measured on a `ViewPager2` page scrolled back
+     * to, and on a fragment `detach`ed rather than removed. Pair every [maskScreen] with an
+     * [unmaskScreen] on the signal that the surface left the foreground.
      *
      * A no-op if the frame is already masked, was already removed, or belongs to another stack.
      */
@@ -170,6 +179,25 @@ public class ScopeStack {
         if (frames.none { it === frame }) return
         if (frame.maskScreen) return
         frame.maskScreen = true
+        snapshot = recompute()
+    }
+
+    /**
+     * Clears a mask set by [maskScreen], turning the frame back into the inert placeholder it was
+     * before — it keeps its position and its scope, and simply stops hiding what is underneath.
+     *
+     * This is what a capture pipeline calls when its surface leaves the foreground *without* leaving
+     * the stack: a pager page demoted to `STARTED`, a fragment `detach`ed, an Activity stopped but not
+     * destroyed. Un-masking can only reveal frames that were already there, so it can never produce a
+     * value that a stack with no masks at all would not have produced.
+     *
+     * A no-op if the frame is not masked, was already removed, or belongs to another stack.
+     */
+    public fun unmaskScreen(handle: ScopeHandle) {
+        val frame = handle.frame
+        if (frames.none { it === frame }) return
+        if (!frame.maskScreen) return
+        frame.maskScreen = false
         snapshot = recompute()
     }
 
@@ -286,7 +314,10 @@ internal class ScopeFrame(
     var maskScreen: Boolean = false,
 )
 
-/** An opaque token identifying a pushed frame, for [ScopeStack.update] and [ScopeStack.remove]. */
+/**
+ * An opaque token identifying a pushed frame, for [ScopeStack.update], [ScopeStack.remove],
+ * [ScopeStack.maskScreen] and [ScopeStack.unmaskScreen].
+ */
 public class ScopeHandle internal constructor(internal val frame: ScopeFrame)
 
 /**

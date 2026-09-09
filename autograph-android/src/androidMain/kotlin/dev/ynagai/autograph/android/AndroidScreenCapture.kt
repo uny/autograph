@@ -32,14 +32,24 @@ import dev.ynagai.autograph.context.ScopeStack
  * `isCapturableScreen`. It deliberately does **not** try to reconcile several simultaneously-visible
  * screens after the fact.
  *
- * A screen that is filtered out is **masked**, not merely skipped (see `ScopeStack.maskScreen`). An
- * excluded surface that comes to the foreground clears the ambient screen for as long as it is there,
- * so events captured on it carry no screen rather than the screen it covered — which is what they
- * would otherwise inherit whenever the screen underneath was only paused, never stopped (a fragment
- * `add`ed on top, a dialog fragment). The mask is reserved at `onFragmentAttached` and only goes live
- * at resume; both halves of that are load-bearing and are explained at `pushInertMask`. Content that
- * names a screen for itself — a Compose `TrackedScreen` inside an excluded Compose host — is pushed
- * above the mask and still wins, which is the property `sample-android`'s `ComposeHostMaskTest` pins.
+ * A screen that is filtered out **by this filter** is **masked**, not merely skipped (see
+ * `ScopeStack.maskScreen`). While such a surface is the resumed one, it clears the ambient screen, so
+ * events captured on it carry no screen rather than the screen it covered — which is what they would
+ * otherwise inherit whenever the screen underneath was only paused, never stopped (a fragment `add`ed
+ * on top, a dialog fragment). The mask is reserved at `onFragmentAttached`, goes live at resume and
+ * comes back off at **pause**; all three are load-bearing and are explained at `pushInertMask`.
+ * Content that names a screen for itself — a Compose `TrackedScreen` inside an excluded Compose host
+ * — is pushed above the mask and still wins, which is the property `sample-android`'s
+ * `ComposeHostMaskTest` pins.
+ *
+ * Masking is deliberately **narrower** than the filter, because a mask asserts something the filter
+ * does not: that this surface *covers* the screen it hides. Two cases are therefore filtered out but
+ * never masked. A surface you opted out of with a `null` [activityScreenName] / [fragmentScreenName]
+ * is skipped exactly as before — opting a library or consent-SDK fragment out of reporting must not
+ * also blank the screen it sits on. And an excluded fragment **nested inside** a fragment that has a
+ * live screen frame is a part of that screen, not a replacement for it, so the host keeps answering.
+ * Both gates only ever *narrow* the mask, so a surface that does not mask resolves exactly as it did
+ * before masks existed.
  * - **Compose hosts are skipped.** An Activity or Fragment whose view subtree contains an
  *   `AbstractComposeView` renders Compose content, which reports its own `Screen Viewed` through
  *   `TrackedScreen` / `NavController.TrackScreenViews`; capturing the Activity too would double-count
@@ -66,6 +76,14 @@ import dev.ynagai.autograph.context.ScopeStack
  * is no Android equivalent of iOS's app-bundle filter (every class shares one `ClassLoader`), so a
  * view-bearing library Fragment can report unless excluded via [fragmentScreenName]. Return `null`
  * from [activityScreenName] / [fragmentScreenName] to opt a screen out.
+ *
+ * Two limits belong specifically to the mask, and both are one-sided — they leave a screen *absent*
+ * or leave part of #216 unfixed, never report a screen that would have been right without masking.
+ * `show()`/`hide()` gives no callback at all, so an excluded fragment hidden by `show()`/`hide()`
+ * keeps masking until it is detached or its Activity is destroyed. And an excluded fragment added as
+ * a *sibling* into another container of the same `FragmentManager` — an embedded mini-player or
+ * banner rather than a cover — masks the screen it sits beside; only nesting (`parentFragment`) is a
+ * containment signal a `FragmentManager` gives, and a sibling has none.
  *
  * ## Rotation
  *

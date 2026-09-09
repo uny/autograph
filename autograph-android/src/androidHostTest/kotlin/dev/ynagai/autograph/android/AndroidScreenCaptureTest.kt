@@ -308,6 +308,102 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
+    fun aPagerPageReturnedToAfterAnUnnamedPageCarriesItsOwnScreenAgain() {
+        install()
+        // The round trip the one-way mask got wrong. A ViewPager2 / FragmentStateAdapter demotes the
+        // outgoing page to STARTED — onPause, never onStop, never detach — so a mask that only came
+        // off at detach stayed live above the returning page's frame, and onScreenResumed's supersede
+        // re-push never fires here because an unnamed page emits nothing and so leaves
+        // screenHistory.lastScreen unchanged. Before the fix: null on the page actually on display.
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        val named = fm.findFragmentByTag("detail")!!
+        val unnamed = ComposeHostFragment()
+        fm.beginTransaction().add(android.R.id.content, unnamed, "page2")
+            .setMaxLifecycle(unnamed, Lifecycle.State.STARTED).commitNow()
+        assertEquals("DetailFragment", scopeStack.current().screen)
+
+        fm.beginTransaction()
+            .setMaxLifecycle(named, Lifecycle.State.STARTED)
+            .setMaxLifecycle(unnamed, Lifecycle.State.RESUMED).commitNow()
+        assertNull("the unnamed page must still mask while it is the one on display", scopeStack.current().screen)
+
+        fm.beginTransaction()
+            .setMaxLifecycle(unnamed, Lifecycle.State.STARTED)
+            .setMaxLifecycle(named, Lifecycle.State.RESUMED).commitNow()
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aDetachedUnnamedSurfaceStopsMaskingTheScreenBeneath() {
+        install()
+        // detach() destroys the view and pauses the fragment without ever calling onDetach, and the
+        // screen beneath never re-resumes — so nothing re-lifted its frame either.
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        val host = ComposeHostFragment()
+        fm.beginTransaction().add(android.R.id.content, host, "host").commitNow()
+        assertNull(scopeStack.current().screen)
+
+        fm.beginTransaction().detach(host).commitNow()
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aFragmentOptedOutByNameDoesNotMaskTheScreenBeneath() {
+        // `null` from fragmentScreenName is documented as "opt a screen out" — a view-bearing library
+        // fragment, an ad or consent SDK surface. Opting out must not also blank the host's screen.
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is SecondFragment) null else it.javaClass.simpleName },
+        )
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, SecondFragment(), "opted-out").commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun anUnnamedChildFragmentDoesNotMaskTheNamedFragmentContainingIt() {
+        install()
+        // An embedded Compose widget committed into a child FragmentManager AFTER its host resumed —
+        // a mini-player, an inline card. It is contained by the screen, not a cover for it, so the
+        // host must keep answering. Its mask frame still lands above the host's frame in the stack;
+        // only containment tells the two apart.
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val host = activity.supportFragmentManager.findFragmentByTag("detail")!!
+        host.childFragmentManager.beginTransaction()
+            .add(ComposeHostFragment(), "widget").commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun anActivityDestroyLeavesNoFrameBehind() {
+        install()
+        // onActivityDestroyed unregisters the fragment callbacks, and FragmentActivity.onDestroy runs
+        // super.onDestroy() (which dispatches it) BEFORE mFragments.dispatchDestroy() — so
+        // onFragmentDetached / onFragmentDestroyed never fire for the fragments still attached, and
+        // the masks they own were never released. Counting frames is the only way to see it: with the
+        // pause-deactivation in place a leaked mask is inert, so no observable screen value differs.
+        repeat(3) {
+            Robolectric.buildActivity(FragmentHostActivity::class.java).setup().pause().stop().destroy()
+        }
+        assertEquals(0, frameCount())
+    }
+
+    /** The size of [scopeStack]'s private frame list — the only way to observe an inert leak. */
+    private fun frameCount(): Int {
+        val field = ScopeStack::class.java.getDeclaredField("frames")
+        field.isAccessible = true
+        return (field.get(scopeStack) as List<*>).size
+    }
+
+    @Test
     fun theScreenBeneathComesBackWhenTheUnnamedSurfaceLeaves() {
         install()
         val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()

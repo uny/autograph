@@ -10,11 +10,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
-- **`ScopeStack.maskScreen(handle)`** — turns an already-pushed frame into a frame that declares
-  *there is no screen here*, clearing screen and section while leaving anything pushed above it (and
-  all ambient scope) untouched. Additive: no existing signature changed, so the `api/` dumps gain one
-  line each and nothing moves (ADR 0001 §2f — `ScopeStack` is a caller-constructed concrete class
-  whose members may grow). It is one-way, and `update` deliberately does not clear it.
+- **`ScopeStack.maskScreen(handle)` / `ScopeStack.unmaskScreen(handle)`** — turn an already-pushed
+  frame into a frame that declares *there is no screen here* (clearing screen and section while
+  leaving anything pushed above it, and all ambient scope, untouched) and back again. Additive: no
+  existing signature changed, so the `api/` dumps gain one line each and nothing moves (ADR 0001 §2f —
+  `ScopeStack` is a caller-constructed concrete class whose members may grow). `update` deliberately
+  does not clear a mask; only `unmaskScreen` does. A mask must be paired with an `unmaskScreen` on the
+  signal that its surface left the foreground — position is fixed at `push` time but *which surface
+  answers* is not, so a mask left standing hides a screen that is legitimately on display.
 
 ### Fixed
 
@@ -29,6 +32,17 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Excluded surfaces now mask the screen instead, so those events carry no screen rather than a wrong
   one. Content that does declare a screen is unaffected: the mask is positioned below anything the
   surface's own content pushes, and a Compose `TrackedScreen` inside the host still wins.
+
+  A mask is live only while its surface is the resumed one — reserved at `onFragmentAttached`, on at
+  resume, off again at **pause** — and it is deliberately narrower than the exclusion filter: a
+  surface opted out with a `null` `activityScreenName` / `fragmentScreenName` is skipped without
+  masking, as before, and an excluded fragment nested inside one that names a screen leaves its host
+  answering. Every one of those gates only ever *narrows* the mask, so any surface that does not mask
+  resolves exactly as it did before masks existed. Two one-sided limits remain, both documented on
+  `installAutographNativeScreenCapture`: `show()`/`hide()` dispatches no callback, so a hidden
+  excluded fragment keeps masking until it detaches; and an excluded fragment added as a *sibling*
+  into another container of the same `FragmentManager` — an embedded mini-player rather than a cover
+  — masks the screen beside it. Both leave a screen absent, never wrong.
 
 - **Native Android autocapture attributed a tap to the screen the user had just left**, whenever the
   screen they returned to never stopped. `installAutographNativeScreenCapture` removes a screen's
