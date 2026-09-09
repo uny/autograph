@@ -47,9 +47,10 @@ import dev.ynagai.autograph.context.ScopeStack
  * never masked. A surface you opted out of with a `null` [activityScreenName] / [fragmentScreenName]
  * is skipped exactly as before — opting a library or consent-SDK fragment out of reporting must not
  * also blank the screen it sits on. And an excluded fragment **nested inside** a fragment that has a
- * live screen frame is a part of that screen, not a replacement for it, so the host keeps answering.
- * Both gates only ever *narrow* the mask, so a surface that does not mask resolves exactly as it did
- * before masks existed.
+ * live screen frame is a part of that screen, not a replacement for it, so the host keeps answering —
+ * except a `DialogFragment`, which draws its own window and so covers its host whichever
+ * `FragmentManager` showed it. Both gates only ever *narrow* the mask, so a surface that does not mask
+ * resolves exactly as it did before masks existed.
  * - **Compose hosts are skipped.** An Activity or Fragment whose view subtree contains an
  *   `AbstractComposeView` renders Compose content, which reports its own `Screen Viewed` through
  *   `TrackedScreen` / `NavController.TrackScreenViews`; capturing the Activity too would double-count
