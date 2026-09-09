@@ -65,11 +65,13 @@ internal class AndroidScreenCapture(
 
     override fun onActivityResumed(activity: Activity) {
         if (!active) return
-        if (activityFrames.containsKey(activity)) return // dedup: a re-resume that never stopped
-        val configChange = pendingConfigChange.remove(activity.javaClass.name)
-        if (!isCapturableActivity(activity)) return
-        val name = activityScreenName(activity) ?: return
-        pushAndMaybeEmit(name, configChange) { activityFrames[activity] = it }
+        onScreenResumed(
+            frames = activityFrames,
+            key = activity,
+            className = activity.javaClass.name,
+            isCapturable = { isCapturableActivity(activity) },
+            screenName = { activityScreenName(activity) },
+        )
     }
 
     override fun onActivityStopped(activity: Activity) {
@@ -93,11 +95,13 @@ internal class AndroidScreenCapture(
     private inner class FragmentCallbacks : FragmentManager.FragmentLifecycleCallbacks() {
         override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
             if (!active) return
-            if (fragmentFrames.containsKey(f)) return // dedup
-            val configChange = pendingConfigChange.remove(f.javaClass.name)
-            if (!isCapturableFragment(f)) return
-            val name = fragmentScreenName(f) ?: return
-            pushAndMaybeEmit(name, configChange) { fragmentFrames[f] = it }
+            onScreenResumed(
+                frames = fragmentFrames,
+                key = f,
+                className = f.javaClass.name,
+                isCapturable = { isCapturableFragment(f) },
+                screenName = { fragmentScreenName(f) },
+            )
         }
 
         override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
@@ -111,6 +115,50 @@ internal class AndroidScreenCapture(
             if (!active) return
             removeFrame(fragmentFrames, f) // backstop
         }
+    }
+
+    /**
+     * Handles one screen reaching `RESUMED`, for both Activities and Fragments: pushes its frame and
+     * emits, unless this resume is a configuration-change re-creation or a screen that never left.
+     *
+     * **A screen that already has a frame is not always a no-op.** Two different situations reach a
+     * resume with a frame still standing, and the screen history is what tells them apart:
+     * - Nothing was viewed in between — a dialog, a permission prompt, a partially-covering Activity.
+     *   This is one continuous view of one screen (frames are removed on stop, not pause, exactly so
+     *   that it stays one), so re-emitting would be a duplicate. Early return, as before.
+     * - Another screen *was* viewed since. Then this screen was superseded while still `RESUMED` and
+     *   never stopped — a `ViewPager2`/`FragmentStateAdapter` page moved down to `STARTED`, which
+     *   calls `onPause` but never `onStop`. Its frame is still on the stack, but *buried* under the
+     *   frame of the page that superseded it, and screen resolves by insertion order (see
+     *   `ScopeStack.recompute`), so leaving it there attributes every tap on this page to the page
+     *   the user just left. The frame is moved back on top and the return is reported.
+     *
+     * Re-pushing is safe for these frames specifically: native frames carry no `parent` link, so
+     * nothing else refers to the handle whose identity changes.
+     *
+     * The discriminator is the screen *name*, not the instance, so two pages that produce the same
+     * name (the default `fragmentScreenName` on a pager of one Fragment class) take the first branch
+     * and stay silent. That is deliberate: nothing observable in the event stream distinguishes them.
+     */
+    private fun <K> onScreenResumed(
+        frames: MutableMap<K, ScopeHandle>,
+        key: K,
+        className: String,
+        isCapturable: () -> Boolean,
+        screenName: () -> String?,
+    ) {
+        val existing = frames[key]
+        // Only a genuinely fresh resume consumes the marker; a re-resume of a still-framed screen is
+        // not the re-creation the marker was left for.
+        val configChange = existing == null && pendingConfigChange.remove(className)
+        if (!isCapturable()) return
+        val name = screenName() ?: return
+        if (existing != null) {
+            if (scopeStack.screenHistory.lastScreen == name) return
+            frames.remove(key)
+            scopeStack.remove(existing)
+        }
+        pushAndMaybeEmit(name, configChange) { frames[key] = it }
     }
 
     /**

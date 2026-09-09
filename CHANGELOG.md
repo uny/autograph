@@ -8,6 +8,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Native Android autocapture attributed a tap to the screen the user had just left**, whenever the
+  screen they returned to never stopped. `installAutographNativeScreenCapture` removes a screen's
+  scope frame on `onStop`, but a `ViewPager2` / `FragmentStateAdapter` page that scrolls off is only
+  moved down to `STARTED` — `onPause` without `onStop` — so its frame stayed on the stack. Scrolling
+  back re-resumed it, the resume was dropped as a duplicate, and the stale frame of the *other* page
+  still sat on top of the stack: `screen` on every autocaptured tap named the wrong page, and the
+  return's `Screen Viewed` was never emitted at all. A screen that re-resumes with its frame still standing
+  is now re-pushed and reported when another screen has been viewed in between, and still stays
+  silent when none has (a dialog or a permission prompt, which is what removing on stop rather than
+  pause exists to keep quiet). `show()`/`hide()` navigation is unaffected and remains a documented
+  limit: it fires no lifecycle callback at all.
+
 ## [0.8.0] - 2026-08-21
 
 ### Changed

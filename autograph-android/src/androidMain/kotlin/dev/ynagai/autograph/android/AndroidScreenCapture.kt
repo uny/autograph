@@ -47,8 +47,11 @@ import dev.ynagai.autograph.context.ScopeStack
  *
  * Known limits, documented rather than silently mis-attributed (as iOS documents embedded-child /
  * split-pane): a Fragment attached *after* its host Activity has resumed can momentarily let the
- * Activity report before the Fragment is seen; old-style `show()`/`hide()` navigation that leaves
- * several fragments `RESUMED` at once reports whichever resumes, without reconciling them; and there
+ * Activity report before the Fragment is seen; old-style `show()`/`hide()` navigation leaves several
+ * fragments `RESUMED` at once and fires **no** lifecycle callback on the show/hide itself, so a
+ * re-shown fragment cannot be seen at all and the last one *resumed* keeps reporting (a legacy
+ * `FragmentPagerAdapter` in `BEHAVIOR_SET_USER_VISIBLE_HINT` mode has the same shape and the same
+ * limit; its `BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT` mode, like `ViewPager2`, is covered); and there
  * is no Android equivalent of iOS's app-bundle filter (every class shares one `ClassLoader`), so a
  * view-bearing library Fragment can report unless excluded via [fragmentScreenName]. Return `null`
  * from [activityScreenName] / [fragmentScreenName] to opt a screen out.
@@ -67,6 +70,18 @@ import dev.ynagai.autograph.context.ScopeStack
  * A frame is removed when its screen is **stopped**, not paused: pause also fires for a dialog, a
  * permission prompt, or a partially-covering Activity, none of which mean the screen was left. This
  * matches iOS using `viewDidDisappear:` rather than `viewWillDisappear:`.
+ *
+ * A screen can therefore come back to `RESUMED` with its frame still standing, and what happened in
+ * between decides what that means. If no other screen was viewed, it is the same continuous view —
+ * nothing is emitted and the frame stays put. If another screen *was* viewed, this one was
+ * **superseded while still `RESUMED`**: a `ViewPager2`/`FragmentStateAdapter` page is only moved down
+ * to `STARTED` when it scrolls off, which calls `onPause` but never `onStop`, so the page never
+ * leaves. Its frame is then buried under the frame of the page that superseded it, and screen
+ * resolves innermost-last — so without this, every tap on the page the user scrolled *back* to would
+ * carry the name of the page they just left. The returning screen's frame is moved back on top and
+ * its return is reported as a `Screen Viewed`. Two pages that resolve to the same name (the default
+ * `fragmentScreenName` on a pager of one Fragment class) are indistinguishable in the event stream
+ * and stay silent.
  *
  * ## Only transitions after install are seen
  *

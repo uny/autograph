@@ -11,6 +11,7 @@ import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.asJsonObject
@@ -198,6 +199,57 @@ class AndroidScreenCaptureTest {
                 "DetailFragment:(none)",
                 "SecondFragment:DetailFragment",
                 "DetailFragment:SecondFragment",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun aViewPagerStylePageSwitchBackReportsTheReturnedPage() {
+        install()
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        val first = fm.findFragmentByTag("detail")!!
+        val second = SecondFragment()
+
+        // The ViewPager2 / FragmentStateAdapter shape: pages are ADDED once and switched by moving the
+        // off-screen one down to STARTED. STARTED never calls onStop, so the capture never sees the
+        // page leave.
+        fm.beginTransaction().add(android.R.id.content, second, "second").commitNow()
+        fm.beginTransaction().setMaxLifecycle(first, Lifecycle.State.STARTED).commitNow()
+        // ... and back to page one.
+        fm.beginTransaction().setMaxLifecycle(second, Lifecycle.State.STARTED).commitNow()
+        fm.beginTransaction().setMaxLifecycle(first, Lifecycle.State.RESUMED).commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "DetailFragment:(none)",
+                "SecondFragment:DetailFragment",
+                "DetailFragment:SecondFragment",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anActivityReturnedToUnderAPartialCoverReportsTheReturn() {
+        install()
+        // A partially-covering Activity pauses the one beneath without stopping it, so the frame of the
+        // screen underneath survives — deliberately, so a dialog or a permission prompt stays silent.
+        // A capturable Activity on top is the case where that is NOT one continuous view: the user
+        // really did see another screen, so the return is a screen view of its own and the frame
+        // underneath has to come back on top of the stack.
+        val underneath = Robolectric.buildActivity(PlainActivity::class.java).setup().pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        underneath.resume()
+
+        assertEquals("PlainActivity", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "PlainActivity:(none)",
+                "SecondPlainActivity:PlainActivity",
+                "PlainActivity:SecondPlainActivity",
             ),
             tracker.screens,
         )
