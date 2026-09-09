@@ -383,6 +383,20 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
+    fun aComposeHostDialogShownThroughAChildFragmentManagerStillMasks() {
+        install()
+        // A DialogFragment draws its own window over everything, so it covers its host whichever
+        // FragmentManager it was shown through — the one case the "nested fragments do not cover
+        // their host" gate must not catch.
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val parent = activity.supportFragmentManager.findFragmentByTag("detail")!!
+        ComposeHostDialogFragment().show(parent.childFragmentManager, "dialog")
+        parent.childFragmentManager.executePendingTransactions()
+
+        assertNull(scopeStack.current().screen)
+    }
+
+    @Test
     fun anActivityDestroyLeavesNoFrameBehind() {
         install()
         // onActivityDestroyed unregisters the fragment callbacks, and FragmentActivity.onDestroy runs

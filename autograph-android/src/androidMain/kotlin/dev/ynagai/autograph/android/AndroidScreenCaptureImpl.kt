@@ -8,6 +8,7 @@ import android.content.Context
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
+import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.app.FragmentManager
@@ -174,9 +175,12 @@ internal class AndroidScreenCapture(
             //    presumes this surface *covers* the screen it hides. A fragment nested inside another
             //    fragment that has a live screen frame cannot cover its own host — it is a section of
             //    that screen, not a replacement for it — so masking there would blank a screen that
-            //    names itself perfectly well and is on display.
+            //    names itself perfectly well and is on display. A DialogFragment is the exception and
+            //    is exempt: it draws its own window over everything, so it covers its host no matter
+            //    whose FragmentManager it was shown through — measured, `show(parent.childFragmentManager)`
+            //    otherwise left the dialog reporting its parent's screen.
             val capturable = isCapturableFragment(f)
-            if (!capturable && !hasFramedAncestor(f)) activateMask(f)
+            if (!capturable && (f is DialogFragment || !hasFramedAncestor(f))) activateMask(f)
             onScreenResumed(
                 frames = fragmentFrames,
                 key = f,
