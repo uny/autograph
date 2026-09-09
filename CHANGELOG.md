@@ -20,7 +20,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   is now re-pushed and reported when another screen has been viewed in between, and still stays
   silent when none has (a dialog or a permission prompt, which is what removing on stop rather than
   pause exists to keep quiet). `show()`/`hide()` navigation is unaffected and remains a documented
-  limit: it fires no lifecycle callback at all.
+  limit: `show()`/`hide()` changes only the hidden state, which
+  `FragmentManager.FragmentLifecycleCallbacks` has no callback for — only `Fragment.onHiddenChanged`,
+  on the fragment itself — so a global observer cannot see it.
 
 ## [0.8.0] - 2026-08-21
 

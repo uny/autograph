@@ -48,10 +48,12 @@ import dev.ynagai.autograph.context.ScopeStack
  * Known limits, documented rather than silently mis-attributed (as iOS documents embedded-child /
  * split-pane): a Fragment attached *after* its host Activity has resumed can momentarily let the
  * Activity report before the Fragment is seen; old-style `show()`/`hide()` navigation leaves several
- * fragments `RESUMED` at once and fires **no** lifecycle callback on the show/hide itself, so a
- * re-shown fragment cannot be seen at all and the last one *resumed* keeps reporting (a legacy
- * `FragmentPagerAdapter` in `BEHAVIOR_SET_USER_VISIBLE_HINT` mode has the same shape and the same
- * limit; its `BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT` mode, like `ViewPager2`, is covered); and there
+ * fragments `RESUMED` at once and changes only their hidden state, which
+ * `FragmentManager.FragmentLifecycleCallbacks` has no callback for (only `Fragment.onHiddenChanged`
+ * does, on the fragment itself), so a re-shown fragment cannot be observed from here at all and the
+ * last one *resumed* keeps reporting (a legacy `FragmentPagerAdapter` in
+ * `BEHAVIOR_SET_USER_VISIBLE_HINT` mode has the same shape and the same limit; its
+ * `BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT` mode, like `ViewPager2`, is covered); and there
  * is no Android equivalent of iOS's app-bundle filter (every class shares one `ClassLoader`), so a
  * view-bearing library Fragment can report unless excluded via [fragmentScreenName]. Return `null`
  * from [activityScreenName] / [fragmentScreenName] to opt a screen out.
