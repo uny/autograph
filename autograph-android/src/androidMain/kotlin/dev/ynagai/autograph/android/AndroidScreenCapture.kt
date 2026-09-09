@@ -31,6 +31,15 @@ import dev.ynagai.autograph.context.ScopeStack
  * The filter is **static** — everything it needs is decidable at resume, mirroring iOS's
  * `isCapturableScreen`. It deliberately does **not** try to reconcile several simultaneously-visible
  * screens after the fact.
+ *
+ * A screen that is filtered out is **masked**, not merely skipped (see `ScopeStack.maskScreen`). An
+ * excluded surface that comes to the foreground clears the ambient screen for as long as it is there,
+ * so events captured on it carry no screen rather than the screen it covered — which is what they
+ * would otherwise inherit whenever the screen underneath was only paused, never stopped (a fragment
+ * `add`ed on top, a dialog fragment). The mask is reserved at `onFragmentAttached` and only goes live
+ * at resume; both halves of that are load-bearing and are explained at `pushInertMask`. Content that
+ * names a screen for itself — a Compose `TrackedScreen` inside an excluded Compose host — is pushed
+ * above the mask and still wins, which is the property `sample-android`'s `ComposeHostMaskTest` pins.
  * - **Compose hosts are skipped.** An Activity or Fragment whose view subtree contains an
  *   `AbstractComposeView` renders Compose content, which reports its own `Screen Viewed` through
  *   `TrackedScreen` / `NavController.TrackScreenViews`; capturing the Activity too would double-count

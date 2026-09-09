@@ -8,7 +8,27 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **`ScopeStack.maskScreen(handle)`** — turns an already-pushed frame into a frame that declares
+  *there is no screen here*, clearing screen and section while leaving anything pushed above it (and
+  all ambient scope) untouched. Additive: no existing signature changed, so the `api/` dumps gain one
+  line each and nothing moves (ADR 0001 §2f — `ScopeStack` is a caller-constructed concrete class
+  whose members may grow). It is one-way, and `update` deliberately does not clear it.
+
 ### Fixed
+
+- **An Android surface that reports no screen of its own attributed its events to the screen
+  underneath it** ([#216]). Native screen capture excludes a screen *structurally* — "this Fragment
+  hosts Compose, so the Compose pipeline reports it instead" — but the Compose pipeline reports a
+  screen only when the content *declares* one. A Compose host that declares none was reported by
+  neither, and because a screen's frame is removed on stop rather than pause, the frame of the screen
+  underneath was still live: every autocaptured tap on the unnamed surface carried the name of the
+  screen the user had just left. Measured as permanent, not a flicker, for any surface that leaves the
+  one beneath merely paused — a fragment `add`ed on top, a Compose-content `DialogFragment`.
+  Excluded surfaces now mask the screen instead, so those events carry no screen rather than a wrong
+  one. Content that does declare a screen is unaffected: the mask is positioned below anything the
+  surface's own content pushes, and a Compose `TrackedScreen` inside the host still wins.
 
 - **Native Android autocapture attributed a tap to the screen the user had just left**, whenever the
   screen they returned to never stopped. `installAutographNativeScreenCapture` removes a screen's
@@ -1081,3 +1101,4 @@ Initial release.
 [#193]: https://github.com/uny/autograph/issues/193
 [#195]: https://github.com/uny/autograph/issues/195
 [#205]: https://github.com/uny/autograph/issues/205
+[#216]: https://github.com/uny/autograph/issues/216

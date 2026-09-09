@@ -101,6 +101,9 @@ public class ScopeStack {
      *
      * A [parent] that is this frame itself, or one of its descendants, cannot describe a real nesting
      * and is refused: the frame becomes a root instead. See the note at the assignment below.
+     *
+     * This revises scope/screen/section only; it never clears a mask set by [maskScreen], which is a
+     * one-way switch on the frame rather than part of its contents.
      */
     public fun update(
         handle: ScopeHandle,
@@ -140,6 +143,37 @@ public class ScopeStack {
     }
 
     /**
+     * Turns the frame [handle] refers to into a **mask**: a frame that declares *there is no screen
+     * here*, clearing both screen and section (a mask owns its section for the same reason a frame
+     * that names a screen does). Frames pushed after it still win, so this hides what is *underneath*
+     * rather than everything.
+     *
+     * It exists for a surface that comes to the foreground and names no screen of its own. Without a
+     * mask, the frame of the screen *underneath* — which is legitimately still on the stack whenever
+     * that screen was only paused, not stopped — stays the innermost one, and every event captured on
+     * the unnamed surface is attributed to the screen the user just left. That is a wrong value, not a
+     * missing one, and it survives every schema check.
+     *
+     * **Masking is deliberately separate from [push], and one-way.** A capture pipeline reserves the
+     * frame's *position* early — before the surface's own content can push anything, so that content
+     * which does name a screen still wins — and masks only once that surface is the one actually on
+     * display. A frame that masked from the moment it was pushed would blank the screen on display
+     * whenever a sibling was merely *attached*: a pager caching an off-screen page is the measured
+     * example. Since [push] happens before the pipeline knows either answer, the two steps cannot be
+     * folded into one. [update] leaves the mask alone for the same reason — a pipeline revising a
+     * frame's contents must not silently un-mask it.
+     *
+     * A no-op if the frame is already masked, was already removed, or belongs to another stack.
+     */
+    public fun maskScreen(handle: ScopeHandle) {
+        val frame = handle.frame
+        if (frames.none { it === frame }) return
+        if (frame.maskScreen) return
+        frame.maskScreen = true
+        snapshot = recompute()
+    }
+
+    /**
      * Removes the frame [handle] refers to, by identity and independent of position — screen
      * transitions (a Compose `Crossfade`, an iOS interactive-pop that the user cancels) do not
      * guarantee frames leave in push order, so a positional pop would remove the wrong one.
@@ -167,7 +201,14 @@ public class ScopeStack {
             // marker case while stopping the cross-screen leak in the replacement case. Screen/section
             // resolve by insertion order (one screen is active at a time, so "last mounted wins" is
             // right for them); only scope is lineage-aware — see [resolveScope].
-            if (frame.screen != null) {
+            // A mask clears both, and for the same reason a named frame replaces both: it says "the
+            // surface on display names no screen", which cannot leave the outgoing screen's section
+            // behind either. Frames pushed after it still win, so content that does name a screen —
+            // a Compose `TrackedScreen` inside a native host — is unaffected.
+            if (frame.maskScreen) {
+                screen = null
+                section = null
+            } else if (frame.screen != null) {
                 screen = frame.screen
                 section = frame.section
             } else if (frame.section != null) {
@@ -241,6 +282,8 @@ internal class ScopeFrame(
     var screen: String?,
     var section: String?,
     var parent: ScopeFrame? = null,
+    /** See [ScopeStack.maskScreen]: this frame declares "no screen here" rather than naming one. */
+    var maskScreen: Boolean = false,
 )
 
 /** An opaque token identifying a pushed frame, for [ScopeStack.update] and [ScopeStack.remove]. */

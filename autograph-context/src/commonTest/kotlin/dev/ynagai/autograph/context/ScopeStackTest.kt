@@ -280,4 +280,78 @@ class ScopeStackTest {
         // Refused: `outer` stays a root and the chain outer -> inner still merges, unspun.
         assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope)
     }
+
+    // --- maskScreen ------------------------------------------------------------------------------
+
+    @Test
+    fun a_mask_hides_the_screen_beneath_it_and_its_section() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed", section = "top")
+        val mask = stack.push()
+        // Inert until masked: the frame beneath still answers.
+        assertEquals("Feed", stack.current().screen)
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+        assertNull(stack.current().section, "a mask owns its section too")
+    }
+
+    @Test
+    fun a_screen_pushed_after_a_mask_still_wins() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        // The content of the masked surface naming itself — the case the two-step exists to protect.
+        stack.push(screen = "Detail", section = "body")
+        assertEquals("Detail", stack.current().screen)
+        assertEquals("body", stack.current().section)
+    }
+
+    @Test
+    fun removing_a_mask_reveals_the_screen_beneath_again() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        stack.remove(mask)
+        assertEquals("Feed", stack.current().screen)
+    }
+
+    @Test
+    fun a_mask_leaves_scope_alone() {
+        val stack = ScopeStack()
+        stack.push(scope = props("article_id" to "42"), screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+        assertEquals(props("article_id" to "42"), stack.current().scope)
+    }
+
+    @Test
+    fun update_does_not_un_mask_a_frame() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        // Masking is a one-way switch on the frame, not part of the contents update replaces.
+        stack.update(mask, scope = props("a" to "1"))
+        assertNull(stack.current().screen)
+        assertEquals(props("a" to "1"), stack.current().scope)
+    }
+
+    @Test
+    fun masking_an_unknown_removed_or_already_masked_handle_is_a_noop() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val removed = stack.push()
+        stack.remove(removed)
+        stack.maskScreen(removed)
+        stack.maskScreen(ScopeStack().push())
+        assertEquals("Feed", stack.current().screen)
+
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+    }
 }

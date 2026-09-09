@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
+import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import dev.ynagai.autograph.Tracker
@@ -48,6 +49,27 @@ open class ViewFragment : Fragment() {
 class DetailFragment : ViewFragment()
 
 class SecondFragment : ViewFragment()
+
+/** A fragment whose content is Compose and which declares no screen — the #216 shape. */
+class ComposeHostFragment : Fragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext())
+}
+
+/** The same shape as a Compose-content BottomSheetDialogFragment. */
+class ComposeHostDialogFragment : DialogFragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext())
+}
+
+/** A retained worker fragment — no view, so not a surface. Glide's is the everyday example. */
+class HeadlessFragment : Fragment()
 
 /** A FragmentActivity that adds a content fragment in onCreate, so it is a fragment *host* at resume. */
 class FragmentHostActivity : FragmentActivity() {
@@ -253,6 +275,80 @@ class AndroidScreenCaptureTest {
             ),
             tracker.screens,
         )
+    }
+
+    // --- The screen mask: a surface that reports no screen of its own (#216) ----------------------
+
+    @Test
+    fun aComposeHostAddedOverAScreenCarriesNoScreenRatherThanTheOneBeneath() {
+        install()
+        // ADD, not replace: the fragment underneath is only paused, never stopped, so its frame stays
+        // — correctly, since a dialog or a permission prompt must not drop it. Without a mask the
+        // Compose host, which reports nothing itself, would inherit that frame and every tap on it
+        // would name the screen the user just left.
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, ComposeHostFragment(), "compose")
+            .addToBackStack(null).commit()
+        fm.executePendingTransactions()
+
+        assertNull(scopeStack.current().screen)
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun aComposeHostDialogCarriesNoScreenRatherThanTheOneBeneath() {
+        install()
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        ComposeHostDialogFragment().show(fm, "dialog")
+        fm.executePendingTransactions()
+
+        assertNull(scopeStack.current().screen)
+    }
+
+    @Test
+    fun theScreenBeneathComesBackWhenTheUnnamedSurfaceLeaves() {
+        install()
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, ComposeHostFragment(), "compose")
+            .addToBackStack(null).commit()
+        fm.executePendingTransactions()
+        fm.popBackStack()
+        fm.executePendingTransactions()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun anOffScreenPagerPageDoesNotMaskThePageOnDisplay() {
+        install()
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        // What FragmentStateAdapter does for a page cached by offscreenPageLimit: add it and cap it at
+        // STARTED, so it attaches and never resumes. A mask that masked from the moment it was pushed
+        // would blank the page actually on display — measured, and the reason the mask stays inert
+        // until its surface resumes.
+        val cached = SecondFragment()
+        fm.beginTransaction()
+            .add(android.R.id.content, cached, "cached")
+            .setMaxLifecycle(cached, Lifecycle.State.STARTED)
+            .commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aHeadlessFragmentDoesNotMaskTheScreenItAttachesOver() {
+        install()
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        // A retained worker fragment resumes like any other, so its mask would go live if it were not
+        // dropped for having no view.
+        fm.beginTransaction().add(HeadlessFragment(), "worker").commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
     }
 
     @Test
