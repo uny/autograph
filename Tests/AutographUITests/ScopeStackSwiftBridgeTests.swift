@@ -82,8 +82,10 @@ final class ScopeStackSwiftBridgeTests: XCTestCase {
     /// Kotlin/Native maps `List`/`Set`/`Map` to Objective-C collections and nothing else, so the
     /// `Collection<ScopeHandle>` this shipped as first exported as an untyped `id` — `Any` in Swift.
     /// A Swift array satisfied it by luck, and `stack.setActive(handles: "oops", active: false)`
-    /// compiled just as happily. This test is the assertion that the parameter is still a typed
-    /// array: it stops compiling if the type is ever widened back.
+    /// compiled just as happily. Note what this test does and does not buy: a `[ScopeHandle]`
+    /// satisfies `Any` too, so re-widening the parameter would leave this compiling and green. The
+    /// guard against that is the `api/` dumps, which record the parameter type. What this covers is
+    /// the bridge actually working — that a Swift array survives the crossing and the batch lands.
     func testBatchedSetActiveTakesATypedSwiftArray() {
         let stack = ScopeStack()
         _ = stack.push(scope: [:], screen: "Feed", section: nil, parent: nil)

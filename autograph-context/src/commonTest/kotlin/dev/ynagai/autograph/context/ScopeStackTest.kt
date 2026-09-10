@@ -566,6 +566,27 @@ class ScopeStackTest {
     }
 
     @Test
+    fun deactivating_a_frame_does_not_turn_an_ambiguous_drop_into_a_guess() {
+        // Selection narrows the candidate set, and narrowing must not be mistaken for disambiguating:
+        // two frames that branch away from each other are still ambiguous when a THIRD is demoted.
+        // The fixture this replaced covered it by accident; a mutant that skipped the pairwise
+        // comparability filter once anything was inactive would otherwise report a guessed sibling
+        // scope — the wrong-value outcome #66 forbids.
+        val stack = ScopeStack()
+        val outer = stack.push(scope = props("a" to "outer"))
+        stack.push(scope = props("b" to "inner"), parent = outer)
+        stack.push(scope = props("c" to "sibling"))
+        assertEquals(JsonObject(emptyMap()), stack.current().scope)
+
+        stack.setActive(outer, false)
+        assertEquals(
+            JsonObject(emptyMap()),
+            stack.current().scope,
+            "inner and sibling still branch away from each other — the drop is preserved",
+        )
+    }
+
+    @Test
     fun update_does_not_reactivate_a_demoted_frame() {
         // `update`'s kdoc promises it changes neither the mask NOR the active flag. Only the mask
         // half was pinned; adding `frame.active = true` to update broke no test. A pipeline revising

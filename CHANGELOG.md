@@ -23,10 +23,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   frame ever having named a screen. Both read as `screen == null` but they are opposite instructions
   to a pipeline holding a screen name from elsewhere, and `autograph-compose`'s tap observer holds
   one: it falls back to `ScreenHistory.lastScreen` when nothing names a screen (for a bare
-  `TrackScreenView`, which records history without pushing a frame). `lastScreen` is precisely "the
-  screen the user just left", so without this flag that fallback reinstated the exact wrong value a
-  mask exists to prevent, and `maskScreen` was a no-op on the Compose capture path. The observer now
-  gates the fallback on it. Additive under [ADR 0001](docs/adr/0001-public-api-evolution.md) §2a —
+  `TrackScreenView`, which records history without pushing a frame). Applied to a masked surface that
+  fallback reinstates whatever history holds — typically the screen the user just left, the exact
+  wrong value a mask exists to prevent — so without this flag `maskScreen` was a no-op on the Compose
+  capture path. The observer now gates the fallback on it. The gate is unconditional and costs one
+  case, pinned by a test: content inside a masked surface that reports its screen the history-only
+  way leaves `lastScreen` holding the *current* screen, and the event then carries no screen rather
+  than the right one. Deliberate — missing beats wrong here — and avoidable by having such content
+  push a frame (`TrackedScreen`) instead. Additive under [ADR 0001](docs/adr/0001-public-api-evolution.md) §2a —
   `AmbientContext` is library-produced with an `internal` constructor and gains properties freely.
   The Android and iOS native tap paths call `enrich` with no fallback, so they were already correct.
 
