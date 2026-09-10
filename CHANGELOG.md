@@ -60,8 +60,57 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `update` revises contents only: it never clears a mask and never changes whether a frame is active.
 
   This is the first of a dependency stack (`ScopeStack` API → Android capture → Compose/observer)
-  replacing the design withdrawn in [#217]; the capture side that drives these switches lands next.
+  replacing the design withdrawn in [#217]. The Android capture that drives these switches is below.
   Refs [#216].
+
+### Fixed
+
+- **A native Android surface that names no screen of its own no longer reports the screen the user
+  just left** ([#216]) — an Activity or Fragment excluded by the capture's own filter (a Compose host,
+  a fragment-hosting shell) now *masks* the ambient screen while it is on display, so events captured
+  on it carry no screen instead of inheriting the frame of the screen underneath, which survives
+  whenever that screen was only paused and never stopped (a fragment `add`ed on top, a dialog
+  fragment). Content that names a screen for itself — a `TrackedScreen` inside the excluded host — is
+  pushed above the mask and still wins.
+
+  The capture was rebuilt around **selection** to make this hold, rather than patched. Each surface
+  now owns one frame, reserved empty and inert when it is created or attached and dropped when it is
+  destroyed or detached; `setActive` decides whether it takes part. Reserving the position that early
+  is what puts a host's frame below the content it hosts (`AbstractComposeView` composes from
+  `onAttachedToWindow`, before `onFragmentViewCreated` — measured) and a parent fragment below its
+  children (a child resumes *before* its parent — measured, and resume order would invert it).
+
+  Three defects the previous, position-only design could not express are fixed with it:
+
+  - A named page attached *after* an unnamed one is showing no longer lends it its screen. Its frame
+    sits above the mask by insertion order but is not selected, so it contributes nothing. Position
+    could not distinguish "mounted later" from "on display".
+  - Several surfaces `RESUMED` at once (`add` on top, `show()`/`hide()`, a child before its parent) no
+    longer all re-emit `Screen Viewed` when the host is merely paused and resumed. Reporting is no
+    longer inferred from `ScreenHistory.lastScreen` at resume — that test misfires whenever more than
+    one surface is resumed — but tracked per surface, and a host interruption ends nobody's view.
+  - A pager page swapped out **while its host was paused** is now handled, and it is described by no
+    callback at all: both pages are already `STARTED`, so neither pauses nor resumes (measured). The
+    page the host came back to reports, the one it did not is no longer attributed to, and returning
+    to that one later reports it again. Which page the host returned to is only readable once its
+    resume dispatch has finished, so that single check is posted to the main looper —
+    `onActivityPostResumed` would be the exact hook but is API 29+ and this module's floor is 24.
+    Bookkeeping only: attribution and reporting are both applied in the callback they belong to.
+
+  Masking is narrower than the filter, because a mask also asserts that the surface *covers* what it
+  hides. A surface opted out with a `null` `activityScreenName` / `fragmentScreenName`, a headless
+  fragment (`view == null`), and an excluded fragment nested inside one that names a screen are all
+  filtered out but never mask — a `DialogFragment` excepted, since it draws its own window. The
+  nesting gate asks the ancestor the same *static* question it will ask itself rather than reading
+  frames already pushed, because a child resumes first; reading state turned an embedded Compose
+  widget's host from `NestingFragment` into `null` (measured).
+
+  Four residuals are documented on `installAutographNativeScreenCapture` rather than silently
+  mis-attributed, and all are one-sided — a screen goes *absent*, never wrong: `show()`/`hide()` gives
+  no callback at all; an excluded *sibling* fragment (an embedded mini-player) has no containment
+  signal to distinguish it from a cover; a `DialogFragment` that builds its content in
+  `onCreateDialog()` has a null `view` and is indistinguishable from a worker fragment; and an
+  excluded fragment added directly to a *capturable Activity* masks that Activity's screen.
 
 ## [0.8.0] - 2026-08-21
 
