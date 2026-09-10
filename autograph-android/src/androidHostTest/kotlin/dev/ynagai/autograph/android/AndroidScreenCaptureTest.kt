@@ -76,6 +76,31 @@ class ComposeHostDialogFragment : DialogFragment() {
 /** A retained worker fragment — no view, so not a surface. Glide's is the everyday example. */
 class HeadlessFragment : Fragment()
 
+/** Owns no fragment content of its own, but shows a view-bearing dialog fragment from onCreate. */
+class DialogAtStartActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        ComposeHostDialogFragment().show(supportFragmentManager, "sheet")
+    }
+}
+
+/** A named View-based parent hosting a named View-based child. */
+class PlainParentFragment : ViewFragment() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        childFragmentManager.beginTransaction().add(DetailFragment(), "child").commitNow()
+    }
+}
+
+/** A fragment host that exists before the capture is installed. */
+class PreexistingHostActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, PlainParentFragment(), "parent").commitNow()
+    }
+}
+
 /**
  * Installs the capture from its OWN `onCreate`, after `super`, and then adds a fragment — the shape an
  * app has when it initialises the SDK behind a consent gate rather than from `Application.onCreate`.
@@ -1024,6 +1049,66 @@ class AndroidScreenCaptureTest {
 
         assertEquals("Detail", scopeStack.current().screen)
         assertEquals(listOf("Detail:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun anActivityWithASheetUpAtItsFirstResumeIsStillItsOwnScreenAfterwards() {
+        install()
+        // "Does any added fragment have a view" is how a single-Activity shell is recognised, and a
+        // DialogFragment is not one: it draws its own window OVER the Activity rather than being its
+        // content. Counting it made an Activity that merely had a sheet up when it first resumed a
+        // shell for good — the decision is settled once per mounting and the mask is one-way, so it
+        // reported no screen at all for the rest of its life.
+        val activity = Robolectric.buildActivity(DialogAtStartActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        assertNull("the sheet covers it while it is up", scopeStack.current().screen)
+
+        (fm.findFragmentByTag("sheet") as DialogFragment).dismiss()
+        fm.executePendingTransactions()
+
+        assertEquals("DialogAtStartActivity", scopeStack.current().screen)
+        assertEquals(listOf("DialogAtStartActivity:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun anActivityThatHasBecomeAShellStopsReportingItselfOnTheNextReturn() {
+        install()
+        // An Activity's frame keeps its position for life, so a stop cannot replace it — but what it
+        // SAYS still has to be re-derived there. An Activity that owned its content at its first
+        // resume and has since become a fragment host went on emitting its own name on every
+        // foreground return: two spurious screen views per return, and a bogus previous_screen link.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "content").commitNow()
+
+        controller.pause().stop().start().resume()
+        drainMainLooper()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "DetailFragment:EmptyFragmentActivity",
+                // The fragment stopped, so its return is a fresh view. The Activity's is not: it is
+                // a shell now and says nothing.
+                "DetailFragment:(none)",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun aLateInstallOverANestedHostStillLetsTheInnermostScreenWin() {
+        // Fragments already attached when the capture installs are adopted outermost-first. Reserving
+        // them lazily at resume instead inverts the nesting, because a child resumes inside its
+        // parent's performResume — the pair then reported the PARENT, a wrong screen where the
+        // pre-existing behaviour was merely an absent one.
+        val controller = Robolectric.buildActivity(PreexistingHostActivity::class.java).setup()
+        install()
+        controller.pause().resume()
+        drainMainLooper()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
     }
 
     @Test

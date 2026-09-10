@@ -95,8 +95,10 @@ internal class AndroidScreenCapture(
         /**
          * Whether what this frame says has been settled for the current **mounting**.
          *
-         * Settled once, at the mounting's first resume, and never revisited until the surface stops
-         * and a fresh frame is reserved. Re-deciding on every resume looks harmless and is not: the
+         * Settled at the mounting's first resume. A fragment revisits it when its view is destroyed
+         * and a fresh frame is reserved; an Activity, which never replaces its frame, revisits it at
+         * every stop instead — with the one exception that [masked] cannot be taken back, because
+         * `ScopeStack.maskScreen` is one-way. Re-deciding on every resume looks harmless and is not: the
          * inputs are time-varying (`isCapturableActivity` asks whether any added fragment has a view;
          * `isCapturableFragment` walks the live view subtree) while [masked] is one-way, so a plain
          * Activity that merely pauses and resumes while a view-bearing dialog fragment is attached
@@ -156,6 +158,10 @@ internal class AndroidScreenCapture(
             // recursive = true so a NavHostFragment's / ViewPager2's child FragmentManager is covered.
             fragmentManager.registerFragmentLifecycleCallbacks(callbacks, true)
             fragmentRegistrations[activity] = FragmentRegistration(fragmentManager, callbacks)
+            // Outermost-first, so an Activity adopted late still gets parent-below-child ordering.
+            // Reserving them lazily at resume instead inverts it, because a child resumes inside its
+            // parent's performResume — measured, a late install reported the PARENT of the pair.
+            callbacks.adoptAttached(fragmentManager)
         }
     }
 
@@ -200,6 +206,15 @@ internal class AndroidScreenCapture(
         if (activity.isChangingConfigurations) pendingConfigChange.add(activity.javaClass.name)
         activityStates[activity]?.let {
             it.emitted = false
+            // An Activity's frame keeps its position for life — its content view does, and its
+            // fragments' frames sit above it and survive this stop, so replacing it here would jump
+            // it over them. What it SAYS still has to be re-derived, though: an Activity that owned
+            // its content at its first resume and has since become a fragment shell went on emitting
+            // its own name on every foreground return — measured, two spurious events per return.
+            // Only `masked` survives, because ScopeStack.maskScreen is one-way; see the residual.
+            it.decided = false
+            it.capturable = false
+            it.declaresScreen = false
             deselect(it)
         }
     }
@@ -258,6 +273,21 @@ internal class AndroidScreenCapture(
          * longer in `fm.fragments`). One map per Activity's callbacks is complete by construction.
          */
         private val fragmentStates = java.util.WeakHashMap<Fragment, SurfaceState>()
+
+        /**
+         * Reserves frames for fragments that attached before these callbacks were registered.
+         * Depth-first and parent-before-child, which is the order [reserveFrame] needs.
+         */
+        fun adoptAttached(fm: FragmentManager) {
+            for (fragment in fm.fragments) {
+                // `fm.fragments` can hold one that is added but not yet attached, and reading its
+                // childFragmentManager then throws. It has not missed anything either — its own
+                // onFragmentPreAttached is still to come — so there is nothing to adopt.
+                if (fragment == null || !fragment.isAdded) continue
+                fragmentStates.getOrPut(fragment) { SurfaceState(reserveFrame()) }
+                adoptAttached(fragment.childFragmentManager)
+            }
+        }
 
         /** Drops every frame this Activity's fragments own. Called before the callbacks unregister. */
         fun releaseFrames() {
@@ -572,8 +602,12 @@ internal class AndroidScreenCapture(
     private fun isCapturableActivity(activity: Activity): Boolean {
         if (contentHostsComposeView(activity)) return false
         // A single-Activity app's Fragments are the screens; the Activity hosting them is a shell.
+        // A DialogFragment is not one of those: it draws its own window *over* the Activity rather
+        // than being its content, and counting it made an Activity that merely had a sheet up at its
+        // first resume a shell for good — measured, it then reported no screen at all, permanently,
+        // because the decision is settled once per mounting and the mask is one-way.
         if (activity is FragmentActivity &&
-            activity.supportFragmentManager.fragments.any { it.view != null }
+            activity.supportFragmentManager.fragments.any { it.view != null && !it.isShownAsDialog() }
         ) {
             return false
         }

@@ -134,7 +134,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
   A mounting ends when a fragment's **view** is destroyed, not when it stops: a stop destroys nothing,
   so re-reserving there jumped the frame above the child frames and Compose compositions that outlive
-  it — pressing home and returning turned a nested host's child screen into a masked null.
+  it — pressing home and returning turned a nested host's child screen into a masked null. An Activity
+  never replaces its frame — its content view lives create-to-destroy — but what that frame *says* is
+  re-derived at every stop, or one that has since become a fragment shell goes on emitting its own
+  name on every foreground return. A `DialogFragment` no longer counts towards "is this Activity a
+  shell": it covers the Activity rather than filling it, and counting it made an Activity that merely
+  had a sheet up at its first resume report no screen at all for the rest of its life.
+
+  A surface the capture only meets after installing is adopted rather than ignored — an Activity at
+  its next resume, and the fragments already attached to it outermost-first. Gating on
+  `onActivityCreated` / `onFragmentPreAttached` made such a surface invisible for its whole life while
+  its host masked over it, and adopting the fragments lazily at resume instead inverted the nesting,
+  because a child resumes inside its parent's `performResume`.
 
 - **The ambient screen is now absent while a host Activity is paused** — a permission prompt, a
   translucent Activity — where it previously kept naming the paused screen. Autocapture reads this

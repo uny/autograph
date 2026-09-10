@@ -48,8 +48,9 @@ import dev.ynagai.autograph.context.ScopeStack
  * in its own window: the Activity underneath is not on display, so it stops answering regardless.
  * And an Activity only masks while it is the sole one on display — under multi-resume it does not,
  * because this stack knows nothing about windows; that is settled at its first resume and not
- * revisited, so one that started in split screen keeps not masking after it is expanded.) A headless fragment (`view == null`, a retained
- * worker like Glide's) is not a surface at all. And an excluded fragment **nested inside** one that names a screen is part of
+ * revisited until it stops, so one that started in split screen keeps not masking until then.)
+ * A headless fragment (`view == null`, a retained worker like Glide's) is not a surface at all. And
+ * an excluded fragment **nested inside** one that names a screen is part of
  * that screen, not a replacement for it — except a `DialogFragment`, which draws its own window and
  * so covers its host whichever `FragmentManager` showed it. That last gate protects a host that still
  * *names* a screen; a widget embedded in the host's **own layout** is inside the host's view subtree,
@@ -63,8 +64,10 @@ import dev.ynagai.autograph.context.ScopeStack
  *   and, worse, attribute a coarse Activity-class name into the `previous_screen` chain. The check is
  *   **reflective** so this module stays Compose-free.
  * - **Fragment-hosting Activities are skipped.** In a single-Activity app the Fragments are the
- *   screens and the Activity is a shell; reporting both would double-count. An Activity that, at
- *   resume, already has an added Fragment with a view is treated as a host, not a screen.
+ *   screens and the Activity is a shell; reporting both would double-count. An Activity that has an
+ *   added Fragment with a view — a `DialogFragment` does not count, it covers rather than fills — is
+ *   treated as a host, not a screen. Re-derived at every stop, not at every resume, so an Activity
+ *   that becomes a host mid-session reports itself until it next stops.
  * - **Container fragments are skipped** — a `NavHostFragment` hosts destinations that are themselves
  *   captured; it is not itself a screen. (Checked reflectively; navigation-fragment is not a
  *   dependency.)
@@ -118,12 +121,19 @@ import dev.ynagai.autograph.context.ScopeStack
  * ## Lifecycle: what a surface says, and whether it is the one saying it
  *
  * Each surface owns **one** frame at a time, reserved (empty and inert) the moment it is created or
- * attached and dropped when it is destroyed, or removed from its `FragmentManager`. It is also
- * replaced by a fresh one whenever the surface **stops**: a stop destroys the view, so what comes
- * back is a new mounting, and it must claim a new position — a `detach()`ed fragment stops without
- * ever reaching `onDetach`, and reusing its old position put it underneath a sibling that mounted
- * while it was away. Between those, two separate switches decide what a frame contributes, because
- * two different questions are being asked and the same signal cannot answer both.
+ * attached and dropped when it is destroyed, or removed from its `FragmentManager`. A fragment's is
+ * also replaced by a fresh one whenever its **view** is destroyed: what comes back is a new mounting
+ * and must claim a new position — a `detach()`ed fragment loses its view without ever reaching
+ * `onDetach`, and reusing its old position put it underneath a sibling that mounted while it was
+ * away. Not at the stop before it: a stop destroys nothing, so a frame replaced there jumps above the
+ * child frames and Compose compositions that outlive it. An Activity never replaces its frame at all
+ * — its content view lives from `onCreate` to `onDestroy`, one mounting — though what that frame
+ * *says* is re-derived at every stop, so an Activity that has become a fragment shell stops reporting
+ * itself. A mask is the exception it cannot take back: `maskScreen` is one-way, so an Activity that
+ * masked once keeps masking even if it later owns its content again — absent, not wrong.
+ *
+ * Between those, two separate switches decide what a frame contributes, because two different
+ * questions are being asked and the same signal cannot answer both.
  *
  * **Attribution** — is this the surface on display? — follows resume and pause. A frame that is not
  * selected contributes nothing, as if it were off the stack, but keeps its position so the surface
