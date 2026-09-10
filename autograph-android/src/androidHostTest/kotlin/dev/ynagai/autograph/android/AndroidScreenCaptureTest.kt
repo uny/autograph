@@ -507,12 +507,13 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
-    fun aNamedPageAttachedAfterAnUnnamedOneIsShowingDoesNotLendItItsScreen() {
+    fun aNamedPageShownAfterAnUnnamedOneDoesNotLendItItsScreenOnTheWayBack() {
         install()
         // The three-page pager. Position alone cannot answer this: the named page attaches LATER than
-        // the unnamed page on display, so its frame sits above the mask and would win on insertion
-        // order. It is off-screen, though — capped at STARTED, never resumed — so it is not selected
-        // and contributes nothing.
+        // the unnamed page, so its frame sits above the mask and wins on insertion order — and unlike
+        // a page that was only ever cached off-screen, this one really was shown, so its frame carries
+        // a screen. It is off-screen by the time the user comes back, though: demoted to STARTED,
+        // never stopped, never detached. Only selection can tell the two apart.
         val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
         val fm = activity.supportFragmentManager
         val named = fm.findFragmentByTag("detail")!!
@@ -527,14 +528,26 @@ class AndroidScreenCaptureTest {
             .commitNow()
         assertNull(scopeStack.current().screen)
 
+        // Swipe on to a third, named page — attached and resumed after the mask was already standing.
         val third = SecondFragment()
         fm.beginTransaction()
             .add(android.R.id.content, third, "page3")
+            .setMaxLifecycle(unnamed, Lifecycle.State.STARTED)
+            .setMaxLifecycle(third, Lifecycle.State.RESUMED)
+            .commitNow()
+        assertEquals("SecondFragment", scopeStack.current().screen)
+
+        // ... and back to the unnamed page.
+        fm.beginTransaction()
             .setMaxLifecycle(third, Lifecycle.State.STARTED)
+            .setMaxLifecycle(unnamed, Lifecycle.State.RESUMED)
             .commitNow()
 
         assertNull("the unnamed page on display still names no screen", scopeStack.current().screen)
-        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+        assertEquals(
+            listOf("DetailFragment:(none)", "SecondFragment:DetailFragment"),
+            tracker.screens,
+        )
     }
 
     @Test

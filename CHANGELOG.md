@@ -100,7 +100,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Masking is narrower than the filter, because a mask also asserts that the surface *covers* what it
   hides. A surface opted out with a `null` `activityScreenName` / `fragmentScreenName`, a headless
   fragment (`view == null`), and an excluded fragment nested inside one that names a screen are all
-  filtered out but never mask — a `DialogFragment` excepted, since it draws its own window. The
+  filtered out but never mask — a `DialogFragment` excepted, since it draws its own window. An
+  opted-out *Activity* is the one place where opting out still changes what is ambient: it covers the
+  Activity beneath, which is no longer on display and so stops answering. The
   nesting gate asks the ancestor the same *static* question it will ask itself rather than reading
   frames already pushed, because a child resumes first; reading state turned an embedded Compose
   widget's host from `NestingFragment` into `null` (measured).

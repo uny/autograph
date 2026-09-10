@@ -41,10 +41,12 @@ import dev.ynagai.autograph.context.ScopeStack
  *
  * Masking is deliberately **narrower** than the filter, because a mask asserts something the filter
  * does not: that this surface *covers* the screen it hides. Three cases are filtered out but never
- * masked. A surface opted out with a `null` [activityScreenName] / [fragmentScreenName] is skipped
- * exactly as before — opting a library or consent-SDK fragment out of reporting must not also blank
- * the screen it sits on. A headless fragment (`view == null`, a retained worker like Glide's) is not
- * a surface at all. And an excluded fragment **nested inside** one that names a screen is part of
+ * masked. A surface opted out with a `null` [activityScreenName] / [fragmentScreenName] is skipped —
+ * opting a library or consent-SDK fragment out of reporting must not also blank the screen it sits
+ * on. (An opted-out *Activity* still covers what is beneath it: the Activity underneath is not on
+ * display, so it stops answering. Only a Fragment sits inside the same window as the screen it would
+ * have blanked.) A headless fragment (`view == null`, a retained worker like Glide's) is not a
+ * surface at all. And an excluded fragment **nested inside** one that names a screen is part of
  * that screen, not a replacement for it — except a `DialogFragment`, which draws its own window and
  * so covers its host whichever `FragmentManager` showed it.
  * - **Compose hosts are skipped.** An Activity or Fragment whose view subtree contains an
