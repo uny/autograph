@@ -107,8 +107,15 @@ public class ScopeStack {
      * [maskScreen], and never changes whether the frame is active — those are switches on the frame
      * rather than part of the contents this replaces, and a pipeline revising a frame must not flip
      * either of them by accident. Note the consequence while a frame is masked: a [screen] written
-     * here is stored but does not resolve, because [maskScreen] wins in [recompute]. Un-mask by
-     * removing the frame and pushing a new one.
+     * here is stored but does not resolve, because [maskScreen] wins in [recompute].
+     *
+     * **There is no way to un-mask, and [remove] + [push] is not one.** Re-pushing is the very thing
+     * the paragraph above rules out: the replacement lands at the end of the list, so a container
+     * that un-masked this way would out-rank the inner frames its own content is still holding —
+     * measured, `screen` went to the container while its `Detail` content was on display. It also
+     * strands anything pushed with `parent =` the removed frame on a dangling link, which drops that
+     * subtree's scope entirely (`{container, child}` became `{}`). A surface that may name a screen
+     * must not mask in the first place; see [maskScreen] on why the switch is one-way.
      */
     public fun update(
         handle: ScopeHandle,
