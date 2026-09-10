@@ -8,6 +8,44 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **`ScopeStack.maskScreen(handle)`** — turn an already-pushed frame into one that declares *there is
+  no screen here*, clearing screen and section rather than naming one. It exists for a surface that
+  comes to the foreground and names no screen of its own: without a mask the frame of the screen
+  *underneath* stays innermost, and every event captured on the unnamed surface is attributed to the
+  screen the user just left — a wrong value, not a missing one, and one that survives every schema
+  check. Frames after a mask still win, so content that does name a screen for itself is unaffected.
+  One-way: a mask states something about the frame's *contents*, which does not stop being true while
+  the surface is off-screen.
+
+- **`ScopeStack.setActive(handle, active)` and `setActive(handles, active)`** — mark a frame as taking
+  part in resolution, or not. An inactive frame keeps its position and its contents but contributes
+  nothing: no screen, no section, no scope.
+
+  This is the "is this surface the one on display?" bit, and frame *position* cannot answer it.
+  Position stands in for recency of becoming foreground, which holds only while a frame leaves when
+  its surface does. A host that keeps several surfaces mounted and merely demotes the off-screen ones
+  — a pager caching neighbouring pages, a container that pauses rather than destroys — breaks that:
+  the demoted surface's frame stays where it was and, being later in the list than the surface the
+  user came back to, wins. Removing the frame instead would be wrong for the opposite reason: it has
+  to come back, at the same position, without the surface being rebuilt. Two consequences the tests
+  pin directly: a demoted sibling no longer out-ranks the surface on display, and it can no longer
+  out-rank a mask reserved before it.
+
+  The batched overload publishes **one** snapshot for the whole group. A surface owns more than one
+  frame — its screen, its mask, the scopes under it — and switching them one at a time republishes an
+  intermediate context in which some of a surface's frames answer and others do not; a tap captured
+  against that snapshot reads a state the app was never in.
+
+  Additive: no existing signature changed, so the `api/` dumps gain three lines each and nothing
+  moves (ADR 0001 §2f — `ScopeStack` is a caller-constructed concrete class whose members may grow).
+  `update` revises contents only: it never clears a mask and never changes whether a frame is active.
+
+  This is the first of a dependency stack (`ScopeStack` API → Android capture → Compose/observer)
+  replacing the design withdrawn in [#217]; the capture side that drives these switches lands next.
+  Refs [#216].
+
 ## [0.8.0] - 2026-08-21
 
 ### Changed
@@ -1065,3 +1103,5 @@ Initial release.
 [#193]: https://github.com/uny/autograph/issues/193
 [#195]: https://github.com/uny/autograph/issues/195
 [#205]: https://github.com/uny/autograph/issues/205
+[#216]: https://github.com/uny/autograph/issues/216
+[#217]: https://github.com/uny/autograph/pull/217

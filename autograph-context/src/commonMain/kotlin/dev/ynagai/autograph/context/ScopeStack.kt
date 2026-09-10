@@ -31,8 +31,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * same context and share one `previous_screen` chain. That stack is then yours to replace when the
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
- * **Threading.** [push], [update], and [remove] must be called from the main thread ([push] and
- * [remove] mutate the frame list; [update] mutates a frame's contents). [current] is lock-free and
+ * **Threading.** [push], [update], [remove], [maskScreen] and [setActive] must be called from the
+ * main thread ([push] and [remove] mutate the frame list; the others mutate a frame's contents and
+ * republish the snapshot). [current] is lock-free and
  * safe from any thread: it returns an immutable snapshot that is republished atomically on every
  * mutation, so a background reader always sees a whole, consistent context — never a half-applied
  * one.
@@ -101,6 +102,13 @@ public class ScopeStack {
      *
      * A [parent] that is this frame itself, or one of its descendants, cannot describe a real nesting
      * and is refused: the frame becomes a root instead. See the note at the assignment below.
+     *
+     * This revises scope/screen/section and the parent link only. It never clears a mask set by
+     * [maskScreen], and never changes whether the frame is active — those are switches on the frame
+     * rather than part of the contents this replaces, and a pipeline revising a frame must not flip
+     * either of them by accident. Note the consequence while a frame is masked: a [screen] written
+     * here is stored but does not resolve, because [maskScreen] wins in [recompute]. Un-mask by
+     * removing the frame and pushing a new one.
      */
     public fun update(
         handle: ScopeHandle,
@@ -140,6 +148,80 @@ public class ScopeStack {
     }
 
     /**
+     * Turns the frame [handle] refers to into a **mask**: a frame that declares *there is no screen
+     * here*, clearing both screen and section rather than naming one. Frames after it still win, so a
+     * mask hides what is *underneath* it, not everything.
+     *
+     * It exists for a surface that comes to the foreground and names no screen of its own — a native
+     * container hosting content that reports its own screens. Without a mask, the frame of the screen
+     * *underneath* stays the innermost one and every event captured on the unnamed surface is
+     * attributed to the screen the user just left: a wrong value, not a missing one, and one that
+     * survives every schema check.
+     *
+     * **One-way, and deliberately so.** A mask is a statement about the frame's *contents* — this
+     * surface names no screen — which does not stop being true while the surface is off-screen. What
+     * changes then is whether the frame participates at all, and that is [setActive]'s job. Two
+     * switches for two different questions; folding them into one is what makes a mask outlive the
+     * moment it was right for.
+     *
+     * A no-op if the frame is already masked, was already removed, or belongs to another stack.
+     */
+    public fun maskScreen(handle: ScopeHandle) {
+        val frame = handle.frame
+        if (frames.none { it === frame } || frame.maskScreen) return
+        frame.maskScreen = true
+        snapshot = recompute()
+    }
+
+    /**
+     * Marks the frame [handle] refers to as taking part in resolution, or not. An inactive frame keeps
+     * its position and its contents but contributes nothing — no screen, no section, no scope — as if
+     * it were not on the stack at all.
+     *
+     * **This is the "is this surface the one on display?" bit, and position cannot answer it.**
+     * Position stands in for *recency of becoming foreground*, which only holds while a frame leaves
+     * when its surface does. A host that keeps several surfaces mounted at once and merely demotes the
+     * ones off-screen — a pager caching neighbouring pages, a container that pauses rather than
+     * destroys — breaks that: the demoted surface's frame stays where it was, and, being later in the
+     * list than the one the user came back to, wins. Removing the frame instead would be wrong for the
+     * opposite reason: it must come back, at the same position, without the surface being rebuilt.
+     *
+     * A frame is active when pushed. Toggling it does not move it, so a caller may reserve a position
+     * once, early, and switch the frame on and off for the life of the surface.
+     *
+     * Handles that were already removed, or belong to another stack, are skipped. Passing a value the
+     * frame already has is a no-op and republishes nothing.
+     */
+    public fun setActive(handle: ScopeHandle, active: Boolean) {
+        val frame = handle.frame
+        if (frames.none { it === frame } || frame.active == active) return
+        frame.active = active
+        snapshot = recompute()
+    }
+
+    /**
+     * [setActive] for several frames at once, publishing **one** snapshot for the whole batch.
+     *
+     * A surface owns more than one frame — its screen, its mask, the scopes under it — and they have
+     * to change together. Toggling them one at a time republishes an intermediate context in which
+     * some of a surface's frames answer and others do not; a tap captured against that snapshot reads
+     * a state the app was never in. Callers that own a surface should switch its frames through this,
+     * not in a loop.
+     *
+     * No-ops (unknown handles, values already set) drop out; nothing is republished if none remain.
+     */
+    public fun setActive(handles: Collection<ScopeHandle>, active: Boolean) {
+        var changed = false
+        for (handle in handles) {
+            val frame = handle.frame
+            if (frames.none { it === frame } || frame.active == active) continue
+            frame.active = active
+            changed = true
+        }
+        if (changed) snapshot = recompute()
+    }
+
+    /**
      * Removes the frame [handle] refers to, by identity and independent of position — screen
      * transitions (a Compose `Crossfade`, an iOS interactive-pop that the user cancels) do not
      * guarantee frames leave in push order, so a positional pop would remove the wrong one.
@@ -155,10 +237,14 @@ public class ScopeStack {
     public fun current(): AmbientContext = snapshot
 
     private fun recompute(): AmbientContext {
-        if (frames.isEmpty()) return AmbientContext.Empty
+        // Inactive frames are skipped ONCE, here, and the survivors are what both screen/section and
+        // [resolveScope] see — so "does this frame take part?" is answered in one place rather than
+        // being re-derived per field. See [setActive] for why position alone cannot answer it.
+        val live = frames.filter { it.active }
+        if (live.isEmpty()) return AmbientContext.Empty
         var screen: String? = null
         var section: String? = null
-        for (frame in frames) {
+        for (frame in live) {
             // A frame that names a screen OWNS its section — it replaces both, so a section carried by
             // an outer screen cannot bleed onto an inner one that declared none (`push(screen = "X")`
             // means "screen X, no section", not "keep whatever section was showing"). A frame with no
@@ -167,14 +253,20 @@ public class ScopeStack {
             // marker case while stopping the cross-screen leak in the replacement case. Screen/section
             // resolve by insertion order (one screen is active at a time, so "last mounted wins" is
             // right for them); only scope is lineage-aware — see [resolveScope].
-            if (frame.screen != null) {
+            // A mask clears both, for the same reason a named frame replaces both: it says "the surface
+            // on display names no screen", which cannot leave the outgoing screen's section behind
+            // either. Frames after it still win, so content that does name a screen is unaffected.
+            if (frame.maskScreen) {
+                screen = null
+                section = null
+            } else if (frame.screen != null) {
                 screen = frame.screen
                 section = frame.section
             } else if (frame.section != null) {
                 section = frame.section
             }
         }
-        return AmbientContext(resolveScope(), screen, section)
+        return AmbientContext(resolveScope(live), screen, section)
     }
 
     /**
@@ -193,9 +285,14 @@ public class ScopeStack {
      * `Modifier.autocaptureScope` in `autograph-compose`, which reads a marker off the tapped
      * element's own ancestry. Android only: the iOS accessibility bridge carries no such marker, so
      * the drop above is what an ambiguous iOS tap gets (#68).
+     *
+     * [live] is the active subset computed by [recompute]: a demoted surface's scope must not
+     * attribute a tap on the surface that replaced it, so selection filters scope exactly as it
+     * filters screen. Lineage is unaffected — [encloses] walks the real parent chain, inactive links
+     * included, because containment is structural and does not stop being true off-screen.
      */
-    private fun resolveScope(): JsonObject {
-        val scoped = frames.filter { it.scope.isNotEmpty() }
+    private fun resolveScope(live: List<ScopeFrame>): JsonObject {
+        val scoped = live.filter { it.scope.isNotEmpty() }
         if (scoped.isEmpty()) return EmptyJsonObject
         if (scoped.size == 1) return scoped[0].scope
         val unambiguous = scoped.filter { frame ->
@@ -241,9 +338,16 @@ internal class ScopeFrame(
     var screen: String?,
     var section: String?,
     var parent: ScopeFrame? = null,
+    /** See [ScopeStack.maskScreen]: this frame declares "no screen here" rather than naming one. */
+    var maskScreen: Boolean = false,
+    /** See [ScopeStack.setActive]: whether this frame takes part in resolution at all. */
+    var active: Boolean = true,
 )
 
-/** An opaque token identifying a pushed frame, for [ScopeStack.update] and [ScopeStack.remove]. */
+/**
+ * An opaque token identifying a pushed frame, for [ScopeStack.update], [ScopeStack.remove],
+ * [ScopeStack.maskScreen] and [ScopeStack.setActive].
+ */
 public class ScopeHandle internal constructor(internal val frame: ScopeFrame)
 
 /**
