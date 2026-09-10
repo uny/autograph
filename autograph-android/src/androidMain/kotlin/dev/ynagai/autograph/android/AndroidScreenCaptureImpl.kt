@@ -297,8 +297,11 @@ internal class AndroidScreenCapture(
                 //    of that screen, not a replacement for it. A DialogFragment is exempt: it draws
                 //    its own window over everything, so it covers its host no matter whose
                 //    FragmentManager it was shown through — measured, `show(parent.childFragmentManager)`
-                //    otherwise left the dialog reporting its parent's screen.
-                covers = f.view != null && (f is DialogFragment || !hasNamedAncestor(f)),
+                //    otherwise left the dialog reporting its parent's screen. Only when it is actually
+                //    being shown as a dialog, though: `setShowsDialog(false)` is the documented way to
+                //    reuse one class as an inline piece of another screen, and that one draws no
+                //    window of its own and covers nothing.
+                covers = f.view != null && (f.isShownAsDialog() || !hasNamedAncestor(f)),
                 screenName = { fragmentScreenName(f) },
             )
         }
@@ -332,6 +335,18 @@ internal class AndroidScreenCapture(
             fragmentStates.remove(f)?.let { scopeStack.remove(it.handle) }
         }
     }
+
+    /**
+     * Whether [this] is a [DialogFragment] currently drawing its own window.
+     *
+     * The `showsDialog` half is defensive and **has no test**, because no reachable case distinguishes
+     * it: `DialogFragment.onCreate` forces `showsDialog` back to `containerId == 0`, so the inline
+     * reuse this guards against requires a container — and a container inside the named host puts the
+     * excluded fragment's view in the host's subtree, which makes the host a Compose host that names
+     * no screen of its own anyway. Kept because it is the question the gate actually means to ask, not
+     * because it changes an outcome anyone can produce today.
+     */
+    private fun Fragment.isShownAsDialog(): Boolean = this is DialogFragment && showsDialog
 
     /**
      * Whether some fragment *containing* [f] names a screen.
