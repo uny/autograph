@@ -436,21 +436,20 @@ internal class AndroidScreenCapture(
         covers: Boolean,
         screenName: () -> String?,
     ) {
-        // Two different questions, and the name answers only one of them.
-        //  - `capturable` is what this capture *structurally* declines: a Compose host, a
-        //    fragment-hosting shell. That is what a mask is for.
-        //  - a null name is the adopter saying "do not report this surface". It must never *cause* a
-        //    mask (an opt-out that blanked the screen underneath would be a different, undocumented
-        //    contract) — but it does *suppress* one, which is the same promise read the other way:
-        //    opting a library or consent-SDK surface out must not blank the screen it sits on. Both
-        //    gates had to be consulted for that to hold; masking on `capturable` alone left a
-        //    structurally-excluded surface masking even after the adopter opted it out — measured,
-        //    `DetailFragment` became null beside an opted-out Compose fragment.
-        // Asked only of a surface whose answer can matter — one this capture would report, or one
-        // that could mask. A headless fragment is neither, and the adopter's lambda has never been
-        // called for one: `fragmentScreenName = { it.requireView().tag as String }` is a reasonable
-        // thing to write, and asking it about Glide's retained worker fragment throws out of a
-        // FragmentManager dispatch. `covers` already requires a view, so this is the whole guard.
+        // Two different questions, and the name answers only one of them. `capturable` is what this
+        // capture *structurally* declines — a Compose host, a fragment-hosting shell — and that is
+        // what a mask is for. A null name is the adopter saying "do not report this surface": it must
+        // never *cause* a mask (an opt-out that blanked the screen underneath would be a different,
+        // undocumented contract) but it does *suppress* one, which is the same promise read the other
+        // way. Masking on `capturable` alone left a structurally-excluded surface masking after the
+        // adopter had opted it out — measured, `DetailFragment` became null beside one.
+        //
+        // Which is why the lambda is asked at all here, and why it is asked only of a surface whose
+        // answer can matter: one this capture would report, or one that could mask. A headless
+        // fragment is neither, and has never been passed to it — `{ it.requireView().tag as String }`
+        // is a reasonable lambda to write, and asking it about Glide's retained worker fragment
+        // throws out of a FragmentManager dispatch. `covers` already requires a view, so that is the
+        // whole guard.
         val name = if (capturable || covers) screenName() else null
         if (!state.decided) {
             state.decided = true
