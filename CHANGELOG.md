@@ -13,7 +13,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 - **`ScopeStack.maskScreen(handle)` / `ScopeStack.unmaskScreen(handle)`** — turn an already-pushed
   frame into a frame that declares *there is no screen here* (clearing screen and section while
   leaving anything pushed above it, and all ambient scope, untouched) and back again. Additive: no
-  existing signature changed, so the `api/` dumps gain one line each and nothing moves (ADR 0001 §2f —
+  existing signature changed, so the `api/` dumps gain two lines each and nothing moves (ADR 0001 §2f —
   `ScopeStack` is a caller-constructed concrete class whose members may grow). `update` deliberately
   does not clear a mask; only `unmaskScreen` does. A mask must be paired with an `unmaskScreen` on the
   signal that its surface left the foreground — position is fixed at `push` time but *which surface
@@ -44,9 +44,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   into another container of the same `FragmentManager` — an embedded mini-player rather than a cover
   — masks the screen beside it. A third: a `DialogFragment` that builds its content in
   `onCreateDialog()` has a null `Fragment.view` and is indistinguishable from a retained worker
-  fragment, so it is skipped rather than masked and still reports the screen behind it. None of the
-  three reports a *wrong* screen where masking would have been right; they leave one absent, or leave
-  that much of [#216] unfixed.
+  fragment, so it is skipped rather than masked and still reports the screen behind it. The first two
+  leave events without a screen; the `onCreateDialog()` one still reports the screen behind the
+  dialog. All three leave that much of [#216] unfixed.
 
 - **Native Android autocapture attributed a tap to the screen the user had just left**, whenever the
   screen they returned to never stopped. `installAutographNativeScreenCapture` removes a screen's
