@@ -76,6 +76,25 @@ class ComposeHostDialogFragment : DialogFragment() {
 /** A retained worker fragment — no view, so not a surface. Glide's is the everyday example. */
 class HeadlessFragment : Fragment()
 
+/** Hosts an inline DialogFragment as its content from onCreate, so it is present at resume. */
+class InlineDialogHostActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState != null) return
+        supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, InlineDialogFragment(), "inline").commitNow()
+    }
+}
+
+/** A DialogFragment used as inline content — added to a container, so it draws no window. */
+class InlineDialogFragment : DialogFragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = View(requireContext())
+}
+
 /** Owns no fragment content of its own, but shows a view-bearing dialog fragment from onCreate. */
 class DialogAtStartActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1095,6 +1114,54 @@ class AndroidScreenCaptureTest {
             ),
             tracker.screens,
         )
+    }
+
+    @Test
+    fun anActivityStillMaskingDoesNotReportAScreenItCannotResolve() {
+        install()
+        // An Activity re-derives what it says at every stop but cannot take a mask back, so it can
+        // come back believing it is a screen again while its frame still says there is none. The
+        // ambient value is absent either way; what must not happen is a `Screen Viewed` naming the
+        // Activity, which would also write a coarse Activity-class name into the previous_screen
+        // chain that no captured event on that screen can match. This pins the sequence, not the
+        // `!masked` guard in onSurfaceResumed: removing that guard leaves this green, because the
+        // state it defends against turned out not to be reachable. See its comment.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, DetailFragment(), "content").commitNow()
+        // This return is where the Activity re-derives itself as a shell and masks. The mask is not
+        // visible yet — the fragment's frame sits above it and names a screen.
+        controller.pause().stop().start().resume()
+        drainMainLooper()
+        assertEquals("DetailFragment", scopeStack.current().screen)
+
+        fm.beginTransaction().remove(fm.findFragmentByTag("content")!!).commitNow()
+        controller.pause().stop().start().resume()
+        drainMainLooper()
+
+        assertNull(scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "DetailFragment:EmptyFragmentActivity",
+                "DetailFragment:(none)",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun aDialogFragmentInAContainerStillMakesItsActivityAShell() {
+        install()
+        // `showsDialog` is what the shell test actually means to ask, not the type: a DialogFragment
+        // added to a CONTAINER is inline content (onCreate forces showsDialog to containerId == 0),
+        // so it does make its Activity a shell. Reading the type alone would let the Activity report
+        // its own class name beside the fragment's.
+        Robolectric.buildActivity(InlineDialogHostActivity::class.java).setup()
+
+        assertEquals("InlineDialogFragment", scopeStack.current().screen)
+        // Only the fragment. Reading the type would make the host capturable and double-count it.
+        assertEquals(listOf("InlineDialogFragment:(none)"), tracker.screens)
     }
 
     @Test

@@ -391,14 +391,20 @@ internal class AndroidScreenCapture(
     }
 
     /**
-     * Whether [this] is a [DialogFragment] currently drawing its own window.
+     * Whether [this] is a [DialogFragment] currently drawing its own window — which is what both
+     * callers actually mean to ask, rather than "is it of that type".
      *
-     * The `showsDialog` half is defensive and **has no test**, because no reachable case distinguishes
-     * it: `DialogFragment.onCreate` forces `showsDialog` back to `containerId == 0`, so the inline
-     * reuse this guards against requires a container — and a container inside the named host puts the
-     * excluded fragment's view in the host's subtree, which makes the host a Compose host that names
-     * no screen of its own anyway. Kept because it is the question the gate actually means to ask, not
-     * because it changes an outcome anyone can produce today.
+     * It decides an outcome at [isCapturableActivity]: `DialogFragment.onCreate` forces `showsDialog`
+     * to `containerId == 0`, so one added to a container is inline content and *does* make its
+     * Activity a shell, while one that was `show()`n covers the Activity and does not. Reading the
+     * type alone gets one of those two wrong whichever way it is written; pinned by
+     * `aDialogFragmentInAContainerStillMakesItsActivityAShell` and
+     * `anActivityWithASheetUpAtItsFirstResumeIsStillItsOwnScreenAfterwards`.
+     *
+     * At the containment gate in [onFragmentResumed] it is defensive and **has no test**: the inline
+     * reuse it guards against there needs a container inside the named host, which puts the excluded
+     * fragment's view in the host's subtree and makes the host a Compose host that names no screen of
+     * its own anyway.
      */
     private fun Fragment.isShownAsDialog(): Boolean = this is DialogFragment && showsDialog
 
