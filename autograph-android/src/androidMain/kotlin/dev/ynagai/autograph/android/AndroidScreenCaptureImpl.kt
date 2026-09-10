@@ -492,7 +492,15 @@ internal class AndroidScreenCapture(
         // What the surface IS is settled once per mounting; what it is CALLED is not. A name that
         // arrives late — `{ it.loadedTitle }`, null until the data does — has to be picked up at the
         // next resume, and one that goes away has to stop being reported.
-        val screen = if (state.capturable) name else null
+        // `!masked` keeps "absent, never wrong" true of a mask that outlived its reason. An Activity
+        // re-derives what it says at every stop but cannot take a mask back (ScopeStack's switch is
+        // one-way), so on paper it can reach a later mounting believing it is a screen again while
+        // its frame still says there is none, and emit a `Screen Viewed` for a screen no captured
+        // event on it can carry. Defensive, and **untested**: no arrangement I could build reaches
+        // that state — an Activity that stops re-deriving as a shell masks again, and one that does
+        // not was never masked. Kept because the two disagreeing is the worst outcome available here,
+        // not because a case was observed.
+        val screen = if (state.capturable && !state.masked) name else null
         if (!state.masked) {
             scopeStack.update(state.handle, screen = screen)
             state.declaresScreen = screen != null
