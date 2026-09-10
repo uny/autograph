@@ -3,11 +3,13 @@
 package dev.ynagai.autograph.android
 
 import android.app.Activity
+import android.content.Context
 import android.os.Bundle
 import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
@@ -23,6 +25,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -73,6 +76,36 @@ class ComposeHostDialogFragment : DialogFragment() {
 /** A retained worker fragment — no view, so not a surface. Glide's is the everyday example. */
 class HeadlessFragment : Fragment()
 
+/** A named fragment hosting an unnamed Compose child in a container inside its own layout. */
+class ContainerNestingFragment : Fragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = FrameLayout(requireContext()).apply { id = WIDGET_CONTAINER_ID }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        childFragmentManager.beginTransaction()
+            .add(WIDGET_CONTAINER_ID, ComposeHostFragment(), "widget").commitNow()
+    }
+
+    private companion object { const val WIDGET_CONTAINER_ID = 4242 }
+}
+
+/** A Compose host that commits a NAMED child from onAttach — earlier than its own attach callback. */
+class AttachTimeNestingFragment : Fragment() {
+    override fun onAttach(context: Context) {
+        super.onAttach(context)
+        childFragmentManager.beginTransaction().add(SecondFragment(), "child").commitNow()
+    }
+
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = ComposeView(requireContext())
+}
+
 /** A named fragment that commits an unnamed Compose child at construction, before it resumes. */
 class NestingFragment : ViewFragment() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -85,6 +118,9 @@ class NestingFragment : ViewFragment() {
 class FragmentHostActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Guarded so a recreate() restores the fragment rather than adding a second one — without it a
+        // rotation test would fail on the fixture instead of on the capture.
+        if (savedInstanceState != null) return
         supportFragmentManager.beginTransaction()
             .add(android.R.id.content, DetailFragment(), "detail")
             .commitNow()
@@ -420,6 +456,12 @@ class AndroidScreenCaptureTest {
         assertEquals(0, frameCount())
     }
 
+    /** Runs [block] with this capture installed, then uninstalls it. */
+    private fun AutographNativeScreenCapture.uninstallAfter(block: () -> Unit) {
+        block()
+        uninstall()
+    }
+
     /** The size of [scopeStack]'s private frame list — the only way to observe an inert leak. */
     private fun frameCount(): Int {
         val field = ScopeStack::class.java.getDeclaredField("frames")
@@ -451,7 +493,7 @@ class AndroidScreenCaptureTest {
         // would blank the page actually on display — measured, and the reason the mask stays inert
         // until its surface resumes.
         // An EXCLUDED page (a Compose host): a capturable one never reaches the mask gate at all, so
-        // it would pin `pushInertMask` pushing an unmasked frame rather than the property named here.
+        // it would pin `reserveFrame` pushing an unmasked frame rather than the property named here.
         val cached = ComposeHostFragment()
         fm.beginTransaction()
             .add(android.R.id.content, cached, "cached")
@@ -673,6 +715,216 @@ class AndroidScreenCaptureTest {
             .add(android.R.id.content, NestingFragment(), "parent").commitNow()
 
         assertEquals("NestingFragment", scopeStack.current().screen)
+    }
+
+    // --- Mounting, masking and the surfaces a mask must NOT speak for ------------------------------
+
+    @Test
+    fun anActivityThatAlreadyExistedWhenTheCaptureInstalledIsStillCaptured() {
+        // The documented contract is "not reported until its next transition", not "never". An app
+        // that initialises the SDK from its first Activity's onCreate — or re-installs against a new
+        // tracker on logout — misses onActivityCreated for the Activity on screen, and gating capture
+        // on that callback made the screen the user is looking at invisible for the rest of its life.
+        val controller = Robolectric.buildActivity(PlainActivity::class.java).create()
+        install()
+        controller.start().resume()
+
+        assertEquals("PlainActivity", scopeStack.current().screen)
+        assertEquals(listOf("PlainActivity:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun anActivityMaskedWhileADialogWasAttachedNamesItsScreenAgainAfterwards() {
+        install()
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        assertEquals("EmptyFragmentActivity", scopeStack.current().screen)
+
+        // What makes the Activity look like a shell is time-varying: "does any added fragment have a
+        // view". With a view-bearing dialog attached, a plain pause/resume — a permission prompt, a
+        // phone call — used to re-derive that and mask the Activity ONE-WAY, so the screen never came
+        // back even after the dialog was gone. The decision is settled once per mounting now.
+        val dialog = ComposeHostDialogFragment()
+        dialog.show(fm, "dialog")
+        fm.executePendingTransactions()
+        controller.pause()
+        controller.resume()
+        drainMainLooper()
+        assertNull("the dialog covers the Activity while it is up", scopeStack.current().screen)
+
+        dialog.dismiss()
+        fm.executePendingTransactions()
+
+        assertEquals("EmptyFragmentActivity", scopeStack.current().screen)
+        assertEquals(false, scopeStack.current().screenMasked)
+    }
+
+    @Test
+    fun aNamedChildCommittedFromItsHostsOnAttachStillOutranksTheHostsMask() {
+        install()
+        // A fragment's children are attached from inside its own performAttach, BEFORE the host's
+        // attach callback — so reserving on `onFragmentAttached` put the host's mask ABOVE the child
+        // it contains, and the child's screen was cleared by the very host it declares a screen for.
+        // Reserving on `onFragmentPreAttached` is early enough; nothing else is.
+        val activity = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup().get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, AttachTimeNestingFragment(), "host").commitNow()
+
+        assertEquals("SecondFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aReattachedFragmentOutranksTheSiblingItWasDetachedUnder() {
+        install()
+        // `detach()` stops the fragment and destroys its view but never calls onDetach, so its frame
+        // is never dropped — and reusing the frame reserved at the original attach put the returning
+        // fragment BELOW a sibling that mounted while it was away. It emitted its own name while the
+        // ambient screen still said the sibling's. A mounting that ended takes its position with it.
+        val activity = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        val first = DetailFragment()
+        fm.beginTransaction().add(android.R.id.content, first, "first").commitNow()
+        fm.beginTransaction().add(android.R.id.content, SecondFragment(), "second").commitNow()
+        fm.beginTransaction().detach(first).commitNow()
+        assertEquals("SecondFragment", scopeStack.current().screen)
+
+        fm.beginTransaction().attach(first).commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "DetailFragment:EmptyFragmentActivity",
+                "SecondFragment:DetailFragment",
+                "DetailFragment:SecondFragment",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anExcludedActivityDoesNotMaskANamedActivityResumedBesideIt() {
+        install()
+        // Multi-resume (Android 10+ split screen, and what Robolectric produces here): two Activities
+        // RESUMED at once, in two windows. An Activity covers its OWN window, and this stack knows
+        // nothing about windows, so one that is not alone on display does not mask — otherwise an
+        // excluded Compose host blanks the screen of a named Activity it does not cover at all.
+        Robolectric.buildActivity(PlainActivity::class.java).setup()
+        Robolectric.buildActivity(ComposeHostActivity::class.java).setup()
+
+        assertEquals("PlainActivity", scopeStack.current().screen)
+    }
+
+    @Test
+    fun anExcludedFragmentTheAdopterAlsoOptedOutOfDoesNotMask() {
+        // A null name is "do not report this surface". It must not CAUSE a mask, and it must not let
+        // one stand either: opting a Compose-based library fragment out of reporting cannot be what
+        // blanks the screen it sits beside. Masking on the structural filter alone did exactly that.
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is ComposeHostFragment) null else it.javaClass.simpleName },
+        )
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, ComposeHostFragment(), "library").commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aHostWhoseOwnLayoutContainsAComposeWidgetMasksRatherThanNamingAScreen() {
+        install()
+        // The documented shape of the containment gate's limit, pinned rather than left to prose. A
+        // Compose widget embedded in the host's OWN layout is inside the host's view subtree, so the
+        // host is a Compose host by the structural filter and declares no screen — the gate never
+        // gets a named ancestor to protect. No screen, rather than the stale one underneath.
+        val activity = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup().get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, ContainerNestingFragment(), "host").commitNow()
+
+        assertNull(scopeStack.current().screen)
+        assertTrue("and it says so, so the Compose fallback stays gated", scopeStack.current().screenMasked)
+    }
+
+    @Test
+    fun aMaskSaysItIsAMaskAndNotMerelyAnAbsentScreen() {
+        install()
+        // screen == null has two meanings and the Compose tap observer acts on the difference: it
+        // reinstates ScreenHistory.lastScreen for "nothing named a screen" and must NOT for "the
+        // surface on display asserts it has none". Asserting only the null would pass for an
+        // implementation that deselected the frame beneath instead of masking — and that
+        // implementation reintroduces the stale screen this whole change exists to remove.
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, ComposeHostFragment(), "compose").commitNow()
+
+        assertNull(scopeStack.current().screen)
+        assertTrue(scopeStack.current().screenMasked)
+    }
+
+    @Test
+    fun anUnnamedActivityPassingOverAScreenDoesNotMakeItReportTwice() {
+        install()
+        // endViewsOffDisplay fires from an actual emit, not from every resume, and that tightness is
+        // the whole difference between "the user saw another screen" and "something passed over".
+        // A consent gate, a login Activity, a Compose host — anything that reports nothing — must
+        // leave the screen beneath silent on return.
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        controller.pause()
+        Robolectric.buildActivity(ComposeHostActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        drainMainLooper()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun anActivityResumedBesideAnotherDoesNotEndItsView() {
+        install()
+        // The multi-resume guard in endViewsOffDisplay. Both Activities are RESUMED (Robolectric does
+        // not pause the first, and split screen does not either), so neither has left the display and
+        // neither ends the other's view — without the guard the first re-emits for a screen the user
+        // never left.
+        val first = Robolectric.buildActivity(PlainActivity::class.java).setup()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup()
+        first.pause().resume()
+        drainMainLooper()
+
+        assertEquals(
+            listOf("PlainActivity:(none)", "SecondPlainActivity:PlainActivity"),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun uninstallDropsTheFramesOfAHostsFragmentsToo() {
+        install().uninstallAfter {
+            Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+            assertEquals("DetailFragment", scopeStack.current().screen)
+        }
+        // Fragment frames live on the per-Activity callbacks, so tearDown has to reach through the
+        // registrations to release them. The Activity-only uninstall test cannot see that at all.
+        assertNull(scopeStack.current().screen)
+        assertEquals(0, frameCount())
+    }
+
+    @Test
+    fun rotatingAFragmentHostDoesNotReEmitTheFragmentsScreen() {
+        install()
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        // The whole config-change chain is rewritten here — the marker is left by onFragmentStopped,
+        // the frames are released by onActivityDestroyed before the callbacks unregister, and the
+        // re-created instance reserves and consumes on its own attach/resume. A single wrong step
+        // double-counts the single most common screen shape this library targets.
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
     }
 
     @Test

@@ -19,7 +19,9 @@ import dev.ynagai.autograph.compose.TrackedScreen
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -135,6 +137,7 @@ class ComposeHostMaskTest {
         Shadows.shadowOf(RuntimeEnvironment.getApplication().mainLooper).idle()
 
         assertEquals("ComposeScreen", scopeStack.current().screen)
+        assertFalse("a declared screen is not a mask", scopeStack.current().screenMasked)
         assertEquals(listOf("NativeScreenFragment", "ComposeScreen"), tracker.screens)
     }
 
@@ -149,6 +152,10 @@ class ComposeHostMaskTest {
 
         // Not "NativeScreenFragment": the screen underneath is only paused, so its frame is still live.
         assertNull(scopeStack.current().screen)
+        // And it is a MASK, not merely an absent screen — the distinction the Compose tap observer
+        // acts on. Asserting the null alone would also pass for an implementation that deselected the
+        // frame beneath instead of masking, and that one reinstates the stale screen from history.
+        assertTrue(scopeStack.current().screenMasked)
         assertEquals(listOf("NativeScreenFragment"), tracker.screens)
     }
 }

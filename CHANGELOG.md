@@ -98,21 +98,42 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     Bookkeeping only: attribution and reporting are both applied in the callback they belong to.
 
   Masking is narrower than the filter, because a mask also asserts that the surface *covers* what it
-  hides. A surface opted out with a `null` `activityScreenName` / `fragmentScreenName`, a headless
-  fragment (`view == null`), and an excluded fragment nested inside one that names a screen are all
-  filtered out but never mask — a `DialogFragment` excepted, since it draws its own window. An
-  opted-out *Activity* is the one place where opting out still changes what is ambient: it covers the
-  Activity beneath, which is no longer on display and so stops answering. The
-  nesting gate asks the ancestor the same *static* question it will ask itself rather than reading
-  frames already pushed, because a child resumes first; reading state turned an embedded Compose
-  widget's host from `NestingFragment` into `null` (measured).
+  hides — and every one of those narrowings had to be measured rather than assumed:
 
-  Four residuals are documented on `installAutographNativeScreenCapture` rather than silently
+  - A `null` from `activityScreenName` / `fragmentScreenName` never causes a mask, and now also
+    **suppresses** one the structural filter would have applied. Opting a Compose-based library
+    fragment out of reporting must not blank the screen beside it, whichever reason excluded it.
+  - A headless fragment (`view == null`) is not a surface, and an excluded fragment nested inside one
+    that *names* a screen is part of it — a `DialogFragment` excepted, since it draws its own window.
+    The nesting gate asks the ancestor the same *static* question it will ask itself rather than
+    reading frames already pushed: a child resumes before its parent, and reading state turned an
+    embedded Compose widget's host from `NestingFragment` into `null`.
+  - A child is attached from inside its host's own `performAttach`, **before** the host's attach
+    callback, so a frame reserved on `onFragmentAttached` put a host's mask above the named child it
+    contains. Reservation happens on `onFragmentPreAttached`; nothing later is early enough.
+  - An Activity masks only while it is the sole one on display. Under multi-resume (Android 10+ split
+    screen) two Activities are `RESUMED` in two windows, and an excluded one otherwise blanked the
+    screen of a named Activity it does not cover.
+  - What a surface *is* is settled once per mounting, not re-derived per resume. Both inputs are
+    time-varying while `maskScreen` is one-way, so a plain Activity that merely paused and resumed
+    with a view-bearing dialog attached was masked permanently — it kept emitting its own name while
+    reporting no screen at all.
+  - A stop replaces the frame rather than just clearing it. A `detach()`ed fragment stops without
+    ever reaching `onDetach`, so reusing its old position put the returning fragment underneath a
+    sibling that mounted while it was away.
+
+  Three residuals are documented on `installAutographNativeScreenCapture` rather than silently
   mis-attributed, and all are one-sided — a screen goes *absent*, never wrong: `show()`/`hide()` gives
   no callback at all; an excluded *sibling* fragment (an embedded mini-player) has no containment
-  signal to distinguish it from a cover; a `DialogFragment` that builds its content in
-  `onCreateDialog()` has a null `view` and is indistinguishable from a worker fragment; and an
-  excluded fragment added directly to a *capturable Activity* masks that Activity's screen.
+  signal to distinguish it from a cover; and a `DialogFragment` that builds its content in
+  `onCreateDialog()` has a null `view` and is indistinguishable from a worker fragment. A fourth is
+  not the mask's: an excluded fragment added directly to a *capturable Activity* masks that Activity's
+  screen, the Activity-level twin of the sibling case.
+
+- **The ambient screen is now absent while a host Activity is paused** — a permission prompt, a
+  translucent Activity — where it previously kept naming the paused screen. Autocapture reads this
+  stack to answer "what was on display when the user acted", and nothing of this app is. No
+  `Screen Viewed` changes: a pause still does not end a view, so returning stays silent.
 
 ## [0.8.0] - 2026-08-21
 

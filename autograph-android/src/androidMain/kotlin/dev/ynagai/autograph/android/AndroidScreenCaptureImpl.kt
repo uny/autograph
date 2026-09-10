@@ -89,7 +89,20 @@ internal class AndroidScreenCapture(
      * What this capture knows about one surface. The [handle] is reserved for the life of the surface;
      * everything else is state that decides what it says and whether it takes part.
      */
-    private class SurfaceState(val handle: ScopeHandle) {
+    private class SurfaceState(var handle: ScopeHandle) {
+        /**
+         * Whether what this frame says has been settled for the current **mounting**.
+         *
+         * Settled once, at the mounting's first resume, and never revisited until the surface stops
+         * and a fresh frame is reserved. Re-deciding on every resume looks harmless and is not: the
+         * inputs are time-varying (`isCapturableActivity` asks whether any added fragment has a view;
+         * `isCapturableFragment` walks the live view subtree) while [masked] is one-way, so a plain
+         * Activity that merely pauses and resumes while a view-bearing dialog fragment is attached
+         * was masked *permanently* — measured: after the dialog was dismissed the Activity still
+         * reported `screen = null`, for the rest of its life, while continuing to emit its own name.
+         */
+        var decided = false
+
         /** The frame names a screen — i.e. it resolved to a name at its last resume. */
         var declaresScreen = false
 
@@ -121,6 +134,16 @@ internal class AndroidScreenCapture(
         // call setContentView or add a fragment. That is what puts this frame BELOW everything the
         // Activity's own content pushes, which is the whole reason positions are reserved this early
         // rather than at resume. See reserveFrame.
+        startTracking(activity)
+    }
+
+    /**
+     * Begins tracking [activity]: reserves its frame and installs the recursive fragment callbacks.
+     * A no-op if it is already tracked. Idempotent because it runs from two places — see the call in
+     * [onActivityResumed].
+     */
+    private fun startTracking(activity: Activity) {
+        if (activityStates.containsKey(activity)) return
         activityStates[activity] = SurfaceState(reserveFrame())
         if (activity is FragmentActivity) {
             val fragmentManager = activity.supportFragmentManager
@@ -134,14 +157,25 @@ internal class AndroidScreenCapture(
     override fun onActivityResumed(activity: Activity) {
         if (!active) return
         resumedActivities += activity
+        // Not only onActivityCreated: an Activity that already existed when this capture was installed
+        // never saw that callback, and gating on it made such an Activity invisible for the whole of
+        // its remaining life — measured, no frame and no Screen Viewed across any number of resumes,
+        // where the documented contract (and the previous implementation) is that it is picked up at
+        // its next transition. Lazy tracking costs it only the early frame position, which is the
+        // right trade: a late position is a worse mask, no position at all is no capture.
+        startTracking(activity)
         val state = activityStates[activity] ?: return
         onSurfaceResumed(
             state = state,
             className = activity.javaClass.name,
             capturable = isCapturableActivity(activity),
-            // An Activity is the bottom-most surface of its window; there is nothing of this app's
-            // underneath for a mask to wrongly hide.
-            covers = true,
+            // An Activity covers its window — but only while it is the one Activity on display. Under
+            // multi-resume (Android 10+ multi-window, split screen) two Activities are RESUMED at
+            // once in two windows, and an excluded one masking then blanks the screen of a *named*
+            // Activity beside it — measured, `PlainActivity` became null. Neither position nor this
+            // stack knows about windows, so an Activity that is not alone simply does not mask: it
+            // resolves as it did before masks existed.
+            covers = resumedActivities.none { it !== activity },
             screenName = { activityScreenName(activity) },
         )
         scheduleDemotionCheck(activity)
@@ -159,10 +193,7 @@ internal class AndroidScreenCapture(
     override fun onActivityStopped(activity: Activity) {
         if (!active) return
         if (activity.isChangingConfigurations) pendingConfigChange.add(activity.javaClass.name)
-        activityStates[activity]?.let {
-            it.emitted = false
-            deselect(it)
-        }
+        activityStates[activity]?.let(::endMounting)
     }
 
     override fun onActivityDestroyed(activity: Activity) {
@@ -170,11 +201,13 @@ internal class AndroidScreenCapture(
         resumedActivities -= activity
         activityStates.remove(activity)?.let { scopeStack.remove(it.handle) }
         fragmentRegistrations.remove(activity)?.let {
-            // BEFORE unregistering, and that order is load-bearing: this callback is dispatched from
-            // Activity.onDestroy(), which FragmentActivity calls via super.onDestroy() *before*
-            // mFragments.dispatchDestroy(). So onFragmentDetached never fires for the fragments still
-            // attached here, and their frames would otherwise stay on the ScopeStack for the life of
-            // the process — one per fragment per rotation, each walked by recompute() on every push.
+            // Releasing here is load-bearing; the order relative to the unregister below is not (the
+            // states are a field of the callbacks object, which unregistering does not touch). This
+            // callback is dispatched from Activity.onDestroy(), which FragmentActivity calls via
+            // super.onDestroy() *before* mFragments.dispatchDestroy() — so onFragmentDetached never
+            // fires for the fragments still attached here, and their frames would otherwise stay on
+            // the ScopeStack for the life of the process: one per fragment per rotation, each walked
+            // by recompute() on every push.
             it.callbacks.releaseFrames()
             it.fragmentManager.unregisterFragmentLifecycleCallbacks(it.callbacks)
         }
@@ -242,7 +275,7 @@ internal class AndroidScreenCapture(
             }
         }
 
-        override fun onFragmentAttached(fm: FragmentManager, f: Fragment, context: Context) {
+        override fun onFragmentPreAttached(fm: FragmentManager, f: Fragment, context: Context) {
             if (!active) return
             fragmentStates[f] = SurfaceState(reserveFrame())
         }
@@ -291,11 +324,7 @@ internal class AndroidScreenCapture(
             if (!active) return
             // The host Activity is the leaving instance here, so its flag reports the rotation.
             if (f.activity?.isChangingConfigurations == true) pendingConfigChange.add(f.javaClass.name)
-            fragmentStates[f]?.let {
-                it.emitted = false
-                it.pausedWithHost = false
-                deselect(it)
-            }
+            fragmentStates[f]?.let(this@AndroidScreenCapture::endMounting)
         }
 
         override fun onFragmentDetached(fm: FragmentManager, f: Fragment) {
@@ -368,19 +397,29 @@ internal class AndroidScreenCapture(
         covers: Boolean,
         screenName: () -> String?,
     ) {
-        // `capturable` is about what this capture *structurally* declines (a Compose host, a
-        // fragment-hosting shell). Returning null from activityScreenName / fragmentScreenName is
-        // documented as "opt a screen out", and an opt-out that also blanked the screen underneath
-        // would be a different, undocumented contract — so the name never decides whether to mask.
-        val screen = if (capturable) screenName() else null
-        // Revised on every resume rather than latched at the first one: a fragment's view is destroyed
-        // and rebuilt across the back stack, and the rebuilt one may host different content. Only
-        // masking is one-way, because ScopeStack.maskScreen is.
-        scopeStack.update(state.handle, screen = screen)
-        state.declaresScreen = screen != null
-        if (!capturable && covers && !state.masked) {
-            scopeStack.maskScreen(state.handle)
-            state.masked = true
+        // Two different questions, and the name answers only one of them.
+        //  - `capturable` is what this capture *structurally* declines: a Compose host, a
+        //    fragment-hosting shell. That is what a mask is for.
+        //  - a null name is the adopter saying "do not report this surface". It must never *cause* a
+        //    mask (an opt-out that blanked the screen underneath would be a different, undocumented
+        //    contract) — but it does *suppress* one, which is the same promise read the other way:
+        //    opting a library or consent-SDK surface out must not blank the screen it sits on. Both
+        //    gates had to be consulted for that to hold; masking on `capturable` alone left a
+        //    structurally-excluded surface masking even after the adopter opted it out — measured,
+        //    `DetailFragment` became null beside an opted-out Compose fragment.
+        val name = screenName()
+        val screen = if (capturable) name else null
+        if (!state.decided) {
+            state.decided = true
+            state.declaresScreen = screen != null
+            if (screen != null) scopeStack.update(state.handle, screen = screen)
+            if (!capturable && covers && name != null) {
+                scopeStack.maskScreen(state.handle)
+                state.masked = true
+            }
+        } else if (state.declaresScreen && screen != null) {
+            // The name may be re-derived per resume; what the surface *is* may not (see decided).
+            scopeStack.update(state.handle, screen = screen)
         }
 
         // Attribution before emission: emitScreenView reads the ambient context, so the frame has to
@@ -425,6 +464,32 @@ internal class AndroidScreenCapture(
             state.emitted = false
             fragmentRegistrations[activity]?.callbacks?.endViews()
         }
+    }
+
+    /**
+     * Ends a surface's current **mounting**: drops its frame and reserves a fresh one in its place.
+     *
+     * Called when the surface stops — which is also when its view is destroyed, so the next time it is
+     * on display it will have been built again from scratch. Everything the old frame held is a
+     * statement about the mounting that just ended: what it said (a screen name, or a one-way mask),
+     * whether a `Screen Viewed` stood for it, and, crucially, **its position**.
+     *
+     * Position is why this is not just a reset of the flags. A `detach()`ed fragment stops but is
+     * never `onFragmentDetached`, so re-attaching it reused a frame reserved before its sibling's —
+     * measured, a re-attached `DetailFragment` emitted its own name while the ambient screen kept
+     * saying `SecondFragment`. A fresh frame reserved here lands above everything mounted so far and
+     * below whatever this surface's rebuilt view composes next, which is exactly the ordering
+     * [reserveFrame] exists to get.
+     */
+    private fun endMounting(state: SurfaceState) {
+        scopeStack.remove(state.handle)
+        state.handle = reserveFrame()
+        state.decided = false
+        state.declaresScreen = false
+        state.masked = false
+        state.selected = false
+        state.emitted = false
+        state.pausedWithHost = false
     }
 
     private fun select(state: SurfaceState) {

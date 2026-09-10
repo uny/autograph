@@ -12,8 +12,8 @@ import dev.ynagai.autograph.context.ScopeStack
 /**
  * Starts reporting native **Android** screen transitions: on every Activity or Fragment that comes to
  * the foreground and names a screen, a `Screen Viewed` event is emitted via [tracker] and a screen
- * frame is pushed onto [scopeStack] so autocaptured events on that screen carry it; the frame is
- * removed when the screen is stopped. This is the Android counterpart of the iOS UIKit
+ * frame is pushed onto [scopeStack] so autocaptured events on that screen carry it; the frame stops
+ * answering when the screen leaves the display. This is the Android counterpart of the iOS UIKit
  * `viewDidAppear:` capture, sharing the same [ScopeStack]/`ScreenHistory` and so the same
  * `previous_screen` chain across a Compose↔native transition.
  *
@@ -41,14 +41,21 @@ import dev.ynagai.autograph.context.ScopeStack
  *
  * Masking is deliberately **narrower** than the filter, because a mask asserts something the filter
  * does not: that this surface *covers* the screen it hides. Three cases are filtered out but never
- * masked. A surface opted out with a `null` [activityScreenName] / [fragmentScreenName] is skipped —
- * opting a library or consent-SDK fragment out of reporting must not also blank the screen it sits
- * on. (An opted-out *Activity* still covers what is beneath it: the Activity underneath is not on
- * display, so it stops answering. Only a Fragment sits inside the same window as the screen it would
- * have blanked.) A headless fragment (`view == null`, a retained worker like Glide's) is not a
- * surface at all. And an excluded fragment **nested inside** one that names a screen is part of
+ * masked. A surface opted out with a `null` [activityScreenName] / [fragmentScreenName] is skipped,
+ * and a `null` there also *suppresses* a mask the structural filter would otherwise have applied —
+ * opting a library or consent-SDK surface out of reporting must not blank the screen it sits on,
+ * whichever of the two reasons excluded it. (An opted-out *Activity* still covers what is beneath it
+ * in its own window: the Activity underneath is not on display, so it stops answering regardless.
+ * And an Activity only masks while it is the sole one on display — under multi-resume it does not,
+ * because this stack knows nothing about windows.) A headless fragment (`view == null`, a retained
+ * worker like Glide's) is not a surface at all. And an excluded fragment **nested inside** one that names a screen is part of
  * that screen, not a replacement for it — except a `DialogFragment`, which draws its own window and
- * so covers its host whichever `FragmentManager` showed it.
+ * so covers its host whichever `FragmentManager` showed it. That last gate protects a host that still
+ * *names* a screen; a widget embedded in the host's **own layout** is inside the host's view subtree,
+ * which makes the host a Compose host by the rule above, so the host masks and there is no named
+ * ancestor left to protect. No screen, rather than the stale one beneath — pinned by a test.
+ * The four exclusions below are what "filtered out by this filter" means — each of them *masks* when
+ * it also covers, per the two paragraphs above, rather than merely going unreported:
  * - **Compose hosts are skipped.** An Activity or Fragment whose view subtree contains an
  *   `AbstractComposeView` renders Compose content, which reports its own `Screen Viewed` through
  *   `TrackedScreen` / `NavController.TrackScreenViews`; capturing the Activity too would double-count
@@ -102,10 +109,13 @@ import dev.ynagai.autograph.context.ScopeStack
  *
  * ## Lifecycle: what a surface says, and whether it is the one saying it
  *
- * Each surface owns **one** frame, reserved (empty and inert) the moment it is created or attached
- * and dropped when it is destroyed or detached. Between those, two separate switches decide what it
- * contributes, because two different questions are being asked and the same signal cannot answer
- * both.
+ * Each surface owns **one** frame at a time, reserved (empty and inert) the moment it is created or
+ * attached and dropped when it is destroyed, or removed from its `FragmentManager`. It is also
+ * replaced by a fresh one whenever the surface **stops**: a stop destroys the view, so what comes
+ * back is a new mounting, and it must claim a new position — a `detach()`ed fragment stops without
+ * ever reaching `onDetach`, and reusing its old position put it underneath a sibling that mounted
+ * while it was away. Between those, two separate switches decide what a frame contributes, because
+ * two different questions are being asked and the same signal cannot answer both.
  *
  * **Attribution** — is this the surface on display? — follows resume and pause. A frame that is not
  * selected contributes nothing, as if it were off the stack, but keeps its position so the surface
@@ -131,8 +141,10 @@ import dev.ynagai.autograph.context.ScopeStack
  * ## Only transitions after install are seen
  *
  * There is no public API to enumerate already-resumed Activities, so a screen already on display when
- * this is called is not reported until its next transition. Install from `Application.onCreate()` —
- * no Activity exists yet, so nothing is missed.
+ * this is called is not reported until its next transition — it is picked up there, including when
+ * its `onCreate` was missed entirely, at the cost of a frame position claimed later than usual (a
+ * weaker mask, never a missing capture). Install from `Application.onCreate()` — no Activity exists
+ * yet, so nothing is missed and every position is claimed at the right moment.
  *
  * ## Threading
  *
