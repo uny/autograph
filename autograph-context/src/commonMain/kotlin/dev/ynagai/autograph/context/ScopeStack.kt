@@ -209,8 +209,15 @@ public class ScopeStack {
      * not in a loop.
      *
      * No-ops (unknown handles, values already set) drop out; nothing is republished if none remain.
+     *
+     * Takes a [List] rather than the wider `Collection` it only needs, because this class is exported
+     * into the Swift-facing `Autograph.xcframework` and Kotlin/Native maps only [List]/[Set]/[Map] to
+     * an Objective-C collection. A `Collection` parameter degrades to an untyped `id`, i.e. `Any` in
+     * Swift — so `setActive(handles: "oops", active: false)` would compile — and `autograph-context`
+     * is SemVer-ABI-stable ([ADR 0001](docs/adr/0001-public-api-evolution.md) §1), so narrowing it
+     * afterwards would need a major bump. Measured in the generated header, both before and after.
      */
-    public fun setActive(handles: Collection<ScopeHandle>, active: Boolean) {
+    public fun setActive(handles: List<ScopeHandle>, active: Boolean) {
         var changed = false
         for (handle in handles) {
             val frame = handle.frame

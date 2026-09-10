@@ -44,13 +44,15 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   pin directly: a demoted sibling no longer out-ranks the surface on display, and it can no longer
   out-rank a mask reserved before it.
 
-  The batched overload publishes **one** snapshot for the whole group. A surface owns more than one
+  The batched overload takes a `List` and publishes **one** snapshot for the whole group. `List`
+  rather than the wider `Collection` it only needs, because `ScopeStack` is exported into the
+  Swift-facing `Autograph.xcframework` and Kotlin/Native maps only `List`/`Set`/`Map` to an
+  Objective-C collection — a `Collection` parameter exports as an untyped `id`, i.e. `Any` in Swift. A surface owns more than one
   frame — its screen, its mask, the scopes under it — and switching them one at a time republishes an
   intermediate context in which some of a surface's frames answer and others do not; a tap captured
   against that snapshot reads a state the app was never in.
 
-  Additive: no existing signature changed, so the `api/` dumps gain three lines each and nothing
-  moves (ADR 0001 §2f — `ScopeStack` is a caller-constructed concrete class whose members may grow).
+  Additive: no existing signature changed, so nothing moves in the `api/` dumps (ADR 0001 §2f — `ScopeStack` is a caller-constructed concrete class whose members may grow).
   `update` revises contents only: it never clears a mask and never changes whether a frame is active.
 
   This is the first of a dependency stack (`ScopeStack` API → Android capture → Compose/observer)

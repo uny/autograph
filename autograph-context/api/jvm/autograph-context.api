@@ -22,7 +22,7 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 	public static synthetic fun push$default (Ldev/ynagai/autograph/context/ScopeStack;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public final fun remove (Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public final fun setActive (Ldev/ynagai/autograph/context/ScopeHandle;Z)V
-	public final fun setActive (Ljava/util/Collection;Z)V
+	public final fun setActive (Ljava/util/List;Z)V
 	public final fun update (Ldev/ynagai/autograph/context/ScopeHandle;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public static synthetic fun update$default (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/context/ScopeHandle;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ILjava/lang/Object;)V
 }
