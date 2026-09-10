@@ -47,7 +47,8 @@ import dev.ynagai.autograph.context.ScopeStack
  * whichever of the two reasons excluded it. (An opted-out *Activity* still covers what is beneath it
  * in its own window: the Activity underneath is not on display, so it stops answering regardless.
  * And an Activity only masks while it is the sole one on display — under multi-resume it does not,
- * because this stack knows nothing about windows.) A headless fragment (`view == null`, a retained
+ * because this stack knows nothing about windows; that is settled at its first resume and not
+ * revisited, so one that started in split screen keeps not masking after it is expanded.) A headless fragment (`view == null`, a retained
  * worker like Glide's) is not a surface at all. And an excluded fragment **nested inside** one that names a screen is part of
  * that screen, not a replacement for it — except a `DialogFragment`, which draws its own window and
  * so covers its host whichever `FragmentManager` showed it. That last gate protects a host that still
@@ -97,6 +98,13 @@ import dev.ynagai.autograph.context.ScopeStack
  * A fourth is not the mask's: an excluded fragment added directly to a *capturable Activity* — that
  * Activity is a screen, and the fragment cannot tell that it covers it — masks that Activity's
  * screen. It is the Activity-level twin of the sibling case above.
+ *
+ * One limit is **not** one-sided, and it is the price of honouring the opt-out: a surface you opted
+ * out with a `null` name does not mask, so if it also covers a screen that is merely paused — `add`ed
+ * on top rather than replacing it — events captured on it carry that screen's name. Wrong, not
+ * absent. Opting out says "do not report this surface"; it cannot also say "and blank what is under
+ * it", and there is no third answer available here. Return a name for such a surface if you would
+ * rather it were reported than mis-attributed.
  *
  * ## Rotation
  *

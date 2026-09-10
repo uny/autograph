@@ -76,6 +76,30 @@ class ComposeHostDialogFragment : DialogFragment() {
 /** A retained worker fragment — no view, so not a surface. Glide's is the everyday example. */
 class HeadlessFragment : Fragment()
 
+/**
+ * Installs the capture from its OWN `onCreate`, after `super`, and then adds a fragment — the shape an
+ * app has when it initialises the SDK behind a consent gate rather than from `Application.onCreate`.
+ */
+class LateInstallHostActivity : FragmentActivity() {
+    companion object {
+        lateinit var tracker: Tracker
+        lateinit var scopeStack: ScopeStack
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        installAutographNativeScreenCapture(
+            application = application,
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { it.javaClass.simpleName },
+        )
+        supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "detail").commitNow()
+    }
+}
+
 /** A named fragment hosting an unnamed Compose child in a container inside its own layout. */
 class ContainerNestingFragment : Fragment() {
     override fun onCreateView(
@@ -925,6 +949,81 @@ class AndroidScreenCaptureTest {
 
         assertEquals("DetailFragment", scopeStack.current().screen)
         assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun aNestedHostKeepsItsChildsScreenAcrossAStopAndRestart() {
+        install()
+        // A stop destroys nothing — the fragment keeps its view, its children keep their frames, and
+        // an AbstractComposeView keeps its composition (the default strategy disposes on detach from
+        // the window, which a stop is not). Treating a stop as the end of a mounting and re-reserving
+        // the frame there jumped it above every one of those: pressing home and coming back turned
+        // this child's screen into a masked null. A mounting ends when the VIEW does.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, AttachTimeNestingFragment(), "host").commitNow()
+        assertEquals("SecondFragment", scopeStack.current().screen)
+
+        controller.pause().stop().start().resume()
+        drainMainLooper()
+
+        assertEquals("SecondFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aFragmentAttachedBeforeTheCaptureInstalledIsStillCaptured() {
+        // The fragment callbacks are registered when their Activity is tracked, and for an Activity
+        // that already existed that is at its resume — after its fragments have attached. Requiring a
+        // reservation made those fragments invisible for their whole life while their host went on
+        // masking over them: no screen at all, on the screen the user is looking at.
+        LateInstallHostActivity.tracker = tracker
+        LateInstallHostActivity.scopeStack = scopeStack
+        Robolectric.buildActivity(LateInstallHostActivity::class.java).setup()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun theScreenNameCallbackIsNotAskedAboutAHeadlessFragment() {
+        // `{ it.requireView().tag as String }` is a reasonable lambda to write. Asking it about
+        // Glide's retained worker fragment throws out of a FragmentManager dispatch and takes the app
+        // with it — so a surface that can neither be reported nor mask is never asked.
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { it.requireView().let { _ -> it.javaClass.simpleName } },
+        )
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        activity.supportFragmentManager.beginTransaction().add(HeadlessFragment(), "worker").commitNow()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aScreenNameThatArrivesLateIsPickedUpAtTheNextResume() {
+        // What a surface IS is settled once per mounting; what it is CALLED is not. A title that is
+        // null until its data loads was latched to "declares nothing" by the first resume and never
+        // reported for the rest of the mounting.
+        var title: String? = null
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailFragment) title else it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        assertNull("nothing names a screen yet", scopeStack.current().screen)
+
+        title = "Detail"
+        controller.pause().resume()
+        drainMainLooper()
+
+        assertEquals("Detail", scopeStack.current().screen)
+        assertEquals(listOf("Detail:(none)"), tracker.screens)
     }
 
     @Test

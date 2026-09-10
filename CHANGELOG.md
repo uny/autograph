@@ -122,13 +122,19 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     ever reaching `onDetach`, so reusing its old position put the returning fragment underneath a
     sibling that mounted while it was away.
 
-  Three residuals are documented on `installAutographNativeScreenCapture` rather than silently
-  mis-attributed, and all are one-sided — a screen goes *absent*, never wrong: `show()`/`hide()` gives
-  no callback at all; an excluded *sibling* fragment (an embedded mini-player) has no containment
-  signal to distinguish it from a cover; and a `DialogFragment` that builds its content in
-  `onCreateDialog()` has a null `view` and is indistinguishable from a worker fragment. A fourth is
-  not the mask's: an excluded fragment added directly to a *capturable Activity* masks that Activity's
-  screen, the Activity-level twin of the sibling case.
+  Residuals are documented on `installAutographNativeScreenCapture` rather than silently
+  mis-attributed. Four are one-sided — a screen goes *absent*, never wrong: `show()`/`hide()` gives no
+  callback at all; an excluded *sibling* fragment (an embedded mini-player) has no containment signal
+  to distinguish it from a cover; a `DialogFragment` that builds its content in `onCreateDialog()` has
+  a null `view` and is indistinguishable from a worker fragment; and an excluded fragment added
+  directly to a *capturable Activity* masks that Activity's screen. One is not: a surface you opted
+  out of by name does not mask, so if it covers a screen that is only paused, events on it carry that
+  screen's name. Opting out cannot also mean "blank what is under it", and there is no third answer —
+  return a name for such a surface if you would rather it were reported than mis-attributed.
+
+  A mounting ends when a fragment's **view** is destroyed, not when it stops: a stop destroys nothing,
+  so re-reserving there jumped the frame above the child frames and Compose compositions that outlive
+  it — pressing home and returning turned a nested host's child screen into a masked null.
 
 - **The ambient screen is now absent while a host Activity is paused** — a permission prompt, a
   translucent Activity — where it previously kept naming the paused screen. Autocapture reads this
