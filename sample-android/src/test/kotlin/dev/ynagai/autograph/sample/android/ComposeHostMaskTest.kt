@@ -90,10 +90,10 @@ class ShellActivity : FragmentActivity() {
  *
  * The mask exists because a Compose host is excluded from native screen capture (the Compose pipeline
  * is supposed to report it), so without one an unnamed host inherits the frame of the screen
- * underneath and every captured tap names the screen the user just left (#216). It is pushed at
- * `onFragmentAttached` — before the fragment's view attaches, which is when `AbstractComposeView`
- * creates its composition — precisely so that a `TrackedScreen` inside the host lands *above* it and
- * wins. That ordering is the thing under test here.
+ * underneath and every captured tap names the screen the user just left (#216). The host's frame is
+ * reserved at `onFragmentAttached` — before the fragment's view attaches, which is when
+ * `AbstractComposeView` creates its composition — precisely so that a `TrackedScreen` inside the host
+ * lands *above* it and wins. That ordering is the thing under test here.
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
