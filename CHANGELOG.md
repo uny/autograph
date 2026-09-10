@@ -19,6 +19,17 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   One-way: a mask states something about the frame's *contents*, which does not stop being true while
   the surface is off-screen.
 
+- **`AmbientContext.screenMasked`** — whether a mask is what left `screen` null, as opposed to no
+  frame ever having named a screen. Both read as `screen == null` but they are opposite instructions
+  to a pipeline holding a screen name from elsewhere, and `autograph-compose`'s tap observer holds
+  one: it falls back to `ScreenHistory.lastScreen` when nothing names a screen (for a bare
+  `TrackScreenView`, which records history without pushing a frame). `lastScreen` is precisely "the
+  screen the user just left", so without this flag that fallback reinstated the exact wrong value a
+  mask exists to prevent, and `maskScreen` was a no-op on the Compose capture path. The observer now
+  gates the fallback on it. Additive under [ADR 0001](docs/adr/0001-public-api-evolution.md) §2a —
+  `AmbientContext` is library-produced with an `internal` constructor and gains properties freely.
+  The Android and iOS native tap paths call `enrich` with no fallback, so they were already correct.
+
 - **`ScopeStack.setActive(handle, active)` and `setActive(handles, active)`** — mark a frame as taking
   part in resolution, or not. An inactive frame keeps its position and its contents but contributes
   nothing: no screen, no section, no scope.

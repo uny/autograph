@@ -2,8 +2,10 @@ package dev.ynagai.autograph.context
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -293,6 +295,63 @@ class ScopeStackTest {
         stack.maskScreen(mask)
         assertNull(stack.current().screen)
         assertNull(stack.current().section, "a mask owns its section too")
+    }
+
+    @Test
+    fun a_mask_announces_itself_so_a_screen_fallback_can_be_suppressed() {
+        // `screen == null` alone cannot tell a pipeline whether to substitute a screen it knows from
+        // elsewhere: an empty stack means "nobody named one" (substitute), a mask means "the surface
+        // on display HAS none" (do not). Without this flag `autograph-compose`'s tap observer read
+        // the two the same way and reinstated ScreenHistory.lastScreen — the screen the user just
+        // left, i.e. exactly the value the mask exists to prevent.
+        val stack = ScopeStack()
+        assertFalse(stack.current().screenMasked, "an empty stack is not a mask")
+        stack.push(screen = "Feed")
+        assertFalse(stack.current().screenMasked)
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+        assertTrue(stack.current().screenMasked)
+
+        // A frame that names a screen for itself takes the assertion back: screen resolves again, so
+        // there is nothing for a fallback to fill in and nothing to suppress.
+        stack.push(screen = "Detail")
+        assertFalse(stack.current().screenMasked)
+    }
+
+    @Test
+    fun a_section_only_frame_does_not_take_back_a_mask() {
+        // Section-only frames refine the surrounding screen rather than replacing it, so they leave
+        // `screen` null — and must leave the mask's assertion standing with it.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        stack.push(section = "Header")
+        assertNull(stack.current().screen)
+        assertEquals("Header", stack.current().section)
+        assertTrue(stack.current().screenMasked)
+    }
+
+    @Test
+    fun a_deactivated_mask_stops_masking() {
+        // The whole point of splitting the two switches: a mask that is one-way in CONTENTS must
+        // still stop participating when its surface is demoted. Mutating the active filter to
+        // `it.active || it.maskScreen` would leave a demoted unnamed surface suppressing the screen
+        // of the surface the user came back to.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+
+        stack.setActive(mask, false)
+        assertEquals("Feed", stack.current().screen, "a demoted mask must not keep hiding Feed")
+        assertFalse(stack.current().screenMasked)
+
+        stack.setActive(mask, true)
+        assertNull(stack.current().screen, "and it masks again when its surface returns")
+        assertTrue(stack.current().screenMasked)
     }
 
     @Test

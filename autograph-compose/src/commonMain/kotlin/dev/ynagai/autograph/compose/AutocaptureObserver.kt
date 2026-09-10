@@ -145,7 +145,12 @@ internal fun reportTapIfResolvable(
         var properties = ctx.enrich(target.scope)
         // The one addition enrich can't know about: a bare TrackScreenView pushes no frame, so fall
         // back to the most recently viewed screen. An ambient frame's screen always wins.
-        if (ctx.screen == null) {
+        //
+        // Not when a mask is what cleared it, though. `screenMasked` distinguishes "no frame ever
+        // named a screen" (this fallback's case) from "the surface on display asserts it HAS no
+        // screen", and lastScreen is exactly the screen the user just left — the wrong value
+        // ScopeStack.maskScreen exists to prevent. Falling back there would reinstate it verbatim.
+        if (ctx.screen == null && !ctx.screenMasked) {
             scopeStack.screenHistory.lastScreen?.let {
                 properties = JsonObject(properties + ("screen" to JsonPrimitive(it)))
             }

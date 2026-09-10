@@ -252,6 +252,24 @@ class ReportTapIfResolvableTest {
     }
 
     @Test
+    fun aMaskSuppressesTheHistoryFallbackInsteadOfReinstatingTheScreenTheUserLeft() {
+        val tracker = AutocaptureRecordingTracker()
+        // The user was on Feed; a native container that names no screen of its own then comes to the
+        // foreground and masks. Measured before the fix: current().screen was correctly null, but
+        // this fallback substituted "Feed" — the screen the user just left, which is the exact wrong
+        // value ScopeStack.maskScreen exists to prevent, and the mask was a no-op on this path.
+        val stack = ScopeStack().apply {
+            screenHistory.record("Feed")
+            val feed = push(screen = "Feed")
+            maskScreen(push())
+            remove(feed)
+        }
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
+
+        assertNull(tracker.trackedProps.single()["screen"])
+    }
+
+    @Test
     fun theAmbientScreenFrameWinsOverTheHistoryFallback() {
         val tracker = AutocaptureRecordingTracker()
         val stack = ScopeStack().apply {

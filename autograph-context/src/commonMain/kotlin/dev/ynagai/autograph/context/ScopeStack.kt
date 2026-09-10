@@ -244,6 +244,10 @@ public class ScopeStack {
         if (live.isEmpty()) return AmbientContext.Empty
         var screen: String? = null
         var section: String? = null
+        // A mask and an empty stack both leave [screen] null, but they say different things — see
+        // [AmbientContext.screenMasked]. Tracked alongside screen because it is set and cleared by
+        // exactly the frames that set and clear screen.
+        var screenMasked = false
         for (frame in live) {
             // A frame that names a screen OWNS its section — it replaces both, so a section carried by
             // an outer screen cannot bleed onto an inner one that declared none (`push(screen = "X")`
@@ -259,14 +263,16 @@ public class ScopeStack {
             if (frame.maskScreen) {
                 screen = null
                 section = null
+                screenMasked = true
             } else if (frame.screen != null) {
                 screen = frame.screen
                 section = frame.section
+                screenMasked = false
             } else if (frame.section != null) {
                 section = frame.section
             }
         }
-        return AmbientContext(resolveScope(live), screen, section)
+        return AmbientContext(resolveScope(live), screen, section, screenMasked)
     }
 
     /**
@@ -358,6 +364,19 @@ public class AmbientContext internal constructor(
     public val scope: JsonObject,
     public val screen: String?,
     public val section: String?,
+    /**
+     * Whether a [ScopeStack.maskScreen] frame is what left [screen] null — i.e. the surface on
+     * display *asserts* it has no screen, rather than simply never having named one.
+     *
+     * Both cases read as `screen == null`, but they are opposite instructions to a capture pipeline
+     * that has a screen name available from somewhere else. A pipeline that falls back to
+     * [ScreenHistory.lastScreen] when no frame names a screen — `autograph-compose`'s tap observer
+     * does, for a bare `TrackScreenView` that records history without pushing a frame — must **not**
+     * apply that fallback here: `lastScreen` is precisely "the screen the user just left", which is
+     * the wrong value [ScopeStack.maskScreen] exists to prevent. Gate any such fallback on this
+     * being false.
+     */
+    public val screenMasked: Boolean,
 ) {
     /**
      * Returns [properties] enriched with this context: [scope] merged underneath (so an explicit
@@ -373,6 +392,6 @@ public class AmbientContext internal constructor(
     }
 
     internal companion object {
-        val Empty: AmbientContext = AmbientContext(EmptyJsonObject, null, null)
+        val Empty: AmbientContext = AmbientContext(EmptyJsonObject, null, null, screenMasked = false)
     }
 }

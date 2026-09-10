@@ -11,6 +11,8 @@ final class dev.ynagai.autograph.context/AmbientContext { // dev.ynagai.autograp
         final fun <get-scope>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.context/AmbientContext.scope.<get-scope>|<get-scope>(){}[0]
     final val screen // dev.ynagai.autograph.context/AmbientContext.screen|{}screen[0]
         final fun <get-screen>(): kotlin/String? // dev.ynagai.autograph.context/AmbientContext.screen.<get-screen>|<get-screen>(){}[0]
+    final val screenMasked // dev.ynagai.autograph.context/AmbientContext.screenMasked|{}screenMasked[0]
+        final fun <get-screenMasked>(): kotlin/Boolean // dev.ynagai.autograph.context/AmbientContext.screenMasked.<get-screenMasked>|<get-screenMasked>(){}[0]
     final val section // dev.ynagai.autograph.context/AmbientContext.section|{}section[0]
         final fun <get-section>(): kotlin/String? // dev.ynagai.autograph.context/AmbientContext.section.<get-section>|<get-section>(){}[0]
 

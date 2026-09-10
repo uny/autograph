@@ -2,6 +2,7 @@ public final class dev/ynagai/autograph/context/AmbientContext {
 	public final fun enrich (Ljava/util/Map;)Lkotlinx/serialization/json/JsonObject;
 	public final fun getScope ()Lkotlinx/serialization/json/JsonObject;
 	public final fun getScreen ()Ljava/lang/String;
+	public final fun getScreenMasked ()Z
 	public final fun getSection ()Ljava/lang/String;
 }
 
