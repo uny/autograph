@@ -412,6 +412,22 @@ class ScopeStackTest {
     }
 
     @Test
+    fun a_foreign_handle_is_not_unmasked_on_its_own_stack_either() {
+        // The mirror of the maskScreen case above, and the only assertion that reaches unmaskScreen's
+        // ownership guard: every handle in the test above is already unmasked, so `if (!maskScreen)
+        // return` short-circuits before `frames.none { it === frame }` is ever consulted. Without this,
+        // deleting that guard leaves the suite green while a cross-stack call silently clears a live
+        // mask someone else owns — i.e. re-reveals the screen underneath, the #216 wrong attribution.
+        val other = ScopeStack()
+        other.push(screen = "Feed")
+        val foreign = other.push()
+        other.maskScreen(foreign)
+        ScopeStack().unmaskScreen(foreign)
+        other.update(foreign, scope = props("a" to "1")) // forces a recompute on the owning stack
+        assertNull(other.current().screen)
+    }
+
+    @Test
     fun unmasking_leaves_the_frames_own_scope_alone() {
         val stack = ScopeStack()
         val mask = stack.push(scope = props("article_id" to "42"))
