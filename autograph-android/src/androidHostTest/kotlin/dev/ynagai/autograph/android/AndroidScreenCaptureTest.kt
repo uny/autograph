@@ -440,7 +440,9 @@ class AndroidScreenCaptureTest {
         // STARTED, so it attaches and never resumes. A mask that masked from the moment it was pushed
         // would blank the page actually on display — measured, and the reason the mask stays inert
         // until its surface resumes.
-        val cached = SecondFragment()
+        // An EXCLUDED page (a Compose host): a capturable one never reaches the mask gate at all, so
+        // it would pin `pushInertMask` pushing an unmasked frame rather than the property named here.
+        val cached = ComposeHostFragment()
         fm.beginTransaction()
             .add(android.R.id.content, cached, "cached")
             .setMaxLifecycle(cached, Lifecycle.State.STARTED)
