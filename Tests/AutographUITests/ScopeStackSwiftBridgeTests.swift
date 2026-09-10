@@ -57,6 +57,51 @@ final class ScopeStackSwiftBridgeTests: XCTestCase {
         XCTAssertEqual(enriched.count, 1, "expected the reserved screen key to be written")
     }
 
+    // MARK: - Frame switches
+
+    /// The two switches added alongside the batched form, called from Swift at all — the bridge is
+    /// the only place their exported shape is observable, and a Kotlin test cannot see it.
+    func testMaskAndSingleSetActiveCrossTheBridge() {
+        let stack = ScopeStack()
+        let feed = stack.push(scope: [:], screen: "Feed", section: nil, parent: nil)
+        let mask = stack.push(scope: [:], screen: nil, section: nil, parent: nil)
+
+        stack.maskScreen(handle: mask)
+        XCTAssertNil(stack.current().screen)
+        XCTAssertTrue(stack.current().screenMasked)
+
+        stack.setActive(handle: mask, active: false)
+        XCTAssertEqual(stack.current().screen, "Feed")
+        XCTAssertFalse(stack.current().screenMasked)
+
+        stack.setActive(handle: feed, active: false)
+        XCTAssertNil(stack.current().screen)
+    }
+
+    /// The batched overload takes `List<ScopeHandle>`, and the reason is only visible from here:
+    /// Kotlin/Native maps `List`/`Set`/`Map` to Objective-C collections and nothing else, so the
+    /// `Collection<ScopeHandle>` this shipped as first exported as an untyped `id` — `Any` in Swift.
+    /// A Swift array satisfied it by luck, and `stack.setActive(handles: "oops", active: false)`
+    /// compiled just as happily. Note what this test does and does not buy: a `[ScopeHandle]`
+    /// satisfies `Any` too, so re-widening the parameter would leave this compiling and green. The
+    /// guard against that is the `api/` dumps, which record the parameter type. What this covers is
+    /// the bridge actually working — that a Swift array survives the crossing and the batch lands.
+    func testBatchedSetActiveTakesATypedSwiftArray() {
+        let stack = ScopeStack()
+        _ = stack.push(scope: [:], screen: "Feed", section: nil, parent: nil)
+        let screen = stack.push(scope: [:], screen: "Page2", section: nil, parent: nil)
+        let mask = stack.push(scope: [:], screen: nil, section: nil, parent: nil)
+        stack.maskScreen(handle: mask)
+
+        let owned: [ScopeHandle] = [screen, mask]
+        stack.setActive(handles: owned, active: false)
+        XCTAssertEqual(stack.current().screen, "Feed", "the whole surface left in one publish")
+
+        stack.setActive(handles: owned, active: true)
+        XCTAssertNil(stack.current().screen, "and came back masked, in one publish")
+        XCTAssertTrue(stack.current().screenMasked)
+    }
+
     // MARK: - Tracker / Transport
 
     /// Records what the Kotlin core hands a transport, so the Swift-entered dictionary can be

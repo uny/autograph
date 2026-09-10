@@ -252,6 +252,47 @@ class ReportTapIfResolvableTest {
     }
 
     @Test
+    fun aMaskSuppressesTheHistoryFallbackInsteadOfReinstatingTheScreenTheUserLeft() {
+        val tracker = AutocaptureRecordingTracker()
+        // The user was on Feed; a native container that names no screen of its own then comes to the
+        // foreground and masks. Measured before the fix: current().screen was correctly null, but
+        // this fallback substituted "Feed" — the screen the user just left, which is the exact wrong
+        // value ScopeStack.maskScreen exists to prevent, and the mask was a no-op on this path.
+        val stack = ScopeStack().apply {
+            screenHistory.record("Feed")
+            val feed = push(screen = "Feed")
+            maskScreen(push())
+            remove(feed)
+        }
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
+
+        assertNull(tracker.trackedProps.single()["screen"])
+    }
+
+    @Test
+    fun aMaskAlsoSuppressesTheFallbackWhenHistoryHoldsTheCurrentScreen() {
+        val tracker = AutocaptureRecordingTracker()
+        // The measured cost of gating unconditionally on screenMasked. Content inside the masked
+        // surface reports its screen the history-only way (a bare TrackScreenView), so lastScreen
+        // holds the screen the user is ON — and this drops it rather than reporting it.
+        //
+        // Pinned deliberately, not endorsed: it is the fail-closed side of the trade (missing beats
+        // wrong), and separating the two needs a recency signal AmbientContext does not carry. If a
+        // later change makes the fallback recency-aware, this test is the one that must change with
+        // it — which is the point of writing it down.
+        val stack = ScopeStack().apply {
+            screenHistory.record("Feed")
+            val feed = push(screen = "Feed")
+            maskScreen(push())
+            setActive(feed, false)
+            screenHistory.record("ComposeFeed")
+        }
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
+
+        assertNull(tracker.trackedProps.single()["screen"])
+    }
+
+    @Test
     fun theAmbientScreenFrameWinsOverTheHistoryFallback() {
         val tracker = AutocaptureRecordingTracker()
         val stack = ScopeStack().apply {

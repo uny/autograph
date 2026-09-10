@@ -2,7 +2,10 @@ package dev.ynagai.autograph.context
 
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertSame
+import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
@@ -279,5 +282,406 @@ class ScopeStackTest {
         stack.update(outer, scope = props("a" to "outer"), parent = inner)
         // Refused: `outer` stays a root and the chain outer -> inner still merges, unspun.
         assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope)
+    }
+
+    // --- maskScreen -------------------------------------------------------------------------------
+
+    @Test
+    fun a_mask_hides_the_screen_beneath_it_and_its_section() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed", section = "top")
+        val mask = stack.push()
+        assertEquals("Feed", stack.current().screen, "an unmasked frame is inert")
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+        assertNull(stack.current().section, "a mask owns its section too")
+    }
+
+    @Test
+    fun a_mask_announces_itself_so_a_screen_fallback_can_be_suppressed() {
+        // `screen == null` alone cannot tell a pipeline whether to substitute a screen it knows from
+        // elsewhere: an empty stack means "nobody named one" (substitute), a mask means "the surface
+        // on display HAS none" (do not). Without this flag `autograph-compose`'s tap observer read
+        // the two the same way and reinstated ScreenHistory.lastScreen — the screen the user just
+        // left, i.e. exactly the value the mask exists to prevent.
+        val stack = ScopeStack()
+        assertFalse(stack.current().screenMasked, "an empty stack is not a mask")
+        stack.push(screen = "Feed")
+        assertFalse(stack.current().screenMasked)
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+        assertTrue(stack.current().screenMasked)
+
+        // A frame that names a screen for itself takes the assertion back: screen resolves again, so
+        // there is nothing for a fallback to fill in and nothing to suppress.
+        stack.push(screen = "Detail")
+        assertFalse(stack.current().screenMasked)
+    }
+
+    @Test
+    fun a_section_only_frame_does_not_take_back_a_mask() {
+        // Section-only frames refine the surrounding screen rather than replacing it, so they leave
+        // `screen` null — and must leave the mask's assertion standing with it.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        stack.push(section = "Header")
+        assertNull(stack.current().screen)
+        assertEquals("Header", stack.current().section)
+        assertTrue(stack.current().screenMasked)
+    }
+
+    @Test
+    fun a_deactivated_mask_stops_masking() {
+        // The whole point of splitting the two switches: a mask that is one-way in CONTENTS must
+        // still stop participating when its surface is demoted. Mutating the active filter to
+        // `it.active || it.maskScreen` would leave a demoted unnamed surface suppressing the screen
+        // of the surface the user came back to.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+
+        stack.setActive(mask, false)
+        assertEquals("Feed", stack.current().screen, "a demoted mask must not keep hiding Feed")
+        assertFalse(stack.current().screenMasked)
+
+        stack.setActive(mask, true)
+        assertNull(stack.current().screen, "and it masks again when its surface returns")
+        assertTrue(stack.current().screenMasked)
+    }
+
+    @Test
+    fun a_screen_pushed_after_a_mask_still_wins() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        // The masked surface's own content naming itself: a mask hides what is underneath, not the
+        // declarations the surface makes for itself.
+        stack.push(screen = "Detail", section = "body")
+        assertEquals("Detail", stack.current().screen)
+        assertEquals("body", stack.current().section)
+    }
+
+    @Test
+    fun a_mask_leaves_scope_alone() {
+        val stack = ScopeStack()
+        stack.push(scope = props("article_id" to "42"), screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        assertNull(stack.current().screen)
+        assertEquals(props("article_id" to "42"), stack.current().scope)
+    }
+
+    @Test
+    fun update_does_not_clear_a_mask() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        stack.update(mask, scope = props("a" to "1"), screen = "Ignored")
+        assertNull(stack.current().screen, "a mask is a switch, not part of the contents update replaces")
+        assertEquals(props("a" to "1"), stack.current().scope)
+    }
+
+    @Test
+    fun masking_an_unknown_removed_or_already_masked_handle_is_a_noop() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val removed = stack.push()
+        stack.remove(removed)
+        stack.maskScreen(removed)
+        stack.maskScreen(ScopeStack().push())
+        assertEquals("Feed", stack.current().screen)
+    }
+
+    @Test
+    fun masking_an_already_masked_frame_republishes_nothing() {
+        // The `|| frame.maskScreen` arm the test above is named for but never reached.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        val before = stack.current()
+        stack.maskScreen(mask)
+        assertSame(before, stack.current(), "no snapshot churn when nothing changed")
+    }
+
+    @Test
+    fun a_foreign_handle_is_not_masked_on_its_own_stack_either() {
+        // The guard is `frames.none { it === frame }` on the RECEIVER, so the interesting assertion is
+        // on the other stack: a cross-stack call must not quietly flip a frame someone else owns.
+        val other = ScopeStack()
+        other.push(screen = "Feed")
+        val foreign = other.push()
+        ScopeStack().maskScreen(foreign)
+        other.update(foreign, scope = props("a" to "1")) // forces a recompute on the owning stack
+        assertEquals("Feed", other.current().screen)
+    }
+
+    // --- setActive --------------------------------------------------------------------------------
+
+    @Test
+    fun an_inactive_frame_contributes_nothing() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed", section = "top")
+        val detail = stack.push(scope = props("id" to "7"), screen = "Detail", section = "body")
+        assertEquals("Detail", stack.current().screen)
+
+        stack.setActive(detail, false)
+        val ctx = stack.current()
+        assertEquals("Feed", ctx.screen, "the frame beneath answers again")
+        assertEquals("top", ctx.section)
+        assertEquals(JsonObject(emptyMap()), ctx.scope, "an inactive frame's scope drops out too")
+    }
+
+    @Test
+    fun reactivating_restores_the_frame_at_its_original_position() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val detail = stack.push(screen = "Detail")
+        stack.setActive(detail, false)
+        assertEquals("Feed", stack.current().screen)
+        stack.setActive(detail, true)
+        assertEquals("Detail", stack.current().screen, "position survives the round trip")
+    }
+
+    @Test
+    fun a_demoted_siblings_frame_no_longer_beats_the_surface_on_display() {
+        // The measured defect this whole bit exists for. Two surfaces are mounted at once and the host
+        // demotes the off-screen one instead of destroying it, so its frame stays where it was — later
+        // in the list than the surface the user came back to, and therefore winning on position alone.
+        val stack = ScopeStack()
+        val page1 = stack.push(screen = "Page1")
+        val page2 = stack.push(screen = "Page2")
+        assertEquals("Page2", stack.current().screen)
+
+        // Back to page 1. Page 2 is only demoted — its frame is not removed, and page 1's frame is not
+        // re-pushed (re-pushing is what breaks when several surfaces resume at once).
+        stack.setActive(page2, false)
+        assertEquals("Page1", stack.current().screen)
+
+        // ... and forward again, with nothing rebuilt on either side.
+        stack.setActive(page1, false)
+        stack.setActive(page2, true)
+        assertEquals("Page2", stack.current().screen)
+    }
+
+    @Test
+    fun a_demoted_sibling_cannot_out_rank_a_mask_reserved_before_it() {
+        // The other measured defect: a mask can only hide frames BELOW it, so a named surface that
+        // pushed after the mask used to win even while the masked surface was the one on display.
+        // Selection is what settles it — the demoted page stops taking part, so position never applies.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val mask = stack.push()
+        stack.maskScreen(mask)
+        val later = stack.push(screen = "LaterPage")
+        assertEquals("LaterPage", stack.current().screen)
+
+        stack.setActive(later, false)
+        assertNull(stack.current().screen, "the masked surface on display must carry no screen")
+    }
+
+    @Test
+    fun setting_the_value_a_frame_already_has_is_a_noop() {
+        val stack = ScopeStack()
+        val handle = stack.push(screen = "Feed")
+        val before = stack.current()
+        stack.setActive(handle, true)
+        assertSame(before, stack.current(), "no republish when nothing changed")
+    }
+
+    @Test
+    fun deactivating_an_unknown_or_removed_handle_is_a_noop() {
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val removed = stack.push(screen = "Gone")
+        stack.remove(removed)
+        stack.setActive(removed, false)
+        stack.setActive(ScopeStack().push(), false)
+        assertEquals("Feed", stack.current().screen)
+    }
+
+    @Test
+    fun a_foreign_handle_is_not_deactivated_on_its_own_stack_either() {
+        val other = ScopeStack()
+        other.push(screen = "Feed")
+        val foreign = other.push(screen = "Detail")
+        ScopeStack().setActive(foreign, false)
+        // Force a recompute on the OWNING stack: `update` with unchanged contents early-returns and
+        // republishes nothing, which would leave this asserting against a pre-hijack snapshot and
+        // passing whether or not the guard exists. Pushing always recomputes.
+        other.push()
+        assertEquals("Detail", other.current().screen, "a cross-stack call must not deactivate")
+    }
+
+    @Test
+    fun a_stack_whose_frames_are_all_inactive_reads_as_empty() {
+        val stack = ScopeStack()
+        val handle = stack.push(scope = props("a" to "1"), screen = "Feed", section = "top")
+        stack.setActive(handle, false)
+        val ctx = stack.current()
+        assertNull(ctx.screen)
+        assertNull(ctx.section)
+        assertEquals(JsonObject(emptyMap()), ctx.scope)
+    }
+
+    @Test
+    fun an_inactive_frame_still_carries_the_lineage_of_its_descendants() {
+        // Containment is structural: a scope nested inside a demoted frame is still nested inside it,
+        // so the two must stay comparable and merge rather than reading as ambiguous siblings. Only
+        // the inactive frame's own contribution drops.
+        // The discriminating shape is an ACTIVE ancestor reaching an active descendant THROUGH the
+        // inactive frame. An earlier version of this test asserted an empty scope in both arms, which
+        // an implementation that stops the ancestry walk at an inactive link passes just as happily.
+        val stack = ScopeStack()
+        val route = stack.push(scope = props("tab" to "home"))
+        val demoted = stack.push(parent = route)
+        stack.push(scope = props("row" to "7"), parent = demoted)
+        assertEquals(props("tab" to "home", "row" to "7"), stack.current().scope)
+
+        stack.setActive(demoted, false)
+        // `demoted` contributes nothing of its own, but it still LINKS: route encloses the row, so
+        // the two remain comparable and merge. Break the walk at the inactive link — say
+        // `generateSequence(other) { it.parent?.takeIf { p -> p.active } }` — and they become
+        // ambiguous roots that drop to {}, which is what this assertion pins.
+        assertEquals(props("tab" to "home", "row" to "7"), stack.current().scope)
+    }
+
+    @Test
+    fun an_inactive_frames_own_scope_still_drops_out() {
+        // The other half: lineage survives deactivation, the contribution does not.
+        val stack = ScopeStack()
+        val outer = stack.push(scope = props("a" to "outer", "b" to "outer"))
+        stack.push(scope = props("b" to "inner"), parent = outer)
+        assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope)
+
+        stack.setActive(outer, false)
+        assertEquals(props("b" to "inner"), stack.current().scope, "outer's own keys leave with it")
+    }
+
+    @Test
+    fun deactivating_a_frame_does_not_turn_an_ambiguous_drop_into_a_guess() {
+        // Selection narrows the candidate set, and narrowing must not be mistaken for disambiguating:
+        // two frames that branch away from each other are still ambiguous when a THIRD is demoted.
+        // The fixture this replaced covered it by accident; a mutant that skipped the pairwise
+        // comparability filter once anything was inactive would otherwise report a guessed sibling
+        // scope — the wrong-value outcome #66 forbids.
+        val stack = ScopeStack()
+        val outer = stack.push(scope = props("a" to "outer"))
+        stack.push(scope = props("b" to "inner"), parent = outer)
+        stack.push(scope = props("c" to "sibling"))
+        assertEquals(JsonObject(emptyMap()), stack.current().scope)
+
+        stack.setActive(outer, false)
+        assertEquals(
+            JsonObject(emptyMap()),
+            stack.current().scope,
+            "inner and sibling still branch away from each other — the drop is preserved",
+        )
+    }
+
+    @Test
+    fun update_does_not_reactivate_a_demoted_frame() {
+        // `update`'s kdoc promises it changes neither the mask NOR the active flag. Only the mask
+        // half was pinned; adding `frame.active = true` to update broke no test. A pipeline revising
+        // a demoted page's scope would then quietly bring the off-screen surface back into
+        // resolution — the exact wrong-screen attribution setActive exists to fix.
+        val stack = ScopeStack()
+        stack.push(screen = "Page1")
+        val page2 = stack.push(scope = props("page" to "2"), screen = "Page2")
+        stack.setActive(page2, false)
+        assertEquals("Page1", stack.current().screen)
+
+        stack.update(page2, scope = props("page" to "2-revised"), screen = "Page2")
+        assertEquals("Page1", stack.current().screen, "revising a demoted frame must not revive it")
+        assertEquals(JsonObject(emptyMap()), stack.current().scope)
+    }
+
+    @Test
+    fun reactivating_does_not_move_the_frame_to_the_top() {
+        // Every other reactivation fixture toggles the LAST frame, so a mutation that re-appends on
+        // reactivation is indistinguishable from leaving it in place. Toggling a MIDDLE frame is what
+        // separates them.
+        val stack = ScopeStack()
+        stack.push(screen = "A")
+        val b = stack.push(screen = "B")
+        stack.push(screen = "C")
+        assertEquals("C", stack.current().screen)
+
+        stack.setActive(b, false)
+        assertEquals("C", stack.current().screen)
+        stack.setActive(b, true)
+        assertEquals("C", stack.current().screen, "B came back UNDER C, not on top of it")
+    }
+
+    // --- setActive, batched -----------------------------------------------------------------------
+
+    @Test
+    fun the_batched_form_publishes_one_snapshot_for_the_whole_surface() {
+        // A surface owns more than one frame. Switching them one at a time publishes an intermediate
+        // context in which some of them answer and others do not; a tap captured against it would read
+        // a state the app was never in.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed")
+        val screen = stack.push(screen = "Page2")
+        val scope = stack.push(scope = props("page" to "2"))
+        assertEquals("Page2", stack.current().screen)
+        assertEquals(props("page" to "2"), stack.current().scope)
+
+        stack.setActive(listOf(screen, scope), false)
+        val ctx = stack.current()
+        assertEquals("Feed", ctx.screen)
+        assertEquals(JsonObject(emptyMap()), ctx.scope, "the surface's scope left with its screen")
+
+        stack.setActive(listOf(screen, scope), true)
+        assertEquals("Page2", stack.current().screen)
+        assertEquals(props("page" to "2"), stack.current().scope)
+    }
+
+    @Test
+    fun the_batched_form_skips_no_ops_and_applies_the_rest() {
+        val stack = ScopeStack()
+        val feed = stack.push(screen = "Feed")
+        val detail = stack.push(screen = "Detail")
+        val removed = stack.push()
+        stack.remove(removed)
+        stack.setActive(detail, false)
+
+        // `detail` is already inactive, `removed` is gone, `ScopeStack().push()` is foreign — only
+        // `feed` is a real change.
+        stack.setActive(listOf(detail, removed, ScopeStack().push(), feed), false)
+        assertNull(stack.current().screen)
+    }
+
+    @Test
+    fun the_batched_form_does_not_deactivate_a_foreign_stacks_frame() {
+        // The single-handle form has this test; the batched one did not, so deleting its
+        // `frames.none { it === frame } ||` guard left the whole suite green. The hazard is only
+        // visible on the OWNING stack — the batch's own assertions never read it.
+        val other = ScopeStack()
+        other.push(screen = "Feed")
+        val foreign = other.push(screen = "Detail")
+
+        val stack = ScopeStack()
+        val mine = stack.push(screen = "Mine")
+        stack.setActive(listOf(foreign, mine), false)
+
+        other.push() // always recomputes; `update` with unchanged contents would early-return
+        assertEquals("Detail", other.current().screen, "a batch must not reach into another stack")
+    }
+
+    @Test
+    fun the_batched_form_republishes_nothing_when_every_handle_is_a_noop() {
+        val stack = ScopeStack()
+        val handle = stack.push(screen = "Feed")
+        val before = stack.current()
+        stack.setActive(listOf(handle, ScopeStack().push()), true)
+        assertSame(before, stack.current())
     }
 }
