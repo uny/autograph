@@ -366,6 +366,23 @@ class ComposeTapOriginTest {
     }
 
     @Test
+    fun everyOutermostProviderInOneComposeViewIsRelinkedOnALateInstall() {
+        // Two outermost providers share one host view, so they share one listener registration
+        // point. A single slot let the second overwrite the first; the first then stayed a root on a
+        // late install — global — and its "A" leaked into a tap on the Activity's own composition.
+        val activity = launch(install = false)
+        val host = SiblingProvidersFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
+        idle()
+        installCaptures()
+        controller.pause().resume()
+        idle()
+
+        tap(activity.ownCompose)
+        assertEquals("Main", taps.single().second["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun aFrameTheAppPushedByHandReachesEveryTapWhileTheNativeCaptureIsInstalled() {
         // A root frame pushed through the public API — an experiment scope at startup — is under no
         // boundary, so every origin sees it. Dropping it once the capture claims the view tree

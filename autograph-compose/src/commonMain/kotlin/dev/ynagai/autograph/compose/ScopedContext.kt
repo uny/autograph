@@ -202,7 +202,7 @@ internal fun ProviderFrame(
  * link is made from a posted runnable because the claim on a late-added fragment's view lands
  * after this composition is created (see [ProviderOrigin]) — and re-made when a surface above the
  * host view claims or releases its root later still (a native capture installed after this
- * composition existed), which the capture announces through `View.autographScopeOwnerListener`.
+ * composition existed), which the capture announces through `View.addAutographScopeOwnerListener`.
  * No-op off Android.
  */
 @Composable

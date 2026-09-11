@@ -78,7 +78,8 @@ public class ScopeStack {
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
      * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. Lineage is
      * framework-independent — a native surface declares it the same way — so this does not tie the
-     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order.
+     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order
+     * ambiently (the origin-taking [current] additionally ranks a container with its content).
      */
     public fun push(
         scope: Map<String, JsonElement> = EmptyJsonObject,
@@ -310,7 +311,9 @@ public class ScopeStack {
      * - every frame that is **under no boundary at all**: a root the app pushed by hand, a screen a
      *   native pipeline that claims no views pushes (iOS), a Compose declaration outside any claimed
      *   surface. Nothing localizes those, so they apply to every event, exactly as they do ambiently.
-     *   A boundary-free stack therefore resolves identically with or without an origin.
+     *   A boundary-free stack therefore resolves with the same *members* with or without an origin
+     *   (and in the same order, unless a frame was reparented under one pushed after it — see the
+     *   ranking below).
      *
      * Everything else is out, and that is the point: a sibling surface's declaration, or its mask,
      * never reaches an event that did not happen in it, whatever the two frames' insertion order.
@@ -341,9 +344,10 @@ public class ScopeStack {
         val survivors = frames.filter { frame ->
             frame in lineage || frame.isBeneathWithoutBoundary(originFrame, onStack) || !frame.isUnderABoundary(onStack)
         }
-        // A container ranks where its earliest nested survivor ranks (see the kdoc). The sort is
-        // stable, so frames with equal keys — a container and the first thing inside it — keep their
-        // insertion order, container first.
+        // A container ranks where its earliest nested survivor ranks (see the kdoc). Equal keys are
+        // exactly a container and the first thing inside it, and the container was pushed LATER in
+        // the case this exists for — so the tie goes to the shallower frame, never to insertion order
+        // (a stable sort alone put the late mask after the content and blanked it; measured).
         val index = HashMap<ScopeFrame, Int>(survivors.size * 2)
         survivors.forEachIndexed { i, frame -> index[frame] = i }
         val rank = HashMap<ScopeFrame, Int>(survivors.size * 2)
@@ -354,7 +358,7 @@ public class ScopeStack {
                 ancestor = ancestor.parent
             }
         }
-        return resolve(survivors.sortedBy { rank.getValue(it) })
+        return resolve(survivors.sortedWith(compareBy({ rank.getValue(it) }, { it.depth() })))
     }
 
     /**

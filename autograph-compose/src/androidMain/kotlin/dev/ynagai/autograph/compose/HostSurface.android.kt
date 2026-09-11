@@ -11,7 +11,8 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.autographScopeOrigin
-import dev.ynagai.autograph.context.autographScopeOwnerListener
+import dev.ynagai.autograph.context.addAutographScopeOwnerListener
+import dev.ynagai.autograph.context.removeAutographScopeOwnerListener
 
 /**
  * Walks up from the composition's host view to the nearest view a native surface has claimed —
@@ -42,10 +43,10 @@ internal actual fun KeepLinkedToHost(stack: ScopeStack, origin: ProviderOrigin) 
         // installed after this composition existed. Posted, like the others: the claim arrives from
         // inside a lifecycle callback, and the link is bookkeeping, not part of that dispatch.
         val onOwnerChanged = { view.post(link); Unit }
-        view.autographScopeOwnerListener = onOwnerChanged
+        view.addAutographScopeOwnerListener(onOwnerChanged)
         onDispose {
             view.removeOnAttachStateChangeListener(listener)
-            if (view.autographScopeOwnerListener === onOwnerChanged) view.autographScopeOwnerListener = null
+            view.removeAutographScopeOwnerListener(onOwnerChanged)
             view.removeCallbacks(link)
         }
     }

@@ -533,7 +533,7 @@ internal class AndroidScreenCapture(
     private fun claim(view: View, state: SurfaceState) {
         view.autographScopeOwner = state.handle
         // Compositions already inside this view (a late install, a re-claimed mounting) re-link
-        // under the frame that now claims them; see View.autographScopeOwnerListener.
+        // under the frame that now claims them; see View.addAutographScopeOwnerListener.
         view.notifyAutographScopeOwnerChanged()
     }
 

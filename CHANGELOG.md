@@ -14,9 +14,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   lineage (itself and every frame it is nested in), the declarations beneath it, and every frame
   under no boundary at all — nothing else. A sibling surface's screen or mask never reaches an event
   that did not happen in it, whatever the two frames' insertion order. The survivors resolve in
-  insertion order, with one correction: a frame ranks no later than the content nested in it, so a
-  surface adopted late (an Activity that predates the native capture's install) does not blank the
-  `TrackedScreen` it hosts. A parent link that points off the stack — a frame since removed, or
+  insertion order, with one correction: a frame ranks no later than the content nested in it (and
+  before it on a tie), so a surface adopted late (an Activity that predates the native capture's
+  install) does not blank the `TrackedScreen` it hosts. A parent link that points off the stack — a frame since removed, or
   another stack's frame — is transparent: neither a contribution nor a boundary. Main-thread only,
   unlike the no-argument `current()`, because it is computed per event from the frame list rather
   than read from a published snapshot.

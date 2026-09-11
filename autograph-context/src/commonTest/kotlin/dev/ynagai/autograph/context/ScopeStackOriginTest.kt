@@ -172,15 +172,27 @@ class ScopeStackOriginTest {
     }
 
     @Test
-    fun a_hand_pushed_root_still_ranks_where_it_was_pushed() {
-        // The correction above must not promote a container over a root pushed BEFORE its content:
-        // a global screen pushed at startup, then a fragment naming its own — the fragment wins, as
-        // it does ambiently; a root pushed AFTER the fragment resumed wins over it, likewise.
+    fun a_late_container_directly_over_its_content_still_ranks_before_it() {
+        // The framework-independent route: a native pipeline pushes `screen =` frames itself and
+        // adopts a surface late through `update(parent =)`. The container and its content then tie
+        // on rank, and the tie must go to the container — a stable sort alone kept insertion order
+        // and let the late mask blank the content (measured).
         val stack = ScopeStack()
-        stack.push(screen = "Global")
-        val fragment = stack.push(screen = "Detail", boundary = true)
-        assertEquals("Detail", stack.current(fragment).screen)
+        val home = stack.push(screen = "Home")
+        val late = stack.push(boundary = true)
+        stack.maskScreen(late)
+        stack.update(home, screen = "Home", parent = late) // update replaces contents, so restate them
 
+        assertEquals("Home", stack.current(home).screen)
+        assertFalse(stack.current(home).screenMasked)
+    }
+
+    @Test
+    fun a_root_pushed_after_a_surfaces_content_still_wins_over_it() {
+        // The ranking corrects containers only: a root the app pushes AFTER a surface resumed keeps
+        // ranking where it was pushed, above that surface's screen.
+        val stack = ScopeStack()
+        val fragment = stack.push(screen = "Detail", boundary = true)
         stack.push(screen = "Later")
         assertEquals("Later", stack.current(fragment).screen)
     }
