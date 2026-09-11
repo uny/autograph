@@ -60,8 +60,97 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `update` revises contents only: it never clears a mask and never changes whether a frame is active.
 
   This is the first of a dependency stack (`ScopeStack` API → Android capture → Compose/observer)
-  replacing the design withdrawn in [#217]; the capture side that drives these switches lands next.
+  replacing the design withdrawn in [#217]. The Android capture that drives these switches is below.
   Refs [#216].
+
+### Fixed
+
+- **A native Android surface that names no screen of its own no longer reports the screen the user
+  just left** ([#216]) — an Activity or Fragment excluded by the capture's own filter (a Compose host,
+  a fragment-hosting shell) now *masks* the ambient screen while it is on display, so events captured
+  on it carry no screen instead of inheriting the frame of the screen underneath, which survives
+  whenever that screen was only paused and never stopped (a fragment `add`ed on top, a dialog
+  fragment). Content that names a screen for itself — a `TrackedScreen` inside the excluded host — is
+  pushed above the mask and still wins.
+
+  The capture was rebuilt around **selection** to make this hold, rather than patched. Each surface
+  now owns one frame, reserved empty and inert when it is created or attached and dropped when it is
+  destroyed or detached; `setActive` decides whether it takes part. Reserving the position that early
+  is what puts a host's frame below the content it hosts (`AbstractComposeView` composes from
+  `onAttachedToWindow`, before `onFragmentViewCreated` — measured) and a parent fragment below its
+  children (a child resumes *before* its parent — measured, and resume order would invert it).
+
+  Three defects the previous, position-only design could not express are fixed with it:
+
+  - A named page attached *after* an unnamed one is showing no longer lends it its screen. Its frame
+    sits above the mask by insertion order but is not selected, so it contributes nothing. Position
+    could not distinguish "mounted later" from "on display".
+  - Several surfaces `RESUMED` at once (`add` on top, `show()`/`hide()`, a child before its parent) no
+    longer all re-emit `Screen Viewed` when the host is merely paused and resumed. Reporting is no
+    longer inferred from `ScreenHistory.lastScreen` at resume — that test misfires whenever more than
+    one surface is resumed — but tracked per surface, and a host interruption ends nobody's view.
+  - A pager page swapped out **while its host was paused** is now handled, and it is described by no
+    callback at all: both pages are already `STARTED`, so neither pauses nor resumes (measured). The
+    page the host came back to reports, the one it did not is no longer attributed to, and returning
+    to that one later reports it again. Which page the host returned to is only readable once its
+    resume dispatch has finished, so that single check is posted to the main looper —
+    `onActivityPostResumed` would be the exact hook but is API 29+ and this module's floor is 24.
+    Bookkeeping only: attribution and reporting are both applied in the callback they belong to.
+
+  Masking is narrower than the filter, because a mask also asserts that the surface *covers* what it
+  hides — and every one of those narrowings had to be measured rather than assumed:
+
+  - A `null` from `activityScreenName` / `fragmentScreenName` never causes a mask, and now also
+    **suppresses** one the structural filter would have applied. Opting a Compose-based library
+    fragment out of reporting must not blank the screen beside it, whichever reason excluded it.
+  - A headless fragment (`view == null`) is not a surface, and an excluded fragment nested inside one
+    that *names* a screen is part of it — a `DialogFragment` excepted, since it draws its own window.
+    The nesting gate asks the ancestor the same *static* question it will ask itself rather than
+    reading frames already pushed: a child resumes before its parent, and reading state turned an
+    embedded Compose widget's host from `NestingFragment` into `null`.
+  - A child is attached from inside its host's own `performAttach`, **before** the host's attach
+    callback, so a frame reserved on `onFragmentAttached` put a host's mask above the named child it
+    contains. Reservation happens on `onFragmentPreAttached`; nothing later is early enough.
+  - An Activity masks only while it is the sole one on display. Under multi-resume (Android 10+ split
+    screen) two Activities are `RESUMED` in two windows, and an excluded one otherwise blanked the
+    screen of a named Activity it does not cover.
+  - What a surface *is* is settled once per mounting, not re-derived per resume. Both inputs are
+    time-varying while `maskScreen` is one-way, so a plain Activity that merely paused and resumed
+    with a view-bearing dialog attached was masked permanently — it kept emitting its own name while
+    reporting no screen at all.
+  - A stop replaces the frame rather than just clearing it. A `detach()`ed fragment stops without
+    ever reaching `onDetach`, so reusing its old position put the returning fragment underneath a
+    sibling that mounted while it was away.
+
+  Residuals are documented on `installAutographNativeScreenCapture` rather than silently
+  mis-attributed. Four are one-sided — a screen goes *absent*, never wrong: `show()`/`hide()` gives no
+  callback at all; an excluded *sibling* fragment (an embedded mini-player) has no containment signal
+  to distinguish it from a cover; a `DialogFragment` that builds its content in `onCreateDialog()` has
+  a null `view` and is indistinguishable from a worker fragment; and an excluded fragment added
+  directly to a *capturable Activity* masks that Activity's screen. One is not: a surface you opted
+  out of by name does not mask, so if it covers a screen that is only paused, events on it carry that
+  screen's name. Opting out cannot also mean "blank what is under it", and there is no third answer —
+  return a name for such a surface if you would rather it were reported than mis-attributed.
+
+  A mounting ends when a fragment's **view** is destroyed, not when it stops: a stop destroys nothing,
+  so re-reserving there jumped the frame above the child frames and Compose compositions that outlive
+  it — pressing home and returning turned a nested host's child screen into a masked null. An Activity
+  never replaces its frame — its content view lives create-to-destroy — but what that frame *says* is
+  re-derived at every stop, or one that has since become a fragment shell goes on emitting its own
+  name on every foreground return. A `DialogFragment` no longer counts towards "is this Activity a
+  shell": it covers the Activity rather than filling it, and counting it made an Activity that merely
+  had a sheet up at its first resume report no screen at all for the rest of its life.
+
+  A surface the capture only meets after installing is adopted rather than ignored — an Activity at
+  its next resume, and the fragments already attached to it outermost-first. Gating on
+  `onActivityCreated` / `onFragmentPreAttached` made such a surface invisible for its whole life while
+  its host masked over it, and adopting the fragments lazily at resume instead inverted the nesting,
+  because a child resumes inside its parent's `performResume`.
+
+- **The ambient screen is now absent while a host Activity is paused** — a permission prompt, a
+  translucent Activity — where it previously kept naming the paused screen. Autocapture reads this
+  stack to answer "what was on display when the user acted", and nothing of this app is. No
+  `Screen Viewed` changes: a pause still does not end a view, so returning stays silent.
 
 ## [0.8.0] - 2026-08-21
 

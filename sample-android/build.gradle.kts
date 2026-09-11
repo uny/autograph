@@ -19,6 +19,13 @@ android {
     buildFeatures {
         compose = true
     }
+
+    testOptions {
+        unitTests {
+            // Robolectric needs the merged Android resources/manifest on the unit-test classpath.
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -38,6 +45,15 @@ dependencies {
     implementation(projects.autographCore)
     implementation(projects.autographContext)
     implementation(libs.androidx.fragment)
+
+    // The hybrid host test (ComposeHostMaskTest) lives here rather than in autograph-android because
+    // it needs BOTH halves at once: the native screen capture and a real AutographProvider /
+    // TrackedScreen composition. autograph-android is deliberately Compose-free and has no Compose
+    // compiler plugin, so `setContent {}` there fails at runtime with NoSuchMethodError. This module
+    // is a Compose app that already depends on the native capture, and it is not published.
+    testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(projects.autographCompose)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso)
