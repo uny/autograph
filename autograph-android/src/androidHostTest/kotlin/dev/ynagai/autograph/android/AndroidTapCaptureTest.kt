@@ -81,7 +81,7 @@ class AndroidTapCaptureTest {
             addView(label)
         }
 
-        assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(row))
+        assertEquals(TapResolution.Target("fragment_container_view_tag", origin = null), resolveTapTarget(row))
     }
 
     @Test
@@ -97,7 +97,7 @@ class AndroidTapCaptureTest {
             addView(inner)
         }
 
-        assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(outer))
+        assertEquals(TapResolution.Target("fragment_container_view_tag", origin = null), resolveTapTarget(outer))
     }
 
     @Test
@@ -158,7 +158,7 @@ class AndroidTapCaptureTest {
             isPressed = true
         }
 
-        assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(root))
+        assertEquals(TapResolution.Target("fragment_container_view_tag", origin = null), resolveTapTarget(root))
     }
 
     // --- isAutographIgnored -----------------------------------------------------------------------
@@ -201,7 +201,7 @@ class AndroidTapCaptureTest {
             addView(Button(context()).apply { id = appOwnedId; isPressed = true })
         }
 
-        assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(root))
+        assertEquals(TapResolution.Target("fragment_container_view_tag", origin = null), resolveTapTarget(root))
     }
 
     @Test
@@ -216,7 +216,7 @@ class AndroidTapCaptureTest {
         root.isAutographIgnored = false
 
         assertTrue(!root.isAutographIgnored)
-        assertEquals(TapResolution.Target("fragment_container_view_tag"), resolveTapTarget(root))
+        assertEquals(TapResolution.Target("fragment_container_view_tag", origin = null), resolveTapTarget(root))
     }
 
     @Test

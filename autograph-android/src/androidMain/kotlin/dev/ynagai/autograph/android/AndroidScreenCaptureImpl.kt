@@ -18,6 +18,7 @@ import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.context.autographScopeOwner
 import dev.ynagai.autograph.context.emitScreenView
 
 /**
@@ -47,6 +48,17 @@ import dev.ynagai.autograph.context.emitScreenView
  * test at resume, and it misfired whenever several surfaces are `RESUMED` at once (`add` on top,
  * `show()`/`hide()`, a child fragment resuming before its parent): a plain pause/resume of the host
  * re-emitted for all of them.
+ *
+ * ## Whose event is it
+ *
+ * Every frame this capture reserves is a `boundary` ([ScopeStack.push]) nested under the frame of
+ * the surface containing it — a fragment under its parent fragment or its Activity — and each
+ * surface's root view is claimed with that frame ([autographScopeOwner]). That is what lets what a
+ * surface says reach *its own* events and no others: the native tap capture resolves a tap from the
+ * nearest claimed ancestor of the tapped view, and the Compose provider nests its composition's root
+ * frame under the surface hosting it, so a mask raised by an unnamed fragment added straight into a
+ * named Activity blanks the taps inside that fragment and leaves the Activity's own taps naming the
+ * Activity (#216 S2). Insertion order alone had the mask, being later, win for both.
  */
 internal class AndroidScreenCapture(
     private val tracker: Tracker,
@@ -92,6 +104,12 @@ internal class AndroidScreenCapture(
      * state that decides what the frame says and whether it takes part.
      */
     private class SurfaceState(var handle: ScopeHandle) {
+        /**
+         * The frame of the surface containing this one, as last read — what a fresh frame reserved
+         * by [endMounting] is nested under until `onFragmentViewCreated` re-reads it.
+         */
+        var parent: ScopeHandle? = null
+
         /**
          * Whether what this frame says has been settled for the current **mounting**.
          *
@@ -151,10 +169,11 @@ internal class AndroidScreenCapture(
      */
     private fun startTracking(activity: Activity) {
         if (activityStates.containsKey(activity)) return
-        activityStates[activity] = SurfaceState(reserveFrame())
+        val state = newSurface(parent = null)
+        activityStates[activity] = state
         if (activity is FragmentActivity) {
             val fragmentManager = activity.supportFragmentManager
-            val callbacks = FragmentCallbacks()
+            val callbacks = FragmentCallbacks(host = state.handle)
             // recursive = true so a NavHostFragment's / ViewPager2's child FragmentManager is covered.
             fragmentManager.registerFragmentLifecycleCallbacks(callbacks, true)
             fragmentRegistrations[activity] = FragmentRegistration(fragmentManager, callbacks)
@@ -176,6 +195,12 @@ internal class AndroidScreenCapture(
         // right trade: a late position is a worse mask, no position at all is no capture.
         startTracking(activity)
         val state = activityStates[activity] ?: return
+        // Claimed at resume, not at create: this callback runs inside super.onCreate, before the
+        // Activity has any content view, and forcing the decor into existence there is a known way
+        // to break AppCompat's own installation of it. No tap can arrive before the first resume,
+        // and the Compose provider looks its host up at tap time, never at composition. Idempotent:
+        // an Activity's frame never changes.
+        activity.findViewById<View>(android.R.id.content)?.autographScopeOwner = state.handle
         onSurfaceResumed(
             state = state,
             className = activity.javaClass.name,
@@ -263,7 +288,10 @@ internal class AndroidScreenCapture(
         handler.post { if (active) callbacks.confirmDemotions() }
     }
 
-    private inner class FragmentCallbacks : FragmentManager.FragmentLifecycleCallbacks() {
+    /** [host] is the frame of the Activity these callbacks belong to — the root of its fragments' lineage. */
+    private inner class FragmentCallbacks(
+        private val host: ScopeHandle,
+    ) : FragmentManager.FragmentLifecycleCallbacks() {
         /**
          * This Activity's fragment surfaces.
          *
@@ -284,7 +312,9 @@ internal class AndroidScreenCapture(
                 // childFragmentManager then throws. It has not missed anything either — its own
                 // onFragmentPreAttached is still to come — so there is nothing to adopt.
                 if (fragment == null || !fragment.isAdded) continue
-                fragmentStates.getOrPut(fragment) { SurfaceState(reserveFrame()) }
+                val state = fragmentStates.getOrPut(fragment) { newSurface(parentOf(fragment)) }
+                // A view that exists at install time is claimed here, since its viewCreated is past.
+                fragment.view?.let { claim(it, state) }
                 adoptAttached(fragment.childFragmentManager)
             }
         }
@@ -315,8 +345,28 @@ internal class AndroidScreenCapture(
 
         override fun onFragmentPreAttached(fm: FragmentManager, f: Fragment, context: Context) {
             if (!active) return
-            fragmentStates[f] = SurfaceState(reserveFrame())
+            // `parentFragment` is already set here — measured — so the lineage goes in with the
+            // position, and the parent has its own frame because it pre-attached before its child.
+            fragmentStates[f] = newSurface(parentOf(f))
         }
+
+        override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
+            if (!active) return
+            val state = fragmentStates[f] ?: return
+            // The frame's parent is re-read here rather than trusted from reservation, because a
+            // re-created view hierarchy re-reserves frames child-first: a child's view is destroyed
+            // (and its fresh frame reserved) inside its parent's performDestroyView, *before* the
+            // parent's own — so the child's fresh frame was linked to a parent frame that is about
+            // to be replaced. Views come back parent-first, so by the time the child reaches here its
+            // parent holds the frame it will keep. `update` reparents in place.
+            state.parent = parentOf(f)
+            scopeStack.update(state.handle, parent = state.parent)
+            claim(v, state)
+        }
+
+        /** The frame of the surface containing [f]: its parent fragment's, or the host Activity's. */
+        private fun parentOf(f: Fragment): ScopeHandle =
+            f.parentFragment?.let { fragmentStates[it]?.handle } ?: host
 
         override fun onFragmentResumed(fm: FragmentManager, f: Fragment) {
             if (!active) return
@@ -326,7 +376,9 @@ internal class AndroidScreenCapture(
             // reservation made a fragment attached before that point invisible for its whole life,
             // while its host went on masking over it. It costs only a late position, which is what a
             // late install costs everywhere else too.
-            val state = fragmentStates.getOrPut(f) { SurfaceState(reserveFrame()) }
+            val state = fragmentStates.getOrPut(f) {
+                newSurface(parentOf(f)).also { late -> f.view?.let { claim(it, late) } }
+            }
             state.pausedWithHost = false
             onSurfaceResumed(
                 state = state,
@@ -446,6 +498,11 @@ internal class AndroidScreenCapture(
      * top. `sample-android`'s `ComposeHostMaskTest` pins the hook, not just the property: moving this
      * reservation to `onFragmentResumed` makes a declared `TrackedScreen` lose to its host's mask.
      *
+     * Every frame is a `boundary` ([ScopeStack.push]): this capture can tell, from the view a tap
+     * landed on, which surface it happened in, so what a surface declares is scoped to its own events
+     * — see the class kdoc. [parent] is the containing surface's frame, the lineage that scoping runs
+     * along.
+     *
      * Claiming the position must not claim a *voice*, though: an attached surface is not necessarily
      * the visible one, and a `ViewPager2` page cached by `offscreenPageLimit` attaches while a
      * different page is showing. So the frame is pushed and immediately deactivated; [onSurfaceResumed]
@@ -457,8 +514,20 @@ internal class AndroidScreenCapture(
      * of the frame's active bit from the first instant, so the short-circuits in [select]/[deselect]
      * cannot be reasoning from a belief the stack does not share.
      */
-    private fun reserveFrame(): ScopeHandle =
-        scopeStack.push().also { scopeStack.setActive(it, false) }
+    private fun reserveFrame(parent: ScopeHandle?): ScopeHandle =
+        scopeStack.push(parent = parent, boundary = true).also { scopeStack.setActive(it, false) }
+
+    private fun newSurface(parent: ScopeHandle?): SurfaceState =
+        SurfaceState(reserveFrame(parent)).also { it.parent = parent }
+
+    /**
+     * Marks [view] as belonging to [state]'s surface, for the two readers of [autographScopeOwner]:
+     * the native tap capture, which resolves a tap from the nearest claimed ancestor of the tapped
+     * view, and the Compose provider, which nests its root frame under the surface hosting it.
+     */
+    private fun claim(view: View, state: SurfaceState) {
+        view.autographScopeOwner = state.handle
+    }
 
     /**
      * Handles one surface reaching `RESUMED`, for both Activities and Fragments: settles what its frame
@@ -508,7 +577,10 @@ internal class AndroidScreenCapture(
         // not because a case was observed.
         val screen = if (state.capturable && !state.masked) name else null
         if (!state.masked) {
-            scopeStack.update(state.handle, screen = screen)
+            // `update` replaces the whole frame, parent link included: leaving [parent] out here
+            // silently re-rooted every fragment at its first resume — caught by the tap-payload
+            // test for an opted-out fragment, which then carried no screen instead of its host's.
+            scopeStack.update(state.handle, screen = screen, parent = state.parent)
             state.declaresScreen = screen != null
         }
 
@@ -577,7 +649,7 @@ internal class AndroidScreenCapture(
      */
     private fun endMounting(state: SurfaceState) {
         scopeStack.remove(state.handle)
-        state.handle = reserveFrame()
+        state.handle = reserveFrame(state.parent)
         state.decided = false
         state.declaresScreen = false
         state.masked = false

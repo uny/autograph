@@ -10,6 +10,32 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- **`ScopeStack.current(origin)`** — the ambient context *as seen from* a frame: the origin's
+  lineage (itself and every frame it is nested in, resolved outer→inner by nesting depth) plus the
+  declarations beneath it, and nothing else. A sibling surface's screen or mask never reaches an
+  event that did not happen in it, whatever the two frames' insertion order. Main-thread only, unlike
+  the no-argument `current()`, because it is computed per event from the frame list rather than read
+  from a published snapshot.
+
+- **`ScopeStack.push(…, boundary = true)`** — a frame whose pipeline can tell, for every event it
+  captures, whether the event happened inside that frame. A boundary is where `current(origin)`'s
+  descent stops: an event resolved from a surface does not pick up the declarations of the surfaces
+  nested inside it, because its pipeline has already established the event is not in them. Every
+  surface the Android native capture reserves a frame for is one, and so is the root frame a Compose
+  `AutographProvider` now pushes for its composition. A separate overload with no default for the
+  flag, so an existing `push()` still resolves to the plain one — additive in both dumps.
+
+  Third of the [#216] dependency stack (`ScopeStack` API → Android capture → Compose/observer), and
+  the one that connects the two pipelines: the native capture nests each surface's frame under the
+  surface containing it and claims each surface's root view with its frame (`View.autographScopeOwner`,
+  an `@AutographInternalApi` in `autograph-context`'s new `androidMain`); the native tap capture
+  resolves a tap from the surface the tapped view belongs to, and the Compose provider links its root
+  frame under the surface hosting its composition **at tap time** — a composition is created before
+  `onFragmentViewCreated` claims a late-added fragment's view (measured), so a lookup at composition
+  time finds the *Activity's* claim, a wrong owner rather than a missing one. Where nothing claims
+  the host view (no native screen capture, or iOS/desktop) a Compose tap resolves ambiently, as
+  before.
+
 - **`ScopeStack.maskScreen(handle)`** — turn an already-pushed frame into one that declares *there is
   no screen here*, clearing screen and section rather than naming one. It exists for a surface that
   comes to the foreground and names no screen of its own: without a mask the frame of the screen
@@ -123,14 +149,31 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     sibling that mounted while it was away.
 
   Residuals are documented on `installAutographNativeScreenCapture` rather than silently
-  mis-attributed. Four are one-sided — a screen goes *absent*, never wrong: `show()`/`hide()` gives no
-  callback at all; an excluded *sibling* fragment (an embedded mini-player) has no containment signal
-  to distinguish it from a cover; a `DialogFragment` that builds its content in `onCreateDialog()` has
-  a null `view` and is indistinguishable from a worker fragment; and an excluded fragment added
-  directly to a *capturable Activity* masks that Activity's screen. One is not: a surface you opted
-  out of by name does not mask, so if it covers a screen that is only paused, events on it carry that
-  screen's name. Opting out cannot also mean "blank what is under it", and there is no third answer —
-  return a name for such a surface if you would rather it were reported than mis-attributed.
+  mis-attributed. Two are one-sided — a screen goes *absent*, never wrong: `show()`/`hide()` gives no
+  callback at all, and a `DialogFragment` that builds its content in `onCreateDialog()` has a null
+  `view` and is indistinguishable from a worker fragment. (Three more that the selection rebuild
+  left — an excluded *sibling* fragment or one added straight into a *capturable Activity* masking
+  the screen beside it, and an opted-out surface lending its taps the name of the paused screen it
+  covers — are closed by scoping a mask to the surface's own events; see below.)
+
+- **What a surface says now reaches its own events and no others** ([#216]). A mask raised by an
+  unnamed fragment, or the screen a fragment names, used to apply to every tap captured while that
+  frame was innermost — so an embedded mini-player (an excluded fragment added as a sibling, or
+  straight into a capturable Activity) blanked the screen of the taps *beside* it, an opted-out
+  surface `add`ed over a paused screen lent that screen's name to its own taps (wrong, not absent),
+  and a `ViewPager2` of Compose pages each declaring a `TrackedScreen` attributed a tap on one page
+  to whichever page's frame was pushed last. Each surface's frame is now nested under the surface
+  containing it and each surface's root view is claimed with its frame; a native tap resolves from
+  the surface the tapped view belongs to and a Compose tap from the surface hosting its
+  composition, through `ScopeStack.current(origin)`. The mini-player's mask reaches the taps inside
+  it and leaves the Activity's own taps naming the Activity; the opted-out surface's taps carry the
+  screen of what *contains* it, never the sibling it covers; a page's taps carry that page. The
+  ambient `ScopeStack.current()` snapshot still shows the innermost frame — it has no event to go
+  by — so what the snapshot shows is no longer what a captured tap carries. Every case is pinned on
+  the tap payload the tracker receives, on both pipelines (`AndroidTapOriginTest`, and
+  `ComposeTapOriginTest` in `sample-android`, which drives real `MotionEvent`s through a real
+  `AutographProvider` composition — the previous `ComposeHostMaskTest` dropped `track` and could not
+  see any of this).
 
   A mounting ends when a fragment's **view** is destroyed, not when it stops: a stop destroys nothing,
   so re-reserving there jumped the frame above the child frames and Compose compositions that outlive

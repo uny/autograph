@@ -78,18 +78,24 @@ public fun AutographProvider(
         LocalTracker provides tracker,
         LocalScopeStack provides effectiveScopeStack,
     ) {
-        if (autocapture != null) {
-            // Only provided when autocapture is on: registerIgnoredBounds no-ops without it, so
-            // autographIgnore() doesn't pay for position tracking otherwise, and trackClick()'s
-            // execution mark costs a null check.
-            val claims = remember { AutocaptureClaims() }
-            CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
-                Box(Modifier.fillMaxSize().autocaptureTaps(tracker, effectiveScopeStack, autocapture)) {
-                    content()
+        // Outside the autocapture branch, like the host registration above, and for a related
+        // reason: the frame is what nests this composition's TrackedScreens under the surface
+        // hosting it, and a native tap capture running alongside resolves from that lineage whether
+        // or not this provider captures anything itself.
+        ProviderFrame(effectiveScopeStack) { root ->
+            if (autocapture != null) {
+                // Only provided when autocapture is on: registerIgnoredBounds no-ops without it, so
+                // autographIgnore() doesn't pay for position tracking otherwise, and trackClick()'s
+                // execution mark costs a null check.
+                val claims = remember { AutocaptureClaims() }
+                CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
+                    Box(Modifier.fillMaxSize().autocaptureTaps(tracker, effectiveScopeStack, autocapture, root)) {
+                        content()
+                    }
                 }
+            } else {
+                content()
             }
-        } else {
-            content()
         }
     }
 }

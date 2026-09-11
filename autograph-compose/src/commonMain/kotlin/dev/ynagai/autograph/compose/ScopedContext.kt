@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
+import dev.ynagai.autograph.context.AmbientContext
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
@@ -139,6 +140,79 @@ internal fun MirrorAmbientFrame(
     }
     CompositionLocalProvider(LocalScopeParent provides handle, content = content)
 }
+
+/**
+ * The root frame of one [AutographProvider]'s composition: pushed as a `boundary`
+ * ([ScopeStack.push]) for the lifetime of [content] and provided as the [LocalScopeParent] of
+ * everything inside, so every [MirrorAmbientFrame] in this composition nests under it.
+ *
+ * It exists so the tap observer has an **origin** to resolve from. A composition is the finest
+ * thing the observer can localize a tap to — it hit-tests its own semantics tree, but a
+ * `TrackedScreen` or [AutographScope] has no node of its own, so which of them a tap fell under is
+ * not something it can read — and that is exactly the granularity `ScopeStack.current(origin)`
+ * wants: the lineage of this frame (the surface hosting the composition, and what it declares or
+ * masks) plus the declarations beneath it, and nothing a sibling surface pushed. See
+ * [ProviderOrigin] for how the frame is linked to its host and read at tap time.
+ *
+ * The frame carries no contents and is never [ScopeStack.update]d with any, so it changes nothing
+ * about the ambient [ScopeStack.current] — an empty frame contributes nothing.
+ */
+@Composable
+internal fun ProviderFrame(
+    stack: ScopeStack,
+    content: @Composable (root: Array<ScopeHandle?>) -> Unit,
+) {
+    val holder = remember(stack) { arrayOfNulls<ScopeHandle>(1) }
+    DisposableEffect(stack) {
+        val pushed = stack.push(boundary = true)
+        holder[0] = pushed
+        onDispose {
+            stack.remove(pushed)
+            holder[0] = null
+        }
+    }
+    CompositionLocalProvider(LocalScopeParent provides holder) { content(holder) }
+}
+
+/**
+ * Where a tap in this composition is resolved from: the [ProviderFrame]'s handle, linked to the
+ * frame of the surface hosting the composition **at the moment of the tap**.
+ *
+ * Linking at tap time rather than once at composition is deliberate, and measured. A composition
+ * is created when its view attaches to the window, and for a fragment added while its Activity is
+ * already showing that is *before* `onFragmentViewCreated` — the point at which the native screen
+ * capture claims the fragment's view. A lookup at composition time then finds the **Activity's**
+ * claim instead of the fragment's: a wrong owner, not a missing one. By the time any tap can arrive
+ * the claim is in place, and re-reading it per tap also survives a surface being re-claimed under a
+ * fresh frame (a fragment's view re-created) or the native capture being installed late. The link
+ * is written through [ScopeStack.update], which no-ops when nothing changed, so a steady state
+ * costs one ancestry walk per tap and no snapshot churn.
+ *
+ * With no surface claiming the host view — no native screen capture installed, or a platform with
+ * no such capture at all — the tap resolves **ambiently**, exactly as before origins existed. A
+ * lone Compose composition has nothing to be localized against, and a hybrid app that pushes native
+ * frames by hand rather than through the native capture keeps seeing them.
+ */
+internal class ProviderOrigin(
+    private val root: Array<ScopeHandle?>,
+    private val hostSurface: () -> ScopeHandle?,
+) {
+    /** The context for a tap in this composition. Main thread, like the tap dispatch it runs in. */
+    fun resolve(stack: ScopeStack): AmbientContext {
+        val frame = root[0] ?: return stack.current()
+        val host = hostSurface()
+        stack.update(frame, parent = host)
+        return if (host != null) stack.current(frame) else stack.current()
+    }
+}
+
+/**
+ * The frame of the surface hosting this composition, read **at call time** — the native screen
+ * capture's claim on the nearest claimed ancestor of the host view. Null where nothing claims it.
+ * See [ProviderOrigin] for why this is a lookup and not a value.
+ */
+@Composable
+internal expect fun rememberHostSurfaceLookup(): () -> ScopeHandle?
 
 /**
  * The nearest enclosing [MirrorAmbientFrame]'s handle holder, or null at the root. Carries the parent
