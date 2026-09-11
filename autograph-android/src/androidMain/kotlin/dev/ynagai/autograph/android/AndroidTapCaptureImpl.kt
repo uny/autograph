@@ -142,7 +142,12 @@ internal class AndroidTapCapture(
             val root = window.peekDecorView() ?: return false
             when (val resolution = resolveTapTarget(root)) {
                 is TapResolution.Target -> {
-                    tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject), resolution.identifier)
+                    // Resolved from the surface the tap landed in when one has claimed it, so that
+                    // only that surface's lineage attributes the tap: the screen its host names, a
+                    // mask it raised itself — never a sibling surface's, whatever was pushed last.
+                    // Ambient when nothing has claimed the view tree, which is the pre-#216 answer.
+                    val context = resolution.origin?.let(scopeStack::current) ?: scopeStack.current()
+                    tracker.track(eventName, context.enrich(EmptyJsonObject), resolution.identifier)
                     return true
                 }
                 // Neither spends the gesture, for the same reason a touch-up that resolved to nothing

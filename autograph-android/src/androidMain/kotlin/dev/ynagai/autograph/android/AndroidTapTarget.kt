@@ -1,7 +1,12 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.android
 
 import android.view.View
 import android.view.ViewGroup
+import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.context.ScopeHandle
+import dev.ynagai.autograph.context.autographScopeOrigin
 
 /**
  * What resolving a tap on Android View content produced. Several kinds of "no event" for the same
@@ -11,8 +16,12 @@ import android.view.ViewGroup
  * on either would print a misleading line.
  */
 internal sealed interface TapResolution {
-    /** The tap named [identifier], which is a developer-set view id. */
-    data class Target(val identifier: String) : TapResolution
+    /**
+     * The tap named [identifier], which is a developer-set view id. [origin] is the frame of the
+     * surface the tapped view belongs to — the nearest [autographScopeOrigin] up its ancestry — or
+     * null when no surface has claimed that view tree (no native screen capture installed).
+     */
+    data class Target(val identifier: String, val origin: ScopeHandle?) : TapResolution
 
     /** Nothing under the finger could be named — see [warnOnceIfATapResolvedToNothing]. */
     data object Unresolved : TapResolution
@@ -68,7 +77,12 @@ internal fun resolveTapTarget(root: View): TapResolution {
     // Before the identifier, not after: a view the app excluded reports nothing whether or not it has
     // an id, and an excluded view without one must not spend the single "resolved to nothing" warning.
     if (isExcludedFromAutocapture(view)) return TapResolution.Ignored
-    return view.developerSetIdentifier()?.let(TapResolution::Target) ?: TapResolution.Unresolved
+    val identifier = view.developerSetIdentifier() ?: return TapResolution.Unresolved
+    // The surface the tap happened in, read off the same ancestry the exclusion walked. This is what
+    // lets the screen capture's frames apply to the taps that land in their surface and to no
+    // others — a mask raised by an unnamed fragment reaches the taps inside it, not the taps on the
+    // Activity hosting it beside it (#216).
+    return TapResolution.Target(identifier, view.autographScopeOrigin())
 }
 
 /**

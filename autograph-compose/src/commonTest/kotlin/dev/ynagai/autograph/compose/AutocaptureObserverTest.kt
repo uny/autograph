@@ -19,6 +19,7 @@ import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
+import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
@@ -237,6 +238,55 @@ class ReportTapIfResolvableTest {
         assertEquals("42", props["article_id"]?.jsonPrimitive?.content)
         assertEquals("Article", props["screen"]?.jsonPrimitive?.content)
         assertEquals("Body", props["section"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun anOriginWithAHostResolvesFromTheCompositionsLineageNotTheAmbientStack() {
+        val tracker = AutocaptureRecordingTracker()
+        val stack = ScopeStack()
+        val host = stack.push(screen = "Host", boundary = true)
+        val root = arrayOf<ScopeHandle?>(stack.push(boundary = true))
+        stack.push(screen = "Declared", parent = root[0])
+        // An excluded surface added beside the composition afterwards — a mini-player — masks.
+        val sibling = stack.push(parent = host, boundary = true)
+        stack.maskScreen(sibling)
+        assertNull(stack.current().screen, "ambiently the sibling's mask wins")
+
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig(), ProviderOrigin(root) { host }) {
+            AutocaptureTarget("row")
+        }
+
+        assertEquals("Declared", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun anOriginLinksTheCompositionsRootUnderItsHostAtTapTime() {
+        val tracker = AutocaptureRecordingTracker()
+        val stack = ScopeStack()
+        val root = arrayOf<ScopeHandle?>(stack.push(boundary = true))
+        // The host is claimed AFTER the composition's root was pushed — the measured order for a
+        // fragment added while its Activity is showing — so the link cannot be made at push time.
+        val host = stack.push(screen = "Host", boundary = true)
+
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig(), ProviderOrigin(root) { host }) {
+            AutocaptureTarget("row")
+        }
+
+        assertEquals("Host", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun anOriginWithNoHostResolvesAmbiently() {
+        val tracker = AutocaptureRecordingTracker()
+        val stack = ScopeStack()
+        stack.push(screen = "PushedByHand") // a hybrid app's own native frame, no capture installed
+        val root = arrayOf<ScopeHandle?>(stack.push(boundary = true))
+
+        reportTapIfResolvable(tracker, stack, AutocaptureConfig(), ProviderOrigin(root) { null }) {
+            AutocaptureTarget("row")
+        }
+
+        assertEquals("PushedByHand", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
 
     @Test

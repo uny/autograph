@@ -16,10 +16,20 @@ kotlin {
 
     withSourcesJar(publish = true)
 
-    androidLibrary {
+    // `android { }` rather than the deprecated `androidLibrary { }`, for the same reason
+    // autograph-android made the switch: this module now ships one Android resource.
+    android {
         namespace = "dev.ynagai.autograph.context"
         compileSdk = libs.versions.android.compileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
+        // Off by default in the KMP library plugin. The one resource is the id used as the
+        // `View.setTag` key that carries a surface's ScopeHandle down its view subtree — the channel
+        // the Android native capture and the Compose provider share (see ScopeOrigin.android.kt).
+        // A merged resource id is the only key that cannot collide with another library's tags;
+        // see autograph-android's build file for the longer version of that argument.
+        androidResources {
+            enable = true
+        }
     }
     jvm()
     iosArm64()

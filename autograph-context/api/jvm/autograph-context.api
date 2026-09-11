@@ -16,10 +16,13 @@ public final class dev/ynagai/autograph/context/ScopeHandle {
 public final class dev/ynagai/autograph/context/ScopeStack {
 	public fun <init> ()V
 	public final fun current ()Ldev/ynagai/autograph/context/AmbientContext;
+	public final fun current (Ldev/ynagai/autograph/context/ScopeHandle;)Ldev/ynagai/autograph/context/AmbientContext;
 	public final fun getScreenHistory ()Ldev/ynagai/autograph/context/ScreenHistory;
 	public final fun maskScreen (Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public final fun push (Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;)Ldev/ynagai/autograph/context/ScopeHandle;
+	public final fun push (Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;Z)Ldev/ynagai/autograph/context/ScopeHandle;
 	public static synthetic fun push$default (Ldev/ynagai/autograph/context/ScopeStack;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;
+	public static synthetic fun push$default (Ldev/ynagai/autograph/context/ScopeStack;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ZILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public final fun remove (Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public final fun setActive (Ldev/ynagai/autograph/context/ScopeHandle;Z)V
 	public final fun setActive (Ljava/util/List;Z)V

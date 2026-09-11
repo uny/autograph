@@ -31,12 +31,12 @@ import kotlinx.serialization.json.JsonPrimitive
  * same context and share one `previous_screen` chain. That stack is then yours to replace when the
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
- * **Threading.** [push], [update], [remove], [maskScreen] and [setActive] must be called from the
- * main thread ([push] and [remove] mutate the frame list; the others mutate a frame's contents and
- * republish the snapshot). [current] is lock-free and
- * safe from any thread: it returns an immutable snapshot that is republished atomically on every
- * mutation, so a background reader always sees a whole, consistent context — never a half-applied
- * one.
+ * **Threading.** [push], [update], [remove], [maskScreen], [setActive] and the origin-taking
+ * [current] must be called from the main thread ([push] and [remove] mutate the frame list; the
+ * others mutate a frame's contents and republish the snapshot, or read the list as it stands). The
+ * no-argument [current] is lock-free and safe from any thread: it returns an immutable snapshot that
+ * is republished atomically on every mutation, so a background reader always sees a whole,
+ * consistent context — never a half-applied one.
  */
 public class ScopeStack {
 
@@ -78,15 +78,50 @@ public class ScopeStack {
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
      * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. Lineage is
      * framework-independent — a native surface declares it the same way — so this does not tie the
-     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order.
+     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order
+     * ambiently (the origin-taking [current] additionally ranks a container with its content).
      */
     public fun push(
         scope: Map<String, JsonElement> = EmptyJsonObject,
         screen: String? = null,
         section: String? = null,
         parent: ScopeHandle? = null,
+    ): ScopeHandle = push(scope, screen, section, parent, boundary = false)
+
+    /**
+     * [push] for a frame that is also an **attribution boundary**: the pipeline pushing it can tell,
+     * for every event it captures, whether the event happened inside this frame, and resolves such
+     * events through [current] with the frame — or one beneath it — as the event's origin.
+     *
+     * A boundary changes what an origin-based resolution sees, in both directions. What is declared
+     * *beneath* a boundary is visible only to events whose origin is at or beneath it, never to an
+     * event resolved from outside: a native surface's frame is a boundary, so the screen a fragment
+     * names, or the mask an unnamed one raises, reaches the taps that land in that fragment and not
+     * the taps on the surface hosting it beside it. And a boundary is where the descent of
+     * [current] stops: an event whose origin is a surface does not pick up the declarations of the
+     * surfaces nested inside it, because its pipeline has already established the event is not in
+     * them. See [current] for the exact rule.
+     *
+     * Which frames should be boundaries follows from that: those a pipeline can *localize* an event
+     * to **and** that stand for a surface of their own. Every surface a native capture reserves a
+     * frame for is one (an Activity, a fragment). The root frame a Compose provider pushes for its
+     * composition is deliberately *not*, although the observer can localize a tap to it: a
+     * composition is how the surface hosting it declares its screen, not a surface of its own, so a
+     * native tap on a toolbar *beside* the `ComposeView` must still see the `TrackedScreen` inside
+     * it. A plain [push] is the right call for any declaration that is not a surface — and a frame
+     * under no boundary at all applies to every event, whatever its origin (see [current]).
+     *
+     * Static for the life of the frame; [update] does not revise it. [boundary] has no default so
+     * that a call spelling none of the arguments still resolves to the plain [push] overload.
+     */
+    public fun push(
+        scope: Map<String, JsonElement> = EmptyJsonObject,
+        screen: String? = null,
+        section: String? = null,
+        parent: ScopeHandle? = null,
+        boundary: Boolean,
     ): ScopeHandle {
-        val frame = ScopeFrame(scope.asJsonObject(), screen, section, parent?.frame)
+        val frame = ScopeFrame(scope.asJsonObject(), screen, section, parent?.frame, boundary = boundary)
         frames.add(frame)
         snapshot = recompute()
         return ScopeHandle(frame)
@@ -247,14 +282,117 @@ public class ScopeStack {
         }
     }
 
-    /** The current merged ambient context. Lock-free; safe from any thread. */
+    /**
+     * The current merged ambient context, over every frame on the stack. Lock-free; safe from any
+     * thread.
+     *
+     * This is the *ambient* answer — what is on display, as far as the stack can tell without knowing
+     * where an event came from. A pipeline that does know should ask [current] with the event's
+     * origin instead, which is what stops a declaration on one surface from attributing an event on
+     * another.
+     */
     public fun current(): AmbientContext = snapshot
 
-    private fun recompute(): AmbientContext {
+    /**
+     * The ambient context **as seen from [origin]** — the innermost frame the calling pipeline could
+     * attribute an event to. **Main thread only**, unlike the no-argument [current]: this reads the
+     * frame list rather than a published snapshot, because the answer depends on the origin and is
+     * computed per event.
+     *
+     * Three sets of frames take part, and only those:
+     * - the **lineage** of [origin] — itself and every frame it is nested in, following the parent
+     *   links declared at [push] / [update] — so a screen named by the surface hosting the origin,
+     *   or a mask raised by it, applies;
+     * - the **subtree** beneath [origin], stopping at (and excluding) any frame pushed as a
+     *   `boundary` together with everything under it. What the origin's own pipeline could not
+     *   localize further — the `TrackedScreen`s inside a composition — still applies, and what it
+     *   could — a surface nested inside the origin, which the pipeline has established the event is
+     *   not in — does not; and
+     * - every frame that is **under no boundary at all**: a root the app pushed by hand, a screen a
+     *   native pipeline that claims no views pushes (iOS), a Compose declaration outside any claimed
+     *   surface. Nothing localizes those, so they apply to every event, exactly as they do ambiently.
+     *   A boundary-free stack therefore resolves with the same *members* with or without an origin
+     *   (and in the same order, unless a frame was reparented under one pushed after it — see the
+     *   ranking below).
+     *
+     * Everything else is out, and that is the point: a sibling surface's declaration, or its mask,
+     * never reaches an event that did not happen in it, whatever the two frames' insertion order.
+     * The survivors resolve in insertion order — with one correction: **a frame ranks no later than
+     * the content nested in it.** A surface adopted late pushes its frame *after* the composition it
+     * hosts (an Activity that predates the native capture's install is picked up at its next
+     * resume), and insertion order alone would let that late mask blank the `TrackedScreen` inside
+     * it; ranking the container where its earliest nested survivor ranks keeps the content winning,
+     * as it did before the surface was adopted, while a root the app pushed by hand still ranks
+     * where it was pushed. The active bit, [maskScreen] and [resolveScope] then apply exactly as in
+     * [current]: a mask raised on the lineage clears the screen beneath it, content pushed after it
+     * inside the same surface still wins, and a subtree that branches is ambiguous just as it is
+     * ambiently.
+     *
+     * A frame in the lineage that is no longer on the stack (its surface was torn down but a stale
+     * handle survived) contributes nothing, and the walk continues past it; an [origin] that is not
+     * on the stack at all therefore resolves to whatever of its lineage still is. Fail-closed both
+     * ways: a stale origin yields less context, never someone else's.
+     */
+    public fun current(origin: ScopeHandle): AmbientContext {
+        val originFrame = origin.frame
+        val lineage = generateSequence(originFrame) { it.parent }.toHashSet()
+        // A parent link may point off this stack — at a frame since removed, or at another stack's
+        // frame, which a hybrid app running two captures on two stacks can hand a composition. Such
+        // a frame is transparent here: it contributes nothing and it is not a boundary, so what is
+        // linked under it is neither hidden by it nor stranded. Only frames on this stack decide.
+        val onStack = frames.toHashSet()
+        val survivors = frames.filter { frame ->
+            frame in lineage || frame.isBeneathWithoutBoundary(originFrame, onStack) || !frame.isUnderABoundary(onStack)
+        }
+        // A container ranks where its earliest nested survivor ranks (see the kdoc). Frames sharing a
+        // rank are always one ancestor chain — the rank comes from one frame's index, and only its
+        // ancestors can borrow it — so their depths are distinct and (rank, depth) totally orders
+        // them, outermost first. That tie-break is load-bearing, not tidiness: the container is the
+        // frame pushed LATER in the case this exists for, so a stable sort alone put the late mask
+        // after the content and blanked it (measured).
+        val index = HashMap<ScopeFrame, Int>(survivors.size * 2)
+        survivors.forEachIndexed { i, frame -> index[frame] = i }
+        val rank = HashMap<ScopeFrame, Int>(survivors.size * 2)
+        for (frame in survivors) {
+            var ancestor: ScopeFrame? = frame
+            while (ancestor != null) {
+                index[ancestor]?.let { own -> rank[ancestor] = minOf(rank[ancestor] ?: own, index.getValue(frame)) }
+                ancestor = ancestor.parent
+            }
+        }
+        return resolve(survivors.sortedWith(compareBy({ rank.getValue(it) }, { it.depth() })))
+    }
+
+    /**
+     * Whether [ancestor] encloses this frame with no `boundary` frame on the path between them (this
+     * frame itself may not be one either: a boundary is where a descent stops, so it is excluded
+     * along with everything beneath it).
+     */
+    private fun ScopeFrame.isBeneathWithoutBoundary(ancestor: ScopeFrame, onStack: Set<ScopeFrame>): Boolean {
+        var frame: ScopeFrame? = this
+        while (frame != null && frame !== ancestor) {
+            if (frame.boundary && frame in onStack) return false
+            frame = frame.parent
+        }
+        return frame === ancestor && this !== ancestor
+    }
+
+    /** Whether this frame, or any frame it is nested in, is a `boundary` on this stack. */
+    private fun ScopeFrame.isUnderABoundary(onStack: Set<ScopeFrame>): Boolean =
+        generateSequence(this) { it.parent }.any { it.boundary && it in onStack }
+
+    private fun recompute(): AmbientContext = resolve(frames)
+
+    private fun resolve(candidates: List<ScopeFrame>): AmbientContext {
         // Inactive frames are skipped ONCE, here, and the survivors are what both screen/section and
         // [resolveScope] see — so "does this frame take part?" is answered in one place rather than
         // being re-derived per field. See [setActive] for why position alone cannot answer it.
-        val live = frames.filter { it.active }
+        // The bit does NOT propagate down the lineage — an inactive frame's own contribution drops,
+        // what is nested inside it keeps its lineage and its voice (pinned by the ScopeStackTest
+        // trio around `an_inactive_frame_still_carries_the_lineage_of_its_descendants`). Keeping a
+        // demoted surface's nested declarations away from another surface's events is the
+        // origin-taking [current]'s job, structurally, not this bit's.
+        val live = candidates.filter { it.active }
         if (live.isEmpty()) return AmbientContext.Empty
         var screen: String? = null
         var section: String? = null
@@ -362,6 +500,8 @@ internal class ScopeFrame(
     var maskScreen: Boolean = false,
     /** See [ScopeStack.setActive]: whether this frame takes part in resolution at all. */
     var active: Boolean = true,
+    /** See the `boundary` [ScopeStack.push] overload. Fixed at push. */
+    val boundary: Boolean = false,
 )
 
 /**

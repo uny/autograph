@@ -45,6 +45,7 @@ internal fun Modifier.autocaptureTaps(
     tracker: Tracker,
     scopeStack: ScopeStack,
     config: AutocaptureConfig,
+    origin: ProviderOrigin,
 ): Modifier {
     val resolver = rememberElementResolver()
     val claims = LocalAutocaptureClaims.current
@@ -60,7 +61,7 @@ internal fun Modifier.autocaptureTaps(
         // attributing taps against the one nobody writes to any more. Same reasoning as the nav
         // listener's key in TrackScreenViews — the two sites capture the same thing and should not
         // disagree about it.
-        .pointerInput(tracker, scopeStack, config, resolver, claims) {
+        .pointerInput(tracker, scopeStack, config, resolver, claims, origin) {
             awaitPointerEventScope {
                 while (true) {
                     // Two passes of the SAME dispatch. Initial resumes before any child handles the
@@ -78,8 +79,10 @@ internal fun Modifier.autocaptureTaps(
                         // Filter directly by isConsumed: on a multi-touch Release the consumed pointer
                         // isn't necessarily changes[0].
                         val change = event.changes.firstOrNull { it.isConsumed } ?: continue
-                        val root = rootCoordinates ?: continue
-                        reportTapIfResolvable(tracker, scopeStack, config) { resolver.resolve(root, change.position) }
+                        val positioned = rootCoordinates ?: continue
+                        reportTapIfResolvable(tracker, scopeStack, config, origin) {
+                            resolver.resolve(positioned, change.position)
+                        }
                     } finally {
                         // Runs on `continue` and on cancellation alike, so evidence never outlives the
                         // dispatch that produced it. Token-qualified: see AutocaptureClaims.generation.
@@ -128,11 +131,15 @@ internal fun reportTapIfResolvable(
     tracker: Tracker,
     scopeStack: ScopeStack,
     config: AutocaptureConfig,
+    origin: ProviderOrigin? = null,
     resolve: () -> AutocaptureTarget?,
 ) {
     try {
         val target = resolve() ?: return
-        val ctx = scopeStack.current()
+        // From this composition's origin when it has one: the surface hosting it and what that
+        // surface declares, plus the declarations inside the composition — never a sibling
+        // surface's frame, however recently pushed. Ambient otherwise; see ProviderOrigin.
+        val ctx = origin?.resolve(scopeStack) ?: scopeStack.current()
         // Delegate the precedence to enrich itself — ambient scope underneath, then screen/section
         // on top as reserved keys — so this path cannot drift from the contract it claims to share.
         // Re-implementing it here previously dropped an ambient section whenever no screen resolved,

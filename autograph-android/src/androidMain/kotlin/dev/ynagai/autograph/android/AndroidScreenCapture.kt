@@ -80,34 +80,41 @@ import dev.ynagai.autograph.context.ScopeStack
  * fragments `RESUMED` at once and changes only their hidden state, which
  * `FragmentManager.FragmentLifecycleCallbacks` has no callback for (only `Fragment.onHiddenChanged`
  * does, on the fragment itself), so a re-shown fragment cannot be observed from here at all and the
- * fragments left `RESUMED` all keep answering — the innermost-mounted one wins (a legacy
+ * fragments left `RESUMED` all keep answering — ambiently the innermost-mounted one wins, while a
+ * tap still resolves from the fragment it landed in (see "Whose event a mask reaches") (a legacy
  * `FragmentPagerAdapter` in `BEHAVIOR_SET_USER_VISIBLE_HINT` mode has the same shape and the same
  * limit; its `BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT` mode, like `ViewPager2`, is covered); and there
  * is no Android equivalent of iOS's app-bundle filter (every class shares one `ClassLoader`), so a
  * view-bearing library Fragment can report unless excluded via [fragmentScreenName]. Return `null`
  * from [activityScreenName] / [fragmentScreenName] to opt a screen out.
  *
- * Three limits belong specifically to the mask, and all three are one-sided — they leave a screen
- * *absent*, or leave part of the stale-screen problem unfixed; none reports a screen that would have
- * been wrong without masking. `show()`/`hide()` gives no callback, so an excluded fragment hidden
- * that way keeps masking until it is detached or its Activity is destroyed. An excluded fragment
- * added as a *sibling* into another container of the same `FragmentManager` — an embedded mini-player
- * or banner rather than a cover — masks the screen it sits beside; only nesting (`parentFragment`) is
- * a containment signal a `FragmentManager` gives, and a sibling has none. And a `DialogFragment` that
- * builds its content in `onCreateDialog()` rather than `onCreateView()` has a null `Fragment.view`,
- * is indistinguishable here from a retained worker fragment, and so is skipped rather than masked —
- * measured, such a dialog reports the screen behind it.
+ * ## Whose event a mask reaches
  *
- * A fourth is not the mask's: an excluded fragment added directly to a *capturable Activity* — that
- * Activity is a screen, and the fragment cannot tell that it covers it — masks that Activity's
- * screen. It is the Activity-level twin of the sibling case above.
+ * A mask — and a screen name — reaches the events captured **in that surface**, not every event
+ * captured while it is up. Each surface's frame is nested under the frame of the surface containing
+ * it (a fragment under its parent fragment or its Activity), and each surface's root view is
+ * claimed with its frame; the native tap capture resolves a tap from the surface the tapped view
+ * belongs to, and a Compose `AutographProvider` resolves a tap from the surface hosting its
+ * composition. So an excluded fragment added as a *sibling* into another container — an embedded
+ * mini-player or banner rather than a cover — or straight into a *capturable Activity* masks the
+ * taps inside itself and leaves the taps on the screen beside it naming that screen, even though
+ * the ambient `ScopeStack.current()` snapshot, which has no event to go by, shows the mask. Pinned by
+ * tap-payload tests on both pipelines (`AndroidTapOriginTest`, `sample-android`'s
+ * `ComposeTapOriginTest`). What the snapshot alone shows is therefore not what a captured tap
+ * carries; read `ScopeStack.current(origin)` for the rule.
  *
- * One limit is **not** one-sided, and it is the price of honouring the opt-out: a surface you opted
- * out with a `null` name does not mask, so if it also covers a screen that is merely paused — `add`ed
- * on top rather than replacing it — events captured on it carry that screen's name. Wrong, not
- * absent. Opting out says "do not report this surface"; it cannot also say "and blank what is under
- * it", and there is no third answer available here. Return a name for such a surface if you would
- * rather it were reported than mis-attributed.
+ * The same scoping is what answers the opt-out's hardest case. A surface you opted out with a `null`
+ * name does not mask, so `add`ed on top of a screen that is merely paused it used to lend that
+ * screen's name to every tap on it — wrong, not absent. A tap in the opted-out surface is now
+ * attributed by what *contains* it (its parent fragment, or its Activity — a shell masks, a screen
+ * names itself), never by the sibling it happens to cover.
+ *
+ * Two limits remain, and both are one-sided — a screen goes *absent*, never wrong. `show()`/`hide()`
+ * gives no callback, so an excluded fragment hidden that way keeps masking its own taps until it is
+ * detached or its Activity is destroyed. And a `DialogFragment` that builds its content in
+ * `onCreateDialog()` rather than `onCreateView()` has a null `Fragment.view`, is indistinguishable
+ * here from a retained worker fragment, and so is skipped rather than masked — measured, such a
+ * dialog reports the screen behind it.
  *
  * ## Rotation
  *
