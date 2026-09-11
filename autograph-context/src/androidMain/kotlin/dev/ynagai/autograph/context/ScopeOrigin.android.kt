@@ -51,9 +51,10 @@ public fun View.autographScopeOrigin(): ScopeHandle? {
  * native capture was installed stays a root — and a root under no boundary applies to every event,
  * so an off-screen pager page would lend its screen to a tap on the page beside it.
  *
- * A **set** per view, not a slot: every outermost provider in one `ComposeView` shares the same
+ * A **list** per view, not a slot: every outermost provider in one `ComposeView` shares the same
  * host view, and a single slot let the second overwrite the first, which then never re-linked.
- * Main thread only.
+ * Registering the same listener twice registers it twice, and one [removeAutographScopeOwnerListener]
+ * then leaves it registered — each caller owns its own registration. Main thread only.
  */
 @AutographInternalApi
 public fun View.addAutographScopeOwnerListener(listener: () -> Unit) {

@@ -344,10 +344,12 @@ public class ScopeStack {
         val survivors = frames.filter { frame ->
             frame in lineage || frame.isBeneathWithoutBoundary(originFrame, onStack) || !frame.isUnderABoundary(onStack)
         }
-        // A container ranks where its earliest nested survivor ranks (see the kdoc). Equal keys are
-        // exactly a container and the first thing inside it, and the container was pushed LATER in
-        // the case this exists for — so the tie goes to the shallower frame, never to insertion order
-        // (a stable sort alone put the late mask after the content and blanked it; measured).
+        // A container ranks where its earliest nested survivor ranks (see the kdoc). Frames sharing a
+        // rank are always one ancestor chain — the rank comes from one frame's index, and only its
+        // ancestors can borrow it — so their depths are distinct and (rank, depth) totally orders
+        // them, outermost first. That tie-break is load-bearing, not tidiness: the container is the
+        // frame pushed LATER in the case this exists for, so a stable sort alone put the late mask
+        // after the content and blanked it (measured).
         val index = HashMap<ScopeFrame, Int>(survivors.size * 2)
         survivors.forEachIndexed { i, frame -> index[frame] = i }
         val rank = HashMap<ScopeFrame, Int>(survivors.size * 2)
