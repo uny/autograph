@@ -21,9 +21,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   captures, whether the event happened inside that frame. A boundary is where `current(origin)`'s
   descent stops: an event resolved from a surface does not pick up the declarations of the surfaces
   nested inside it, because its pipeline has already established the event is not in them. Every
-  surface the Android native capture reserves a frame for is one, and so is the root frame a Compose
-  `AutographProvider` now pushes for its composition. A separate overload with no default for the
-  flag, so an existing `push()` still resolves to the plain one — additive in both dumps.
+  surface the Android native capture reserves a frame for is one. The root frame a Compose
+  `AutographProvider` now pushes for its composition deliberately is **not**: a composition is how
+  the surface hosting it declares its screen, not a surface of its own, so a native tap on a toolbar
+  beside the `ComposeView` (or on an `AndroidView` interop button inside it, which the native capture
+  reports) still sees the `TrackedScreen` in it, and a provider nested inside another's composition
+  stays visible to the outer provider's taps. And a frame under **no** boundary at all — a root the
+  app pushes by hand, a UIKit screen frame, a declaration outside any claimed surface — applies to
+  every origin exactly as it does ambiently, so installing the native capture never hides a
+  hand-pushed frame from a tap. A separate overload with no default for the flag, so an existing
+  `push()` still resolves to the plain one — additive in both dumps.
 
   Third of the [#216] dependency stack (`ScopeStack` API → Android capture → Compose/observer), and
   the one that connects the two pipelines: the native capture nests each surface's frame under the
@@ -32,15 +39,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   resolves a tap from the surface the tapped view belongs to, and the Compose provider links its root
   frame under the surface hosting its composition **at tap time** — a composition is created before
   `onFragmentViewCreated` claims a late-added fragment's view (measured), so a lookup at composition
-  time finds the *Activity's* claim, a wrong owner rather than a missing one. Where nothing claims
-  the host view (no native screen capture, or iOS/desktop) a Compose tap resolves ambiently, as
-  before. The provider also claims its own host view with that frame, so an `AndroidView` interop
-  button inside a `TrackedScreen` — real View content, reported by the *native* tap capture —
-  resolves from the composition and keeps the screen declared around it rather than the Compose
-  host fragment's mask (a correct→absent regression the review caught, now pinned). An Activity's
-  claim goes on its decor, not `android.R.id.content`, so a Toolbar menu tap outside content still
-  belongs to the Activity; and uninstalling the screen capture takes its claims with it, so a stale
-  origin cannot hide a frame the app pushes by hand.
+  time finds the *Activity's* claim, a wrong owner rather than a missing one — and also from a posted
+  runnable at composition, so a composition nobody has tapped yet (a pager's off-screen page) is
+  already nested under its surface and cannot lend its `TrackedScreen` to a tap on the page beside
+  it. Where nothing claims the host view (no native screen capture, iOS/desktop, a `Dialog` window)
+  a Compose tap resolves ambiently, as before. An Activity's claim goes on its decor, not
+  `android.R.id.content`, so a Toolbar menu tap outside content still belongs to the Activity; and
+  uninstalling the screen capture takes its claims with it.
 
 - **`ScopeStack.maskScreen(handle)`** — turn an already-pushed frame into one that declares *there is
   no screen here*, clearing screen and section rather than naming one. It exists for a surface that

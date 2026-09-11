@@ -80,7 +80,8 @@ import dev.ynagai.autograph.context.ScopeStack
  * fragments `RESUMED` at once and changes only their hidden state, which
  * `FragmentManager.FragmentLifecycleCallbacks` has no callback for (only `Fragment.onHiddenChanged`
  * does, on the fragment itself), so a re-shown fragment cannot be observed from here at all and the
- * fragments left `RESUMED` all keep answering — the innermost-mounted one wins (a legacy
+ * fragments left `RESUMED` all keep answering — ambiently the innermost-mounted one wins, while a
+ * tap still resolves from the fragment it landed in (see "Whose event a mask reaches") (a legacy
  * `FragmentPagerAdapter` in `BEHAVIOR_SET_USER_VISIBLE_HINT` mode has the same shape and the same
  * limit; its `BEHAVIOR_RESUME_ONLY_CURRENT_FRAGMENT` mode, like `ViewPager2`, is covered); and there
  * is no Android equivalent of iOS's app-bundle filter (every class shares one `ClassLoader`), so a

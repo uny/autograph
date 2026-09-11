@@ -80,9 +80,8 @@ public fun AutographProvider(
     ) {
         // Outside the autocapture branch, like the host registration above, and for a related
         // reason: the frame is what nests this composition's TrackedScreens under the surface
-        // hosting it and claims the host view, and a native tap capture running alongside resolves
-        // an AndroidView interop tap from that frame whether or not this provider captures anything
-        // itself (see ClaimCompositionHost).
+        // hosting it, and a native tap capture running alongside reads them through that lineage
+        // whether or not this provider captures anything itself.
         ProviderFrame(effectiveScopeStack) { origin ->
             if (autocapture != null) {
                 // Only provided when autocapture is on: registerIgnoredBounds no-ops without it, so

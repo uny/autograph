@@ -360,7 +360,9 @@ internal class AndroidScreenCapture(
             // (and its fresh frame reserved) inside its parent's performDestroyView, *before* the
             // parent's own — so the child's fresh frame was linked to a parent frame that is about
             // to be replaced. Views come back parent-first, so by the time the child reaches here its
-            // parent holds the frame it will keep. `update` reparents in place.
+            // parent holds the frame it will keep. `update` replaces the whole frame, contents
+            // included — safe only because the frame is always fresh and empty at this hook
+            // (reserved at pre-attach or by endMounting); it would blank a screen anywhere else.
             state.parent = parentOf(f)
             scopeStack.update(state.handle, parent = state.parent)
             claim(v, state)

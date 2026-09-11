@@ -51,7 +51,7 @@ class ScopeStackOriginTest {
         val activity = stack.push(screen = "Main", boundary = true)
         val miniPlayer = stack.push(parent = activity, boundary = true)
         stack.maskScreen(miniPlayer)
-        val provider = stack.push(parent = activity, boundary = true)
+        val provider = stack.push(parent = activity)
 
         assertEquals("Main", stack.current(provider).screen)
         assertFalse(stack.current(provider).screenMasked)
@@ -60,21 +60,31 @@ class ScopeStackOriginTest {
     @Test
     fun a_declaration_inside_a_masked_surface_crosses_that_surfaces_own_mask() {
         // A Compose host that names no screen masks; a TrackedScreen composed inside it is the
-        // current declaration of that very surface and must win over the mask — for a tap in the
-        // composition. A tap on the host's own view (outside the composition) stays masked.
+        // current declaration of that very surface and must win over the mask.
         val stack = ScopeStack()
         val host = stack.push(boundary = true)
         stack.maskScreen(host)
-        val provider = stack.push(parent = host, boundary = true)
+        val provider = stack.push(parent = host)
         stack.push(screen = "ComposeScreen", parent = provider)
 
         val inComposition = stack.current(provider)
         assertEquals("ComposeScreen", inComposition.screen)
         assertFalse(inComposition.screenMasked)
+    }
 
-        val onHostView = stack.current(host)
-        assertNull(onHostView.screen)
-        assertTrue(onHostView.screenMasked)
+    @Test
+    fun a_composition_inside_a_surface_is_that_surfaces_own_declaration() {
+        // A native toolbar beside a ComposeView in one Compose host: the host is masked (Compose
+        // declares its screen for it) and the composition's root frame is NOT a boundary, so the
+        // toolbar tap carries the screen the composition declares — as it did ambiently.
+        val stack = ScopeStack()
+        val host = stack.push(boundary = true)
+        stack.maskScreen(host)
+        val provider = stack.push(parent = host)
+        stack.push(screen = "Detail", parent = provider)
+
+        assertEquals("Detail", stack.current(host).screen)
+        assertEquals("Detail", stack.current(provider).screen)
     }
 
     @Test
@@ -98,8 +108,8 @@ class ScopeStackOriginTest {
         val stack = ScopeStack()
         val pageA = stack.push(boundary = true)
         val pageB = stack.push(boundary = true)
-        val providerA = stack.push(parent = pageA, boundary = true)
-        val providerB = stack.push(parent = pageB, boundary = true)
+        val providerA = stack.push(parent = pageA)
+        val providerB = stack.push(parent = pageB)
         stack.push(screen = "A", parent = providerA)
         stack.push(screen = "B", parent = providerB)
         stack.setActive(pageB, false)
@@ -113,20 +123,48 @@ class ScopeStackOriginTest {
     }
 
     @Test
-    fun the_lineage_resolves_by_nesting_depth_not_insertion_order() {
-        // A surface adopted late (an Activity that predates the native capture's install) pushes
-        // its frame AFTER the content it hosts composed. It is still outside that content.
+    fun a_frame_under_no_boundary_applies_to_every_origin() {
+        // A root the app pushed by hand — an experiment scope at startup, or a screen for a surface
+        // it opted out of the native capture — is localized by nothing, so it reaches every event
+        // exactly as it does ambiently. Dropping it once a native capture claims the view tree
+        // would be silent data loss on a supported API.
         val stack = ScopeStack()
-        val provider = stack.push(boundary = true)
-        val declared = stack.push(screen = "ComposeScreen", parent = provider)
+        stack.push(scope = props("experiment" to "b"))
+        val activity = stack.push(boundary = true) // opted out: names nothing
+        stack.push(screen = "Checkout")
+
+        val ctx = stack.current(activity)
+        assertEquals(props("experiment" to "b"), ctx.scope)
+        assertEquals("Checkout", ctx.screen)
+    }
+
+    @Test
+    fun a_boundary_free_stack_resolves_identically_with_or_without_an_origin() {
+        // iOS, desktop, an Android app without the native screen capture: no boundary anywhere, so
+        // a provider resolving from its own frame sees exactly the ambient answer — including a
+        // native pipeline's root screen frame pushed AFTER the composition's.
+        val stack = ScopeStack()
+        val provider = stack.push()
+        stack.push(scope = props("article" to "42"), parent = provider)
+        stack.push(screen = "RecipeDetail") // a UIKit screen, a root
+
+        assertEquals(stack.current().screen, stack.current(provider).screen)
+        assertEquals("RecipeDetail", stack.current(provider).screen)
+        assertEquals(props("article" to "42"), stack.current(provider).scope)
+    }
+
+    @Test
+    fun an_origin_changes_membership_not_order() {
+        // A surface adopted late pushes its frame after the content it hosts; insertion order still
+        // decides between them, as it does ambiently — an origin only removes what is not the
+        // event's, it does not re-rank what is.
+        val stack = ScopeStack()
+        val provider = stack.push()
+        stack.push(screen = "ComposeScreen", parent = provider)
         val lateHost = stack.push(screen = "HostScreen", boundary = true)
         stack.update(provider, parent = lateHost)
 
-        assertEquals("HostScreen", stack.current().screen, "ambiently the late frame wins")
-        assertEquals("ComposeScreen", stack.current(provider).screen)
-
-        stack.remove(declared)
-        assertEquals("HostScreen", stack.current(provider).screen, "with nothing declared inside, the host names the screen")
+        assertEquals("HostScreen", stack.current(provider).screen)
     }
 
     @Test

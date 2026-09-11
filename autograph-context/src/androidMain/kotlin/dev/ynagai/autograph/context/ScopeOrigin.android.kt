@@ -8,7 +8,7 @@ import dev.ynagai.autograph.AutographInternalApi
  * it. Shared between Autograph's own Android pipelines and not a supported public API.
  *
  * The native screen capture sets it on each surface's root view — a fragment's view, an Activity's
- * content — to the frame it reserved for that surface. Two readers then agree on where an event
+ * decor — to the frame it reserved for that surface. Two readers then agree on where an event
  * came from: the native tap capture walks up from the tapped view to the nearest owner and resolves
  * the tap from that frame ([ScopeStack.current] with an origin), and the Compose provider walks up
  * from its host view to find the surface its composition lives in and nests its own root frame
@@ -31,7 +31,7 @@ public var View.autographScopeOwner: ScopeHandle?
  * a `Popup`, a `Dialog` — whose view tree is not under any surface's root).
  *
  * Nearest wins, and that is what makes a surface nested inside another resolve to itself: a
- * fragment's view sits inside its host Activity's content, and both are tagged.
+ * fragment's view sits inside its host Activity's decor, and both are tagged.
  */
 @AutographInternalApi
 public fun View.autographScopeOrigin(): ScopeHandle? {

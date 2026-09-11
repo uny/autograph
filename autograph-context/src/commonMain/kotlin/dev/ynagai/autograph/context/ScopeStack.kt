@@ -78,8 +78,7 @@ public class ScopeStack {
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
      * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. Lineage is
      * framework-independent — a native surface declares it the same way — so this does not tie the
-     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order
-     * ambiently — the origin-taking [current] resolves an origin's lineage by nesting depth instead.
+     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order.
      */
     public fun push(
         scope: Map<String, JsonElement> = EmptyJsonObject,
@@ -103,11 +102,13 @@ public class ScopeStack {
      * them. See [current] for the exact rule.
      *
      * Which frames should be boundaries follows from that: those a pipeline can *localize* an event
-     * to. Every surface a native capture reserves a frame for is one (an Activity, a fragment), and
-     * so is the root frame a Compose provider pushes for its composition — the Compose observer can
-     * tell a tap is in its composition, but not which of the `TrackedScreen`s inside it the tap is
-     * under, which is exactly why those inner frames are *not* boundaries. A plain [push] is the
-     * right call for any declaration that is not a localizable surface.
+     * to **and** that stand for a surface of their own. Every surface a native capture reserves a
+     * frame for is one (an Activity, a fragment). The root frame a Compose provider pushes for its
+     * composition is deliberately *not*, although the observer can localize a tap to it: a
+     * composition is how the surface hosting it declares its screen, not a surface of its own, so a
+     * native tap on a toolbar *beside* the `ComposeView` must still see the `TrackedScreen` inside
+     * it. A plain [push] is the right call for any declaration that is not a surface — and a frame
+     * under no boundary at all applies to every event, whatever its origin (see [current]).
      *
      * Static for the life of the frame; [update] does not revise it. [boundary] has no default so
      * that a call spelling none of the arguments still resolves to the plain [push] overload.
@@ -297,24 +298,26 @@ public class ScopeStack {
      * frame list rather than a published snapshot, because the answer depends on the origin and is
      * computed per event.
      *
-     * Two sets of frames take part, and only those:
+     * Three sets of frames take part, and only those:
      * - the **lineage** of [origin] — itself and every frame it is nested in, following the parent
      *   links declared at [push] / [update] — so a screen named by the surface hosting the origin,
-     *   or a mask raised by it, applies; and
+     *   or a mask raised by it, applies;
      * - the **subtree** beneath [origin], stopping at (and excluding) any frame pushed as a
      *   `boundary` together with everything under it. What the origin's own pipeline could not
-     *   localize further — the `TrackedScreen`s inside one Compose composition — still applies, and
-     *   what it could — a surface nested inside the origin, which the pipeline has established the
-     *   event is not in — does not.
+     *   localize further — the `TrackedScreen`s inside a composition — still applies, and what it
+     *   could — a surface nested inside the origin, which the pipeline has established the event is
+     *   not in — does not; and
+     * - every frame that is **under no boundary at all**: a root the app pushed by hand, a screen a
+     *   native pipeline that claims no views pushes (iOS), a Compose declaration outside any claimed
+     *   surface. Nothing localizes those, so they apply to every event, exactly as they do ambiently.
+     *   A boundary-free stack therefore resolves identically with or without an origin.
      *
      * Everything else is out, and that is the point: a sibling surface's declaration, or its mask,
      * never reaches an event that did not happen in it, whatever the two frames' insertion order.
-     * Within the two sets, the lineage resolves outer→inner by nesting depth rather than by
-     * insertion order (a surface adopted late still sits *outside* the content it hosts), the
-     * subtree keeps insertion order after it, and the active bit and [maskScreen] apply exactly as
-     * in [current] — a mask raised on the lineage clears the screen beneath it; content pushed
-     * after it inside the same surface still wins. Scope resolves by lineage as always
-     * ([resolveScope]), and a subtree that branches is ambiguous there just as it is ambiently.
+     * Membership is all an origin changes — the survivors resolve in insertion order, with the
+     * active bit, [maskScreen] and [resolveScope] applying exactly as in [current]: a mask raised on
+     * the lineage clears the screen beneath it, content pushed after it inside the same surface
+     * still wins, and a subtree that branches is ambiguous just as it is ambiently.
      *
      * A frame in the lineage that is no longer on the stack (its surface was torn down but a stale
      * handle survived) contributes nothing, and the walk continues past it; an [origin] that is not
@@ -323,17 +326,12 @@ public class ScopeStack {
      */
     public fun current(origin: ScopeHandle): AmbientContext {
         val originFrame = origin.frame
-        val onStack = frames.toHashSet()
-        val lineage = generateSequence(originFrame) { it.parent }
-            .filter { it in onStack }
-            .toList()
-            .asReversed() // outermost first: nesting depth is the order the lineage resolves in
-        // Insertion order, restricted to frames strictly beneath the origin whose path up to it
-        // crosses no boundary — the origin's own pipeline could not localize past these.
-        val subtree = frames.filter { frame ->
-            frame !== originFrame && frame.isBeneathWithoutBoundary(originFrame)
-        }
-        return resolve(lineage + subtree)
+        val lineage = generateSequence(originFrame) { it.parent }.toHashSet()
+        return resolve(
+            frames.filter { frame ->
+                frame in lineage || frame.isBeneathWithoutBoundary(originFrame) || !frame.isUnderABoundary()
+            },
+        )
     }
 
     /**
@@ -347,8 +345,12 @@ public class ScopeStack {
             if (frame.boundary) return false
             frame = frame.parent
         }
-        return frame === ancestor
+        return frame === ancestor && this !== ancestor
     }
+
+    /** Whether this frame, or any frame it is nested in, is a `boundary`. */
+    private fun ScopeFrame.isUnderABoundary(): Boolean =
+        generateSequence(this) { it.parent }.any { it.boundary }
 
     private fun recompute(): AmbientContext = resolve(frames)
 

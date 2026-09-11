@@ -68,18 +68,66 @@ private fun DeclaringTappable(screen: String, tag: String) {
  */
 class OwnComposeActivity : FragmentActivity() {
     lateinit var ownCompose: ComposeView
+    /** Native chrome beside the composition — a bottom-navigation item, say. */
+    lateinit var chrome: android.widget.Button
     val container = View.generateViewId()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ownCompose = ComposeView(this).apply { setContent { DeclaringTappable("Main", "own") } }
+        chrome = android.widget.Button(this).apply { id = androidx.fragment.R.id.fragment_container_view_tag; isClickable = true }
         setContentView(
             FrameLayout(this).apply {
                 addView(ownCompose)
+                addView(chrome)
                 addView(FrameLayout(context).apply { id = container })
             },
         )
     }
+}
+
+/** Two sibling providers in ONE ComposeView, each declaring a screen around an interop button. */
+class SiblingProvidersFragment : Fragment() {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        ComposeView(requireContext()).apply {
+            setContent {
+                androidx.compose.foundation.layout.Column {
+                    AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                        TrackedScreen("A") { InteropButton { OriginFixtures.interopButton = it } }
+                    }
+                    AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                        TrackedScreen("B") { InteropButton { OriginFixtures.secondInteropButton = it } }
+                    }
+                }
+            }
+        }
+}
+
+/** A provider nested inside another's composition, each with its own tracker. */
+class NestedProvidersFragment : Fragment() {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        ComposeView(requireContext()).apply {
+            setContent {
+                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                    TrackedScreen("Outer") {
+                        AutographProvider(OriginFixtures.innerTracker!!, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                            TrackedScreen("Inner") { Box(Modifier.fillMaxSize().testTag("inner").clickable {}) {} }
+                        }
+                    }
+                }
+            }
+        }
+}
+
+@Composable
+private fun InteropButton(onCreated: (android.widget.Button) -> Unit) {
+    AndroidView(factory = { context ->
+        android.widget.Button(context).apply {
+            id = androidx.fragment.R.id.fragment_container_view_tag
+            isClickable = true
+            onCreated(this)
+        }
+    })
 }
 
 /** Hosts a composition that declares nothing — the mask-raising shape. */
@@ -130,7 +178,9 @@ class DeclaringInsideMaskFragment : DeclaringTapFragment("ComposeScreen", "decla
 object OriginFixtures {
     lateinit var tracker: Tracker
     lateinit var scopeStack: ScopeStack
+    var innerTracker: Tracker? = null
     var interopButton: android.widget.Button? = null
+    var secondInteropButton: android.widget.Button? = null
 }
 
 /**
@@ -218,30 +268,110 @@ class ComposeTapOriginTest {
     @Test
     fun aNativeTapOnInteropContentInsideACompositionCarriesTheScreenDeclaredAroundIt() {
         // An AndroidView inside a TrackedScreen is View content: the NATIVE tap capture reports it,
-        // resolving from the nearest claimed ancestor of the pressed view. That ancestor must be the
-        // composition's own root frame, not the Compose host fragment around it — the host is a
-        // masked surface, and resolving from it would blank a screen the composition declares.
-        // Before this claim existed the tap resolved from the fragment and carried no screen.
+        // resolving from the Compose host fragment around it — a masked surface. The descent from
+        // the fragment must reach the composition's declaration, i.e. the provider's frame must not
+        // be a boundary; when it was one the tap carried no screen (measured).
         val activity = launch()
         run {
             val host = InteropFragment()
             activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
             idle()
-            val button = OriginFixtures.interopButton!!
-
-            button.isPressed = true
-            val downTime = SystemClock.uptimeMillis() + 1000L * ++gestures
-            activity.window.callback!!.dispatchTouchEvent(
-                MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_UP, 1f, 1f, 0),
-            )
-            button.isPressed = false
-
+            nativeTap(activity, OriginFixtures.interopButton!!)
             assertEquals("fragment_container_view_tag", taps.single().first)
             assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
         }
     }
 
+    @Test
+    fun aMaskedShellActivitysOwnNativeChromeCarriesTheScreenItsCompositionDeclares() {
+        // The Activity hosts Compose, so the native capture masks it; its composition declares the
+        // screen FOR it. A native tap on chrome beside the ComposeView resolves from the Activity,
+        // and the composition's frame — not a boundary — is on the way down, so the tap carries the
+        // declared screen, as it did ambiently. It also must not be blanked by a sibling mask.
+        val activity = launch()
+        val mini = SilentTapFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.container, mini).commitNow()
+        idle()
+        assertNull(scopeStack.current().screen)
+
+        nativeTap(activity, activity.chrome)
+        assertEquals("Main", taps.single().second["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun siblingProvidersInOneComposeViewResolveInteropTapsAsTheHostDoes() {
+        // Two providers share one host view; neither can claim it for itself without mis-attributing
+        // the other's interop taps. Both resolve from the fragment, whose descent reaches both
+        // declarations — insertion order decides, the ambient rule. Measured as the alternative: a
+        // per-provider claim on the shared view sent the first provider's button to the second's
+        // screen (correct→wrong).
+        val activity = launch()
+        val host = SiblingProvidersFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
+        idle()
+
+        nativeTap(activity, OriginFixtures.interopButton!!)
+        val first = taps.single().second["screen"]?.jsonPrimitive?.content
+        taps.clear()
+        nativeTap(activity, OriginFixtures.secondInteropButton!!)
+        val second = taps.single().second["screen"]?.jsonPrimitive?.content
+        assertEquals("both interop taps resolve from the shared host: same answer", first, second)
+        assertEquals("B", second)
+    }
+
+    @Test
+    fun aNestedProvidersDeclarationStaysVisibleToTheOuterProvidersTap() {
+        // The outer observer cannot localize a tap out of a nested provider's subtree, so the nested
+        // frame must not be a boundary: a tap on the inner content, reported by BOTH observers,
+        // carries "Inner" on both — the ambient answer — never "Outer" for the outer tracker.
+        val innerTaps = mutableListOf<Map<String, JsonElement>>()
+        OriginFixtures.innerTracker = object : Tracker {
+            override fun track(name: String, properties: Map<String, JsonElement>, target: String?) { innerTaps += properties }
+            override fun screen(name: String, properties: Map<String, JsonElement>) = Unit
+            override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
+        }
+        val activity = launch()
+        val host = NestedProvidersFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
+        idle()
+        val compose = host.view as ComposeView
+
+        tap(compose)
+        assertEquals("Inner", taps.single().second["screen"]?.jsonPrimitive?.content)
+        assertEquals("Inner", innerTaps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun aFrameTheAppPushedByHandReachesEveryTapWhileTheNativeCaptureIsInstalled() {
+        // A root frame pushed through the public API — an experiment scope at startup — is under no
+        // boundary, so every origin sees it. Dropping it once the capture claims the view tree
+        // would be silent data loss; both pipelines are checked.
+        val activity = launch()
+        scopeStack.push(scope = mapOf("experiment" to kotlinx.serialization.json.JsonPrimitive("b")))
+        val host = InteropFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
+        idle()
+
+        tap(activity.ownCompose)
+        assertEquals("b", taps.single().second["experiment"]?.jsonPrimitive?.content)
+        taps.clear()
+        nativeTap(activity, OriginFixtures.interopButton!!)
+        assertEquals("b", taps.single().second["experiment"]?.jsonPrimitive?.content)
+        assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
+    }
+
     // --- helpers ----------------------------------------------------------------------------------
+
+    /** A pressed native [button] lifting, through the window callback the native capture wraps. */
+    private fun nativeTap(activity: FragmentActivity, button: android.widget.Button) {
+        button.isPressed = true
+        val downTime = SystemClock.uptimeMillis() + 1000L * ++gestures
+        activity.window.callback!!.dispatchTouchEvent(
+            MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_UP, 1f, 1f, 0),
+        )
+        button.isPressed = false
+        assertTrue("the tap was reported", taps.isNotEmpty())
+    }
 
     private fun launch(): OwnComposeActivity {
         OriginFixtures.tracker = tracker

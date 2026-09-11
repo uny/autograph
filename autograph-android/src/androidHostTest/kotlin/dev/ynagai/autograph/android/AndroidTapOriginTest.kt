@@ -232,6 +232,39 @@ class AndroidTapOriginTest {
     }
 
     @Test
+    fun aFrameTheAppPushedByHandReachesEveryTapWhileTheCaptureIsInstalled() {
+        // A root pushed through the public API is under no boundary, so it is nobody's to exclude.
+        val activity = launch(fragmentScreenName = { null })
+        scopeStack.push(scope = mapOf("experiment" to kotlinx.serialization.json.JsonPrimitive("b")))
+        val optedOut = ButtonFragmentA()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, optedOut).commitNow()
+        scopeStack.push(screen = "Checkout") // the opted-out surface's screen, named by hand
+
+        tap(activity, optedOut.button)
+        assertEquals("b", taps.single()["experiment"]?.jsonPrimitive?.content)
+        assertEquals("Checkout", taps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun aFragmentThatPredatesTheInstallIsClaimedWhenItsActivityIsAdopted() {
+        // Late install: the fragment's viewCreated is long past, so its view is claimed at adoption.
+        // Ambient snapshots cannot see this claim; only a tap can.
+        controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val fragment = ButtonFragmentA()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, fragment).commitNow()
+        val mini = MiniPlayerFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerB, mini).commitNow()
+        install()
+        controller.pause().resume()
+        Robolectric.getForegroundThreadScheduler().advanceToLastPostedRunnable()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        tap(activity, fragment.button)
+        assertEquals("ButtonFragmentA", taps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun aTapOnAViewNoSurfaceHasClaimedResolvesAmbiently() {
         // Tap capture alone: no screen capture, so nothing claims the view tree, and the tap falls
         // back to the ambient stack — here a frame the app pushed by hand.
@@ -247,7 +280,7 @@ class AndroidTapOriginTest {
 
     // --- helpers ----------------------------------------------------------------------------------
 
-    private fun launch(fragmentScreenName: (Fragment) -> String? = { it.javaClass.simpleName }): OwnHostActivity {
+    private fun install(fragmentScreenName: (Fragment) -> String? = { it.javaClass.simpleName }) {
         screens = installAutographNativeScreenCapture(
             application = RuntimeEnvironment.getApplication(),
             tracker = tracker,
@@ -256,6 +289,10 @@ class AndroidTapOriginTest {
             fragmentScreenName = fragmentScreenName,
         )
         tapsCapture = installAutographNativeTapCapture(RuntimeEnvironment.getApplication(), tracker, scopeStack)
+    }
+
+    private fun launch(fragmentScreenName: (Fragment) -> String? = { it.javaClass.simpleName }): OwnHostActivity {
+        install(fragmentScreenName)
         controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
         Robolectric.getForegroundThreadScheduler().advanceToLastPostedRunnable()
         Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
