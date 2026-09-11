@@ -34,7 +34,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `onFragmentViewCreated` claims a late-added fragment's view (measured), so a lookup at composition
   time finds the *Activity's* claim, a wrong owner rather than a missing one. Where nothing claims
   the host view (no native screen capture, or iOS/desktop) a Compose tap resolves ambiently, as
-  before.
+  before. The provider also claims its own host view with that frame, so an `AndroidView` interop
+  button inside a `TrackedScreen` — real View content, reported by the *native* tap capture —
+  resolves from the composition and keeps the screen declared around it rather than the Compose
+  host fragment's mask (a correct→absent regression the review caught, now pinned). An Activity's
+  claim goes on its decor, not `android.R.id.content`, so a Toolbar menu tap outside content still
+  belongs to the Activity; and uninstalling the screen capture takes its claims with it, so a stale
+  origin cannot hide a frame the app pushes by hand.
 
 - **`ScopeStack.maskScreen(handle)`** — turn an already-pushed frame into one that declares *there is
   no screen here*, clearing screen and section rather than naming one. It exists for a surface that

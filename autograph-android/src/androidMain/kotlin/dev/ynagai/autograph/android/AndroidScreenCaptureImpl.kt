@@ -195,12 +195,14 @@ internal class AndroidScreenCapture(
         // right trade: a late position is a worse mask, no position at all is no capture.
         startTracking(activity)
         val state = activityStates[activity] ?: return
-        // Claimed at resume, not at create: this callback runs inside super.onCreate, before the
-        // Activity has any content view, and forcing the decor into existence there is a known way
-        // to break AppCompat's own installation of it. No tap can arrive before the first resume,
-        // and the Compose provider looks its host up at tap time, never at composition. Idempotent:
-        // an Activity's frame never changes.
-        activity.findViewById<View>(android.R.id.content)?.autographScopeOwner = state.handle
+        // The DECOR, not android.R.id.content: an AppCompat window action bar sits outside content,
+        // and a Toolbar menu tap is about the most common native tap a fragment-shell app has. The
+        // tap capture resolves from `peekDecorView()`, so the claim goes on the same root. Claimed at
+        // resume, not at create — this callback runs inside super.onCreate, before any content
+        // exists — and `peekDecorView` never forces the decor into existence. No tap can arrive
+        // before the first resume, and the Compose provider looks its host up later still.
+        // Idempotent: an Activity's frame never changes.
+        activity.decorView()?.autographScopeOwner = state.handle
         onSurfaceResumed(
             state = state,
             className = activity.javaClass.name,
@@ -247,7 +249,7 @@ internal class AndroidScreenCapture(
     override fun onActivityDestroyed(activity: Activity) {
         if (!active) return
         resumedActivities -= activity
-        activityStates.remove(activity)?.let { scopeStack.remove(it.handle) }
+        activityStates.remove(activity)?.let { release(it, activity.decorView()) }
         fragmentRegistrations.remove(activity)?.let {
             // Releasing here is load-bearing; the order relative to the unregister below is not (the
             // states are a field of the callbacks object, which unregistering does not touch). This
@@ -321,7 +323,7 @@ internal class AndroidScreenCapture(
 
         /** Drops every frame this Activity's fragments own. Called before the callbacks unregister. */
         fun releaseFrames() {
-            fragmentStates.values.forEach { scopeStack.remove(it.handle) }
+            fragmentStates.forEach { (fragment, state) -> release(state, fragment.view) }
             fragmentStates.clear()
         }
 
@@ -438,7 +440,7 @@ internal class AndroidScreenCapture(
 
         override fun onFragmentDetached(fm: FragmentManager, f: Fragment) {
             if (!active) return
-            fragmentStates.remove(f)?.let { scopeStack.remove(it.handle) }
+            fragmentStates.remove(f)?.let { release(it, f.view) }
         }
     }
 
@@ -528,6 +530,20 @@ internal class AndroidScreenCapture(
     private fun claim(view: View, state: SurfaceState) {
         view.autographScopeOwner = state.handle
     }
+
+    /**
+     * Drops [state]'s frame and takes its claim off [view], if it still holds it. A claim left
+     * behind would hand the tap capture a stale origin, which resolves to *less* than the ambient
+     * context (a removed frame's lineage contributes nothing) — after this capture alone is
+     * uninstalled, a frame the app pushes by hand must be visible to native taps again.
+     */
+    private fun release(state: SurfaceState, view: View?) {
+        scopeStack.remove(state.handle)
+        if (view != null && view.autographScopeOwner === state.handle) view.autographScopeOwner = null
+    }
+
+    /** The window's decor if it exists; never forces one into existence. */
+    private fun Activity.decorView(): View? = runCatching { window.peekDecorView() }.getOrNull()
 
     /**
      * Handles one surface reaching `RESUMED`, for both Activities and Fragments: settles what its frame
@@ -672,7 +688,7 @@ internal class AndroidScreenCapture(
     fun tearDown() {
         active = false
         handler.removeCallbacksAndMessages(null)
-        activityStates.values.forEach { scopeStack.remove(it.handle) }
+        activityStates.forEach { (activity, state) -> release(state, activity.decorView()) }
         activityStates.clear()
         fragmentRegistrations.values.forEach {
             it.callbacks.releaseFrames()

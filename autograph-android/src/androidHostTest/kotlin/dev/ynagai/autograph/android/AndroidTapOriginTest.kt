@@ -199,6 +199,39 @@ class AndroidTapOriginTest {
     }
 
     @Test
+    fun aTapOutsideTheContentViewStillBelongsToTheActivity() {
+        // An AppCompat window action bar lives in the decor, outside android.R.id.content — a
+        // Toolbar menu tap must resolve from the Activity like any other, not fall back to the
+        // ambient stack where a sibling's mask wins.
+        val activity = launch()
+        val mini = MiniPlayerFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, mini).commitNow()
+        assertNull(scopeStack.current().screen)
+        val menuItem = Button(activity).apply { id = androidx.fragment.R.id.fragment_container_view_tag; isClickable = true }
+        (activity.window.decorView as ViewGroup).addView(menuItem)
+
+        tap(activity, menuItem)
+        assertEquals("Main", taps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun uninstallingTheScreenCaptureTakesItsClaimsWithIt() {
+        // A claim left on a view after uninstall hands the tap capture a stale origin, whose
+        // lineage is gone — resolving to nothing, where the ambient stack still has an answer.
+        val activity = launch()
+        val fragment = ButtonFragmentA()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, fragment).commitNow()
+        screens.uninstall()
+        scopeStack.push(screen = "Manual")
+
+        tap(activity, activity.ownButton)
+        assertEquals("Manual", taps.single()["screen"]?.jsonPrimitive?.content)
+        taps.clear()
+        tap(activity, fragment.button)
+        assertEquals("Manual", taps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun aTapOnAViewNoSurfaceHasClaimedResolvesAmbiently() {
         // Tap capture alone: no screen capture, so nothing claims the view tree, and the tap falls
         // back to the ambient stack — here a frame the app pushed by hand.

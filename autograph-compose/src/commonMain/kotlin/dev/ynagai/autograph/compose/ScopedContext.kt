@@ -160,19 +160,48 @@ internal fun MirrorAmbientFrame(
 @Composable
 internal fun ProviderFrame(
     stack: ScopeStack,
-    content: @Composable (root: Array<ScopeHandle?>) -> Unit,
+    content: @Composable (origin: ProviderOrigin) -> Unit,
 ) {
     val holder = remember(stack) { arrayOfNulls<ScopeHandle>(1) }
+    // A provider nested inside another's composition (a tracker swapped for a subtree) is not a
+    // separate surface: its frame nests under the enclosing provider's, and that is also where its
+    // taps resolve from — the view walk below is the OUTERMOST provider's job alone, since every
+    // provider in one composition shares the same host view.
+    val enclosing = LocalScopeParent.current
+    val hostSurface = if (enclosing == null) rememberHostSurfaceLookup() else remember(enclosing) { { enclosing[0] } }
+    val origin = remember(holder, hostSurface) { ProviderOrigin(holder, hostSurface) }
     DisposableEffect(stack) {
-        val pushed = stack.push(boundary = true)
+        val pushed = stack.push(parent = enclosing?.get(0), boundary = true)
         holder[0] = pushed
         onDispose {
             stack.remove(pushed)
             holder[0] = null
         }
     }
-    CompositionLocalProvider(LocalScopeParent provides holder) { content(holder) }
+    if (enclosing == null) ClaimCompositionHost(origin)
+    CompositionLocalProvider(LocalScopeParent provides holder) { content(origin) }
 }
+
+/**
+ * Claims the composition's host view with the [ProviderFrame], the way a native surface claims its
+ * root view.
+ *
+ * For the **native** tap capture, which reports an `AndroidView` interop button inside this
+ * composition (real View content presses like any other — see `RegisterComposeHostForNativeCapture`)
+ * and resolves from the nearest claimed ancestor of the pressed view. Without this claim that
+ * ancestor is the Compose host fragment: a masked surface whose descent stops at this frame, so a
+ * `TrackedScreen` declared around the interop content would be blanked — measured, `Detail`
+ * became null. With it the tap resolves from this frame and carries what the composition declares.
+ *
+ * The frame is *not* linked under its host here, only at Compose-tap time ([ProviderOrigin]), and
+ * a native interop tap cannot tell: every native surface above a composition is a Compose host by
+ * the capture's own filter (its view subtree contains the `AbstractComposeView`), so it is masked
+ * or silent, never named — a lineage that adds nothing to what the composition declares. Measured
+ * before settling on this: a named parent fragment around such a host is itself a Compose host.
+ * No-op off Android.
+ */
+@Composable
+internal expect fun ClaimCompositionHost(origin: ProviderOrigin)
 
 /**
  * Where a tap in this composition is resolved from: the [ProviderFrame]'s handle, linked to the
@@ -197,6 +226,9 @@ internal class ProviderOrigin(
     private val root: Array<ScopeHandle?>,
     private val hostSurface: () -> ScopeHandle?,
 ) {
+    /** The composition's root frame, once pushed. */
+    val frame: ScopeHandle? get() = root[0]
+
     /** The context for a tap in this composition. Main thread, like the tap dispatch it runs in. */
     fun resolve(stack: ScopeStack): AmbientContext {
         val frame = root[0] ?: return stack.current()
@@ -208,8 +240,10 @@ internal class ProviderOrigin(
 
 /**
  * The frame of the surface hosting this composition, read **at call time** — the native screen
- * capture's claim on the nearest claimed ancestor of the host view. Null where nothing claims it.
- * See [ProviderOrigin] for why this is a lookup and not a value.
+ * capture's claim on the nearest claimed ancestor of the host view, *above* the host view itself
+ * (which [ClaimCompositionHost] claims with this composition's own frame; a frame cannot be its
+ * own parent). Null where nothing claims it. See [ProviderOrigin] for why this is a lookup and not
+ * a value.
  */
 @Composable
 internal expect fun rememberHostSurfaceLookup(): () -> ScopeHandle?

@@ -16,11 +16,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
+import dev.ynagai.autograph.android.installAutographNativeTapCapture
 import dev.ynagai.autograph.compose.AutocaptureConfig
 import dev.ynagai.autograph.compose.AutographProvider
 import dev.ynagai.autograph.compose.TrackedScreen
@@ -97,6 +99,29 @@ open class DeclaringTapFragment(private val screen: String, private val tag: Str
     }
 }
 
+/**
+ * Hosts a composition that declares `Detail` around an `AndroidView` interop button — real View
+ * content, which the **native** tap capture reports (see `RegisterComposeHostForNativeCapture`).
+ */
+class InteropFragment : Fragment() {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        ComposeView(requireContext()).apply {
+            setContent {
+                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                    TrackedScreen("Detail") {
+                        AndroidView(factory = { context ->
+                            android.widget.Button(context).apply {
+                                id = androidx.fragment.R.id.fragment_container_view_tag
+                                isClickable = true
+                                OriginFixtures.interopButton = this
+                            }
+                        })
+                    }
+                }
+            }
+        }
+}
+
 class PageAFragment : DeclaringTapFragment("PageA", "a")
 class PageBFragment : DeclaringTapFragment("PageB", "b")
 class DeclaringInsideMaskFragment : DeclaringTapFragment("ComposeScreen", "declared")
@@ -105,6 +130,7 @@ class DeclaringInsideMaskFragment : DeclaringTapFragment("ComposeScreen", "decla
 object OriginFixtures {
     lateinit var tracker: Tracker
     lateinit var scopeStack: ScopeStack
+    var interopButton: android.widget.Button? = null
 }
 
 /**
@@ -129,10 +155,12 @@ class ComposeTapOriginTest {
     }
     private val scopeStack = ScopeStack()
     private var screens: dev.ynagai.autograph.android.AutographNativeScreenCapture? = null
+    private var nativeTaps: dev.ynagai.autograph.android.AutographNativeTapCapture? = null
 
     @After
     fun tearDown() {
         screens?.uninstall()
+        nativeTaps?.uninstall()
     }
 
     @Test
@@ -187,6 +215,32 @@ class ComposeTapOriginTest {
         assertEquals("PageB", taps.single().second["screen"]?.jsonPrimitive?.content)
     }
 
+    @Test
+    fun aNativeTapOnInteropContentInsideACompositionCarriesTheScreenDeclaredAroundIt() {
+        // An AndroidView inside a TrackedScreen is View content: the NATIVE tap capture reports it,
+        // resolving from the nearest claimed ancestor of the pressed view. That ancestor must be the
+        // composition's own root frame, not the Compose host fragment around it — the host is a
+        // masked surface, and resolving from it would blank a screen the composition declares.
+        // Before this claim existed the tap resolved from the fragment and carried no screen.
+        val activity = launch()
+        run {
+            val host = InteropFragment()
+            activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
+            idle()
+            val button = OriginFixtures.interopButton!!
+
+            button.isPressed = true
+            val downTime = SystemClock.uptimeMillis() + 1000L * ++gestures
+            activity.window.callback!!.dispatchTouchEvent(
+                MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_UP, 1f, 1f, 0),
+            )
+            button.isPressed = false
+
+            assertEquals("fragment_container_view_tag", taps.single().first)
+            assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
+        }
+    }
+
     // --- helpers ----------------------------------------------------------------------------------
 
     private fun launch(): OwnComposeActivity {
@@ -199,6 +253,9 @@ class ComposeTapOriginTest {
             activityScreenName = { it.javaClass.simpleName },
             fragmentScreenName = { it.javaClass.simpleName },
         )
+        // Both native pipelines, as a hybrid app runs them; the tap capture wraps a window at resume,
+        // so it has to be in place before the Activity is.
+        nativeTaps = installAutographNativeTapCapture(RuntimeEnvironment.getApplication(), tracker, scopeStack)
         val activity = Robolectric.buildActivity(OwnComposeActivity::class.java).setup().get()
         idle()
         assertEquals("the Activity's own composition names the screen", "Main", scopeStack.current().screen)

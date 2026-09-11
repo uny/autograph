@@ -13,7 +13,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import dev.ynagai.autograph.Tracker
-import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -46,12 +45,10 @@ internal fun Modifier.autocaptureTaps(
     tracker: Tracker,
     scopeStack: ScopeStack,
     config: AutocaptureConfig,
-    root: Array<ScopeHandle?>,
+    origin: ProviderOrigin,
 ): Modifier {
     val resolver = rememberElementResolver()
     val claims = LocalAutocaptureClaims.current
-    val hostSurface = rememberHostSurfaceLookup()
-    val origin = remember(root, hostSurface) { ProviderOrigin(root, hostSurface) }
     // remember, not a bare local var: the pointerInput coroutine below is long-lived and only
     // restarts when tracker/config/resolver change identity, so a plain var reassigned by
     // onGloballyPositioned on every recomposition would go stale relative to it — this shared,
@@ -82,9 +79,9 @@ internal fun Modifier.autocaptureTaps(
                         // Filter directly by isConsumed: on a multi-touch Release the consumed pointer
                         // isn't necessarily changes[0].
                         val change = event.changes.firstOrNull { it.isConsumed } ?: continue
-                        val rootCoordinates = rootCoordinates ?: continue
+                        val positioned = rootCoordinates ?: continue
                         reportTapIfResolvable(tracker, scopeStack, config, origin) {
-                            resolver.resolve(rootCoordinates, change.position)
+                            resolver.resolve(positioned, change.position)
                         }
                     } finally {
                         // Runs on `continue` and on cancellation alike, so evidence never outlives the

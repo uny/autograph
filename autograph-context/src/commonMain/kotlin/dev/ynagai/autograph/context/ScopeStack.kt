@@ -78,7 +78,8 @@ public class ScopeStack {
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
      * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. Lineage is
      * framework-independent — a native surface declares it the same way — so this does not tie the
-     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order.
+     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order
+     * ambiently — the origin-taking [current] resolves an origin's lineage by nesting depth instead.
      */
     public fun push(
         scope: Map<String, JsonElement> = EmptyJsonObject,
