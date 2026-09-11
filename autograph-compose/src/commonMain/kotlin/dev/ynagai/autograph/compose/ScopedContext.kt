@@ -200,10 +200,10 @@ internal fun ProviderFrame(
  * composition that has not been tapped yet — the off-screen page of a pager — would, unlinked,
  * lend its `TrackedScreen` to a tap on the page beside it. Measured: page A carried `PageB`. The
  * link is made from a posted runnable because the claim on a late-added fragment's view lands
- * after this composition is created (see [ProviderOrigin]). No-op off Android.
- *
- * Residual: a native capture installed *after* this composition composed claims the host later
- * still, and nothing re-runs this until the view re-attaches or the composition is tapped.
+ * after this composition is created (see [ProviderOrigin]) — and re-made when a surface above the
+ * host view claims or releases its root later still (a native capture installed after this
+ * composition existed), which the capture announces through `View.autographScopeOwnerListener`.
+ * No-op off Android.
  */
 @Composable
 internal expect fun KeepLinkedToHost(stack: ScopeStack, origin: ProviderOrigin)

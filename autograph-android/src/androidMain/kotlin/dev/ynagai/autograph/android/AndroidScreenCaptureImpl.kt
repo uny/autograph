@@ -19,6 +19,7 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.autographScopeOwner
+import dev.ynagai.autograph.context.notifyAutographScopeOwnerChanged
 import dev.ynagai.autograph.context.emitScreenView
 
 /**
@@ -202,7 +203,7 @@ internal class AndroidScreenCapture(
         // exists — and `peekDecorView` never forces the decor into existence. No tap can arrive
         // before the first resume, and the Compose provider looks its host up later still.
         // Idempotent: an Activity's frame never changes.
-        activity.decorView()?.autographScopeOwner = state.handle
+        activity.decorView()?.let { claim(it, state) }
         onSurfaceResumed(
             state = state,
             className = activity.javaClass.name,
@@ -531,6 +532,9 @@ internal class AndroidScreenCapture(
      */
     private fun claim(view: View, state: SurfaceState) {
         view.autographScopeOwner = state.handle
+        // Compositions already inside this view (a late install, a re-claimed mounting) re-link
+        // under the frame that now claims them; see View.autographScopeOwnerListener.
+        view.notifyAutographScopeOwnerChanged()
     }
 
     /**
@@ -541,7 +545,10 @@ internal class AndroidScreenCapture(
      */
     private fun release(state: SurfaceState, view: View?) {
         scopeStack.remove(state.handle)
-        if (view != null && view.autographScopeOwner === state.handle) view.autographScopeOwner = null
+        if (view != null && view.autographScopeOwner === state.handle) {
+            view.autographScopeOwner = null
+            view.notifyAutographScopeOwnerChanged()
+        }
     }
 
     /** The window's decor if it exists; never forces one into existence. */

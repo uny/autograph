@@ -154,17 +154,35 @@ class ScopeStackOriginTest {
     }
 
     @Test
-    fun an_origin_changes_membership_not_order() {
-        // A surface adopted late pushes its frame after the content it hosts; insertion order still
-        // decides between them, as it does ambiently — an origin only removes what is not the
-        // event's, it does not re-rank what is.
+    fun a_surface_adopted_late_ranks_no_later_than_the_content_it_hosts() {
+        // An Activity that predates the native capture's install pushes its frame (a mask: it hosts
+        // Compose) AFTER the composition it hosts. Insertion order alone lets that late mask blank
+        // the TrackedScreen inside it — correct→absent on a supported path. The container ranks
+        // where its content ranks instead.
         val stack = ScopeStack()
         val provider = stack.push()
-        stack.push(screen = "ComposeScreen", parent = provider)
-        val lateHost = stack.push(screen = "HostScreen", boundary = true)
+        stack.push(screen = "Home", parent = provider)
+        val lateHost = stack.push(boundary = true)
+        stack.maskScreen(lateHost)
         stack.update(provider, parent = lateHost)
 
-        assertEquals("HostScreen", stack.current(provider).screen)
+        assertNull(stack.current().screen, "ambiently the late mask wins")
+        assertEquals("Home", stack.current(provider).screen)
+        assertFalse(stack.current(provider).screenMasked)
+    }
+
+    @Test
+    fun a_hand_pushed_root_still_ranks_where_it_was_pushed() {
+        // The correction above must not promote a container over a root pushed BEFORE its content:
+        // a global screen pushed at startup, then a fragment naming its own — the fragment wins, as
+        // it does ambiently; a root pushed AFTER the fragment resumed wins over it, likewise.
+        val stack = ScopeStack()
+        stack.push(screen = "Global")
+        val fragment = stack.push(screen = "Detail", boundary = true)
+        assertEquals("Detail", stack.current(fragment).screen)
+
+        stack.push(screen = "Later")
+        assertEquals("Later", stack.current(fragment).screen)
     }
 
     @Test
@@ -200,6 +218,26 @@ class ScopeStackOriginTest {
         val ctx = stack.current(foreign)
         assertNull(ctx.screen)
         assertEquals(JsonObject(emptyMap()), ctx.scope)
+    }
+
+    @Test
+    fun a_parent_off_this_stack_is_transparent_not_a_boundary() {
+        // A hybrid app running two captures on two stacks can hand a composition a claim from the
+        // OTHER stack; linking under it must not strand the composition (it is under no boundary of
+        // this stack, so it stays global here), and a removed boundary is treated the same way.
+        val other = ScopeStack()
+        val foreign = other.push(boundary = true)
+        val stack = ScopeStack()
+        val provider = stack.push(parent = foreign)
+        stack.push(screen = "Declared", parent = provider)
+        val surface = stack.push(boundary = true)
+
+        assertEquals("Declared", stack.current(surface).screen)
+
+        val removed = stack.push(boundary = true)
+        stack.update(provider, parent = removed)
+        stack.remove(removed)
+        assertEquals("Declared", stack.current(surface).screen)
     }
 
     @Test

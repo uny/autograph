@@ -1,6 +1,7 @@
 package dev.ynagai.autograph.context
 
 import android.view.View
+import android.view.ViewGroup
 import dev.ynagai.autograph.AutographInternalApi
 
 /**
@@ -41,4 +42,32 @@ public fun View.autographScopeOrigin(): ScopeHandle? {
         view = view.parent as? View
     }
     return null
+}
+
+/**
+ * A callback a composition hangs on its own host view, run whenever a surface *above* that view
+ * claims or releases its root ([notifyAutographScopeOwnerChanged]). The Compose provider uses it
+ * to re-link its root frame under the surface that now hosts it; without it, a composition that
+ * existed before the native capture was installed stays a root — and a root under no boundary
+ * applies to every event, so an off-screen pager page would lend its screen to a tap on the page
+ * beside it. Main thread only.
+ */
+@AutographInternalApi
+public var View.autographScopeOwnerListener: (() -> Unit)?
+    @Suppress("UNCHECKED_CAST")
+    get() = getTag(R.id.autograph_scope_owner_listener) as? () -> Unit
+    set(value) = setTag(R.id.autograph_scope_owner_listener, value)
+
+/**
+ * Runs every [autographScopeOwnerListener] in this view's subtree, this view included. Called by
+ * the native screen capture after it claims or releases a surface's root view. The walk is the
+ * same one the capture already makes over a new surface's view tree; a listener that throws is
+ * swallowed so a lifecycle callback never crashes the host app.
+ */
+@AutographInternalApi
+public fun View.notifyAutographScopeOwnerChanged() {
+    autographScopeOwnerListener?.let { runCatching { it() } }
+    if (this is ViewGroup) {
+        for (i in 0 until childCount) getChildAt(i).notifyAutographScopeOwnerChanged()
+    }
 }

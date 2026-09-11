@@ -192,7 +192,10 @@ object OriginFixtures {
  * dropped `track`, and was structurally blind to this).
  */
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+// A plain Application: the sample's own installs a second pair of captures on a stack of its own,
+// which claims every view first — measured, a late-install test then passed for the wrong reason
+// (the composition had linked under the OTHER stack's frame).
+@Config(sdk = [36], application = android.app.Application::class)
 class ComposeTapOriginTest {
 
     private val taps = mutableListOf<Pair<String?, Map<String, JsonElement>>>()
@@ -301,10 +304,12 @@ class ComposeTapOriginTest {
     @Test
     fun siblingProvidersInOneComposeViewResolveInteropTapsAsTheHostDoes() {
         // Two providers share one host view; neither can claim it for itself without mis-attributing
-        // the other's interop taps. Both resolve from the fragment, whose descent reaches both
-        // declarations — insertion order decides, the ambient rule. Measured as the alternative: a
-        // per-provider claim on the shared view sent the first provider's button to the second's
-        // screen (correct→wrong).
+        // the other's interop taps, so both resolve from the fragment, whose descent reaches both
+        // declarations and insertion order decides — the ambient rule, and the honest limit: the
+        // FIRST provider's interop button carries "B" here, exactly as it did before origins
+        // existed. What this pins is that the two buttons agree (a per-provider claim on the shared
+        // view gave the same wrong answer for a different reason, and disposing the second provider
+        // then dropped the first back to the masked host); the provider-boundary mutant blanks both.
         val activity = launch()
         val host = SiblingProvidersFragment()
         activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
@@ -342,6 +347,25 @@ class ComposeTapOriginTest {
     }
 
     @Test
+    fun aCompositionThatPredatesTheInstallIsRelinkedWhenItsSurfaceIsClaimed() {
+        // Late install, two Compose pages already composed and never tapped. When the capture
+        // adopts the Activity and claims the pages' views, each composition must re-link under its
+        // page — an unlinked root is under no boundary and would lend "PageB" to a tap on A.
+        val a = PageAFragment()
+        val b = PageBFragment()
+        val activity = launch(install = false)
+        activity.supportFragmentManager.beginTransaction().add(activity.container, a).commitNow()
+        activity.supportFragmentManager.beginTransaction().add(activity.container, b).commitNow()
+        idle()
+        installCaptures()
+        controller.pause().resume()
+        idle()
+
+        tap(a.compose)
+        assertEquals("PageA", taps.single().second["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun aFrameTheAppPushedByHandReachesEveryTapWhileTheNativeCaptureIsInstalled() {
         // A root frame pushed through the public API — an experiment scope at startup — is under no
         // boundary, so every origin sees it. Dropping it once the capture claims the view tree
@@ -373,9 +397,9 @@ class ComposeTapOriginTest {
         assertTrue("the tap was reported", taps.isNotEmpty())
     }
 
-    private fun launch(): OwnComposeActivity {
-        OriginFixtures.tracker = tracker
-        OriginFixtures.scopeStack = scopeStack
+    private lateinit var controller: org.robolectric.android.controller.ActivityController<OwnComposeActivity>
+
+    private fun installCaptures() {
         screens = installAutographNativeScreenCapture(
             application = RuntimeEnvironment.getApplication(),
             tracker = tracker,
@@ -383,10 +407,17 @@ class ComposeTapOriginTest {
             activityScreenName = { it.javaClass.simpleName },
             fragmentScreenName = { it.javaClass.simpleName },
         )
-        // Both native pipelines, as a hybrid app runs them; the tap capture wraps a window at resume,
-        // so it has to be in place before the Activity is.
         nativeTaps = installAutographNativeTapCapture(RuntimeEnvironment.getApplication(), tracker, scopeStack)
-        val activity = Robolectric.buildActivity(OwnComposeActivity::class.java).setup().get()
+    }
+
+    private fun launch(install: Boolean = true): OwnComposeActivity {
+        OriginFixtures.tracker = tracker
+        OriginFixtures.scopeStack = scopeStack
+        // Both native pipelines, as a hybrid app runs them; the tap capture wraps a window at resume,
+        // so it has to be in place before the Activity is — except when a test installs late.
+        if (install) installCaptures()
+        controller = Robolectric.buildActivity(OwnComposeActivity::class.java).setup()
+        val activity = controller.get()
         idle()
         assertEquals("the Activity's own composition names the screen", "Main", scopeStack.current().screen)
         return activity

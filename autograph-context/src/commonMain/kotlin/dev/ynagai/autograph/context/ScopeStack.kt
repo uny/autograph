@@ -314,10 +314,16 @@ public class ScopeStack {
      *
      * Everything else is out, and that is the point: a sibling surface's declaration, or its mask,
      * never reaches an event that did not happen in it, whatever the two frames' insertion order.
-     * Membership is all an origin changes — the survivors resolve in insertion order, with the
-     * active bit, [maskScreen] and [resolveScope] applying exactly as in [current]: a mask raised on
-     * the lineage clears the screen beneath it, content pushed after it inside the same surface
-     * still wins, and a subtree that branches is ambiguous just as it is ambiently.
+     * The survivors resolve in insertion order — with one correction: **a frame ranks no later than
+     * the content nested in it.** A surface adopted late pushes its frame *after* the composition it
+     * hosts (an Activity that predates the native capture's install is picked up at its next
+     * resume), and insertion order alone would let that late mask blank the `TrackedScreen` inside
+     * it; ranking the container where its earliest nested survivor ranks keeps the content winning,
+     * as it did before the surface was adopted, while a root the app pushed by hand still ranks
+     * where it was pushed. The active bit, [maskScreen] and [resolveScope] then apply exactly as in
+     * [current]: a mask raised on the lineage clears the screen beneath it, content pushed after it
+     * inside the same surface still wins, and a subtree that branches is ambiguous just as it is
+     * ambiently.
      *
      * A frame in the lineage that is no longer on the stack (its surface was torn down but a stale
      * handle survived) contributes nothing, and the walk continues past it; an [origin] that is not
@@ -327,11 +333,28 @@ public class ScopeStack {
     public fun current(origin: ScopeHandle): AmbientContext {
         val originFrame = origin.frame
         val lineage = generateSequence(originFrame) { it.parent }.toHashSet()
-        return resolve(
-            frames.filter { frame ->
-                frame in lineage || frame.isBeneathWithoutBoundary(originFrame) || !frame.isUnderABoundary()
-            },
-        )
+        // A parent link may point off this stack — at a frame since removed, or at another stack's
+        // frame, which a hybrid app running two captures on two stacks can hand a composition. Such
+        // a frame is transparent here: it contributes nothing and it is not a boundary, so what is
+        // linked under it is neither hidden by it nor stranded. Only frames on this stack decide.
+        val onStack = frames.toHashSet()
+        val survivors = frames.filter { frame ->
+            frame in lineage || frame.isBeneathWithoutBoundary(originFrame, onStack) || !frame.isUnderABoundary(onStack)
+        }
+        // A container ranks where its earliest nested survivor ranks (see the kdoc). The sort is
+        // stable, so frames with equal keys — a container and the first thing inside it — keep their
+        // insertion order, container first.
+        val index = HashMap<ScopeFrame, Int>(survivors.size * 2)
+        survivors.forEachIndexed { i, frame -> index[frame] = i }
+        val rank = HashMap<ScopeFrame, Int>(survivors.size * 2)
+        for (frame in survivors) {
+            var ancestor: ScopeFrame? = frame
+            while (ancestor != null) {
+                index[ancestor]?.let { own -> rank[ancestor] = minOf(rank[ancestor] ?: own, index.getValue(frame)) }
+                ancestor = ancestor.parent
+            }
+        }
+        return resolve(survivors.sortedBy { rank.getValue(it) })
     }
 
     /**
@@ -339,18 +362,18 @@ public class ScopeStack {
      * frame itself may not be one either: a boundary is where a descent stops, so it is excluded
      * along with everything beneath it).
      */
-    private fun ScopeFrame.isBeneathWithoutBoundary(ancestor: ScopeFrame): Boolean {
+    private fun ScopeFrame.isBeneathWithoutBoundary(ancestor: ScopeFrame, onStack: Set<ScopeFrame>): Boolean {
         var frame: ScopeFrame? = this
         while (frame != null && frame !== ancestor) {
-            if (frame.boundary) return false
+            if (frame.boundary && frame in onStack) return false
             frame = frame.parent
         }
         return frame === ancestor && this !== ancestor
     }
 
-    /** Whether this frame, or any frame it is nested in, is a `boundary`. */
-    private fun ScopeFrame.isUnderABoundary(): Boolean =
-        generateSequence(this) { it.parent }.any { it.boundary }
+    /** Whether this frame, or any frame it is nested in, is a `boundary` on this stack. */
+    private fun ScopeFrame.isUnderABoundary(onStack: Set<ScopeFrame>): Boolean =
+        generateSequence(this) { it.parent }.any { it.boundary && it in onStack }
 
     private fun recompute(): AmbientContext = resolve(frames)
 
