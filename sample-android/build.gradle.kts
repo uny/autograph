@@ -54,6 +54,10 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.robolectric)
     testImplementation(projects.autographCompose)
+    // Test-only: ComposeTapOriginTest drives a real NavHost, which is the only way to exercise the
+    // route frame `NavController.TrackScreenViews` pushes against a native surface beside it. The
+    // app itself does not use navigation-compose.
+    testImplementation(libs.jetbrains.navigation.compose)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso)

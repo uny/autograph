@@ -52,7 +52,8 @@ internal val AutographScopeKey: SemanticsPropertyKey<JsonObject> = SemanticsProp
  * a nested one, the inner winning a key clash, and [AutographScope] frames enclosing the element
  * contribute underneath both. Screen and section from [TrackedScreen] still win over all of them, as
  * they do for any other event — but only where one is actually active. With no screen resolved
- * anywhere (no [TrackedScreen], no prior `TrackScreenView`), a `screen` key you put in a scope
+ * anywhere (no [TrackedScreen], no [TrackScreenView], no tracked navigation destination), a
+ * `screen` key you put in a scope
  * yourself is left standing, exactly as it would be if you passed it to `track` at a call site: this
  * scope occupies that same slot — and `section` is guarded independently, so it behaves the same way
  * wherever no section is set. Don't name a scope key `screen` or `section`.

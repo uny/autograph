@@ -28,11 +28,43 @@ public val LocalScreenContext: androidx.compose.runtime.ProvidableCompositionLoc
  * Records a `Screen Viewed` event once when [name] enters the composition
  * (and again whenever [name] changes). A `previous_screen` property is attached
  * automatically when a previous screen is known.
+ *
+ * It also declares [name] as the screen for as long as it is in the composition, through a frame in
+ * the ambient [ScopeStack] — the same channel [TrackedScreen] uses, and what an autocaptured tap
+ * reads.
+ *
+ * **That declaration is ambient, not scoped to a subtree.** This composable takes no `content`, so
+ * the screen it names applies to every autocaptured tap in the composition while it is present, not
+ * only to taps near it — and, because a frame naming a screen owns its section, it also clears the
+ * section of a [TrackedScreen] it sits inside. Two consequences worth stating plainly:
+ * - Nested inside a [TrackedScreen], an autocaptured tap says [name] while an explicit
+ *   `trackClick` / `trackImpression` says the enclosing screen: this deliberately does not provide
+ *   [LocalScreenContext], which is the whole difference between the two composables.
+ * - Composed *after* a [TrackedScreen] as a sibling — a sheet, a dialog, a second pane — it wins for
+ *   every autocaptured tap in the composition, including taps on the content behind it.
+ *
+ * Use [TrackedScreen] when the screen should be scoped to what it wraps, and when the autocaptured
+ * and instrumented paths should agree — which is nearly always. Reach for this one for a surface
+ * that has no content of its own to wrap.
  */
 @Composable
 public fun TrackScreenView(
     name: String,
     properties: JsonObject = EmptyJsonObject,
+) {
+    MirrorAmbientFrame(LocalScopeStack.current, screen = name) {
+        EmitScreenView(name, properties)
+    }
+}
+
+/**
+ * The reporting half of [TrackScreenView]: records history and emits, declaring nothing. Split out
+ * so [TrackedScreen] — which pushes its own frame, with a section — does not push a second one.
+ */
+@Composable
+private fun EmitScreenView(
+    name: String,
+    properties: JsonObject,
 ) {
     val tracker = LocalTracker.current
     val history = currentScreenHistory
@@ -81,13 +113,13 @@ public fun TrackedScreen(
     section: String? = null,
     content: @Composable () -> Unit,
 ) {
-    TrackScreenView(name, properties)
     // Mirror screen + section into the ambient stack so autocaptured taps on this screen carry them,
     // the same way [LocalScreenContext] carries them to explicit trackClick/trackImpression. The
     // observer sits above this composable and can't read the CompositionLocal. Wrapping the content
     // also makes this screen frame the lineage parent of any scope nested inside it, so scopes under
     // one screen stay on a single chain (and merge) rather than reading as siblings.
     MirrorAmbientFrame(LocalScopeStack.current, screen = name, section = section) {
+        EmitScreenView(name, properties)
         CompositionLocalProvider(
             LocalScreenContext provides ScreenContext(name, section),
             content = content,
