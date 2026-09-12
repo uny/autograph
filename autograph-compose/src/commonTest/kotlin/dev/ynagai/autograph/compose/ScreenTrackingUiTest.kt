@@ -205,9 +205,13 @@ class ScreenTrackingUiTest {
 
     @Test
     fun aTrackedScreenInsideADestinationRefinesTheRouteRatherThanLosingToIt() = runComposeUiTest {
+        // Both halves in one navigation, which is what makes it discriminating: the route names the
+        // destination that declares nothing, and the one that declares wins over the route. Asserting
+        // only the second passes with no route frame at all.
         val stack = ScopeStack()
+        lateinit var navController: NavHostController
         setContent {
-            val navController = rememberNavController()
+            navController = rememberNavController()
             CompositionLocalProvider(
                 LocalTracker provides RecordingTracker(),
                 LocalScopeStack provides stack,
@@ -215,13 +219,100 @@ class ScreenTrackingUiTest {
                 navController.TrackScreenViews()
                 NavHost(navController, startDestination = "home") {
                     composable("home") { TrackedScreen("Home", section = "Top") {} }
+                    composable("plain") {}
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("Home", stack.current().screen)
+        assertEquals("Top", stack.current().section)
+
+        runOnUiThread { navController.navigate("plain") }
+        waitForIdle()
+        assertEquals("plain", stack.current().screen, "a destination that declares nothing is named by the route")
+    }
+
+    @Test
+    fun theRouteFrameLeavesWhenTheCompositionDoes() = runComposeUiTest {
+        val stack = ScopeStack()
+        var shown by mutableStateOf(true)
+        setContent {
+            val navController = rememberNavController()
+            CompositionLocalProvider(
+                LocalTracker provides RecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                if (shown) {
+                    navController.TrackScreenViews()
+                    NavHost(navController, startDestination = "home") { composable("home") {} }
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("home", stack.current().screen)
+
+        shown = false
+        waitForIdle()
+        // A route frame that outlived its composition would keep naming a destination nobody is on —
+        // and, on a stack shared with a native pipeline, would attribute native taps to it.
+        assertNull(stack.current().screen)
+    }
+
+    @Test
+    fun aBareTrackScreenViewInsideATrackedScreenSplitsTheTwoPaths() = runComposeUiTest {
+        // The documented divergence, pinned in both directions: the frame (what an autocaptured tap
+        // reads) names the inner screen, while LocalScreenContext (what trackClick reads) keeps the
+        // enclosing one, because a bare TrackScreenView deliberately does not provide it.
+        val stack = ScopeStack()
+        var context: ScreenContext? = null
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides RecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                TrackedScreen("Outer", section = "Top") {
+                    TrackScreenView("Inner")
+                    context = LocalScreenContext.current
                 }
             }
         }
         waitForIdle()
 
-        assertEquals("Home", stack.current().screen)
-        assertEquals("Top", stack.current().section)
+        assertEquals("Inner", stack.current().screen)
+        assertNull(stack.current().section, "a frame that names a screen owns its section")
+        assertEquals(ScreenContext("Outer", "Top"), context)
+    }
+
+    @Test
+    fun aTrackerSwapDoesNotMoveTheRouteFrameAboveTheScreenOnDisplay() {
+        // The route frame's position must hold for the life of the composition. Pushing it from the
+        // listener's effect — which is keyed on the tracker — meant a swap on logout re-pushed it at
+        // the end of the list, above the still-mounted TrackedScreen, and the route id then overrode
+        // the declared screen and dropped its section.
+        val shared = ScopeStack()
+        var swapped by mutableStateOf(false)
+        runComposeUiTest {
+            setContent {
+                val navController = rememberNavController()
+                CompositionLocalProvider(
+                    LocalTracker provides if (swapped) RecordingTracker() else RecordingTracker(),
+                    LocalScopeStack provides shared,
+                ) {
+                    navController.TrackScreenViews()
+                    NavHost(navController, startDestination = "home") {
+                        composable("home") { TrackedScreen("Home", section = "Top") {} }
+                    }
+                }
+            }
+            waitForIdle()
+            assertEquals("Home", shared.current().screen)
+
+            swapped = true
+            waitForIdle()
+
+            assertEquals("Home", shared.current().screen)
+            assertEquals("Top", shared.current().section)
+        }
     }
 
     @Test

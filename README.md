@@ -72,7 +72,7 @@ SPI is vendor-neutral.
 | `autograph-core` | `Tracker` facade, envelope stamping (id / seq / session), transport SPI. Zero UI dependencies. |
 | `autograph-segment` | Segment adapter. Android: wraps `analytics-kotlin`, stamping inside the pipeline (a `Before` plugin) so even SDK-generated lifecycle events carry the envelope. iOS: bridge interface for `analytics-swift`, implemented by the `autograph-segment-swift` reference adapter (see below). |
 | `autograph-compose` | Compose Multiplatform instrumentation: `AutographProvider`, `TrackScreenView` / `TrackedScreen`, automatic screen tracking for navigation-compose, `Modifier.trackImpression` / `Modifier.trackClick`, `AutographScope` for screen-scoped event context, and opt-in autocapture of taps (Android and iOS). |
-| `autograph-context` | The ambient scope / screen-context stack that autocapture reads at tap time. Framework-agnostic (no Compose dependency), so native UIKit / SwiftUI / Android View surfaces can push context too. `autograph-compose` mirrors `AutographScope` and `TrackedScreen` into it for you — you only touch this module directly when instrumenting a non-Compose surface. |
+| `autograph-context` | The ambient scope / screen-context stack that autocapture reads at tap time. Framework-agnostic (no Compose dependency), so native UIKit / SwiftUI / Android View surfaces can push context too. `autograph-compose` mirrors every screen declaration (`TrackedScreen`, `TrackScreenView`, `NavController.TrackScreenViews`) and `AutographScope` into it for you — you only touch this module directly when instrumenting a non-Compose surface. |
 | `autograph-uikit` | iOS-only, and two mechanisms rather than one. Native (non-Compose) taps are mapped to an element through `UIView.hitTest`, which needs no accessibility state and so works in a cold process; the accessibility-tree walk in the same module is what `autograph-compose`'s iOS resolver uses for Compose Multiplatform. `installAutographNativeTapCapture`, `installAutographNativeScreenCapture`, and the tap opt-outs `registerAutographIgnoredView` / `registerAutographIgnoredBounds` are supported public API. The rest of the module is `@AutographInternalApi` — don't depend on it directly. |
 | `autograph-android` | Android-only, and the non-Compose half of an Android app: Compose content on Android is served by `autograph-compose`, not by this. Two mechanisms. `installAutographNativeScreenCapture` auto-emits `Screen Viewed` from `Activity` / `Fragment` lifecycle; `installAutographNativeTapCapture` reports taps on View/XML content, naming the view that actually received the touch by its resource id, with `View.isAutographIgnored` as its opt-out. Both are opt-in, and a hybrid app runs them beside the Compose pipeline — see [What is and isn't captured](#what-is-and-isnt-captured) for what tap capture does not reach. |
 | `autograph-test` | `InMemoryTestTransport` and `assert*` helpers for unit-testing your own instrumentation, with no real transport or network involved (see [Testing](#testing) below). |
@@ -104,10 +104,16 @@ AutographProvider(tracker) {
     App()
 }
 
-// Screens track themselves
+// Screens track themselves. Call it ABOVE the NavHost: the screen a destination declares for
+// itself has to be pushed after the route's to refine it.
 navController.TrackScreenViews()
+NavHost(navController, startDestination = "recipes") {
+    composable("recipes") { RecipeList() }
+    // A destination that declares its own screen overrides the route name for events under it
+    composable("recipes/{id}") { TrackedScreen("RecipeDetail") { RecipeDetailContent() } }
+}
 
-// ...or per screen
+// ...or per screen, with no navigation integration at all
 TrackedScreen("RecipeDetail") { RecipeDetailContent() }
 
 // Scope a property onto every event fired below — e.g. the id from an articles/{article_id}
@@ -185,7 +191,8 @@ There's a `JsonObject` overload for non-string values. Notes:
 - **`identify` traits are not scoped** — they describe the user, not the screen the event fired on.
 - **Autocapture carries the scope, but attributes it by lineage.** Autocaptured taps fire from
   the root tracker above your screens, so they can't read this `CompositionLocal`; they read an
-  ambient stack (`autograph-context`) that `AutographScope` and `TrackedScreen` mirror into instead,
+  ambient stack (`autograph-context`) that `AutographScope`, `TrackedScreen`, `TrackScreenView` and
+  `NavController.TrackScreenViews` mirror into instead,
   and so do carry the scope, the screen, and the section you passed to `TrackedScreen`. (The section
   is a screen-wide sub-label — a tab or layout variant, e.g. `TrackedScreen(name, section = "For You")`
   — not a region within the screen; every tap under the screen carries it. Set it through

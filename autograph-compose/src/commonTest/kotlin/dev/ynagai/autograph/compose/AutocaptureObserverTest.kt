@@ -320,10 +320,12 @@ class ReportTapIfResolvableTest {
     @Test
     fun aDeclarationInsideAMaskedSurfaceIsCarriedRatherThanDropped() {
         val tracker = AutocaptureRecordingTracker()
-        // The cost the history gate used to carry: content inside a masked surface that named its
-        // screen left `lastScreen` holding the CURRENT screen, and the unconditional gate dropped it
-        // — no screen where the right one was available. Now that such content pushes a frame
-        // (a bare TrackScreenView does too), it resolves normally.
+        // The shape that pays back the old gate's one measured cost: content inside a masked surface
+        // that names its screen is carried. This asserts the RESOLUTION half only, and it passed
+        // before this change too — a frame after the mask always won, so the gated fallback never
+        // ran here. What changed is that a bare TrackScreenView now PUSHES such a frame instead of
+        // only writing history; that half is pinned by
+        // ScreenTrackingUiTest.aBareTrackScreenViewDeclaresItsScreenForAutocapture.
         val stack = ScopeStack().apply {
             screenHistory.record("Feed")
             val feed = push(screen = "Feed")

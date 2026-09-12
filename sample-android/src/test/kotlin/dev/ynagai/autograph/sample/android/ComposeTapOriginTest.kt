@@ -18,6 +18,9 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.fragment.app.Fragment
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.Tracker
@@ -25,6 +28,7 @@ import dev.ynagai.autograph.android.installAutographNativeScreenCapture
 import dev.ynagai.autograph.android.installAutographNativeTapCapture
 import dev.ynagai.autograph.compose.AutocaptureConfig
 import dev.ynagai.autograph.compose.AutographProvider
+import dev.ynagai.autograph.compose.TrackScreenViews
 import dev.ynagai.autograph.compose.TrackedScreen
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
@@ -164,6 +168,24 @@ class InteropFragment : Fragment() {
                                 OriginFixtures.interopButton = this
                             }
                         })
+                    }
+                }
+            }
+        }
+}
+
+/** Hosts a NavHost whose destinations declare nothing — the route frame is the only declaration. */
+class NavHostFragment2 : Fragment() {
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        ComposeView(requireContext()).apply {
+            setContent {
+                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                    val navController = rememberNavController()
+                    navController.TrackScreenViews()
+                    NavHost(navController, startDestination = "home") {
+                        composable("home") {
+                            Box(Modifier.fillMaxSize().testTag("nav").clickable {}) {}
+                        }
                     }
                 }
             }
@@ -399,6 +421,25 @@ class ComposeTapOriginTest {
         nativeTap(activity, OriginFixtures.interopButton!!)
         assertEquals("b", taps.single().second["experiment"]?.jsonPrimitive?.content)
         assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun aNavHostsRouteDoesNotAttributeTapsOnAnotherSurface() {
+        // The route frame is nested under its provider, which is nested under the fragment hosting
+        // it. Drop that parent link and the route frame is under no boundary — global — so it lends
+        // its destination name to a tap on the Activity's own composition beside it.
+        val activity = launch()
+        val nav = NavHostFragment2()
+        activity.supportFragmentManager.beginTransaction().add(activity.container, nav).commitNow()
+        idle()
+        assertEquals("the route is ambiently innermost", "home", scopeStack.current().screen)
+
+        tap(activity.ownCompose)
+        assertEquals("Main", taps.single().second["screen"]?.jsonPrimitive?.content)
+
+        taps.clear()
+        tap(nav.view as ComposeView)
+        assertEquals("home", taps.single().second["screen"]?.jsonPrimitive?.content)
     }
 
     // --- helpers ----------------------------------------------------------------------------------

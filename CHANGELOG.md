@@ -110,20 +110,32 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
   What changes for an app:
   - A bare `TrackScreenView` now *declares* its screen for as long as it is in the composition, so
-    the screen leaves when it does rather than when something overwrites history. It still does not
-    provide `LocalScreenContext`, which is the difference from `TrackedScreen`: nested inside one,
-    an autocaptured tap says the inner name while an explicit `trackClick` says the enclosing one.
-    Use `TrackedScreen` when the two should agree.
+    the screen leaves when it does rather than when something overwrites history. The declaration is
+    **ambient, not scoped to a subtree** — the composable wraps nothing — so it applies to every
+    autocaptured tap in the composition while it is present, and, because a frame naming a screen
+    owns its section, it clears the section of a `TrackedScreen` it sits inside. Nested inside one,
+    an autocaptured tap says the inner name while an explicit `trackClick` says the enclosing one
+    (this still does not provide `LocalScreenContext`); composed as a later sibling — a sheet, a
+    dialog — it wins for taps on the content behind it too. Use `TrackedScreen` when the screen
+    should be scoped to what it wraps and the two paths should agree.
   - `NavController.TrackScreenViews` declares the current destination, revised in place on every
-    change. Call it above the `NavHost` (as the README shows) and a `TrackedScreen` inside a
-    destination refines the route rather than competing with it — the route frame's position is
-    claimed when the composable enters, below everything the `NavHost` composes.
+    change. **Call it above the `NavHost`** — the README example now shows one — so its frame is
+    pushed before the destination content and a `TrackedScreen` inside a destination refines the
+    route rather than competing with it. Screen and section resolve by push order, so the call order
+    is what settles this; written the other way round, the route name would override the declared
+    screen and drop its section.
   - A destination `screenName` maps to `null` now declares **no** screen instead of leaving the
     previous route's name attributing taps on it.
   - Content inside a masked surface that names its screen is carried again rather than dropped —
     the one measured cost of the old unconditional gate, now paid back.
   - An app that only ever recorded history without declaring (nothing in this library does) sees
     taps carry no screen. The remedy is the same as it always was: declare one.
+  - **Hybrid apps sharing one `ScopeStack` see this on the native side too.** The new frames are
+    ambient, and `autograph-uikit`'s tap and explicit-element capture read the same stack, so on iOS
+    a screen declared with `TrackScreenView` or a tracked navigation destination now attributes
+    native events as well while that composition is alive — previously only `TrackedScreen` did.
+    On Android the native captures resolve from the surface an event happened in (#222), so a
+    composition's declarations reach only the surface hosting it.
 
 ### Fixed
 

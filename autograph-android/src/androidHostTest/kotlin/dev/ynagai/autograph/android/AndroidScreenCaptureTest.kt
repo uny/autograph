@@ -914,17 +914,17 @@ class AndroidScreenCaptureTest {
             .add(android.R.id.content, ContainerNestingFragment(), "host").commitNow()
 
         assertNull(scopeStack.current().screen)
-        assertTrue("and it says so, so the Compose fallback stays gated", scopeStack.current().screenMasked)
+        assertTrue("and it says so — an assertion, not merely an absent screen", scopeStack.current().screenMasked)
     }
 
     @Test
     fun aMaskSaysItIsAMaskAndNotMerelyAnAbsentScreen() {
         install()
-        // screen == null has two meanings and the Compose tap observer acts on the difference: it
-        // reinstates ScreenHistory.lastScreen for "nothing named a screen" and must NOT for "the
-        // surface on display asserts it has none". Asserting only the null would pass for an
-        // implementation that deselected the frame beneath instead of masking — and that
-        // implementation reintroduces the stale screen this whole change exists to remove.
+        // screen == null has two meanings, and AmbientContext.screenMasked is what tells them apart
+        // for a pipeline holding a screen name from elsewhere: an absence may be filled, an assertion
+        // must be respected. Asserting only the null would pass for an implementation that deselected
+        // the frame beneath instead of masking — and that implementation reintroduces the stale
+        // screen this whole change exists to remove.
         val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
         activity.supportFragmentManager.beginTransaction()
             .add(android.R.id.content, ComposeHostFragment(), "compose").commitNow()

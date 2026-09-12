@@ -29,12 +29,23 @@ public val LocalScreenContext: androidx.compose.runtime.ProvidableCompositionLoc
  * (and again whenever [name] changes). A `previous_screen` property is attached
  * automatically when a previous screen is known.
  *
- * It also declares [name] as the screen for as long as it is in the composition, so autocaptured
- * taps under it carry it — a frame in the ambient [ScopeStack], the same channel [TrackedScreen]
- * uses. This does *not* provide [LocalScreenContext], so an explicit `trackClick` / `trackImpression`
- * still reads whatever screen encloses it lexically: nested inside a [TrackedScreen] the two answer
- * differently (an autocaptured tap says [name], an instrumented one says the enclosing screen).
- * Use [TrackedScreen] when the two should agree, which is nearly always.
+ * It also declares [name] as the screen for as long as it is in the composition, through a frame in
+ * the ambient [ScopeStack] — the same channel [TrackedScreen] uses, and what an autocaptured tap
+ * reads.
+ *
+ * **That declaration is ambient, not scoped to a subtree.** This composable takes no `content`, so
+ * the screen it names applies to every autocaptured tap in the composition while it is present, not
+ * only to taps near it — and, because a frame naming a screen owns its section, it also clears the
+ * section of a [TrackedScreen] it sits inside. Two consequences worth stating plainly:
+ * - Nested inside a [TrackedScreen], an autocaptured tap says [name] while an explicit
+ *   `trackClick` / `trackImpression` says the enclosing screen: this deliberately does not provide
+ *   [LocalScreenContext], which is the whole difference between the two composables.
+ * - Composed *after* a [TrackedScreen] as a sibling — a sheet, a dialog, a second pane — it wins for
+ *   every autocaptured tap in the composition, including taps on the content behind it.
+ *
+ * Use [TrackedScreen] when the screen should be scoped to what it wraps, and when the autocaptured
+ * and instrumented paths should agree — which is nearly always. Reach for this one for a surface
+ * that has no content of its own to wrap.
  */
 @Composable
 public fun TrackScreenView(
