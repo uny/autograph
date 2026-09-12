@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-13
+
 ### Added
 
 - **`ScopeStack.current(origin)`** — the ambient context *as seen from* a frame: the origin's
@@ -1225,7 +1227,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/uny/autograph/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/uny/autograph/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/uny/autograph/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/uny/autograph/compare/v0.5.0...v0.6.0
