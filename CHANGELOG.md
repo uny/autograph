@@ -251,7 +251,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   in a composition inside that surface still names the ambient screen — the active bit does not
   propagate to nested frames, by design. Events autograph itself captures are unaffected either way,
   because they resolve from their origin (`ScopeStack.current(origin)`) rather than ambiently; only
-  a host app reading `ScopeStack.current()` for its own events sees the difference.
+  a host app reading `ScopeStack.current()` for its own events sees the difference. Whether a
+  composition's frames should follow its lifecycle instead is [#228].
 
 ## [0.8.0] - 2026-08-21
 
@@ -1313,3 +1314,4 @@ Initial release.
 [#205]: https://github.com/uny/autograph/issues/205
 [#216]: https://github.com/uny/autograph/issues/216
 [#217]: https://github.com/uny/autograph/pull/217
+[#228]: https://github.com/uny/autograph/issues/228

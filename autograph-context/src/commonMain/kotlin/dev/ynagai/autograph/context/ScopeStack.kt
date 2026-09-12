@@ -300,6 +300,7 @@ public class ScopeStack {
      * a pager of Compose-declared pages reads as the page most recently composed, not the one on
      * display. Autograph's own captures are not affected, because they resolve from an origin; a
      * host app enriching its own events should prefer the origin-taking overload where it has one.
+     * Whether a composition's frames should follow its lifecycle instead is tracked in #228.
      */
     public fun current(): AmbientContext = snapshot
 
