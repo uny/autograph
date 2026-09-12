@@ -62,18 +62,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 - **`AmbientContext.screenMasked`** — whether a mask is what left `screen` null, as opposed to no
   frame ever having named a screen. Both read as `screen == null` but they are opposite instructions
-  to a pipeline holding a screen name from elsewhere, and `autograph-compose`'s tap observer holds
-  one: it falls back to `ScreenHistory.lastScreen` when nothing names a screen (for a bare
-  `TrackScreenView`, which records history without pushing a frame). Applied to a masked surface that
-  fallback reinstates whatever history holds — typically the screen the user just left, the exact
-  wrong value a mask exists to prevent — so without this flag `maskScreen` was a no-op on the Compose
-  capture path. The observer now gates the fallback on it. The gate is unconditional and costs one
-  case, pinned by a test: content inside a masked surface that reports its screen the history-only
-  way leaves `lastScreen` holding the *current* screen, and the event then carries no screen rather
-  than the right one. Deliberate — missing beats wrong here — and avoidable by having such content
-  push a frame (`TrackedScreen`) instead. Additive under [ADR 0001](docs/adr/0001-public-api-evolution.md) §2a —
-  `AmbientContext` is library-produced with an `internal` constructor and gains properties freely.
-  The Android and iOS native tap paths call `enrich` with no fallback, so they were already correct.
+  to a pipeline holding a screen name from elsewhere: an absence may be filled, an assertion must be
+  respected — filling it reinstates the screen the user just left, the exact wrong value a mask
+  exists to prevent. Autograph's own pipelines hold no such name any more (see the history change
+  below) and report no screen for either, so the flag is published for a pipeline that does.
+  Additive under [ADR 0001](docs/adr/0001-public-api-evolution.md) §2a — `AmbientContext` is
+  library-produced with an `internal` constructor and gains properties freely.
 
 - **`ScopeStack.setActive(handle, active)` and `setActive(handles, active)`** — mark a frame as taking
   part in resolution, or not. An inactive frame keeps its position and its contents but contributes
@@ -103,6 +97,33 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   This is the first of a dependency stack (`ScopeStack` API → Android capture → Compose/observer)
   replacing the design withdrawn in [#217]. The Android capture that drives these switches is below.
   Refs [#216].
+
+### Changed
+
+- **Every screen declaration in `autograph-compose` now pushes an ambient frame, and autocaptured
+  taps read only those frames — never `ScreenHistory`** ([#216]). A bare `TrackScreenView` and
+  `NavController.TrackScreenViews` used to record history and emit without declaring anything, and
+  the tap observer filled the gap by falling back to `ScreenHistory.lastScreen`. History records what
+  has been *seen* and outlives it by design, so it cannot answer what is on display: on a surface
+  that names no screen the fallback supplied the screen the user just left — a wrong value that
+  survives every schema check, and the last place #216's failure remained.
+
+  What changes for an app:
+  - A bare `TrackScreenView` now *declares* its screen for as long as it is in the composition, so
+    the screen leaves when it does rather than when something overwrites history. It still does not
+    provide `LocalScreenContext`, which is the difference from `TrackedScreen`: nested inside one,
+    an autocaptured tap says the inner name while an explicit `trackClick` says the enclosing one.
+    Use `TrackedScreen` when the two should agree.
+  - `NavController.TrackScreenViews` declares the current destination, revised in place on every
+    change. Call it above the `NavHost` (as the README shows) and a `TrackedScreen` inside a
+    destination refines the route rather than competing with it — the route frame's position is
+    claimed when the composable enters, below everything the `NavHost` composes.
+  - A destination `screenName` maps to `null` now declares **no** screen instead of leaving the
+    previous route's name attributing taps on it.
+  - Content inside a masked surface that names its screen is carried again rather than dropped —
+    the one measured cost of the old unconditional gate, now paid back.
+  - An app that only ever recorded history without declaring (nothing in this library does) sees
+    taps carry no screen. The remedy is the same as it always was: declare one.
 
 ### Fixed
 

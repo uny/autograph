@@ -14,8 +14,6 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
-import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Observes taps app-wide in [PointerEventPass.Final] — after any child `clickable` had a chance
@@ -36,9 +34,8 @@ import kotlinx.serialization.json.JsonPrimitive
  * so reading the stack is the only way it can attribute a tap to the scope/screen it happened under.
  * Precedence is applied by `AmbientContext.enrich` itself, so this path cannot drift from it.
  *
- * The stack's own [ScopeStack.screenHistory] supplies a screen fallback for a bare [TrackScreenView]
- * that pushes no frame. Reading it off the stack rather than taking it as a separate argument means
- * the two cannot be handed a mismatched pair.
+ * The stack is the only source: [ScopeStack.screenHistory] is never consulted here, because it
+ * records what has been *seen* rather than what is on display. See [reportTapIfResolvable].
  */
 @Composable
 internal fun Modifier.autocaptureTaps(
@@ -123,8 +120,16 @@ internal fun executionEvidenceIsAttributable(initial: PointerEvent, final: Point
     final === initial && final.changes.count { it.isConsumed } <= 1
 
 /**
- * Calls [resolve] and, if it returns a non-null target, reports it via [tracker]. Any exception
- * from [resolve] or [tracker] is swallowed — a single bad resolve/track must not permanently kill
+ * Calls [resolve] and, if it returns a non-null target, reports it via [tracker].
+ *
+ * Everything the event carries comes from the frames on the stack, never from [ScreenHistory]: what
+ * is *on display* is a question only the frames answer, and history is a record of what has been
+ * seen. The two disagree exactly when the surface on display names no screen, and there the honest
+ * answer is no screen rather than the last one recorded — usually the screen the user just left
+ * (#216). Every declaration in this module pushes a frame, so nothing that names a screen is lost
+ * to this: `TrackedScreen`, a bare `TrackScreenView`, and `NavController.TrackScreenViews` all do.
+ *
+ * Any exception from [resolve] or [tracker] is swallowed — a single bad resolve/track must not permanently kill
  * the caller's `while(true)` tap-observation loop for the rest of the composition's lifetime.
  */
 internal fun reportTapIfResolvable(
@@ -149,26 +154,7 @@ internal fun reportTapIfResolvable(
         // properties occupy, which lands it exactly where it belongs in that precedence: it refines
         // the ambient scope (the tapped element is more specific than the screen it sits on) while
         // the reserved screen/section keys still win over it.
-        var properties = ctx.enrich(target.scope)
-        // The one addition enrich can't know about: a bare TrackScreenView pushes no frame, so fall
-        // back to the most recently viewed screen. An ambient frame's screen always wins.
-        //
-        // Not when a mask is what cleared it, though. `screenMasked` distinguishes "no frame ever
-        // named a screen" (this fallback's case) from "the surface on display asserts it HAS no
-        // screen". On a masked surface this fallback reinstates whatever history holds — typically
-        // the screen the user just left, the wrong value ScopeStack.maskScreen exists to prevent.
-        //
-        // The gate is unconditional, which costs one case: content inside the masked surface that
-        // records its screen the history-only way (a bare TrackScreenView) leaves lastScreen holding
-        // the CURRENT screen, and this drops it — no screen rather than the right one. Measured, and
-        // taken deliberately: missing beats wrong here, and separating the two needs a recency signal
-        // AmbientContext does not carry. Such content should push a frame instead (TrackedScreen),
-        // which resolves through ctx.screen and never reaches this branch.
-        if (ctx.screen == null && !ctx.screenMasked) {
-            scopeStack.screenHistory.lastScreen?.let {
-                properties = JsonObject(properties + ("screen" to JsonPrimitive(it)))
-            }
-        }
+        val properties = ctx.enrich(target.scope)
         tracker.track(config.eventName, properties, target.identifier)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.

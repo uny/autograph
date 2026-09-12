@@ -290,24 +290,22 @@ class ReportTapIfResolvableTest {
     }
 
     @Test
-    fun fallsBackToTheLastViewedScreenWhenNoScreenFrameIsPushed() {
+    fun historyIsNeverConsultedWhenNoFrameNamesAScreen() {
         val tracker = AutocaptureRecordingTracker()
-        // A bare TrackScreenView updates history but pushes no ambient frame.
+        // History records what has been SEEN; the frames say what is on display. When they disagree
+        // the honest answer is no screen: the recorded one is typically the screen the user just
+        // left (#216). Every declaration in this module pushes a frame, so nothing that names a
+        // screen reaches this state — a stack with history but no frame is a surface that declares
+        // nothing.
         val stack = ScopeStack().apply { screenHistory.record("Feed") }
         reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
 
-        val props = tracker.trackedProps.single()
-        assertEquals("Feed", props["screen"]?.jsonPrimitive?.content)
-        assertNull(props["section"])
+        assertNull(tracker.trackedProps.single()["screen"])
     }
 
     @Test
-    fun aMaskSuppressesTheHistoryFallbackInsteadOfReinstatingTheScreenTheUserLeft() {
+    fun aMaskedSurfaceCarriesNoScreenWhateverHistoryHolds() {
         val tracker = AutocaptureRecordingTracker()
-        // The user was on Feed; a native container that names no screen of its own then comes to the
-        // foreground and masks. Measured before the fix: current().screen was correctly null, but
-        // this fallback substituted "Feed" — the screen the user just left, which is the exact wrong
-        // value ScopeStack.maskScreen exists to prevent, and the mask was a no-op on this path.
         val stack = ScopeStack().apply {
             screenHistory.record("Feed")
             val feed = push(screen = "Feed")
@@ -320,30 +318,27 @@ class ReportTapIfResolvableTest {
     }
 
     @Test
-    fun aMaskAlsoSuppressesTheFallbackWhenHistoryHoldsTheCurrentScreen() {
+    fun aDeclarationInsideAMaskedSurfaceIsCarriedRatherThanDropped() {
         val tracker = AutocaptureRecordingTracker()
-        // The measured cost of gating unconditionally on screenMasked. Content inside the masked
-        // surface reports its screen the history-only way (a bare TrackScreenView), so lastScreen
-        // holds the screen the user is ON — and this drops it rather than reporting it.
-        //
-        // Pinned deliberately, not endorsed: it is the fail-closed side of the trade (missing beats
-        // wrong), and separating the two needs a recency signal AmbientContext does not carry. If a
-        // later change makes the fallback recency-aware, this test is the one that must change with
-        // it — which is the point of writing it down.
+        // The cost the history gate used to carry: content inside a masked surface that named its
+        // screen left `lastScreen` holding the CURRENT screen, and the unconditional gate dropped it
+        // — no screen where the right one was available. Now that such content pushes a frame
+        // (a bare TrackScreenView does too), it resolves normally.
         val stack = ScopeStack().apply {
             screenHistory.record("Feed")
             val feed = push(screen = "Feed")
             maskScreen(push())
             setActive(feed, false)
             screenHistory.record("ComposeFeed")
+            push(screen = "ComposeFeed")
         }
         reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
 
-        assertNull(tracker.trackedProps.single()["screen"])
+        assertEquals("ComposeFeed", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
 
     @Test
-    fun theAmbientScreenFrameWinsOverTheHistoryFallback() {
+    fun theAmbientScreenFrameIsWhatTheEventCarries() {
         val tracker = AutocaptureRecordingTracker()
         val stack = ScopeStack().apply {
             screenHistory.record("Feed")

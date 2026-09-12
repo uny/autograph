@@ -28,11 +28,32 @@ public val LocalScreenContext: androidx.compose.runtime.ProvidableCompositionLoc
  * Records a `Screen Viewed` event once when [name] enters the composition
  * (and again whenever [name] changes). A `previous_screen` property is attached
  * automatically when a previous screen is known.
+ *
+ * It also declares [name] as the screen for as long as it is in the composition, so autocaptured
+ * taps under it carry it — a frame in the ambient [ScopeStack], the same channel [TrackedScreen]
+ * uses. This does *not* provide [LocalScreenContext], so an explicit `trackClick` / `trackImpression`
+ * still reads whatever screen encloses it lexically: nested inside a [TrackedScreen] the two answer
+ * differently (an autocaptured tap says [name], an instrumented one says the enclosing screen).
+ * Use [TrackedScreen] when the two should agree, which is nearly always.
  */
 @Composable
 public fun TrackScreenView(
     name: String,
     properties: JsonObject = EmptyJsonObject,
+) {
+    MirrorAmbientFrame(LocalScopeStack.current, screen = name) {
+        EmitScreenView(name, properties)
+    }
+}
+
+/**
+ * The reporting half of [TrackScreenView]: records history and emits, declaring nothing. Split out
+ * so [TrackedScreen] — which pushes its own frame, with a section — does not push a second one.
+ */
+@Composable
+private fun EmitScreenView(
+    name: String,
+    properties: JsonObject,
 ) {
     val tracker = LocalTracker.current
     val history = currentScreenHistory
@@ -81,13 +102,13 @@ public fun TrackedScreen(
     section: String? = null,
     content: @Composable () -> Unit,
 ) {
-    TrackScreenView(name, properties)
     // Mirror screen + section into the ambient stack so autocaptured taps on this screen carry them,
     // the same way [LocalScreenContext] carries them to explicit trackClick/trackImpression. The
     // observer sits above this composable and can't read the CompositionLocal. Wrapping the content
     // also makes this screen frame the lineage parent of any scope nested inside it, so scopes under
     // one screen stay on a single chain (and merge) rather than reading as siblings.
     MirrorAmbientFrame(LocalScopeStack.current, screen = name, section = section) {
+        EmitScreenView(name, properties)
         CompositionLocalProvider(
             LocalScreenContext provides ScreenContext(name, section),
             content = content,

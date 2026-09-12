@@ -522,24 +522,17 @@ public class AmbientContext internal constructor(
      * Whether a [ScopeStack.maskScreen] frame is what left [screen] null — i.e. the surface on
      * display *asserts* it has no screen, rather than simply never having named one.
      *
-     * Both cases read as `screen == null`, but they are opposite instructions to a capture pipeline
-     * holding a screen name from somewhere else. `autograph-compose`'s tap observer holds one: it
-     * falls back to [ScreenHistory.lastScreen] when no frame names a screen, for a bare
-     * `TrackScreenView` that records history without pushing a frame. Applied to a masked surface
-     * that fallback reinstates whatever history happens to hold — typically the screen the user just
-     * left, which is the wrong value [ScopeStack.maskScreen] exists to prevent. Gate any such
-     * fallback on this being false.
+     * Both cases read as `screen == null`, and Autograph's own pipelines treat them the same way:
+     * they report no screen, and never substitute one from elsewhere. The distinction is published
+     * for a pipeline that holds a screen name from another source and has to decide whether the
+     * silence is an absence it may fill or an assertion it must respect — a mask is the latter, and
+     * filling it reinstates the screen the user just left ([ScopeStack.maskScreen]).
      *
-     * **The cost of that gate, stated rather than hidden.** This is stack state; it says nothing
-     * about *when* history was written. If content inside the masked surface records a screen of its
-     * own the history-only way (a bare `TrackScreenView`), [ScreenHistory.lastScreen] then holds the
-     * screen the user is *on*, and gating on this drops it: the event carries no screen where it
-     * would have carried the right one. Measured. The trade is deliberate — a missing value is the
-     * failure this library takes over a wrong one (see [resolveScope] and #66) — but it is a real
-     * loss, not a no-op, and a recency-aware fallback would need history to carry a generation this
-     * type does not expose. Content inside a masked surface should declare its screen with a frame
-     * (`TrackedScreen`, or [ScopeStack.push] with a `screen`), which resolves through [screen]
-     * normally and never reaches the fallback at all.
+     * It is deliberately *not* a signal about history. `autograph-compose`'s tap observer once fell
+     * back to [ScreenHistory.lastScreen] here and gated the fallback on this flag; the fallback is
+     * gone. History records what has been *seen* and outlives it by design, so it cannot answer what
+     * is on display, masked or not — every declaration in `autograph-compose` pushes a frame instead
+     * (`TrackedScreen`, a bare `TrackScreenView`, and `NavController.TrackScreenViews` all do).
      */
     public val screenMasked: Boolean,
 ) {

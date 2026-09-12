@@ -177,6 +177,144 @@ class ScreenTrackingUiTest {
     }
 
     @Test
+    fun navTrackScreenViewsDeclaresTheCurrentRoute() = runComposeUiTest {
+        val stack = ScopeStack()
+        lateinit var navController: NavHostController
+        setContent {
+            navController = rememberNavController()
+            CompositionLocalProvider(
+                LocalTracker provides RecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                navController.TrackScreenViews()
+                NavHost(navController, startDestination = "home") {
+                    composable("home") {}
+                    composable("detail") {}
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("home", stack.current().screen)
+
+        runOnUiThread { navController.navigate("detail") }
+        waitForIdle()
+        // Revised in place, not re-pushed: the route frame keeps its position below the NavHost's
+        // content for the life of the composition.
+        assertEquals("detail", stack.current().screen)
+    }
+
+    @Test
+    fun aTrackedScreenInsideADestinationRefinesTheRouteRatherThanLosingToIt() = runComposeUiTest {
+        val stack = ScopeStack()
+        setContent {
+            val navController = rememberNavController()
+            CompositionLocalProvider(
+                LocalTracker provides RecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                navController.TrackScreenViews()
+                NavHost(navController, startDestination = "home") {
+                    composable("home") { TrackedScreen("Home", section = "Top") {} }
+                }
+            }
+        }
+        waitForIdle()
+
+        assertEquals("Home", stack.current().screen)
+        assertEquals("Top", stack.current().section)
+    }
+
+    @Test
+    fun anUntrackedDestinationDeclaresNoScreenRatherThanKeepingThePreviousRoute() = runComposeUiTest {
+        // Opting a destination out must not leave the route the user came FROM attributing taps on
+        // it — the wrong-value failure #216 is about. Measured before the fix: "home".
+        val tracker = RecordingTracker()
+        val stack = ScopeStack()
+        lateinit var navController: NavHostController
+        setContent {
+            navController = rememberNavController()
+            CompositionLocalProvider(
+                LocalTracker provides tracker,
+                LocalScopeStack provides stack,
+            ) {
+                navController.TrackScreenViews(screenName = { it.route?.takeIf { r -> r != "private" } })
+                NavHost(navController, startDestination = "home") {
+                    composable("home") {}
+                    composable("private") {}
+                }
+            }
+        }
+        waitForIdle()
+
+        runOnUiThread { navController.navigate("private") }
+        waitForIdle()
+
+        assertNull(stack.current().screen)
+        assertEquals(listOf("home"), tracker.names, "an opted-out destination is not reported either")
+    }
+
+    @Test
+    fun aBareTrackScreenViewDeclaresItsScreenForAutocapture() = runComposeUiTest {
+        // A bare TrackScreenView pushes a frame like TrackedScreen does, so an autocaptured tap
+        // under it carries the screen. It does NOT provide LocalScreenContext, which is the whole
+        // difference between the two — an explicit trackClick nested inside a TrackedScreen still
+        // reads the enclosing screen.
+        val stack = ScopeStack()
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides RecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                TrackScreenView("Home")
+            }
+        }
+        waitForIdle()
+
+        assertEquals("Home", stack.current().screen)
+    }
+
+    @Test
+    fun aBareTrackScreenViewsFrameLeavesWithIt() = runComposeUiTest {
+        val stack = ScopeStack()
+        var shown by mutableStateOf(true)
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides RecordingTracker(),
+                LocalScopeStack provides stack,
+            ) {
+                if (shown) TrackScreenView("Home")
+            }
+        }
+        waitForIdle()
+        assertEquals("Home", stack.current().screen)
+
+        shown = false
+        waitForIdle()
+        assertNull(stack.current().screen, "the declaration is scoped to the composition, not to history")
+    }
+
+    @Test
+    fun aTrackedScreenEmitsExactlyOnceDespiteOwningItsFrame() = runComposeUiTest {
+        // TrackedScreen used to call TrackScreenView, which now pushes a frame of its own; the
+        // reporting half is split out so the screen is declared once and emitted once.
+        val tracker = RecordingTracker()
+        val stack = ScopeStack()
+        setContent {
+            CompositionLocalProvider(
+                LocalTracker provides tracker,
+                LocalScopeStack provides stack,
+            ) {
+                TrackedScreen("Home", section = "Top") {}
+            }
+        }
+        waitForIdle()
+
+        assertEquals(listOf("Home"), tracker.names)
+        assertEquals("Home", stack.current().screen)
+        assertEquals("Top", stack.current().section)
+    }
+
+    @Test
     fun autographProviderRoutesEventsToTheProvidedTracker() = runComposeUiTest {
         val tracker = RecordingTracker()
         setContent {
