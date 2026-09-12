@@ -22,8 +22,9 @@ updates:
       # CMP version lands.
       - dependency-name: "org.jetbrains.compose*"
         versions: [">=1.12.0"]
-      # Same floor, other route: CMP 1.11.1 requires jetbrains lifecycle 2.9.6, and any catalog value
-      # above that is what drags minCompileSdk up (2.11.0 did, before #207) — see CONTRIBUTING.md.
+      # Same floor, other route: CMP 1.11.1 requires jetbrains lifecycle 2.9.6, so only a catalog
+      # value above that can move the resolved version — and the next minors do carry a higher
+      # minCompileSdk (2.11.0 took it to 37 before #207). 2.9.x patches still flow. See CONTRIBUTING.md.
       - dependency-name: "org.jetbrains.androidx.lifecycle*"
         versions: [">=2.10.0"]
 
