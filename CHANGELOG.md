@@ -240,10 +240,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   its host masked over it, and adopting the fragments lazily at resume instead inverted the nesting,
   because a child resumes inside its parent's `performResume`.
 
-- **The ambient screen is now absent while a host Activity is paused** — a permission prompt, a
-  translucent Activity — where it previously kept naming the paused screen. Autocapture reads this
-  stack to answer "what was on display when the user acted", and nothing of this app is. No
-  `Screen Viewed` changes: a pause still does not end a view, so returning stays silent.
+- **The ambient screen of a natively-named surface is now absent while its host Activity is
+  paused** — a permission prompt, a translucent Activity — where it previously kept naming the paused
+  screen. Autocapture reads this stack to answer "what was on display when the user acted", and
+  nothing of this app is. No `Screen Viewed` changes: a pause still does not end a view, so returning
+  stays silent. *Natively-named* is the scope, measured on a device: a screen the surface declares
+  through `fragmentScreenName` / `activityScreenName` goes absent, while a `TrackedScreen` declared
+  in a composition inside that surface still names the ambient screen — the active bit does not
+  propagate to nested frames, by design. Events autograph itself captures are unaffected either way,
+  because they resolve from their origin (`ScopeStack.current(origin)`) rather than ambiently; only
+  a host app reading `ScopeStack.current()` for its own events sees the difference.
 
 ## [0.8.0] - 2026-08-21
 
