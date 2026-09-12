@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-09-13
+
 ### Added
 
 - **`ScopeStack.current(origin)`** — the ambient context *as seen from* a frame: the origin's
@@ -240,10 +242,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   its host masked over it, and adopting the fragments lazily at resume instead inverted the nesting,
   because a child resumes inside its parent's `performResume`.
 
-- **The ambient screen is now absent while a host Activity is paused** — a permission prompt, a
-  translucent Activity — where it previously kept naming the paused screen. Autocapture reads this
-  stack to answer "what was on display when the user acted", and nothing of this app is. No
-  `Screen Viewed` changes: a pause still does not end a view, so returning stays silent.
+- **The ambient screen of a natively-named surface is now absent while its host Activity is
+  paused** — a permission prompt, a translucent Activity — where it previously kept naming the paused
+  screen. Autocapture reads this stack to answer "what was on display when the user acted", and
+  nothing of this app is. No `Screen Viewed` changes: a pause still does not end a view, so returning
+  stays silent. *Natively-named* is the scope, measured on a device: a screen the surface declares
+  through `fragmentScreenName` / `activityScreenName` goes absent, while a `TrackedScreen` declared
+  in a composition inside that surface still names the ambient screen — the active bit does not
+  propagate to nested frames, by design. Events autograph captures from an origin
+  (`ScopeStack.current(origin)`) are unaffected either way; what sees the difference is a
+  `ScopeStack.current()` read — a host app enriching its own events, or a Compose tap under no
+  claimed surface (a `Dialog` window), which resolves ambiently. Whether a composition's frames
+  should follow its lifecycle instead is [#228].
 
 ## [0.8.0] - 2026-08-21
 
@@ -1219,7 +1229,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/uny/autograph/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/uny/autograph/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/uny/autograph/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/uny/autograph/compare/v0.5.0...v0.6.0
@@ -1304,3 +1315,4 @@ Initial release.
 [#205]: https://github.com/uny/autograph/issues/205
 [#216]: https://github.com/uny/autograph/issues/216
 [#217]: https://github.com/uny/autograph/pull/217
+[#228]: https://github.com/uny/autograph/issues/228
