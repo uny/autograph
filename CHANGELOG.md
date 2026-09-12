@@ -134,8 +134,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     ambient, and `autograph-uikit`'s tap and explicit-element capture read the same stack, so on iOS
     a screen declared with `TrackScreenView` or a tracked navigation destination now attributes
     native events as well while that composition is alive — previously only `TrackedScreen` did.
-    On Android the native captures resolve from the surface an event happened in (#222), so a
-    composition's declarations reach only the surface hosting it.
+    On Android the same is true unless `installAutographNativeScreenCapture` is also installed: it
+    is what claims each surface's views, and only then does a native tap resolve from the surface it
+    happened in (#222) and see just that surface's declarations. With the tap capture alone nothing
+    claims anything, so a tap resolves ambiently and reads the composition's declaration like iOS.
 
 ### Fixed
 
