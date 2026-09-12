@@ -1,6 +1,7 @@
 [versions]
 kotlin = "2.3.21"
 agp = "9.2.1"
+# Held at the 1.11 line — see the android-compileSdk note below before bumping.
 composeMultiplatform = "1.11.1"
 coroutines = "1.11.0"
 serialization = "1.11.0"
@@ -23,6 +24,10 @@ dokka = "2.2.0"
 # The published floor: this becomes `minCompileSdk` in the AAR metadata, so it is what every
 # Android consumer must compile against. Kept as low as the libraries' own dependencies allow —
 # see CONTRIBUTING.md.
+# Compose Multiplatform (and jetbrains lifecycle) are held to keep this at 35: from CMP 1.12.0 the
+# androidx Compose artifacts carry `minCompileSdk=37`, which would force every consumer onto
+# AGP 9.1.1+. See #224 for the measurements and the trigger that releases the hold, and
+# .github/dependabot.yml for the ignore rules that stop the bumps being re-proposed weekly.
 android-compileSdk = "35"
 # sample-android only, which pulls androidx.activity 1.11.0 — its activity-ktx demands 36, so at 35
 # the app fails checkDebugAarMetadata. Deliberately separate: a demo app's dependency must not raise

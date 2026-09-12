@@ -13,6 +13,20 @@ updates:
         patterns:
           - "org.jetbrains.kotlin*"
           - "org.jetbrains.kotlinx*"
+    ignore:
+      # Compose Multiplatform is deliberately held at the 1.11 line: from 1.12.0 its Android
+      # artifacts carry `minCompileSdk=37`, and `android-compileSdk` is a published floor that #207
+      # lowered to 35 for reach. The bump is otherwise clean (measured 2026-09-12, see #224), so the
+      # hold waits for a trigger: androidx compose 1.13 going stable, or the first fix that actually
+      # needs 1.12. Drop both entries when raising the floor; re-measure the cold check on whatever
+      # CMP version lands.
+      - dependency-name: "org.jetbrains.compose*"
+        versions: [">=1.12.0"]
+      # Same floor, other route: CMP 1.11.1 requires jetbrains lifecycle 2.9.6, so only a catalog
+      # value above that can move the resolved version — and the next minors do carry a higher
+      # minCompileSdk (2.11.0 took it to 37 before #207). 2.9.x patches still flow. See CONTRIBUTING.md.
+      - dependency-name: "org.jetbrains.androidx.lifecycle*"
+        versions: [">=2.10.0"]
 
   # GitHub Actions used by the CI / CD / docs workflows.
   - package-ecosystem: github-actions
