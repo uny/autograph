@@ -296,11 +296,13 @@ public class ScopeStack {
      * it — see [resolve] for why. A native pipeline that deselects a demoted or paused surface (a
      * `ViewPager2` page moved off display, an Activity behind a permission prompt) therefore silences
      * what *that surface* declared, while a screen declared in a composition inside it — a
-     * `TrackedScreen` — keeps naming the ambient screen until it is disposed. Measured on a device:
-     * a pager of Compose-declared pages reads as the page most recently composed, not the one on
-     * display. Autograph's own captures are not affected, because they resolve from an origin; a
-     * host app enriching its own events should prefer the origin-taking overload where it has one.
-     * Whether a composition's frames should follow its lifecycle instead is tracked in #228.
+     * `TrackedScreen` — keeps naming the ambient screen until it is disposed, over a [maskScreen]
+     * the re-selected surface raised earlier too. Measured on a device: a pager of Compose-declared
+     * pages reads as the page most recently composed, not the one on display. Autograph's captures
+     * that resolve from an origin are not affected; a Compose tap under no claimed surface (a
+     * `Dialog` window) resolves ambiently and sees it. A host app enriching its own events should
+     * prefer the origin-taking overload where it has one. Whether a composition's frames should
+     * follow its lifecycle instead is tracked in #228.
      */
     public fun current(): AmbientContext = snapshot
 

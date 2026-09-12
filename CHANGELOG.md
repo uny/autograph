@@ -249,10 +249,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   stays silent. *Natively-named* is the scope, measured on a device: a screen the surface declares
   through `fragmentScreenName` / `activityScreenName` goes absent, while a `TrackedScreen` declared
   in a composition inside that surface still names the ambient screen — the active bit does not
-  propagate to nested frames, by design. Events autograph itself captures are unaffected either way,
-  because they resolve from their origin (`ScopeStack.current(origin)`) rather than ambiently; only
-  a host app reading `ScopeStack.current()` for its own events sees the difference. Whether a
-  composition's frames should follow its lifecycle instead is [#228].
+  propagate to nested frames, by design. Events autograph captures from an origin
+  (`ScopeStack.current(origin)`) are unaffected either way; what sees the difference is a
+  `ScopeStack.current()` read — a host app enriching its own events, or a Compose tap under no
+  claimed surface (a `Dialog` window), which resolves ambiently. Whether a composition's frames
+  should follow its lifecycle instead is [#228].
 
 ## [0.8.0] - 2026-08-21
 
