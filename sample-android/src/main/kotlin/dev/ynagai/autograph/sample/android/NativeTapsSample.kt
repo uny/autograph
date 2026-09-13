@@ -23,6 +23,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color as ComposeColor
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.unit.dp
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updateLayoutParams
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import dev.ynagai.autograph.android.isAutographIgnored
@@ -80,6 +83,17 @@ public class NativeTapsActivity : ComponentActivity() {
         return ScrollView(this).apply {
             id = R.id.tap_scroller
             addView(column)
+            // Edge-to-edge (enforced from targetSdk 35) runs the scroller under the navigation bar,
+            // and `scrollTo()` parks its target on the scroller's bottom edge — so the target's centre
+            // lands on the bar's boundary and the tap goes to the system or the button by a pixel.
+            // A margin, not padding: ScrollView's scroll-into-view math ignores its own padding, so a
+            // padded viewport would leave the target half-clipped and fail Espresso's 90% check.
+            ViewCompat.setOnApplyWindowInsetsListener(this) { v, insets ->
+                v.updateLayoutParams<ViewGroup.MarginLayoutParams> {
+                    bottomMargin = insets.getInsets(WindowInsetsCompat.Type.systemBars()).bottom
+                }
+                insets
+            }
         }
     }
 
