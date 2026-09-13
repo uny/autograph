@@ -324,7 +324,7 @@ public class ScopeStack {
      *   native pipeline that claims no views pushes (iOS), a Compose declaration outside any claimed
      *   surface. Nothing localizes those, so they apply to every event, exactly as they do ambiently.
      *   A boundary-free stack therefore resolves with the same *members* with or without an origin
-     *   — except what is nested under an inactive frame off the origin's lineage, see below — (and
+     *   — except what is nested under an inactive frame of another surface, see below — (and
      *   in the same order, unless a frame was reparented under one pushed after it — see the ranking
      *   below).
      *
