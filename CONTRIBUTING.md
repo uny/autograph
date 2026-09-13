@@ -39,9 +39,10 @@ without validating anything. That is the same vacuous green ADR 0001 §1 calls "
 for `autograph-android`, and nothing announces it — you have to go looking for the task in the build
 log. Measured while lowering the floor (#205): `abiValidation {}` runs the checks under 2.4.10 and
 skips them under 2.3.21, so the behaviour turns on the KGP version rather than on the call form.
-Setting `enabled` explicitly is what makes it independent of both, which is the point — a future
-bump back to 2.4 is not a reason to drop it, since the next move down would silently disarm the gate
-again.
+Setting `enabled` explicitly is what makes it independent of both on the 2.3 line, which is the
+point. KGP 2.4 removed the property, so a bump back to 2.4 *does* change the form — but only in the
+bump commit itself, never ahead of it, because the bare call is exactly what disarms the gate under
+2.3 (see "Bumping dependencies" below).
 
 If you touch these blocks, check the gate still fires rather than trusting a green build:
 `./gradlew :autograph-core:checkKotlinAbi` must print the task, not `SKIPPED`.
@@ -80,6 +81,18 @@ instead of calling 2.4's `Uuid.generateV7()`. Before bumping `kotlin`, check tha
 [KSP](https://github.com/google/ksp/releases) has shipped for the target *minor*, and say so in the
 PR. Bumping the patch within a supported minor is the ordinary chore this warning is not about.
 Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
+
+**Raising the floor to 2.4 flips the `abiValidation` DSL in every published module, and the flip
+must land in the bump commit — never before it.** KGP 2.4 removed the `enabled` property, so the
+`abiValidation { enabled.set(true) }` the "Changing public API" section tells you to keep is a script
+compilation error under 2.4.x (`Property was removed, to enable ABI validation call function
+abiValidation()`). The bare `abiValidation()` is the 2.4 form and stays non-vacuous there (measured
+on 2.4.10: adding one public function fails `:autograph-core:checkKotlinAbi`,
+[#224](https://github.com/uny/autograph/issues/224)) — but under 2.3.21 that same bare call leaves
+the checks `SKIPPED`, which is what #205 had to work around. So the two forms are correct on exactly
+one side of the floor each: change all six blocks in the same commit as `kotlin =`, re-run
+`fixtures/klib-diamond/run.sh` on the new version, and confirm `:autograph-core:checkKotlinAbi`
+prints the task rather than `SKIPPED`.
 
 **A `kotlinx` bump can raise the same floor without touching `kotlin`, and its version number will
 not tell you.** Every `org.jetbrains.kotlinx` artifact ships klibs with *their* producing compiler's
