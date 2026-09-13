@@ -104,15 +104,17 @@ would, while looking like a routine minor. Before merging any `kotlinx` bump, re
 published klib; it takes seconds and needs no toolchain:
 
 ```bash
-curl -sO https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-iosarm64/<version>/kotlinx-serialization-json-iosarm64-<version>.klib
+cd "$(mktemp -d)"
+curl -sfO https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-iosarm64/<version>/kotlinx-serialization-json-iosarm64-<version>.klib
 unzip -p kotlinx-serialization-json-iosarm64-<version>.klib default/manifest | grep -E 'abi_version|compiler_version'
 ```
 
 `abi_version` must stay at or below the floor's minor (`2.3.0` today). The same check is how the
-Compose Multiplatform 1.12.0 bump was shown *not* to be Kotlin-blocked ([#224](https://github.com/uny/autograph/issues/224)) — it works for any
-klib, and it is what decides whether a dependabot PR in the `kotlin` group is a chore or a floor
-change. `dependabot.yml` ignores the `kotlin` 2.4 line itself; it cannot express this rule for
-`kotlinx`, so the check is manual.
+Compose Multiplatform 1.12.0 bump was shown *not* to be Kotlin-blocked
+([#224](https://github.com/uny/autograph/issues/224)) — it works for any klib, and it is what
+decides whether a dependabot PR in the `kotlin` group is a chore or a floor change.
+`dependabot.yml` ignores the `kotlin` 2.4 line itself; it cannot express this rule for `kotlinx`, so
+the check is manual.
 
 **`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
 each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
