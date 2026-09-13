@@ -178,11 +178,11 @@ internal fun MirrorAmbientFrame(
  * recently *composed*, not the one on display, because a page composes at `STARTED` — before it is
  * ever shown — and its frames were born active (#228). Seeding from the owner's current state is
  * what makes such a page start silent; the observer then follows the transitions. Taps are not what
- * this is for: they resolve from an origin, which does not propagate the bit (see
- * `ScopeStack.current(origin)`), so a tap on a page the host reports as demoted — one peeking beside
- * the current page — still attributes to that page's own screen. That holds only because
- * [ProviderOrigin.resolve] never reads the ambient snapshot while this frame exists, claimed host
- * or not.
+ * this is for: they resolve from an origin, which does not propagate the bit within the origin's own
+ * surface (see `ScopeStack.current(origin)`), so a tap on a page the host reports as demoted — one
+ * peeking beside the current page — still attributes to that page's own screen, while a demoted
+ * sibling composition's declarations stay off it. That holds only because [ProviderOrigin.resolve]
+ * never reads the ambient snapshot while this frame exists, claimed host or not.
  */
 @Composable
 internal fun ProviderFrame(

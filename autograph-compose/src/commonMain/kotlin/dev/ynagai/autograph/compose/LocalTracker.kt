@@ -44,7 +44,9 @@ public val LocalTracker: androidx.compose.runtime.ProvidableCompositionLocal<Tra
  * moved off display, an Activity paused behind a prompt, or a Compose `UIViewController` after
  * `viewDidDisappear` takes its declarations out of `ScopeStack.current()` and a resume brings them
  * back, with nothing recomposed. Events resolved from an origin (autograph's own captures) are not
- * gated this way; see `ScopeStack.current(origin)`.
+ * gated by their own surface's demotion — a tap on a page peeking beside the current one still reads
+ * that page's declarations — though a demoted *sibling* composition on the same stack is off them
+ * exactly as it is ambiently; see `ScopeStack.current(origin)`.
  */
 @Composable
 public fun AutographProvider(

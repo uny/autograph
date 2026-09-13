@@ -21,10 +21,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     whose ancestor on the stack is inactive, whatever the frame's own bit says — so a native surface
     the Android capture deselects silences the composition inside it, and a frame pushed under a
     demoted surface *while* it is demoted starts silent. `current(origin)` applies the same rule
-    with one exemption, the origin's own lineage: an origin is the pipeline asserting the event
-    happened in that surface, so a tap on a page peeking beside the current one still attributes to
-    that page's own `TrackedScreen`, while a demoted *sibling* page's declarations stay off a tap on
-    the current page exactly as they do ambiently. A parent link off the stack is transparent.
+    with one exemption, the origin's own surface (its lineage, and what sits beneath it with no
+    boundary between): an origin is the pipeline asserting the event happened in that surface, so a
+    tap on a page peeking beside the current one still attributes to that page's own
+    `TrackedScreen` — landing on its Compose content or on a native button beside it — while a
+    demoted *sibling* page's declarations stay off a tap on the current page exactly as they do
+    ambiently. A parent link off the stack is transparent.
   - **A composition's frames follow its `LocalLifecycleOwner`.** `AutographProvider` marks the frame
     it pushes for the composition active exactly while the owner is `RESUMED`, seeded from the
     owner's state at composition; `RESUMED ↔ STARTED` is the demotion signal every host emits, so

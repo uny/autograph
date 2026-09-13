@@ -219,8 +219,8 @@ public class ScopeStack {
      * Marks the frame [handle] refers to as taking part in resolution, or not. An inactive frame keeps
      * its position and its contents but contributes nothing — no screen, no section, no scope — as if
      * it were not on the stack at all. The frames nested under it drop out with it — ambiently
-     * always, from an origin unless the frame is on the origin's own lineage; see [recompute] and the
-     * origin-taking [current] for the split.
+     * always, from an origin unless the frame belongs to the origin's own surface; see [recompute]
+     * and the origin-taking [current] for the split.
      *
      * **This is the "is this surface the one on display?" bit, and position cannot answer it.**
      * Position stands in for *recency of becoming foreground*, which only holds while a frame leaves
@@ -297,7 +297,7 @@ public class ScopeStack {
      * surface off display takes what is inside it off display too, so a screen declared in a
      * composition inside a demoted pager page or a paused Activity — a `TrackedScreen` — is absent
      * here for as long as its surface is, and so is a frame pushed under that surface while it is
-     * demoted. The origin-taking overload does the same, except along the origin's own lineage — see
+     * demoted. The origin-taking overload does the same, except within the origin's own surface — see
      * [recompute] — and it is what makes this answer track the display rather than the most recent
      * composition (#228). A host app enriching its own events should still prefer the origin-taking
      * overload where it has one: this read cannot tell a sibling surface's declaration from the
@@ -340,10 +340,12 @@ public class ScopeStack {
      * raised on the lineage clears the screen beneath it, content pushed after it inside the same
      * surface still wins, and a subtree that branches is ambiguous just as it is ambiently. The
      * active bit reaches down the lineage here too — a frame nested under an inactive frame is out —
-     * with one exemption: an inactive frame **on the origin's own lineage** drops its contribution
-     * and nothing else. The origin is the pipeline asserting the event happened under that frame, so
-     * what is declared beneath it stays (a tap on a pager page the host reports as demoted still
-     * attributes to the page's own `TrackedScreen`), while a *sibling* surface's demotion silences
+     * with one exemption: an inactive frame **of the origin's own surface** (on its lineage, or
+     * beneath it with no boundary between) drops its contribution and nothing else. The origin is
+     * the pipeline asserting the event happened in that surface, so what is declared inside it stays
+     * (a tap on a pager page the host reports as demoted still attributes to the page's own
+     * `TrackedScreen`, whether it lands on the Compose content or on a native button beside it —
+     * the composition's provider frame mirrors the same demotion), while a *sibling* surface's demotion silences
      * that sibling's declarations for this event exactly as it does ambiently — on a shared,
      * boundary-free stack (iOS; Android without the native capture) that is the only thing keeping a
      * demoted neighbour page's screen off a tap on the current one. The ambient read is the
@@ -362,9 +364,15 @@ public class ScopeStack {
         // a frame is transparent here: it contributes nothing and it is not a boundary, so what is
         // linked under it is neither hidden by it nor stranded. Only frames on this stack decide.
         val onStack = frames.toHashSet()
+        // A demoted frame gates what is nested under it here too — unless it belongs to the origin's
+        // own surface: its lineage, or the frames beneath it that no boundary separates from it. The
+        // pipeline has placed the event in that surface, and the surface's own demotion (its host
+        // paused, the pager page it is on peeking beside the current one) is not evidence against
+        // that. A Compose provider's frame inside the surface mirrors the same demotion, so without
+        // the second half a native tap on a demoted page lost the `TrackedScreen` composed beside it.
+        val ownSurface = { frame: ScopeFrame -> frame in lineage || frame.isBeneathWithoutBoundary(originFrame, onStack) }
         val survivors = frames.filter { frame ->
-            (frame in lineage || frame.isBeneathWithoutBoundary(originFrame, onStack) || !frame.isUnderABoundary(onStack)) &&
-                !frame.hasInactiveAncestorOn(onStack, exempt = lineage)
+            (ownSurface(frame) || !frame.isUnderABoundary(onStack)) && !frame.hasInactiveAncestorOn(onStack, exempt = ownSurface)
         }
         // A container ranks where its earliest nested survivor ranks (see the kdoc). Frames sharing a
         // rank are always one ancestor chain — the rank comes from one frame's index, and only its
@@ -411,22 +419,22 @@ public class ScopeStack {
      * composes at STARTED, before it is ever shown), would otherwise keep naming the ambient screen;
      * measured, a pager of Compose-declared pages read as the page most recently composed rather than
      * the one on display (#228). The origin-taking [current] applies the same rule but exempts the
-     * origin's own lineage: an origin is the pipeline asserting the event happened in that surface,
+     * origin's own surface: an origin is the pipeline asserting the event happened in that surface,
      * which an ambient read cannot claim. Only ancestors on THIS stack count, as in the origin walk
      * — a link off the stack is transparent, never a gate.
      */
     private fun recompute(): AmbientContext {
         val onStack = frames.toHashSet()
-        return resolve(frames.filter { frame -> !frame.hasInactiveAncestorOn(onStack, exempt = emptySet()) })
+        return resolve(frames.filter { frame -> !frame.hasInactiveAncestorOn(onStack, exempt = { false }) })
     }
 
     /**
-     * Whether any frame this one is nested in, still on the stack and not in [exempt], is inactive.
-     * [exempt] is an origin's lineage: a demoted frame the event is known to have happened under does
-     * not gate what is beneath it.
+     * Whether any frame this one is nested in, still on the stack and not [exempt], is inactive.
+     * [exempt] marks an origin's own surface: a demoted frame the event is known to have happened
+     * under, or inside, does not gate what is beneath it.
      */
-    private fun ScopeFrame.hasInactiveAncestorOn(onStack: Set<ScopeFrame>, exempt: Set<ScopeFrame>): Boolean =
-        generateSequence(parent) { it.parent }.any { !it.active && it in onStack && it !in exempt }
+    private fun ScopeFrame.hasInactiveAncestorOn(onStack: Set<ScopeFrame>, exempt: (ScopeFrame) -> Boolean): Boolean =
+        generateSequence(parent) { it.parent }.any { !it.active && it in onStack && !exempt(it) }
 
     private fun resolve(candidates: List<ScopeFrame>): AmbientContext {
         // Inactive frames are skipped ONCE, here, and the survivors are what both screen/section and
@@ -436,8 +444,8 @@ public class ScopeStack {
         // inside it keeps its lineage and its voice (pinned on the origin overload by ScopeStackTest's
         // `an_inactive_frame_still_carries_the_lineage_of_its_descendants`).
         // Whether the bit also reaches the frames nested under it is the caller's question — the
-        // ambient [recompute] says yes, the origin-taking [current] says yes except on the origin's
-        // own lineage — and that is decided in the candidate list handed in, not re-derived here.
+        // ambient [recompute] says yes, the origin-taking [current] says yes except within the
+        // origin's own surface — and that is decided in the candidate list handed in, not here.
         val live = candidates.filter { it.active }
         if (live.isEmpty()) return AmbientContext.Empty
         var screen: String? = null

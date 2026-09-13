@@ -251,6 +251,27 @@ class ScopeStackOriginTest {
     }
 
     @Test
+    fun a_demoted_frame_beneath_the_origin_in_its_own_surface_does_not_gate_what_is_under_it() {
+        // A native tap on a pager page peeking beside the current one, resolved from the PAGE's frame
+        // (the native capture's claim), where the page mixes a native button with a ComposeView. The
+        // Compose provider's frame sits under the page frame with no boundary between and mirrors the
+        // page's demotion — its owner is the same fragment view lifecycle. Exempt only the origin's
+        // ancestors and that provider frame gates the TrackedScreen composed inside the very surface
+        // the event happened in: measured as a masked null where the base read "PageB".
+        val stack = ScopeStack()
+        val shell = stack.push(boundary = true)
+        stack.maskScreen(shell)
+        val page = stack.push(parent = shell, boundary = true)
+        stack.setActive(page, false)
+        val provider = stack.push(parent = page)
+        stack.setActive(provider, false)
+        stack.push(screen = "PageB", parent = provider)
+
+        assertEquals("PageB", stack.current(page).screen, "the composition inside the tapped page still speaks")
+        assertNull(stack.current().screen, "ambiently the demoted page and everything in it are silent")
+    }
+
+    @Test
     fun a_stale_origin_resolves_to_what_of_its_lineage_is_still_on_the_stack() {
         val stack = ScopeStack()
         val host = stack.push(screen = "Host", boundary = true)
