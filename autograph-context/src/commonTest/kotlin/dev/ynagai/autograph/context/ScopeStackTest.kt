@@ -605,8 +605,9 @@ class ScopeStackTest {
         stack.remove(gone)
         assertEquals("Live", stack.current().screen, "a removed ancestor gates nothing")
 
-        val foreign = ScopeStack().push()
-        ScopeStack().setActive(foreign, false)
+        val foreignStack = ScopeStack()
+        val foreign = foreignStack.push()
+        foreignStack.setActive(foreign, false)
         val other = ScopeStack()
         other.push(screen = "Live", parent = foreign)
         assertEquals("Live", other.current().screen, "another stack's frame gates nothing")

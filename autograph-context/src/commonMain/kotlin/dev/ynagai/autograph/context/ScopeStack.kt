@@ -334,10 +334,11 @@ public class ScopeStack {
      * resume), and insertion order alone would let that late mask blank the `TrackedScreen` inside
      * it; ranking the container where its earliest nested survivor ranks keeps the content winning,
      * as it did before the surface was adopted, while a root the app pushed by hand still ranks
-     * where it was pushed. The active bit, [maskScreen] and [resolveScope] then apply exactly as in
-     * [current]: a mask raised on the lineage clears the screen beneath it, content pushed after it
-     * inside the same surface still wins, and a subtree that branches is ambiguous just as it is
-     * ambiently.
+     * where it was pushed. [maskScreen] and [resolveScope] then apply exactly as in [current]: a mask
+     * raised on the lineage clears the screen beneath it, content pushed after it inside the same
+     * surface still wins, and a subtree that branches is ambiguous just as it is ambiently. The
+     * active bit applies per frame here — an inactive frame drops its own contribution and nothing
+     * else — where the ambient read also drops everything nested under it; see [recompute].
      *
      * A frame in the lineage that is no longer on the stack (its surface was torn down but a stale
      * handle survived) contributes nothing, and the walk continues past it; an [origin] that is not
@@ -418,8 +419,8 @@ public class ScopeStack {
         // [resolveScope] see — so "does this frame take part?" is answered in one place rather than
         // being re-derived per field. See [setActive] for why position alone cannot answer it.
         // Here the bit is a frame's OWN: an inactive frame's contribution drops, what is nested
-        // inside it keeps its lineage and its voice (pinned by the ScopeStackTest trio around
-        // `an_inactive_frame_still_carries_the_lineage_of_its_descendants`, on the origin overload).
+        // inside it keeps its lineage and its voice (pinned on the origin overload by ScopeStackTest's
+        // `an_inactive_frame_still_carries_the_lineage_of_its_descendants`).
         // Whether the bit also reaches the frames nested under it is the caller's question — the
         // ambient [recompute] says yes, the origin-taking [current] says no — and that is decided in
         // the candidate list handed in, not re-derived per frame here.

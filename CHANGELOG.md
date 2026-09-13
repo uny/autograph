@@ -33,12 +33,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     *composed* one ambient). The two iOS readers of `current()` — the native tap capture and the
     explicit element capture — pick this up with no change of their own.
 
-  Taps autograph captures itself were already right (they resolve from an origin); what changes is
-  every read of `current()` — a host app enriching its own events, a Compose tap under no claimed
-  surface (a `Dialog` window), and the two iOS captures above. `Screen Viewed` is untouched: a
-  demotion still ends no view and a return still reports none. What this does not reach: the
-  retained off-screen pages of a Compose `HorizontalPager`, which share one lifecycle owner and emit
-  no signal.
+  Taps autograph captures itself resolve from an origin and are not gated this way — which took a
+  third change: a Compose tap in a composition whose host view nothing claims (every Compose tap on
+  iOS, and on Android without the native capture) used to fall back to the ambient read, and with
+  the propagation above that read would have dropped a visible page's own `TrackedScreen` whenever
+  its host reported `STARTED` (a `ViewPager2` neighbour peeking beside the current page). Such a tap
+  now resolves from the composition's own frame, unlinked; what an app pushes by hand stays visible
+  to it as before. What changes is every read of `current()` — a host app enriching its own events,
+  and the two iOS captures above. `Screen Viewed` is untouched: a demotion still ends no view and a
+  return still reports none. What this does not reach: the retained off-screen pages of a Compose
+  `HorizontalPager`, which share one lifecycle owner and emit no signal.
 
 ## [0.9.0] - 2026-09-13
 
