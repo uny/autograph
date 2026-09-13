@@ -535,10 +535,33 @@ class ScopeStackTest {
     fun an_inactive_frame_still_carries_the_lineage_of_its_descendants() {
         // Containment is structural: a scope nested inside a demoted frame is still nested inside it,
         // so the two must stay comparable and merge rather than reading as ambiguous siblings. Only
-        // the inactive frame's own contribution drops.
+        // the inactive frame's own contribution drops — FROM AN ORIGIN. Ambiently the demoted frame
+        // takes its descendants with it (see the next test), so the origin overload is the one place
+        // this fact is still observable, and the one place it matters: an origin is the pipeline
+        // asserting the event happened under the demoted frame.
         // The discriminating shape is an ACTIVE ancestor reaching an active descendant THROUGH the
         // inactive frame. An earlier version of this test asserted an empty scope in both arms, which
         // an implementation that stops the ancestry walk at an inactive link passes just as happily.
+        val stack = ScopeStack()
+        val route = stack.push(scope = props("tab" to "home"))
+        val demoted = stack.push(parent = route)
+        val row = stack.push(scope = props("row" to "7"), parent = demoted)
+        assertEquals(props("tab" to "home", "row" to "7"), stack.current(row).scope)
+
+        stack.setActive(demoted, false)
+        // `demoted` contributes nothing of its own, but it still LINKS: route encloses the row, so
+        // the two remain comparable and merge. Break the walk at the inactive link — say
+        // `generateSequence(other) { it.parent?.takeIf { p -> p.active } }` — and they become
+        // ambiguous roots that drop to {}, which is what this assertion pins.
+        assertEquals(props("tab" to "home", "row" to "7"), stack.current(row).scope)
+    }
+
+    @Test
+    fun ambiently_an_inactive_frame_takes_its_descendants_with_it() {
+        // The ambient read has no event to go by, so "is this surface on display?" governs everything
+        // inside the surface: the row nested under the demoted frame leaves with it, and what
+        // encloses the demoted frame stays. This is the #228 shape — a TrackedScreen composed inside
+        // a demoted pager page — reduced to scope.
         val stack = ScopeStack()
         val route = stack.push(scope = props("tab" to "home"))
         val demoted = stack.push(parent = route)
@@ -546,39 +569,81 @@ class ScopeStackTest {
         assertEquals(props("tab" to "home", "row" to "7"), stack.current().scope)
 
         stack.setActive(demoted, false)
-        // `demoted` contributes nothing of its own, but it still LINKS: route encloses the row, so
-        // the two remain comparable and merge. Break the walk at the inactive link — say
-        // `generateSequence(other) { it.parent?.takeIf { p -> p.active } }` — and they become
-        // ambiguous roots that drop to {}, which is what this assertion pins.
-        assertEquals(props("tab" to "home", "row" to "7"), stack.current().scope)
+        assertEquals(props("tab" to "home"), stack.current().scope, "the row is off display with its surface")
+
+        stack.setActive(demoted, true)
+        assertEquals(props("tab" to "home", "row" to "7"), stack.current().scope, "and back with it")
+    }
+
+    @Test
+    fun a_frame_pushed_under_a_demoted_surface_is_born_silent_ambiently() {
+        // The measured #228 defect in its exact form: a pager page composes at STARTED, before it is
+        // ever shown, so its TrackedScreen is pushed AFTER the page was demoted. Insertion order and
+        // the frame's own (fresh, active) bit would both name it; only the ancestor's bit can say no.
+        val stack = ScopeStack()
+        stack.push(screen = "PageA")
+        val pageB = stack.push()
+        stack.setActive(pageB, false)
+        stack.push(screen = "PageB", parent = pageB)
+        assertEquals("PageA", stack.current().screen)
+
+        stack.setActive(pageB, true)
+        assertEquals("PageB", stack.current().screen, "selecting the page brings its declaration in")
+    }
+
+    @Test
+    fun only_an_inactive_ancestor_still_on_the_stack_gates_its_descendants() {
+        // Mirrors the origin walk's rule: a parent link pointing off this stack — at a frame since
+        // removed, or at another stack's frame — is transparent, never a gate. A stale inactive
+        // ancestor must not silence content that is still very much on display.
+        val stack = ScopeStack()
+        val gone = stack.push()
+        stack.setActive(gone, false)
+        stack.push(screen = "Live", parent = gone)
+        assertNull(stack.current().screen, "gated while the inactive ancestor is on the stack")
+
+        stack.remove(gone)
+        assertEquals("Live", stack.current().screen, "a removed ancestor gates nothing")
+
+        val foreignStack = ScopeStack()
+        val foreign = foreignStack.push()
+        foreignStack.setActive(foreign, false)
+        val other = ScopeStack()
+        other.push(screen = "Live", parent = foreign)
+        assertEquals("Live", other.current().screen, "another stack's frame gates nothing")
     }
 
     @Test
     fun an_inactive_frames_own_scope_still_drops_out() {
-        // The other half: lineage survives deactivation, the contribution does not.
+        // The other half: lineage survives deactivation, the contribution does not. From an origin
+        // beneath it the inner scope is still reported (the event happened there); ambiently the
+        // inner frame is off display along with its outer and nothing is left.
         val stack = ScopeStack()
         val outer = stack.push(scope = props("a" to "outer", "b" to "outer"))
-        stack.push(scope = props("b" to "inner"), parent = outer)
+        val inner = stack.push(scope = props("b" to "inner"), parent = outer)
         assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope)
 
         stack.setActive(outer, false)
-        assertEquals(props("b" to "inner"), stack.current().scope, "outer's own keys leave with it")
+        assertEquals(props("b" to "inner"), stack.current(inner).scope, "outer's own keys leave with it")
+        assertEquals(JsonObject(emptyMap()), stack.current().scope, "ambiently inner leaves with outer")
     }
 
     @Test
     fun deactivating_a_frame_does_not_turn_an_ambiguous_drop_into_a_guess() {
         // Selection narrows the candidate set, and narrowing must not be mistaken for disambiguating:
         // two frames that branch away from each other are still ambiguous when a THIRD is demoted.
-        // The fixture this replaced covered it by accident; a mutant that skipped the pairwise
-        // comparability filter once anything was inactive would otherwise report a guessed sibling
-        // scope — the wrong-value outcome #66 forbids.
+        // The demoted frame is a root of its own here — demoting `outer` would (correctly) take
+        // `inner` off display with it and leave `sibling` alone, which is a resolution, not a guess.
+        // A mutant that skipped the pairwise comparability filter once anything was inactive would
+        // report a guessed sibling scope — the wrong-value outcome #66 forbids.
         val stack = ScopeStack()
         val outer = stack.push(scope = props("a" to "outer"))
         stack.push(scope = props("b" to "inner"), parent = outer)
         stack.push(scope = props("c" to "sibling"))
+        val third = stack.push(scope = props("d" to "third"))
         assertEquals(JsonObject(emptyMap()), stack.current().scope)
 
-        stack.setActive(outer, false)
+        stack.setActive(third, false)
         assertEquals(
             JsonObject(emptyMap()),
             stack.current().scope,

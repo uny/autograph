@@ -7,6 +7,9 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
@@ -163,8 +166,23 @@ internal fun MirrorAmbientFrame(
  * provider's taps too. Each of those was a correct→absent or correct→wrong regression when this
  * frame was a boundary; all three are pinned.
  *
- * The frame carries no contents and is never [ScopeStack.update]d with any, so it changes nothing
- * about the ambient [ScopeStack.current] — an empty frame contributes nothing.
+ * The frame carries no contents and is never [ScopeStack.update]d with any, so on its own it
+ * changes nothing about the ambient [ScopeStack.current] — an empty frame contributes nothing.
+ * What it does carry is the composition's **selection**: the frame is active exactly while the
+ * composition's [LocalLifecycleOwner] is `RESUMED`, and ambiently the bit reaches everything nested
+ * under it, so the `TrackedScreen`s and [AutographScope]s of a composition go silent together with
+ * the surface showing it and come back with it. `RESUMED ↔ STARTED` is the demotion signal every
+ * host emits: a `ViewPager2` page moved off display, an Activity behind a permission prompt, a
+ * Compose `UIViewController` after `viewDidDisappear` (which Compose Multiplatform maps to
+ * `CREATED`). Measured before this: a pager of Compose-declared pages read ambiently as the page most
+ * recently *composed*, not the one on display, because a page composes at `STARTED` — before it is
+ * ever shown — and its frames were born active (#228). Seeding from the owner's current state is
+ * what makes such a page start silent; the observer then follows the transitions. Taps are not what
+ * this is for: they resolve from an origin, which does not propagate the bit within the origin's own
+ * surface (see `ScopeStack.current(origin)`), so a tap on a page the host reports as demoted — one
+ * peeking beside the current page — still attributes to that page's own screen, while a demoted
+ * sibling composition's declarations stay off it. That holds only because [ProviderOrigin.resolve]
+ * never reads the ambient snapshot while this frame exists, claimed host or not.
  */
 @Composable
 internal fun ProviderFrame(
@@ -186,6 +204,22 @@ internal fun ProviderFrame(
             stack.remove(pushed)
             holder[0] = null
         }
+    }
+    // Declared AFTER the push effect so it runs after it in the same apply phase and finds the
+    // handle. Seeded explicitly rather than left to `addObserver`'s catch-up dispatch, which replays
+    // the events up to the current state and so would leave a STARTED owner's frame active.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(stack, lifecycle) {
+        holder[0]?.let { stack.setActive(it, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> holder[0]?.let { stack.setActive(it, true) }
+                Lifecycle.Event.ON_PAUSE -> holder[0]?.let { stack.setActive(it, false) }
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
     if (enclosing == null) KeepLinkedToHost(stack, origin)
     CompositionLocalProvider(LocalScopeParent provides holder) { content(origin) }
@@ -224,9 +258,18 @@ internal expect fun KeepLinkedToHost(stack: ScopeStack, origin: ProviderOrigin)
  *
  * With no surface claiming the host view — no native screen capture installed, a platform with no
  * such capture at all, or a `Dialog`/`Popup` window whose view tree sits under no surface's root —
- * the tap resolves **ambiently**, exactly as before origins existed: there is nothing to localize
- * against, and a frame the app pushes by hand stays visible. (It stays visible under a claimed host
- * too — a frame under no boundary applies to every origin; see `ScopeStack.current(origin)`.)
+ * the tap still resolves from the composition's own frame, unlinked: there is nothing to localize
+ * against, so every frame under no boundary applies (a frame the app pushes by hand stays visible,
+ * exactly as it does under a claimed host; a claimed native surface's frame beside it does not —
+ * absent, never borrowed), the composition's own declarations apply whatever this frame's bit says,
+ * and another composition's on the same stack apply only while *its* provider frame is active — see
+ * `ScopeStack.current(origin)`. Falling back to the ambient [ScopeStack.current] here instead was
+ * measured wrong:
+ * that read propagates a demoted host's bit down to the composition (see [ProviderFrame]), so a tap
+ * on a visible page whose host reports `STARTED` — a `ViewPager2` neighbour peeking beside the
+ * current page — lost the page's own `TrackedScreen` and, on a shared stack, took the current
+ * page's instead. Nothing claims a host view on iOS or on Android without the native capture, so
+ * that fallback was the path of every Compose tap there, not an edge case.
  */
 internal class ProviderOrigin(
     private val root: Array<ScopeHandle?>,
@@ -240,10 +283,15 @@ internal class ProviderOrigin(
         return host
     }
 
-    /** The context for a tap in this composition. Main thread, like the tap dispatch it runs in. */
+    /**
+     * The context for a tap in this composition. Main thread, like the tap dispatch it runs in.
+     * Always from this composition's frame while it exists — see the class kdoc for why an unclaimed
+     * host must not fall back to the ambient read.
+     */
     fun resolve(stack: ScopeStack): AmbientContext {
         val frame = root[0] ?: return stack.current()
-        return if (link(stack) != null) stack.current(frame) else stack.current()
+        link(stack)
+        return stack.current(frame)
     }
 }
 

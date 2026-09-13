@@ -20,10 +20,12 @@ import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.context.autographScopeOrigin
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -479,6 +481,31 @@ class AndroidScreenCaptureTest {
         fm.beginTransaction().add(android.R.id.content, SecondFragment(), "opted-out").commitNow()
 
         assertEquals("DetailFragment", scopeStack.current().screen)
+    }
+
+    @Test
+    fun aResumedFragmentThatDeclaresNothingStillLetsWhatIsComposedInsideItSpeak() {
+        // An opted-out Compose-hosting fragment declares nothing of its own, but it is on display, and
+        // the ambient read now takes a frame's descendants off display with it (#228). Left
+        // deselected on resume, the fragment would silence every TrackedScreen composed inside it
+        // and the ambient screen would fall back to the screen beneath — a wrong value. The
+        // composition's frame is stood in for here by a plain push under the fragment's claimed
+        // handle, which is exactly the link the Compose provider makes.
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is ComposeHostFragment) null else it.javaClass.simpleName },
+        )
+        val activity = Robolectric.buildActivity(FragmentHostActivity::class.java).setup().get()
+        val fm = activity.supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, ComposeHostFragment(), "compose").commitNow()
+        val host = fm.findFragmentByTag("compose")!!.requireView().autographScopeOrigin()
+        assertNotNull("the fragment's view is claimed", host)
+
+        scopeStack.push(screen = "ComposedInside", parent = host)
+        assertEquals("ComposedInside", scopeStack.current().screen)
     }
 
     @Test

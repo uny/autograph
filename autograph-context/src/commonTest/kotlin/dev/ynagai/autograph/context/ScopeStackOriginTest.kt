@@ -114,7 +114,7 @@ class ScopeStackOriginTest {
         stack.push(screen = "B", parent = providerB)
         stack.setActive(pageB, false)
 
-        assertEquals("B", stack.current().screen, "ambiently, insertion order still names B")
+        assertEquals("A", stack.current().screen, "ambiently too: the demoted page takes its declaration with it (#228)")
         assertEquals("A", stack.current(providerA).screen)
         // And even with B selected too (the sibling is simply another surface):
         stack.setActive(pageB, true)
@@ -208,6 +208,67 @@ class ScopeStackOriginTest {
         assertNull(ctx.screen)
         assertNull(ctx.section)
         assertEquals(JsonObject(emptyMap()), ctx.scope)
+    }
+
+    @Test
+    fun an_origin_under_a_demoted_surface_still_sees_the_declarations_beneath_it() {
+        // The split that keeps the ambient propagation honest: ambiently a demoted surface silences
+        // what is composed inside it, but an event resolved FROM that composition is the pipeline
+        // asserting the event happened there — a tap on a pager page peeking beside the current one,
+        // reported by the host as STARTED — and the page's own TrackedScreen is the right answer,
+        // not the current page's and not nothing. Propagate the bit here too and this reads null.
+        val stack = ScopeStack()
+        val current = stack.push(boundary = true)
+        stack.push(screen = "Current", parent = stack.push(parent = current))
+        val peeking = stack.push(boundary = true)
+        val provider = stack.push(parent = peeking)
+        stack.push(screen = "Peeking", parent = provider)
+        stack.setActive(peeking, false)
+
+        assertEquals("Current", stack.current().screen, "ambiently the demoted page is silent")
+        assertEquals("Peeking", stack.current(provider).screen, "from its own origin it is not")
+    }
+
+    @Test
+    fun a_demoted_sibling_off_the_origins_lineage_is_silenced_for_that_origin_too() {
+        // The other side of the exemption above, on a stack with no boundary at all — one shared
+        // ScopeStack under several Compose surfaces with nothing claiming them (iOS; Android without
+        // the native capture). Every frame is a survivor of the boundary walk, so only the active bit
+        // can keep the neighbour page's screen off a tap on the current one; per-frame it cannot,
+        // because the demoted page's TrackedScreen carries its own, fresh, active bit and was pushed
+        // later. Propagating the bit down every lineage BUT the origin's own is what gets both taps
+        // right: the current page's tap reads its screen, the peeking page's tap reads its own.
+        val stack = ScopeStack()
+        val current = stack.push()
+        stack.push(screen = "Current", parent = current)
+        val peeking = stack.push()
+        stack.push(screen = "Peeking", parent = peeking)
+        stack.setActive(peeking, false)
+
+        assertEquals("Current", stack.current(current).screen, "a demoted sibling's declaration does not reach this tap")
+        assertEquals("Peeking", stack.current(peeking).screen, "the event happened under the demoted frame: its own screen")
+        assertEquals("Current", stack.current().screen)
+    }
+
+    @Test
+    fun a_demoted_frame_beneath_the_origin_in_its_own_surface_does_not_gate_what_is_under_it() {
+        // A native tap on a pager page peeking beside the current one, resolved from the PAGE's frame
+        // (the native capture's claim), where the page mixes a native button with a ComposeView. The
+        // Compose provider's frame sits under the page frame with no boundary between and mirrors the
+        // page's demotion — its owner is the same fragment view lifecycle. Exempt only the origin's
+        // ancestors and that provider frame gates the TrackedScreen composed inside the very surface
+        // the event happened in: measured as a masked null where the base read "PageB".
+        val stack = ScopeStack()
+        val shell = stack.push(boundary = true)
+        stack.maskScreen(shell)
+        val page = stack.push(parent = shell, boundary = true)
+        stack.setActive(page, false)
+        val provider = stack.push(parent = page)
+        stack.setActive(provider, false)
+        stack.push(screen = "PageB", parent = provider)
+
+        assertEquals("PageB", stack.current(page).screen, "the composition inside the tapped page still speaks")
+        assertNull(stack.current().screen, "ambiently the demoted page and everything in it are silent")
     }
 
     @Test
