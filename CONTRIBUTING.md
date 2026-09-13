@@ -71,14 +71,18 @@ the rules exist to make the cost visible, and some changes are worth paying it.
 **The `kotlin` version in `gradle/libs.versions.toml` sets the floor every consumer must compile at,
 so raising it is a compatibility decision and not a dependency chore.** A klib carries the ABI
 version of the compiler that produced it, so a consumer's Kotlin/Native toolchain must be at least as
-new — at *minor* granularity, which is why building with 2.3.21 still leaves 2.3.20 consumers (where
-KSP is) able to link. The Kotlin plugin version is also project-wide, so a floor above the newest KSP
-release locks out every project that needs KSP, whatever else it is willing to do. That is why the
-floor sits on the 2.3 line rather than 2.4.x
-([#205](https://github.com/uny/autograph/issues/205)), and why `autograph-core` owns
+new — at *minor* granularity, which is why building with 2.3.21 still leaves 2.3.20 consumers able
+to link, and why a 2.4 build is rejected outright by every consumer still on a 2.3 toolchain. The
+floor sits on the 2.3 line for that reach ([#205](https://github.com/uny/autograph/issues/205)),
+which is also why `autograph-core` owns
 [`UuidV7Generator`](autograph-core/src/commonMain/kotlin/dev/ynagai/autograph/UuidV7Generator.kt)
-instead of calling 2.4's `Uuid.generateV7()`. Before bumping `kotlin`, check that
-[KSP](https://github.com/google/ksp/releases) has shipped for the target *minor*, and say so in the
+instead of calling 2.4's `Uuid.generateV7()`. One reason #205 gave no longer holds and must not be
+used to close a bump: KSP is *not* what keeps consumers on 2.3. KSP decoupled its version from the
+compiler's at 2.3.0, and KSP 2.3.12 runs under KGP 2.4.10 — measured 2026-09-13 on a scratch KMP
+project with `jvm()` + `iosSimulatorArm64()` and a KSP processor on both: code generated, an
+`abi_version=2.4.0` klib produced, no warnings. So a KSP release *numbered* 2.4 is not the trigger;
+the hold ends when the reason to keep 2.3 consumers does — a fix that actually needs 2.4, or the
+Compose Multiplatform / AGP baselines this library tracks moving to 2.4 themselves. Say which in the
 PR. Bumping the patch within a supported minor is the ordinary chore this warning is not about.
 Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
 

@@ -27,14 +27,15 @@ updates:
       # minCompileSdk (2.11.0 took it to 37 before #207). 2.9.x patches still flow. See CONTRIBUTING.md.
       - dependency-name: "org.jetbrains.androidx.lifecycle*"
         versions: [">=2.10.0"]
-      # The Kotlin floor stays on the 2.3 line until KSP ships for 2.4: a klib carries its producing
-      # compiler's ABI, so a 2.4 build is rejected outright by every 2.3 consumer, and the plugin
-      # version is project-wide — #205 lowered the floor for exactly the KSP + iOS consumers a 2.4
-      # floor locks out. #212 was the 2.4.10 bump, closed on #224's measurements. Two names on
-      # purpose, neither of which is `org.jetbrains.kotlinx*`: the artifact form (`kotlin-test`) and
-      # the plugin-id form (`org.jetbrains.kotlin.multiplatform` and friends) are what dependabot
-      # actually proposes. Drop both when raising the floor; the `abiValidation` DSL migration must
-      # ride in the same PR (CONTRIBUTING.md "Bumping dependencies").
+      # The Kotlin floor is held on the 2.3 line for reach: a klib carries its producing compiler's
+      # ABI, so a 2.4 build is rejected outright by every consumer still on a 2.3 toolchain (#205
+      # lowered it). It is NOT waiting on KSP — KSP 2.3.12 runs under KGP 2.4.10 incl. iOS targets
+      # (measured 2026-09-13) — so the hold ends on a trigger, not a KSP version number: a fix that
+      # needs 2.4, or the CMP/AGP baselines moving to 2.4. #212 was the last 2.4.x proposal. Two
+      # names on purpose, neither of which is `org.jetbrains.kotlinx*`: the artifact form
+      # (`kotlin-test`) and the plugin-id form (`org.jetbrains.kotlin.multiplatform` and friends) are
+      # what dependabot actually proposes. Drop both when raising the floor; the `abiValidation` flip
+      # must ride in the same PR (CONTRIBUTING.md "Bumping dependencies").
       - dependency-name: "org.jetbrains.kotlin:*"
         versions: [">=2.4.0"]
       - dependency-name: "org.jetbrains.kotlin.*"
