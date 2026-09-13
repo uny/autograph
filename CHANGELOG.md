@@ -36,7 +36,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     *composed* one ambient). The two iOS readers of `current()` — the native tap capture and the
     explicit element capture — pick this up with no change of their own.
 
-  Taps autograph captures itself resolve from an origin, so their own surface's demotion never
+  The taps autograph captures itself resolve from an origin, so their own surface's demotion never
   gates them — which took two more changes. A Compose tap in a composition whose host view nothing
   claims (every Compose tap on iOS, and on Android without the native capture) used to fall back to
   the ambient read, which would now have dropped a visible page's own `TrackedScreen` whenever its
