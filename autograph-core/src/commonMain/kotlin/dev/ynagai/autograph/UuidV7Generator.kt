@@ -7,9 +7,9 @@ import kotlin.uuid.Uuid
 /**
  * Generates UUIDv7 (RFC 9562) ids that sort in generation order.
  *
- * The stdlib has `Uuid.generateV7()`, but only from Kotlin 2.4 — a floor that locks out every
- * consumer needing KSP, which has no 2.4 release (see #205). One 12-bit counter is the whole cost
- * of not requiring it.
+ * The stdlib has `Uuid.generateV7()`, but only from Kotlin 2.4 — a floor that cuts off every
+ * consumer whose toolchain is still on 2.3 (see #205; CONTRIBUTING.md "Bumping dependencies" has
+ * the current reasoning). One 12-bit counter is the whole cost of not requiring it.
  *
  * A plain "millisecond timestamp plus random bits" layout is *not* enough: ids minted inside the
  * same millisecond would order randomly, and `event_id` is documented as time-ordered. This

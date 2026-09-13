@@ -39,9 +39,10 @@ without validating anything. That is the same vacuous green ADR 0001 §1 calls "
 for `autograph-android`, and nothing announces it — you have to go looking for the task in the build
 log. Measured while lowering the floor (#205): `abiValidation {}` runs the checks under 2.4.10 and
 skips them under 2.3.21, so the behaviour turns on the KGP version rather than on the call form.
-Setting `enabled` explicitly is what makes it independent of both, which is the point — a future
-bump back to 2.4 is not a reason to drop it, since the next move down would silently disarm the gate
-again.
+Setting `enabled` explicitly is what makes it independent of both on the 2.3 line, which is the
+point. KGP 2.4 removed the property, so a bump back to 2.4 *does* change the form — but only in the
+bump commit itself, never ahead of it, because the bare call is exactly what disarms the gate under
+2.3 (see "Bumping dependencies" below).
 
 If you touch these blocks, check the gate still fires rather than trusting a green build:
 `./gradlew :autograph-core:checkKotlinAbi` must print the task, not `SKIPPED`.
@@ -70,22 +71,60 @@ the rules exist to make the cost visible, and some changes are worth paying it.
 **The `kotlin` version in `gradle/libs.versions.toml` sets the floor every consumer must compile at,
 so raising it is a compatibility decision and not a dependency chore.** A klib carries the ABI
 version of the compiler that produced it, so a consumer's Kotlin/Native toolchain must be at least as
-new — at *minor* granularity, which is why building with 2.3.21 still leaves 2.3.20 consumers (where
-KSP is) able to link. The Kotlin plugin version is also project-wide, so a floor above the newest KSP
-release locks out every project that needs KSP, whatever else it is willing to do. That is why the
-floor sits on the 2.3 line rather than 2.4.x
-([#205](https://github.com/uny/autograph/issues/205)), and why `autograph-core` owns
+new — at *minor* granularity, which is why building with 2.3.21 still leaves 2.3.20 consumers able
+to link, and why a 2.4 build is rejected outright by every consumer still on a 2.3 toolchain. The
+floor sits on the 2.3 line for that reach ([#205](https://github.com/uny/autograph/issues/205)),
+which is also why `autograph-core` owns
 [`UuidV7Generator`](autograph-core/src/commonMain/kotlin/dev/ynagai/autograph/UuidV7Generator.kt)
-instead of calling 2.4's `Uuid.generateV7()`. Before bumping `kotlin`, check that
-[KSP](https://github.com/google/ksp/releases) has shipped for the target *minor*, and say so in the
+instead of calling 2.4's `Uuid.generateV7()`. One reason #205 gave no longer holds and must not be
+used to close a bump: KSP is *not* what keeps consumers on 2.3. KSP decoupled its version from the
+compiler's at 2.3.0, and KSP 2.3.12 runs under KGP 2.4.10 — measured 2026-09-13 on a scratch KMP
+project with `jvm()` + `iosSimulatorArm64()` and a KSP processor on both: code generated, an
+`abi_version=2.4.0` klib produced, no warnings. So a KSP release *numbered* 2.4 is not the trigger;
+the hold ends when the reason to keep 2.3 consumers does — a fix that actually needs 2.4, or the
+Compose Multiplatform / AGP baselines this library tracks moving to 2.4 themselves. Say which in the
 PR. Bumping the patch within a supported minor is the ordinary chore this warning is not about.
 Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
+
+**Raising the floor to 2.4 flips the `abiValidation` DSL in every published module, and the flip
+must land in the bump commit — never before it.** KGP 2.4 removed the `enabled` property, so the
+`abiValidation { enabled.set(true) }` the "Changing public API" section tells you to keep is a script
+compilation error under 2.4.x (`Property was removed, to enable ABI validation call function
+abiValidation()`). The bare `abiValidation()` is the 2.4 form and stays non-vacuous there (measured
+on 2.4.10: adding one public function fails `:autograph-core:checkKotlinAbi`,
+[#224](https://github.com/uny/autograph/issues/224)) — but under 2.3.21 that same bare call leaves
+the checks `SKIPPED`, which is what #205 had to work around. So the two forms are correct on exactly
+one side of the floor each: change all six blocks in the same commit as `kotlin =`, re-run
+`fixtures/klib-diamond/run.sh` on the new version, and confirm `:autograph-core:checkKotlinAbi`
+prints the task rather than `SKIPPED`.
+
+**A `kotlinx` bump can raise the same floor without touching `kotlin`, and its version number will
+not tell you.** Every `org.jetbrains.kotlinx` artifact ships klibs with *their* producing compiler's
+ABI, and that is what a consumer's toolchain checks — not the artifact's own version. Measured on
+the catalog as of 0.9.0: `kotlinx-coroutines-core` 1.11.0 and `atomicfu` 0.33.0 were built with
+Kotlin 2.2, `kotlinx-serialization-json` 1.11.0 and `kotlinx-io-core` 0.9.1 with 2.3 — a
+`serialization` release built with 2.4 would lock out 2.3 consumers exactly as a `kotlin` bump
+would, while looking like a routine minor. Before merging any `kotlinx` bump, read the ABI off the
+published klib; it takes seconds and needs no toolchain:
+
+```bash
+cd "$(mktemp -d)"
+curl -sSfO https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-iosarm64/<version>/kotlinx-serialization-json-iosarm64-<version>.klib
+unzip -p kotlinx-serialization-json-iosarm64-<version>.klib default/manifest | grep -E 'abi_version|compiler_version'
+```
+
+`abi_version` must stay at or below the floor's minor (`2.3.0` today). The same check is how the
+Compose Multiplatform 1.12.0 bump was shown *not* to be Kotlin-blocked
+([#224](https://github.com/uny/autograph/issues/224)) — it works for any klib, and it is what
+decides whether a dependabot PR in the `kotlin` group is a chore or a floor change.
+`dependabot.yml` ignores the `kotlin` 2.4 line itself; it cannot express this rule for `kotlinx`, so
+the check is manual.
 
 **`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
 each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
 it only when a dependency of a *published* module actually demands it, and prefer pinning that
-dependency lower — a newer `compileSdk` also implies a newer AGP, which is precisely what a
-KSP-constrained project may not have. `sample-android` has its own `android-sampleCompileSdk` key so
+dependency lower — a newer `compileSdk` also implies a newer AGP, which a consumer pinned by its
+own toolchain may not have. `sample-android` has its own `android-sampleCompileSdk` key so
 the demo app's dependencies cannot push the floor up; `sample-shared` deliberately stays on
 `android-compileSdk`, which is what makes CI prove a Compose consumer can build at the floor.
 
