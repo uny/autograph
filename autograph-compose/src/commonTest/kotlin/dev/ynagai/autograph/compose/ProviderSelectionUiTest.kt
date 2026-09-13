@@ -129,6 +129,36 @@ class ProviderSelectionUiTest {
     }
 
     @Test
+    fun aTapInTheCurrentCompositionDoesNotPickUpADemotedSiblingsScreen() = runComposeUiTest {
+        // Two compositions on one shared stack, nothing claiming either (iOS; Android without the
+        // native capture): the neighbour page, composed later and now demoted, must not name the
+        // screen of a tap on the current page — resolving from an origin on a boundary-free stack
+        // sees every frame, so only the active bit propagating down the SIBLING's lineage keeps it out.
+        val stack = ScopeStack()
+        val currentHost = HostLifecycle(Lifecycle.State.RESUMED)
+        val peekingHost = HostLifecycle(Lifecycle.State.STARTED)
+        var currentOrigin: ProviderOrigin? = null
+        var peekingOrigin: ProviderOrigin? = null
+        setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides currentHost) {
+                ProviderFrame(stack) { o ->
+                    currentOrigin = o
+                    MirrorAmbientFrame(stack, screen = "Current") {}
+                }
+            }
+            CompositionLocalProvider(LocalLifecycleOwner provides peekingHost) {
+                ProviderFrame(stack) { o ->
+                    peekingOrigin = o
+                    MirrorAmbientFrame(stack, screen = "Peeking") {}
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("Current", currentOrigin!!.resolve(stack).screen)
+        assertEquals("Peeking", peekingOrigin!!.resolve(stack).screen)
+    }
+
+    @Test
     fun theFrameFollowsAReplacedLifecycleOwnerNotTheOneItWasComposedUnder() = runComposeUiTest {
         // `LocalLifecycleOwner` can change under a live composition (a `NavHost` destination's entry,
         // a `movableContentOf` subtree relocated under another owner). The observer must move with

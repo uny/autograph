@@ -230,6 +230,27 @@ class ScopeStackOriginTest {
     }
 
     @Test
+    fun a_demoted_sibling_off_the_origins_lineage_is_silenced_for_that_origin_too() {
+        // The other side of the exemption above, on a stack with no boundary at all — one shared
+        // ScopeStack under several Compose surfaces with nothing claiming them (iOS; Android without
+        // the native capture). Every frame is a survivor of the boundary walk, so only the active bit
+        // can keep the neighbour page's screen off a tap on the current one; per-frame it cannot,
+        // because the demoted page's TrackedScreen carries its own, fresh, active bit and was pushed
+        // later. Propagating the bit down every lineage BUT the origin's own is what gets both taps
+        // right: the current page's tap reads its screen, the peeking page's tap reads its own.
+        val stack = ScopeStack()
+        val current = stack.push()
+        stack.push(screen = "Current", parent = current)
+        val peeking = stack.push()
+        stack.push(screen = "Peeking", parent = peeking)
+        stack.setActive(peeking, false)
+
+        assertEquals("Current", stack.current(current).screen, "a demoted sibling's declaration does not reach this tap")
+        assertEquals("Peeking", stack.current(peeking).screen, "the event happened under the demoted frame: its own screen")
+        assertEquals("Current", stack.current().screen)
+    }
+
+    @Test
     fun a_stale_origin_resolves_to_what_of_its_lineage_is_still_on_the_stack() {
         val stack = ScopeStack()
         val host = stack.push(screen = "Host", boundary = true)

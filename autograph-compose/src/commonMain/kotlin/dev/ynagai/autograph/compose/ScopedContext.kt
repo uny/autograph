@@ -260,8 +260,11 @@ internal expect fun KeepLinkedToHost(stack: ScopeStack, origin: ProviderOrigin)
  * such capture at all, or a `Dialog`/`Popup` window whose view tree sits under no surface's root —
  * the tap still resolves from the composition's own frame, unlinked: there is nothing to localize
  * against, so every frame under no boundary applies (a frame the app pushes by hand stays visible,
- * exactly as it does under a claimed host), and the composition's own declarations apply with their
- * own active bit. Falling back to the ambient [ScopeStack.current] here instead was measured wrong:
+ * exactly as it does under a claimed host; a claimed native surface's frame beside it does not —
+ * absent, never borrowed), the composition's own declarations apply whatever this frame's bit says,
+ * and another composition's on the same stack apply only while *its* provider frame is active — see
+ * `ScopeStack.current(origin)`. Falling back to the ambient [ScopeStack.current] here instead was
+ * measured wrong:
  * that read propagates a demoted host's bit down to the composition (see [ProviderFrame]), so a tap
  * on a visible page whose host reports `STARTED` — a `ViewPager2` neighbour peeking beside the
  * current page — lost the page's own `TrackedScreen` and, on a shared stack, took the current
