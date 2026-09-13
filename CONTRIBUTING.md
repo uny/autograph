@@ -105,7 +105,7 @@ published klib; it takes seconds and needs no toolchain:
 
 ```bash
 cd "$(mktemp -d)"
-curl -sfO https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-iosarm64/<version>/kotlinx-serialization-json-iosarm64-<version>.klib
+curl -sSfO https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-iosarm64/<version>/kotlinx-serialization-json-iosarm64-<version>.klib
 unzip -p kotlinx-serialization-json-iosarm64-<version>.klib default/manifest | grep -E 'abi_version|compiler_version'
 ```
 
