@@ -35,7 +35,7 @@ updates:
       # names on purpose, neither of which is `org.jetbrains.kotlinx*`: the artifact form
       # (`kotlin-test`) and the plugin-id form (`org.jetbrains.kotlin.multiplatform` and friends) are
       # what dependabot actually proposes. Drop both when raising the floor; the `abiValidation` flip
-      # must ride in the same PR (CONTRIBUTING.md "Bumping dependencies").
+      # must ride in the same commit (CONTRIBUTING.md "Bumping dependencies").
       - dependency-name: "org.jetbrains.kotlin:*"
         versions: [">=2.4.0"]
       - dependency-name: "org.jetbrains.kotlin.*"

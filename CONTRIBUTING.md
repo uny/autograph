@@ -123,8 +123,8 @@ the check is manual.
 **`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
 each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
 it only when a dependency of a *published* module actually demands it, and prefer pinning that
-dependency lower — a newer `compileSdk` also implies a newer AGP, which is precisely what a
-KSP-constrained project may not have. `sample-android` has its own `android-sampleCompileSdk` key so
+dependency lower — a newer `compileSdk` also implies a newer AGP, which a consumer pinned by its
+own toolchain may not have. `sample-android` has its own `android-sampleCompileSdk` key so
 the demo app's dependencies cannot push the floor up; `sample-shared` deliberately stays on
 `android-compileSdk`, which is what makes CI prove a Compose consumer can build at the floor.
 
