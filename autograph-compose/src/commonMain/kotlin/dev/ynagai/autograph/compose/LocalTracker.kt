@@ -38,6 +38,13 @@ public val LocalTracker: androidx.compose.runtime.ProvidableCompositionLocal<Tra
  * Compose-only app but would leave the two sides attributing events against separate, half-empty
  * contexts. Owning the stack outside the composition is also what lets it outlive a recomposition
  * while still being replaceable on logout — scope it to the same lifetime as [tracker].
+ *
+ * Whatever [content] declares into that stack — every `TrackedScreen` and [AutographScope] — is
+ * ambient only while the composition's `LocalLifecycleOwner` is `RESUMED`: a `ViewPager2` page
+ * moved off display, an Activity paused behind a prompt, or a Compose `UIViewController` after
+ * `viewDidDisappear` takes its declarations out of `ScopeStack.current()` and a resume brings them
+ * back, with nothing recomposed. Events resolved from an origin (autograph's own captures) are not
+ * gated this way; see `ScopeStack.current(origin)`.
  */
 @Composable
 public fun AutographProvider(

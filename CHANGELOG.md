@@ -8,6 +8,38 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The ambient screen now follows what is on display, for screens declared in Compose too**
+  ([#228]). A `TrackedScreen` composed inside a `ViewPager2` page that was moved off display, or
+  inside an Activity paused behind a permission prompt, kept naming `ScopeStack.current()`'s
+  screen — measured on a device as "the page most recently *composed*, not the one on display",
+  because a pager composes its neighbouring pages at `STARTED`, before they are ever shown, and the
+  frames of a composition were born active and never deselected. Two changes, and both halves are
+  needed:
+  - **Ambiently, an inactive frame takes everything nested under it with it.** `current()` now
+    drops a frame whose ancestor on the stack is inactive, whatever the frame's own bit says — so a
+    native surface the Android capture deselects silences the composition inside it, and a frame
+    pushed under a demoted surface *while* it is demoted starts silent. The origin-taking
+    `current(origin)` deliberately keeps the old rule: an origin is the pipeline asserting the event
+    happened in that surface, so a tap on a page peeking beside the current one still attributes to
+    that page's own `TrackedScreen`. A parent link off the stack is transparent, as it is there.
+  - **A composition's frames follow its `LocalLifecycleOwner`.** `AutographProvider` marks the frame
+    it pushes for the composition active exactly while the owner is `RESUMED`, seeded from the
+    owner's state at composition; `RESUMED ↔ STARTED` is the demotion signal every host emits, so
+    this holds with no native capture installed too, and on iOS, where Compose Multiplatform moves
+    a `ComposeUIViewController`'s owner to `RESUMED` at `viewWillAppear` and off it at
+    `viewDidDisappear` (two Compose tabs, or a pushed Compose screen, previously left the last
+    *composed* one ambient). The two iOS readers of `current()` — the native tap capture and the
+    explicit element capture — pick this up with no change of their own.
+
+  Taps autograph captures itself were already right (they resolve from an origin); what changes is
+  every read of `current()` — a host app enriching its own events, a Compose tap under no claimed
+  surface (a `Dialog` window), and the two iOS captures above. `Screen Viewed` is untouched: a
+  demotion still ends no view and a return still reports none. What this does not reach: the
+  retained off-screen pages of a Compose `HorizontalPager`, which share one lifecycle owner and emit
+  no signal.
+
 ## [0.9.0] - 2026-09-13
 
 ### Added

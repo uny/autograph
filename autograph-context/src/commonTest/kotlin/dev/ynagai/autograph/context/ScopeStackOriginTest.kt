@@ -114,7 +114,7 @@ class ScopeStackOriginTest {
         stack.push(screen = "B", parent = providerB)
         stack.setActive(pageB, false)
 
-        assertEquals("B", stack.current().screen, "ambiently, insertion order still names B")
+        assertEquals("A", stack.current().screen, "ambiently too: the demoted page takes its declaration with it (#228)")
         assertEquals("A", stack.current(providerA).screen)
         // And even with B selected too (the sibling is simply another surface):
         stack.setActive(pageB, true)
@@ -208,6 +208,25 @@ class ScopeStackOriginTest {
         assertNull(ctx.screen)
         assertNull(ctx.section)
         assertEquals(JsonObject(emptyMap()), ctx.scope)
+    }
+
+    @Test
+    fun an_origin_under_a_demoted_surface_still_sees_the_declarations_beneath_it() {
+        // The split that keeps the ambient propagation honest: ambiently a demoted surface silences
+        // what is composed inside it, but an event resolved FROM that composition is the pipeline
+        // asserting the event happened there — a tap on a pager page peeking beside the current one,
+        // reported by the host as STARTED — and the page's own TrackedScreen is the right answer,
+        // not the current page's and not nothing. Propagate the bit here too and this reads null.
+        val stack = ScopeStack()
+        val current = stack.push(boundary = true)
+        stack.push(screen = "Current", parent = stack.push(parent = current))
+        val peeking = stack.push(boundary = true)
+        val provider = stack.push(parent = peeking)
+        stack.push(screen = "Peeking", parent = provider)
+        stack.setActive(peeking, false)
+
+        assertEquals("Current", stack.current().screen, "ambiently the demoted page is silent")
+        assertEquals("Peeking", stack.current(provider).screen, "from its own origin it is not")
     }
 
     @Test

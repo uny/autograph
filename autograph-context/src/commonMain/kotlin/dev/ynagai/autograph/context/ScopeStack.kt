@@ -218,7 +218,8 @@ public class ScopeStack {
     /**
      * Marks the frame [handle] refers to as taking part in resolution, or not. An inactive frame keeps
      * its position and its contents but contributes nothing — no screen, no section, no scope — as if
-     * it were not on the stack at all.
+     * it were not on the stack at all. Ambiently ([current] with no origin) the frames nested under
+     * it drop out with it; from an origin they do not — see [recompute] for the split.
      *
      * **This is the "is this surface the one on display?" bit, and position cannot answer it.**
      * Position stands in for *recency of becoming foreground*, which only holds while a frame leaves
@@ -291,18 +292,15 @@ public class ScopeStack {
      * origin instead, which is what stops a declaration on one surface from attributing an event on
      * another.
      *
-     * "As far as the stack can tell" has one measured limit worth knowing before reading this for
-     * your own events. [setActive] takes a frame out of this answer, but not the frames nested under
-     * it — see [resolve] for why. A native pipeline that deselects a demoted or paused surface (a
-     * `ViewPager2` page moved off display, an Activity behind a permission prompt) therefore silences
-     * what *that surface* declared, while a screen declared in a composition inside it — a
-     * `TrackedScreen` — keeps naming the ambient screen until it is disposed, over a [maskScreen]
-     * the re-selected surface raised earlier too. Measured on a device: a pager of Compose-declared
-     * pages reads as the page most recently composed, not the one on display. Autograph's captures
-     * that resolve from an origin are not affected; a Compose tap under no claimed surface (a
-     * `Dialog` window) resolves ambiently and sees it. A host app enriching its own events should
-     * prefer the origin-taking overload where it has one. Whether a composition's frames should
-     * follow its lifecycle instead is tracked in #228.
+     * [setActive] takes a frame out of this answer **together with everything nested under it**: a
+     * surface off display takes what is inside it off display too, so a screen declared in a
+     * composition inside a demoted pager page or a paused Activity — a `TrackedScreen` — is absent
+     * here for as long as its surface is, and so is a frame pushed under that surface while it is
+     * demoted. That is the one place this read and the origin-taking overload differ — see
+     * [recompute] — and it is what makes this answer track the display rather than the most recent
+     * composition (#228). A host app enriching its own events should still prefer the origin-taking
+     * overload where it has one: this read cannot tell a sibling surface's declaration from the
+     * event's own.
      */
     public fun current(): AmbientContext = snapshot
 
@@ -394,17 +392,37 @@ public class ScopeStack {
     private fun ScopeFrame.isUnderABoundary(onStack: Set<ScopeFrame>): Boolean =
         generateSequence(this) { it.parent }.any { it.boundary && it in onStack }
 
-    private fun recompute(): AmbientContext = resolve(frames)
+    /**
+     * The ambient snapshot. Unlike [current] with an origin, this is where the active bit reaches
+     * DOWN the lineage: a frame nested under an inactive frame on this stack is out too, whatever its
+     * own bit says. Ambiently, "is this surface on display?" has to govern everything inside the
+     * surface — a `TrackedScreen` composed inside a demoted pager page, or a frame pushed under it
+     * *while* it is demoted (a page composes at STARTED, before it is ever shown), would otherwise
+     * keep naming the ambient screen; measured, a pager of Compose-declared pages read as the page
+     * most recently composed rather than the one on display (#228). The origin-taking [current]
+     * deliberately does not do this: an origin is the pipeline asserting the event happened in that
+     * surface, which an ambient read cannot claim. Only ancestors on THIS stack count, as in the
+     * origin walk — a link off the stack is transparent, never a gate.
+     */
+    private fun recompute(): AmbientContext {
+        val onStack = frames.toHashSet()
+        return resolve(frames.filter { frame -> !frame.hasInactiveAncestorOn(onStack) })
+    }
+
+    /** Whether any frame this one is nested in, and that is still on the stack, is inactive. */
+    private fun ScopeFrame.hasInactiveAncestorOn(onStack: Set<ScopeFrame>): Boolean =
+        generateSequence(parent) { it.parent }.any { !it.active && it in onStack }
 
     private fun resolve(candidates: List<ScopeFrame>): AmbientContext {
         // Inactive frames are skipped ONCE, here, and the survivors are what both screen/section and
         // [resolveScope] see — so "does this frame take part?" is answered in one place rather than
         // being re-derived per field. See [setActive] for why position alone cannot answer it.
-        // The bit does NOT propagate down the lineage — an inactive frame's own contribution drops,
-        // what is nested inside it keeps its lineage and its voice (pinned by the ScopeStackTest
-        // trio around `an_inactive_frame_still_carries_the_lineage_of_its_descendants`). Keeping a
-        // demoted surface's nested declarations away from another surface's events is the
-        // origin-taking [current]'s job, structurally, not this bit's.
+        // Here the bit is a frame's OWN: an inactive frame's contribution drops, what is nested
+        // inside it keeps its lineage and its voice (pinned by the ScopeStackTest trio around
+        // `an_inactive_frame_still_carries_the_lineage_of_its_descendants`, on the origin overload).
+        // Whether the bit also reaches the frames nested under it is the caller's question — the
+        // ambient [recompute] says yes, the origin-taking [current] says no — and that is decided in
+        // the candidate list handed in, not re-derived per frame here.
         val live = candidates.filter { it.active }
         if (live.isEmpty()) return AmbientContext.Empty
         var screen: String? = null

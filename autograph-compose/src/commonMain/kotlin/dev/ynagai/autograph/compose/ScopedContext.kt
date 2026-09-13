@@ -7,6 +7,9 @@ import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
@@ -163,8 +166,21 @@ internal fun MirrorAmbientFrame(
  * provider's taps too. Each of those was a correct→absent or correct→wrong regression when this
  * frame was a boundary; all three are pinned.
  *
- * The frame carries no contents and is never [ScopeStack.update]d with any, so it changes nothing
- * about the ambient [ScopeStack.current] — an empty frame contributes nothing.
+ * The frame carries no contents and is never [ScopeStack.update]d with any, so on its own it
+ * changes nothing about the ambient [ScopeStack.current] — an empty frame contributes nothing.
+ * What it does carry is the composition's **selection**: the frame is active exactly while the
+ * composition's [LocalLifecycleOwner] is `RESUMED`, and ambiently the bit reaches everything nested
+ * under it, so the `TrackedScreen`s and [AutographScope]s of a composition go silent together with
+ * the surface showing it and come back with it. `RESUMED ↔ STARTED` is the demotion signal every
+ * host emits: a `ViewPager2` page moved off display, an Activity behind a permission prompt, a
+ * Compose `UIViewController` after `viewDidDisappear` (which Compose Multiplatform maps to
+ * `CREATED`). Measured before this: a pager of Compose-declared pages read ambiently as the page most
+ * recently *composed*, not the one on display, because a page composes at `STARTED` — before it is
+ * ever shown — and its frames were born active (#228). Seeding from the owner's current state is
+ * what makes such a page start silent; the observer then follows the transitions. Taps are not what
+ * this is for: they resolve from an origin, which does not propagate the bit (see
+ * `ScopeStack.current(origin)`), so a tap on a page the host reports as demoted — one peeking beside
+ * the current page — still attributes to that page's own screen.
  */
 @Composable
 internal fun ProviderFrame(
@@ -186,6 +202,22 @@ internal fun ProviderFrame(
             stack.remove(pushed)
             holder[0] = null
         }
+    }
+    // Declared AFTER the push effect so it runs after it in the same apply phase and finds the
+    // handle. Seeded explicitly rather than left to `addObserver`'s catch-up dispatch, which replays
+    // the events up to the current state and so would leave a STARTED owner's frame active.
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    DisposableEffect(stack, lifecycle) {
+        holder[0]?.let { stack.setActive(it, lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) }
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> holder[0]?.let { stack.setActive(it, true) }
+                Lifecycle.Event.ON_PAUSE -> holder[0]?.let { stack.setActive(it, false) }
+                else -> Unit
+            }
+        }
+        lifecycle.addObserver(observer)
+        onDispose { lifecycle.removeObserver(observer) }
     }
     if (enclosing == null) KeepLinkedToHost(stack, origin)
     CompositionLocalProvider(LocalScopeParent provides holder) { content(origin) }
