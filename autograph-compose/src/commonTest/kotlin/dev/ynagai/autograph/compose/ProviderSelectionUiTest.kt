@@ -1,6 +1,9 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.lifecycle.Lifecycle
@@ -99,5 +102,57 @@ class ProviderSelectionUiTest {
 
         host.moveTo(Lifecycle.State.STARTED)
         assertNull(stack.current().scope["tab"])
+    }
+
+    @Test
+    fun aTapInADemotedCompositionStillSeesItsOwnScreenWithNoHostClaimed() = runComposeUiTest {
+        // The other half of the contract, from the tap's side. Nothing claims a host view on iOS,
+        // nor on Android without the native capture, so `ProviderOrigin.resolve` used to fall back to
+        // the ambient read there — and the ambient read now takes a demoted host's composition with
+        // it. A visible page whose host reports STARTED (a ViewPager2 neighbour peeking beside the
+        // current page) then lost its own screen on every tap. Resolving from the composition's own
+        // frame, claimed host or not, is what keeps it. Fails with `resolve` reading `current()`.
+        val stack = ScopeStack()
+        val host = HostLifecycle(Lifecycle.State.STARTED)
+        var origin: ProviderOrigin? = null
+        setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides host) {
+                ProviderFrame(stack) { o ->
+                    origin = o
+                    MirrorAmbientFrame(stack, screen = "PageB") {}
+                }
+            }
+        }
+        waitForIdle()
+        assertNull(stack.current().screen, "ambiently the demoted page is silent")
+        assertEquals("PageB", origin!!.resolve(stack).screen, "a tap in it still lands on its own screen")
+    }
+
+    @Test
+    fun theFrameFollowsAReplacedLifecycleOwnerNotTheOneItWasComposedUnder() = runComposeUiTest {
+        // `LocalLifecycleOwner` can change under a live composition (a `NavHost` destination's entry,
+        // a `movableContentOf` subtree relocated under another owner). The observer must move with
+        // it: keyed on the stack alone it would keep following the first owner and never re-seed.
+        val stack = ScopeStack()
+        val first = HostLifecycle(Lifecycle.State.RESUMED)
+        val second = HostLifecycle(Lifecycle.State.STARTED)
+        var owner by mutableStateOf<LifecycleOwner>(first)
+        setContent {
+            CompositionLocalProvider(LocalLifecycleOwner provides owner) {
+                AutographProvider(SilentTracker, scopeStack = stack) {
+                    TrackedScreen("Main") {}
+                }
+            }
+        }
+        waitForIdle()
+        assertEquals("Main", stack.current().screen)
+
+        owner = second
+        waitForIdle()
+        assertNull(stack.current().screen, "re-seeded from the new owner's state")
+
+        first.moveTo(Lifecycle.State.STARTED)
+        second.moveTo(Lifecycle.State.RESUMED)
+        assertEquals("Main", stack.current().screen, "the old owner no longer speaks for the frame")
     }
 }

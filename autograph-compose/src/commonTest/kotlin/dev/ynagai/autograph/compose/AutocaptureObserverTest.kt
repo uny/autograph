@@ -276,7 +276,10 @@ class ReportTapIfResolvableTest {
     }
 
     @Test
-    fun anOriginWithNoHostResolvesAmbiently() {
+    fun anOriginWithNoHostStillSeesEveryFrameUnderNoBoundary() {
+        // No claimed host does not mean no origin: the composition's own frame is still where the
+        // tap resolves from (ProviderSelectionUiTest pins why), and a frame under no boundary applies
+        // to every origin, so what a hybrid app pushes by hand stays visible without the ambient read.
         val tracker = AutocaptureRecordingTracker()
         val stack = ScopeStack()
         stack.push(screen = "PushedByHand") // a hybrid app's own native frame, no capture installed

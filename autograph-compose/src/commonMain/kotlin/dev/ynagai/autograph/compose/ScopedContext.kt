@@ -180,7 +180,9 @@ internal fun MirrorAmbientFrame(
  * what makes such a page start silent; the observer then follows the transitions. Taps are not what
  * this is for: they resolve from an origin, which does not propagate the bit (see
  * `ScopeStack.current(origin)`), so a tap on a page the host reports as demoted — one peeking beside
- * the current page — still attributes to that page's own screen.
+ * the current page — still attributes to that page's own screen. That holds only because
+ * [ProviderOrigin.resolve] never reads the ambient snapshot while this frame exists, claimed host
+ * or not.
  */
 @Composable
 internal fun ProviderFrame(
@@ -256,9 +258,15 @@ internal expect fun KeepLinkedToHost(stack: ScopeStack, origin: ProviderOrigin)
  *
  * With no surface claiming the host view — no native screen capture installed, a platform with no
  * such capture at all, or a `Dialog`/`Popup` window whose view tree sits under no surface's root —
- * the tap resolves **ambiently**, exactly as before origins existed: there is nothing to localize
- * against, and a frame the app pushes by hand stays visible. (It stays visible under a claimed host
- * too — a frame under no boundary applies to every origin; see `ScopeStack.current(origin)`.)
+ * the tap still resolves from the composition's own frame, unlinked: there is nothing to localize
+ * against, so every frame under no boundary applies (a frame the app pushes by hand stays visible,
+ * exactly as it does under a claimed host), and the composition's own declarations apply with their
+ * own active bit. Falling back to the ambient [ScopeStack.current] here instead was measured wrong:
+ * that read propagates a demoted host's bit down to the composition (see [ProviderFrame]), so a tap
+ * on a visible page whose host reports `STARTED` — a `ViewPager2` neighbour peeking beside the
+ * current page — lost the page's own `TrackedScreen` and, on a shared stack, took the current
+ * page's instead. Nothing claims a host view on iOS or on Android without the native capture, so
+ * that fallback was the path of every Compose tap there, not an edge case.
  */
 internal class ProviderOrigin(
     private val root: Array<ScopeHandle?>,
@@ -272,10 +280,15 @@ internal class ProviderOrigin(
         return host
     }
 
-    /** The context for a tap in this composition. Main thread, like the tap dispatch it runs in. */
+    /**
+     * The context for a tap in this composition. Main thread, like the tap dispatch it runs in.
+     * Always from this composition's frame while it exists — see the class kdoc for why an unclaimed
+     * host must not fall back to the ambient read.
+     */
     fun resolve(stack: ScopeStack): AmbientContext {
         val frame = root[0] ?: return stack.current()
-        return if (link(stack) != null) stack.current(frame) else stack.current()
+        link(stack)
+        return stack.current(frame)
     }
 }
 
