@@ -81,6 +81,26 @@ instead of calling 2.4's `Uuid.generateV7()`. Before bumping `kotlin`, check tha
 PR. Bumping the patch within a supported minor is the ordinary chore this warning is not about.
 Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
 
+**A `kotlinx` bump can raise the same floor without touching `kotlin`, and its version number will
+not tell you.** Every `org.jetbrains.kotlinx` artifact ships klibs with *their* producing compiler's
+ABI, and that is what a consumer's toolchain checks — not the artifact's own version. Measured on
+the catalog as of 0.9.0: `kotlinx-coroutines-core` 1.11.0 and `atomicfu` 0.33.0 were built with
+Kotlin 2.2, `kotlinx-serialization-json` 1.11.0 and `kotlinx-io-core` 0.9.1 with 2.3 — a
+`serialization` release built with 2.4 would lock out 2.3 consumers exactly as a `kotlin` bump
+would, while looking like a routine minor. Before merging any `kotlinx` bump, read the ABI off the
+published klib; it takes seconds and needs no toolchain:
+
+```bash
+curl -sO https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-serialization-json-iosarm64/<version>/kotlinx-serialization-json-iosarm64-<version>.klib
+unzip -p kotlinx-serialization-json-iosarm64-<version>.klib default/manifest | grep -E 'abi_version|compiler_version'
+```
+
+`abi_version` must stay at or below the floor's minor (`2.3.0` today). The same check is how the
+Compose Multiplatform 1.12.0 bump was shown *not* to be Kotlin-blocked ([#224](https://github.com/uny/autograph/issues/224)) — it works for any
+klib, and it is what decides whether a dependabot PR in the `kotlin` group is a chore or a floor
+change. `dependabot.yml` ignores the `kotlin` 2.4 line itself; it cannot express this rule for
+`kotlinx`, so the check is manual.
+
 **`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
 each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
 it only when a dependency of a *published* module actually demands it, and prefer pinning that

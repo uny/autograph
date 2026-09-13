@@ -1,4 +1,11 @@
 [versions]
+# The published Kotlin floor, not a build detail: a klib carries the ABI of the compiler that made
+# it, so every iOS consumer's toolchain must be at least this *minor*. Held on the 2.3 line because
+# KSP has no Kotlin 2.4 release and the plugin version is project-wide — a 2.4 floor locks out every
+# KSP + iOS consumer (Room on KMP among them). #205 lowered it, #224 re-measured it, and the
+# `abiValidation` migration that a 2.4 bump needs must land WITH the bump, never alone (see
+# CONTRIBUTING.md "Bumping dependencies"). Raise it when KSP ships a 2.4 line — and re-run
+# fixtures/klib-diamond/run.sh. The dependabot ignore in .github/dependabot.yml mirrors this.
 kotlin = "2.3.21"
 agp = "9.2.1"
 # Held at the 1.11 line — see the android-compileSdk note below before bumping.
