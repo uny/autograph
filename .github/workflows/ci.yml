@@ -40,10 +40,16 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           set -euo pipefail
+          # Captured first so a failing `git diff` fails the step rather than reading as "no match" inside
+          # the `if`. `--no-renames` lists a move by both paths, so moving a file out of the set still
+          # counts; `core.quotePath=false` keeps non-ASCII paths unquoted so the anchors can match them.
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
           android=false
-          # ci.yml itself is in the set: a workflow edit must prove the emulator job still runs, on the
-          # PR that edits it.
-          if git diff --name-only HEAD^1 HEAD | grep -E '^(sample-android/|autograph-android/|\.github/workflows/ci\.yml$)' ; then
+          # The set is every module `:sample-android:connectedDebugAndroidTest` links — the on-device
+          # suite asserts on ScopeStack (autograph-context) and the Compose screen declarations
+          # (autograph-compose), not only on autograph-android — plus ci.yml itself: a workflow edit
+          # must prove the emulator job still runs, on the PR that edits it.
+          if grep -E '^(sample-android/|sample-shared/|autograph-android/|autograph-core/|autograph-context/|autograph-compose/|\.github/workflows/ci\.yml$)' <<<"$files" ; then
             android=true
           fi
           echo "android=$android" >> "$GITHUB_OUTPUT"
@@ -175,8 +181,9 @@ jobs:
   # dependencies, not the iOS ones.
   #
   # An emulator job is slow, so it is gated by `changes` rather than run on every PR: it runs when the
-  # PR touches sample-android/, autograph-android/, or this workflow, and on workflow_dispatch for
-  # everything else. Not on push to main — the PR that landed the change already ran it.
+  # PR touches a module the sample links (see the path set there) or this workflow, and on
+  # workflow_dispatch for everything else. Deliberately not on push to main: the PR that landed the
+  # change ran it, when its diff reached the job.
   #
   # Know what the other jobs therefore do NOT cover: the Robolectric suite pins how a *given* pressed
   # hierarchy resolves, by setting `isPressed` by hand. That the framework's touch dispatch produces
