@@ -62,4 +62,11 @@ dependencies {
     androidTestImplementation(libs.androidx.test.ext.junit)
     androidTestImplementation(libs.androidx.test.espresso)
     androidTestImplementation(libs.androidx.test.runner)
+    // OriginOnDeviceTest's fixtures (src/debug): real AutographProvider / TrackedScreen compositions,
+    // a NavHost route, and a real ViewPager2 (the demotion Robolectric never runs). Debug only — the
+    // app itself uses none of the three, and the fixtures must be in the app APK, not the test APK,
+    // for ActivityScenario to launch them in the app's process.
+    debugImplementation(projects.autographCompose)
+    debugImplementation(libs.jetbrains.navigation.compose)
+    debugImplementation("androidx.viewpager2:viewpager2:1.1.0")
 }
