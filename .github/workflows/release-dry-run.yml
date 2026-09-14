@@ -212,6 +212,10 @@ jobs:
       - name: Build Autograph.xcframework
         run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
 
+      # Same gate as ci.yml's swift-package job, on the slices that are about to ship (#197).
+      - name: Check the iOS floor against Package.swift
+        run: .github/scripts/check-ios-floor.sh autograph-apple/build/XCFrameworks/release/Autograph.xcframework
+
       - name: Compute the binary target checksum
         env:
           VERSION: ${{ inputs.version }}

@@ -42,6 +42,12 @@ android-compileSdk = "35"
 # the floor for consumers. Nothing else uses this key; sample-shared stays on android-compileSdk.
 android-sampleCompileSdk = "36"
 android-minSdk = "24"
+# The iOS floor of Autograph.xcframework, pinned rather than inherited: Kotlin/Native's default
+# deployment target moves with the toolchain (2.3.x links at 14.0, 2.4.x at 15.0), so without this
+# key a Kotlin bump silently changes what the binary will run on (#208). Package.swift's `.iOS(...)`
+# must declare the same value; the swift-package CI job fails when the built slices disagree with
+# the manifest (#197). Change both together.
+ios-deploymentTarget = "15.0"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
