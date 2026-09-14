@@ -56,7 +56,8 @@ dependencies {
     testImplementation(projects.autographCompose)
     // Test-only: ComposeTapOriginTest drives a real NavHost, which is the only way to exercise the
     // route frame `NavController.TrackScreenViews` pushes against a native surface beside it. The
-    // app itself does not use navigation-compose.
+    // app's own code does not use navigation-compose; the debug variant also gets it below, but the
+    // release unit tests (`./gradlew build` runs both) still need these.
     testImplementation(libs.jetbrains.navigation.compose)
 
     androidTestImplementation(libs.androidx.test.ext.junit)
@@ -64,8 +65,9 @@ dependencies {
     androidTestImplementation(libs.androidx.test.runner)
     // OriginOnDeviceTest's fixtures (src/debug): real AutographProvider / TrackedScreen compositions,
     // a NavHost route, and a real ViewPager2 (the demotion Robolectric never runs). Debug only — the
-    // app itself uses none of the three, and the fixtures must be in the app APK, not the test APK,
-    // for ActivityScenario to launch them in the app's process.
+    // app's own code uses none of the three (autograph-compose already reaches the runtime classpath
+    // through sample-shared, but not this module's compile classpath), and the fixtures must be in the
+    // app APK, not the test APK, for ActivityScenario to launch them in the app's process.
     debugImplementation(projects.autographCompose)
     debugImplementation(libs.jetbrains.navigation.compose)
     debugImplementation("androidx.viewpager2:viewpager2:1.1.0")

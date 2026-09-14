@@ -46,11 +46,13 @@ public class NativeSampleApplication : Application() {
     }
 
     /**
-     * The production install. Also what [OriginOnDeviceTest] restores after standing its own pair of
-     * captures on a stack of its own — so the arguments live here, once, and a change to them cannot
-     * leave that test re-installing a stale copy.
+     * The production install. Also what `OriginOnDeviceTest` (androidTest) restores after standing its
+     * own pair of captures on a stack of its own — so the arguments live here, once, and a change to
+     * them cannot leave that test re-installing a stale copy. Idempotent: a pair already installed is
+     * stood down first, so a re-entry can never leave an unreachable pair reporting beside the new one.
      */
     internal fun installCaptures() {
+        uninstallCaptures()
         // One stack for both captures, as the install kdocs ask for: it is what lets a native screen
         // scope the taps made on it, and what keeps `previous_screen` continuous across Compose↔native.
         val scopeStack = ScopeStack()

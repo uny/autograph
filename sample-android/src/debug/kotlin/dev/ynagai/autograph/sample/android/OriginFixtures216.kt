@@ -44,7 +44,6 @@ object Rig {
     lateinit var tracker: Tracker
     lateinit var scopeStack: ScopeStack
     val taps = mutableListOf<Pair<String?, Map<String, JsonElement>>>()
-    var interopButton: Button? = null
 
     val OWN = View.generateViewId()
     val CHROME = androidx.fragment.R.id.visible_removing_fragment_view_tag  // a LIBRARY id: generated ids have no entry name, android.* ids are excluded
@@ -73,10 +72,9 @@ private fun DeclaringTappable(screen: String, tag: String) {
  * TWO side-by-side fragment containers (bottom) so sibling surfaces can both be tapped by a finger.
  */
 class OriginActivity : FragmentActivity() {
-    lateinit var ownCompose: ComposeView
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        ownCompose = ComposeView(this).apply {
+        val ownCompose = ComposeView(this).apply {
             id = Rig.OWN
             setContent { DeclaringTappable("Main", "own") }
         }
@@ -110,9 +108,12 @@ open class DeclaringFragment(private val screen: String, private val tag: String
     }
 }
 
-class PageA : DeclaringFragment("PageA", "a")
-class PageB : DeclaringFragment("PageB", "b")
-class PageC : DeclaringFragment("PageC", "c")
+// The declared names differ from the fragments' simpleNames on purpose: the test installs
+// `fragmentScreenName = { it.javaClass.simpleName }`, so with equal names a tap could not tell a
+// Compose declaration from a native fragment frame that should have been excluded.
+class PageA : DeclaringFragment("ScreenA", "a")
+class PageB : DeclaringFragment("ScreenB", "b")
+class PageC : DeclaringFragment("ScreenC", "c")
 
 class InteropFragment2 : Fragment() {
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View =
@@ -125,7 +126,6 @@ class InteropFragment2 : Fragment() {
                                 id = Rig.INTEROP
                                 text = "interop"
                                 isClickable = true
-                                Rig.interopButton = this
                             }
                         })
                     }

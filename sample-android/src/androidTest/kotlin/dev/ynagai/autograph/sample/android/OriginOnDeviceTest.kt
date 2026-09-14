@@ -23,7 +23,6 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -32,8 +31,9 @@ import org.junit.runner.RunWith
  * The on-device half of `ComposeTapOriginTest` (#216): the cases whose outcome depends on framework
  * behaviour Robolectric does not run — a real `ViewPager2` demoting its neighbours, real fragment
  * lifecycle ordering, real touch dispatch through `Window.Callback`. Every assertion is on the tap
- * PAYLOAD the tracker receives (which `screen` a real Espresso click carried), except the two in
- * [ambientWhileHostPausedComposeDeclared] that pin what #231 changed about the ambient snapshot.
+ * PAYLOAD the tracker receives (which `screen` a real Espresso click carried), except the ambient
+ * reads in [realPagerAttributesTheVisiblePage] and [ambientWhileHostPausedComposeDeclared] that pin
+ * what #231 changed about the ambient snapshot.
  *
  * It runs in the sample's process, beside [NativeSampleApplication]'s own captures. Those would claim
  * every fixture Activity first, on a stack this test cannot see, so they are stood down for the
@@ -63,21 +63,25 @@ class OriginOnDeviceTest {
         Rig.tracker = tracker
         Rig.scopeStack = ScopeStack()
         Rig.taps.clear()
-        Rig.interopButton = null
     }
 
     @After
     fun tearDown() {
         // Close the fixture before the sample's captures come back: they must not see a Paused /
         // Destroyed for an Activity whose Created they never saw.
-        scenario?.close()
-        scenario = null
-        instrumentation.runOnMainSync {
-            screens?.uninstall()
-            nativeTaps?.uninstall()
-            screens = null
-            nativeTaps = null
-            app.installCaptures()
+        // In a finally: a close() that throws must not leave the sample's captures uninstalled for
+        // every test that follows in this process.
+        try {
+            scenario?.close()
+        } finally {
+            scenario = null
+            instrumentation.runOnMainSync {
+                screens?.uninstall()
+                nativeTaps?.uninstall()
+                screens = null
+                nativeTaps = null
+                app.installCaptures()
+            }
         }
     }
 
@@ -104,11 +108,25 @@ class OriginOnDeviceTest {
 
     private fun idle() = instrumentation.waitForIdleSync()
 
+    /** Polls [condition] for up to [timeoutMs]; the caller asserts afterwards, so a timeout is not hidden. */
+    private fun awaitUntil(timeoutMs: Long = 2_000, condition: () -> Boolean) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (!condition() && System.currentTimeMillis() < deadline) Thread.sleep(50)
+    }
+
+    private fun awaitAmbientScreen(expected: String?) {
+        idle()
+        awaitUntil { Rig.scopeStack.current().screen == expected }
+        assertEquals(expected, Rig.scopeStack.current().screen)
+    }
+
     private fun tapAndRead(id: Int): Pair<String?, String?> {
         synchronized(Rig.taps) { Rig.taps.clear() }
         onView(withId(id)).perform(click())
         idle()
-        Thread.sleep(300)
+        awaitUntil { synchronized(Rig.taps) { Rig.taps.isNotEmpty() } }
+        // A settle after the first report, so a double report of the same tap is still caught.
+        Thread.sleep(200)
         val all = synchronized(Rig.taps) { Rig.taps.toList() }
         assertEquals("exactly one report for one tap: $all", 1, all.size)
         val (target, props) = all.single()
@@ -120,6 +138,7 @@ class OriginOnDeviceTest {
     fun maskFromSilentFragmentStaysInsideIt() {
         val s = launch()
         add(s, Rig.LEFT, SilentFragment())
+        awaitAmbientScreen(null)  // the mask IS up: without this, "own carries Main" would also pass if it never rose
         assertEquals("own" to "Main", tapAndRead(Rig.OWN))
         assertEquals("silent" to null, tapAndRead(Rig.LEFT))
     }
@@ -130,8 +149,8 @@ class OriginOnDeviceTest {
         val s = launch()
         add(s, Rig.LEFT, PageA())
         add(s, Rig.RIGHT, PageB())
-        assertEquals("a" to "PageA", tapAndRead(Rig.LEFT))
-        assertEquals("b" to "PageB", tapAndRead(Rig.RIGHT))
+        assertEquals("a" to "ScreenA", tapAndRead(Rig.LEFT))
+        assertEquals("b" to "ScreenB", tapAndRead(Rig.RIGHT))
     }
 
     // 3. Native interop button inside a TrackedScreen composition carries the declared screen; the
@@ -141,6 +160,7 @@ class OriginOnDeviceTest {
         val s = launch()
         add(s, Rig.LEFT, InteropFragment2())
         add(s, Rig.RIGHT, SilentFragment())
+        awaitAmbientScreen(null)  // the sibling mask IS up
         assertEquals("Detail", tapAndRead(Rig.INTEROP).second)
         assertEquals("Main", tapAndRead(Rig.CHROME).second)
     }
@@ -155,7 +175,7 @@ class OriginOnDeviceTest {
         s.moveToState(Lifecycle.State.STARTED)
         s.moveToState(Lifecycle.State.RESUMED)
         idle()
-        assertEquals("a" to "PageA", tapAndRead(Rig.LEFT))
+        assertEquals("a" to "ScreenA", tapAndRead(Rig.LEFT))
         assertEquals("own" to "Main", tapAndRead(Rig.OWN))
     }
 
@@ -175,17 +195,16 @@ class OriginOnDeviceTest {
     fun realPagerAttributesTheVisiblePage() {
         installCaptures()
         val s = launchFixture(PagerActivity::class.java)
-        idle(); Thread.sleep(500)
+        awaitAmbientScreen("ScreenA")
         fun goTo(page: Int) {
             s.onActivity { it.findViewById<ViewPager2>(Rig.PAGER).setCurrentItem(page, false) }
-            idle(); Thread.sleep(600)
-            assertEquals("Page" + "ABC"[page], Rig.scopeStack.current().screen)
+            awaitAmbientScreen("Screen" + "ABC"[page])
         }
-        assertEquals("a" to "PageA", tapAndRead(Rig.PAGER))
-        goTo(1); assertEquals("b" to "PageB", tapAndRead(Rig.PAGER))
-        goTo(2); assertEquals("c" to "PageC", tapAndRead(Rig.PAGER))
-        goTo(1); assertEquals("b" to "PageB", tapAndRead(Rig.PAGER))
-        goTo(0); assertEquals("a" to "PageA", tapAndRead(Rig.PAGER))
+        assertEquals("a" to "ScreenA", tapAndRead(Rig.PAGER))
+        goTo(1); assertEquals("b" to "ScreenB", tapAndRead(Rig.PAGER))
+        goTo(2); assertEquals("c" to "ScreenC", tapAndRead(Rig.PAGER))
+        goTo(1); assertEquals("b" to "ScreenB", tapAndRead(Rig.PAGER))
+        goTo(0); assertEquals("a" to "ScreenA", tapAndRead(Rig.PAGER))
     }
 
     // 7. Ambient snapshot while the host Activity is paused, for a screen declared in COMPOSE (#231):
@@ -193,13 +212,10 @@ class OriginOnDeviceTest {
     @Test
     fun ambientWhileHostPausedComposeDeclared() {
         val s = launch()
-        idle(); Thread.sleep(300)
-        assertEquals("Main", Rig.scopeStack.current().screen)
+        awaitAmbientScreen("Main")
         s.moveToState(Lifecycle.State.STARTED)
-        idle(); Thread.sleep(300)
-        assertNull(Rig.scopeStack.current().screen)
+        awaitAmbientScreen(null)
         s.moveToState(Lifecycle.State.RESUMED)
-        idle(); Thread.sleep(300)
-        assertEquals("Main", Rig.scopeStack.current().screen)
+        awaitAmbientScreen("Main")
     }
 }
