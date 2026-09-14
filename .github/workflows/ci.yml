@@ -7,7 +7,7 @@ on:
   push:
     branches: [main]
   pull_request:
-  # Manual trigger for the emulator smoke below — an on-demand gate, deliberately not run on every PR.
+  # Manual trigger for the emulator smoke below, for PRs whose diff does not reach it (see `changes`).
   workflow_dispatch:
 
 concurrency:
@@ -18,6 +18,42 @@ concurrency:
 # All require macOS for iosSimulatorArm64; Apple silicon runners execute its tests natively.
 
 jobs:
+  # Decides whether a PR's diff reaches the Android on-device smoke below. Only that job consults this;
+  # every other job runs on every PR regardless. Path-filtering the workflow's `on.pull_request` instead
+  # would silence all of them for an Android-only change, which is the opposite of what is wanted.
+  #
+  # `HEAD^1` on a pull_request checkout is the base branch tip (HEAD is the merge commit), so the diff
+  # is exactly what the PR adds — no full clone, no third-party filter action.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    outputs:
+      android: ${{ steps.filter.outputs.android }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: github.event_name == 'pull_request'
+        with:
+          persist-credentials: false
+          fetch-depth: 2
+
+      - id: filter
+        if: github.event_name == 'pull_request'
+        run: |
+          set -euo pipefail
+          # Captured first so a failing `git diff` fails the step rather than reading as "no match" inside
+          # the `if`. `--no-renames` lists a move by both paths, so moving a file out of the set still
+          # counts; `core.quotePath=false` keeps non-ASCII paths unquoted so the anchors can match them.
+          files=$(git -c core.quotePath=false diff --no-renames --name-only HEAD^1 HEAD)
+          android=false
+          # The set is every module `:sample-android:connectedDebugAndroidTest` links — the on-device
+          # suite asserts on ScopeStack (autograph-context) and the Compose screen declarations
+          # (autograph-compose), not only on autograph-android — plus ci.yml itself: a workflow edit
+          # must prove the emulator job still runs, on the PR that edits it.
+          if grep -E '^(sample-android/|sample-shared/|autograph-android/|autograph-core/|autograph-context/|autograph-compose/|\.github/workflows/ci\.yml$)' <<<"$files" ; then
+            android=true
+          fi
+          echo "android=$android" >> "$GITHUB_OUTPUT"
+
   # The one job here that guards something CI otherwise cannot reach. cd.yml runs only on a `v*`
   # tag, so the shell it depends on — the gate standing in front of an irreversible publish, and
   # the release-notes derivation behind it — would first execute during a real release; these
@@ -139,19 +175,24 @@ jobs:
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=$device"
 
-  # On-demand only (workflow_dispatch): the Android on-device smokes for #65's native screen capture
-  # and #63's native tap capture — the coverage Robolectric cannot give (real framework, real
-  # windowing, a real back button, real touch dispatch). An emulator job is slow and flaky, so this is
-  # a manual gate rather than a per-PR one. Runs on Linux (KVM) since the task only needs the Android
-  # targets of its KMP dependencies, not the iOS ones.
+  # The Android on-device smokes for #65's native screen capture and #63's native tap capture — the
+  # coverage Robolectric cannot give (real framework, real windowing, a real back button, real touch
+  # dispatch). Runs on Linux (KVM) since the task only needs the Android targets of its KMP
+  # dependencies, not the iOS ones.
   #
-  # Know what the per-PR gate therefore does NOT cover: the Robolectric suite pins how a *given*
-  # pressed hierarchy resolves, by setting `isPressed` by hand. That the framework's touch dispatch
-  # produces that hierarchy in the first place — the premise the whole tap capture rests on — is only
-  # exercised here. Run this job when changing AndroidTapCapture/AndroidTapTarget.
+  # An emulator job is slow, so it is gated by `changes` rather than run on every PR: it runs when the
+  # PR touches a module the sample links (see the path set there) or this workflow, and on
+  # workflow_dispatch for everything else. Deliberately not on push to main: the PR that landed the
+  # change ran it, when its diff reached the job.
+  #
+  # Know what the other jobs therefore do NOT cover: the Robolectric suite pins how a *given* pressed
+  # hierarchy resolves, by setting `isPressed` by hand. That the framework's touch dispatch produces
+  # that hierarchy in the first place — the premise the whole tap capture rests on — is only exercised
+  # here.
   android-instrumented:
     name: android-instrumented
-    if: github.event_name == 'workflow_dispatch'
+    needs: changes
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'pull_request' && needs.changes.outputs.android == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
