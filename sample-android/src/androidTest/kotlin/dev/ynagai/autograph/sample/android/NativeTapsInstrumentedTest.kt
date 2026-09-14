@@ -75,7 +75,7 @@ class NativeTapsInstrumentedTest {
 
     @Test
     fun aTapOnComposeContentIsLeftToTheComposePipeline() {
-        withTapScreen { onView(withId(R.id.tap_compose_host)).perform(click()) }
+        withTapScreen { onView(withId(R.id.tap_compose_host)).perform(scrollTo(), click()) }
 
         assertEquals(emptyList<String>(), NativeTapLog.targets.toList())
         // ...and the tap did land on the island, so the assertion above is about the View pipeline
@@ -85,14 +85,14 @@ class NativeTapsInstrumentedTest {
 
     @Test
     fun nestedClickablesReportTheInnerOne() {
-        withTapScreen { onView(withId(R.id.tap_nested_child)).perform(click()) }
+        withTapScreen { onView(withId(R.id.tap_nested_child)).perform(scrollTo(), click()) }
 
         assertEquals(listOf("tap_nested_child"), NativeTapLog.targets.toList())
     }
 
     @Test
     fun aRecyclerViewRowReportsItsOwnId() {
-        withTapScreen { onView(withText("Recycler row 1")).perform(click()) }
+        withTapScreen { onView(withText("Recycler row 1")).perform(scrollTo(), click()) }
 
         assertEquals(listOf("tap_recycler_row"), NativeTapLog.targets.toList())
     }
@@ -101,7 +101,7 @@ class NativeTapsInstrumentedTest {
     fun aListViewRowReportsTheList() {
         // Documented, and not a bug to be fixed silently: AbsListView presses the list as well as the
         // row, and a platform row layout's id (`text1`) is shared by every such list in the app.
-        withTapScreen { onView(withText("List row 1")).perform(click()) }
+        withTapScreen { onView(withText("List row 1")).perform(scrollTo(), click()) }
 
         assertEquals(listOf("tap_list"), NativeTapLog.targets.toList())
     }
