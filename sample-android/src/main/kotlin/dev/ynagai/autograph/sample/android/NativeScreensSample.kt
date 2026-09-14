@@ -14,6 +14,8 @@ import android.widget.TextView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.android.AutographNativeScreenCapture
+import dev.ynagai.autograph.android.AutographNativeTapCapture
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
 import dev.ynagai.autograph.android.installAutographNativeTapCapture
 import dev.ynagai.autograph.AutographInternalApi
@@ -34,22 +36,45 @@ import kotlinx.serialization.json.JsonPrimitive
  * shell and its `ScreenAFragment` / `ScreenBFragment` are the reported screens.
  */
 public class NativeSampleApplication : Application() {
+
+    private var screenCapture: AutographNativeScreenCapture? = null
+    private var tapCapture: AutographNativeTapCapture? = null
+
     override fun onCreate() {
         super.onCreate()
+        installCaptures()
+    }
+
+    /**
+     * The production install. Also what `OriginOnDeviceTest` (androidTest) restores after standing its
+     * own pair of captures on a stack of its own — so the arguments live here, once, and a change to
+     * them cannot leave that test re-installing a stale copy. Idempotent: a pair already installed is
+     * stood down first, so a re-entry can never leave an unreachable pair reporting beside the new one.
+     */
+    internal fun installCaptures() {
+        uninstallCaptures()
         // One stack for both captures, as the install kdocs ask for: it is what lets a native screen
         // scope the taps made on it, and what keeps `previous_screen` continuous across Compose↔native.
         val scopeStack = ScopeStack()
-        installAutographNativeScreenCapture(
+        screenCapture = installAutographNativeScreenCapture(
             application = this,
             tracker = NativeSampleTracker,
             scopeStack = scopeStack,
             fragmentScreenName = { it.javaClass.simpleName },
         )
-        installAutographNativeTapCapture(
+        tapCapture = installAutographNativeTapCapture(
             application = this,
             tracker = NativeSampleTracker,
             scopeStack = scopeStack,
         )
+    }
+
+    /** Stops the production captures; a test that installs its own must call this first. */
+    internal fun uninstallCaptures() {
+        screenCapture?.uninstall()
+        tapCapture?.uninstall()
+        screenCapture = null
+        tapCapture = null
     }
 }
 
