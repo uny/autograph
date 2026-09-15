@@ -8,6 +8,25 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Changed
+
+- **`Autograph.xcframework` is linked at `minos 15.0` again, and stays there** ([#208], [#197]).
+  0.8.0 and 0.9.0 shipped `minos 14.0` binaries without anyone choosing to (read off the published
+  assets; 0.7.0's are 15.0): nothing in the Gradle build set a deployment target, so it was the
+  Kotlin/Native toolchain's default, which is 15.0 on the 2.4 line and 14.0 on the 2.3 line that
+  [#205] moved the build to. The umbrella now pins the value from a single catalog key
+  (`ios-deploymentTarget`), through the same `-Xoverride-konan-properties` flag that 0.6.0's notes
+  below declined to use for *lowering* the floor — the trade is different when the alternative is a
+  floor that moves with every compiler bump. Because that flag is compiler-internal,
+  the build going green is not taken as proof it worked: the `swift-package` CI job, the release dry
+  run and the release itself now read `LC_BUILD_VERSION` and `MinimumOSVersion` back from every built
+  slice and fail when they differ from `Package.swift`'s `.iOS(.v15)` — in either direction, since a
+  manifest above the binary is also what the pin silently failing would look like (while the
+  toolchain's default differs from the pin — on a line whose default is already 15.0 the check
+  cannot tell the two apart). Measured against `main` before the pin, the check fails on the real
+  14.0-vs-`.v15` mismatch; with it, both slices read 15.0. No consumer is affected: `.iOS(.v15)`
+  already turned away everything below 15.
+
 ### Fixed
 
 - **The ambient screen now follows what is on display, for screens declared in Compose too**
@@ -1357,7 +1376,9 @@ Initial release.
 [#191]: https://github.com/uny/autograph/issues/191
 [#193]: https://github.com/uny/autograph/issues/193
 [#195]: https://github.com/uny/autograph/issues/195
+[#197]: https://github.com/uny/autograph/issues/197
 [#205]: https://github.com/uny/autograph/issues/205
+[#208]: https://github.com/uny/autograph/issues/208
 [#216]: https://github.com/uny/autograph/issues/216
 [#217]: https://github.com/uny/autograph/pull/217
 [#228]: https://github.com/uny/autograph/issues/228

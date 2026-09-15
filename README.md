@@ -847,14 +847,14 @@ isolation is the name, not a namespace.
   usually pinned by an upstream release it does not control
   ([#205](https://github.com/uny/autograph/issues/205)). The demo app in `sample-android` compiles
   against 36 for a dependency of its own; that does not reach consumers
-- iOS **15.0** or later, for the Swift package — the floor `Package.swift` declares. It used to be
-  read straight off the binary, since Kotlin/Native's default deployment target was `minos 15.0` and
-  nothing in the Gradle build overrides it; on the 2.3 toolchain that default is `minos 14.0`, so
-  from the next release the declared floor sits one version *above* what the framework would run.
-  That is the safe direction — SwiftPM turning away a consumer beats accepting one the binary cannot
-  honour — and `.v15` is kept until the Swift sources that rely on iOS 15 APIs without an
-  `@available` gate are audited. No Swift API here carries an `@available` version annotation of its
-  own
+- iOS **15.0** or later, for the Swift package — the floor `Package.swift` declares, and the
+  `minos` the `Autograph.xcframework` slices are linked at. The two are held together: the binary's
+  deployment target is pinned in the Gradle build (`ios-deploymentTarget` in
+  `gradle/libs.versions.toml`) rather than inherited from the Kotlin/Native toolchain, whose default
+  moves between Kotlin lines, and CI fails when the built slices and the manifest disagree
+  ([#208](https://github.com/uny/autograph/issues/208),
+  [#197](https://github.com/uny/autograph/issues/197)). No Swift API here carries an `@available`
+  version annotation of its own
 - Targets: **Android**, **JVM**, and **iOS** — device `iosArm64` and the Apple-Silicon simulator
   `iosSimulatorArm64`. The Intel-Mac simulator (`iosX64`) is intentionally not shipped: Apple-Silicon
   simulators cover current development, and adding a target costs a Kotlin/Native link on every CI run,

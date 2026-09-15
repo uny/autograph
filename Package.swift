@@ -51,18 +51,18 @@ private let autographTarget: Target = FileManager.default.fileExists(atPath: loc
 
 let package = Package(
     name: "Autograph",
-    // `minos` is whatever Kotlin/Native defaults to — nothing in the Gradle build sets a deployment
-    // target — so it moves when the compiler moves, and the compiler just did. `minVersion.ios` in
-    // the toolchain's own `konan.properties` is 15.0 for 2.4.10 but **14.0 for the 2.3.21 this
-    // library now builds with** (#205), so releases from here on ship a 14.0 binary where 0.7.0
-    // shipped a 15.0 one.
+    // The iOS floor. The binary's `minos` is pinned to the same value in the Gradle build
+    // (`ios-deploymentTarget` in gradle/libs.versions.toml) rather than left to Kotlin/Native's
+    // default, which moves with the toolchain (15.0 under 2.4.x, 14.0 under 2.3.x) and did so
+    // silently when #205 lowered Kotlin (#208). CI reads the built slices' LC_BUILD_VERSION back
+    // and fails when they disagree with this line in either direction
+    // (.github/scripts/check-ios-floor.sh, #197), so change the two together.
     //
-    // `.v15` is kept deliberately rather than lowered with it. Over-declaring is the safe direction
-    // — SwiftPM refuses a consumer the binary would have run, rather than accepting one it cannot,
-    // which is what this line used to do at `.v13`. Lowering it to `.v14` is a real decision, not
-    // bookkeeping: `AutographUI` uses iOS 15 APIs with no `@available` gate precisely because this
-    // floor made gating unnecessary (see README's `role:` note), so `.v14` needs those audited
-    // first. Until then this declares a floor above the binary's, on purpose.
+    // 15 is a decision, not a default: lowering it needs evidence the framework runs on an iOS 14
+    // device — nothing in this repo runs one — and the README's `role:` note relies on 15 being the
+    // floor. An over-declared floor would be the safe direction (SwiftPM refusing a consumer the
+    // binary could run) but the check refuses it anyway, because that is also what the pin
+    // silently failing looks like.
     //
     // Autograph.xcframework only ships iOS device/simulator slices, so this package is iOS-only in
     // practice; macOS/tvOS/watchOS minimums are declared solely to satisfy SwiftPM's manifest-level

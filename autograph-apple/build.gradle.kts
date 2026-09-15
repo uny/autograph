@@ -25,6 +25,16 @@ kotlin {
         it.binaries.framework {
             baseName = "Autograph"
             xcf.add(this)
+            // Pin the deployment target instead of taking the toolchain's default, which is what
+            // moved it from 15.0 to 14.0 when #205 lowered Kotlin. There is no public DSL for it;
+            // overriding the konan.properties key is the route the compiler itself uses. The key is
+            // per target (`osVersionMin.ios_arm64`, …), so it is derived from the target being
+            // linked rather than spelled out: a target added to the list above is pinned by
+            // construction, not by someone remembering this line. Also sets the framework
+            // Info.plist's MinimumOSVersion. Verified by reading LC_BUILD_VERSION back in the
+            // swift-package CI job, not by the build going green.
+            val floor = libs.versions.ios.deploymentTarget.get()
+            freeCompilerArgs += "-Xoverride-konan-properties=osVersionMin.${it.konanTarget.name}=$floor"
             // Each module whose public API must appear in the framework header is exported explicitly —
             // `export` is not transitive, so re-exporting `autograph-uikit` (whose install functions are
             // the point of adding this umbrella) also requires exporting the `autograph-core` /
