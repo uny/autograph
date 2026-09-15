@@ -21,9 +21,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   the build going green is not taken as proof it worked: the `swift-package` CI job, the release dry
   run and the release itself now read `LC_BUILD_VERSION` and `MinimumOSVersion` back from every built
   slice and fail when they differ from `Package.swift`'s `.iOS(.v15)` — in either direction, since a
-  manifest above the binary is also what the pin silently failing would look like. Measured against
-  `main` before the pin, the check fails on the real 14.0-vs-`.v15` mismatch; with it, both slices
-  read 15.0. No consumer is affected: `.iOS(.v15)` already turned away everything below 15.
+  manifest above the binary is also what the pin silently failing would look like (while the
+  toolchain's default differs from the pin — on a line whose default is already 15.0 the check
+  cannot tell the two apart). Measured against `main` before the pin, the check fails on the real
+  14.0-vs-`.v15` mismatch; with it, both slices read 15.0. No consumer is affected: `.iOS(.v15)`
+  already turned away everything below 15.
 
 ### Fixed
 

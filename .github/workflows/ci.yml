@@ -145,7 +145,9 @@ jobs:
 
       # The simulator below runs an OS far above any floor, so it cannot tell a manifest that
       # disagrees with the binary's deployment target from one that matches (#197). Read the built
-      # slices instead. This is also the only evidence that the Gradle pin (#208) took effect.
+      # slices instead. On a PR this is also the only evidence that the Gradle pin (#208) took
+      # effect — as long as the toolchain's own default differs from the pin; when the two coincide
+      # a dead pin is invisible here until the default next moves.
       - name: Check the iOS floor against Package.swift
         run: .github/scripts/check-ios-floor.sh autograph-apple/build/XCFrameworks/release/Autograph.xcframework
 

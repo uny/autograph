@@ -130,8 +130,11 @@ job, the release dry run and `cd.yml` read `LC_BUILD_VERSION` and `MinimumOSVers
 built slice and fail on any difference
 ([#197](https://github.com/uny/autograph/issues/197), `.github/scripts/check-ios-floor.sh`). The
 pin goes through `-Xoverride-konan-properties`, which is compiler-internal — if a Kotlin bump breaks
-it, that check is what tells you, not the build. To change the floor, change the key and the
-manifest in one commit and let the check confirm the binary followed.
+it, that check is what tells you, not the build. One blind spot: it can only see a dead pin while
+the toolchain's default differs from the pinned value (2.4.x defaults to 15.0, the same as the pin),
+so a bump onto such a line proves nothing about the flag until the default next moves. To change
+the floor, change the key and the manifest in one commit and let the check confirm the binary
+followed.
 
 **`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
 each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
