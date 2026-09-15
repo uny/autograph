@@ -51,9 +51,10 @@ normalize() {
 
 # Accept the two spellings SwiftPM allows: `.iOS(.v15)` and `.iOS("15.1")`. Anything else — including
 # a manifest with no iOS platform at all — is a failure rather than a pass, because "nothing declared"
-# is not the same as "declared correctly". Line comments are dropped first so that prose recounting
-# an old floor (`// was .iOS(.v13)`) is never the value compared.
-declared=$(sed 's|//.*$||' "$manifest" | grep -oE '\.iOS\((\.v[0-9]+|"[0-9]+(\.[0-9]+)?")\)' | head -n 1 || true)
+# is not the same as "declared correctly". Comments are dropped first, both `// …` and `/* … */`, so
+# that prose recounting an old floor (`// was .iOS(.v13)`) is never the value compared. perl, because
+# a block comment can span lines and neither BSD nor GNU sed handles that in one readable expression.
+declared=$(perl -0pe 's{/\*.*?\*/}{}gs; s{//[^\n]*}{}g' "$manifest" | grep -oE '\.iOS\((\.v[0-9]+|"[0-9]+(\.[0-9]+)?")\)' | head -n 1 || true)
 case "$declared" in
   '.iOS(.v'*) manifest_floor=$(normalize "$(printf '%s' "$declared" | sed 's/^\.iOS(\.v//; s/)$//')") ;;
   '.iOS("'*) manifest_floor=$(normalize "$(printf '%s' "$declared" | sed 's/^\.iOS("//; s/")$//')") ;;

@@ -97,6 +97,10 @@ xcf=$(fresh commented); add_slice "$xcf" ios-arm64 15.0
 printf 'let package = Package(\n    // used to be .iOS(.v13), see #195\n    platforms: [.iOS(.v15)], // not .iOS(.v14)\n)\n' >"$workdir/m.swift"
 expect "commented-out floors are ignored" 0 "$xcf" "$workdir/m.swift"
 
+# Block comments too, including one spanning lines — the real line must still be the one compared.
+printf 'let package = Package(\n    /* previous floor: .iOS(.v13),\n       see #195 */ platforms: [.iOS(.v15)], /* not .iOS(.v14) */\n)\n' >"$workdir/m.swift"
+expect "block-comment floors are ignored" 0 "$xcf" "$workdir/m.swift"
+
 # --- the two directions of drift, both must fail -----------------------------------------------
 
 xcf=$(fresh unsafe); add_slice "$xcf" ios-arm64 15.0; add_slice "$xcf" ios-arm64-simulator 15.0
