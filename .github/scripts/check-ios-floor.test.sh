@@ -8,9 +8,11 @@
 #
 # `vtool` and `plutil` are stubbed by putting fakes first on PATH rather than by adding a test seam
 # to the script, so the real `vtool -show-build ... | awk` and `plutil -extract` lines are what run.
-# Each stub reads the number it should report from the file it is pointed at — the "binary" holds
-# its minos, the Info.plist holds its MinimumOSVersion — so a case is set up by writing those files.
-# That is also what makes this runnable on ubuntu, where neither tool exists.
+# Each stub refuses any argv other than the one the script is expected to use, so a typo in either
+# invocation fails here rather than only on a macOS runner. Each reads the number it should report
+# from the file it is pointed at — the "binary" holds its minos (one line per architecture), the
+# Info.plist holds its MinimumOSVersion — so a case is set up by writing those files. That is also
+# what makes this runnable on ubuntu, where neither tool exists.
 #
 # Usage: .github/scripts/check-ios-floor.test.sh
 
@@ -26,24 +28,29 @@ stub_dir="$workdir/bin"
 mkdir -p "$stub_dir"
 cat >"$stub_dir/vtool" <<'EOF'
 #!/usr/bin/env bash
-# Real output has more lines (platform, sdk); only the shape of the minos line matters.
-minos=$(cat "${@: -1}")
-[ -n "$minos" ] || exit 0
-printf 'Load command 10\n      cmd LC_BUILD_VERSION\n platform IOS\n    minos %s\n      sdk 26.0\n' "$minos"
+[ "$#" -eq 2 ] && [ "$1" = "-show-build" ] || { echo "vtool stub: unexpected argv: $*" >&2; exit 64; }
+# Real output has more lines (platform, sdk); only the shape of the minos line matters. A fat binary
+# prints one such block per architecture.
+while IFS= read -r minos; do
+  [ -n "$minos" ] || continue
+  printf 'Load command 10\n      cmd LC_BUILD_VERSION\n platform IOS\n    minos %s\n      sdk 26.0\n' "$minos"
+done <"$2"
 EOF
 cat >"$stub_dir/plutil" <<'EOF'
 #!/usr/bin/env bash
-cat "${@: -1}"
+[ "$#" -eq 6 ] && [ "$1 $2 $3 $4 $5" = "-extract MinimumOSVersion raw -o -" ] || { echo "plutil stub: unexpected argv: $*" >&2; exit 64; }
+cat "$6"
 EOF
 chmod +x "$stub_dir/vtool" "$stub_dir/plutil"
 export PATH="$stub_dir:$PATH"
 
-# $1 = xcframework dir, $2 = slice name, $3 = binary minos, $4 = plist MinimumOSVersion ($3 if omitted).
+# $1 = xcframework dir, $2 = slice name, $3 = binary minos (newline-separated for a fat binary),
+# $4 = plist MinimumOSVersion ($3 if omitted; pass "" for a plist without the key).
 add_slice() {
   local fw="$1/$2/Autograph.framework"
   mkdir -p "$fw"
-  printf '%s' "$3" >"$fw/Autograph"
-  printf '%s' "${4:-$3}" >"$fw/Info.plist"
+  printf '%s\n' "$3" >"$fw/Autograph"
+  printf '%s' "${4-$3}" >"$fw/Info.plist"
 }
 
 # $1 = manifest path, $2 = platforms line.
@@ -110,11 +117,34 @@ xcf=$(fresh plist); add_slice "$xcf" ios-arm64 15.0 14.0
 write_manifest "$workdir/m.swift" '.iOS(.v15)'
 expect "Info.plist drift fails" 1 "$xcf" "$workdir/m.swift" "MinimumOSVersion 14.0"
 
+# A fat slice is two architectures in one binary; the pin can miss one of them.
+xcf=$(fresh fat); add_slice "$xcf" ios-arm64_x86_64-simulator "$(printf '15.0\n14.0')" 15.0
+write_manifest "$workdir/m.swift" '.iOS(.v15)'
+expect "a fat slice with one drifted architecture fails" 1 "$xcf" "$workdir/m.swift" "architectures disagree"
+
+xcf=$(fresh fatok); add_slice "$xcf" ios-arm64_x86_64-simulator "$(printf '15.0\n15.0')" 15.0
+expect "a fat slice with both architectures pinned passes" 0 "$xcf" "$workdir/m.swift"
+
 # --- no vacuous green -----------------------------------------------------------------------
 
 xcf=$(fresh empty)
 write_manifest "$workdir/m.swift" '.iOS(.v15)'
 expect "empty xcframework fails" 1 "$xcf" "$workdir/m.swift" "no framework slices"
+
+# A slice directory with nothing in it must not be skipped on the strength of its sibling.
+xcf=$(fresh halfbuilt); add_slice "$xcf" ios-arm64 15.0; mkdir "$xcf/ios-arm64-simulator"
+write_manifest "$workdir/m.swift" '.iOS(.v15)'
+expect "a slice without a framework fails" 1 "$xcf" "$workdir/m.swift" "ios-arm64-simulator: no .framework bundle"
+
+# ...but a code-signature directory is not a slice.
+xcf=$(fresh signed); add_slice "$xcf" ios-arm64 15.0; mkdir "$xcf/_CodeSignature"
+expect "_CodeSignature is not a slice" 0 "$xcf" "$workdir/m.swift"
+
+xcf=$(fresh nobinary); mkdir -p "$xcf/ios-arm64/Autograph.framework"; printf '15.0' >"$xcf/ios-arm64/Autograph.framework/Info.plist"
+expect "framework without a binary fails" 1 "$xcf" "$workdir/m.swift" "no binary at"
+
+xcf=$(fresh noplistkey); add_slice "$xcf" ios-arm64 15.0 ""
+expect "Info.plist without MinimumOSVersion fails" 1 "$xcf" "$workdir/m.swift" "has no MinimumOSVersion"
 
 xcf=$(fresh nofloor); add_slice "$xcf" ios-arm64 15.0
 write_manifest "$workdir/m.swift" '.macOS(.v10_15)'
@@ -124,8 +154,8 @@ xcf=$(fresh nominos); add_slice "$xcf" ios-arm64 ""
 write_manifest "$workdir/m.swift" '.iOS(.v15)'
 expect "binary without LC_BUILD_VERSION fails" 1 "$xcf" "$workdir/m.swift" "no minos"
 
-expect "missing xcframework is a usage error" 2 "$workdir/nope.xcframework" "$workdir/m.swift"
-expect "missing manifest is a usage error" 2 "$xcf" "$workdir/nope.swift"
+expect "missing xcframework is a usage error" 2 "$workdir/nope.xcframework" "$workdir/m.swift" "usage:"
+expect "missing manifest is a usage error" 2 "$xcf" "$workdir/nope.swift" "manifest not found"
 
 # ----------------------------------------------------------------------------------------------
 

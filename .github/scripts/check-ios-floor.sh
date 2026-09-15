@@ -63,19 +63,32 @@ esac
 checked=0
 for slice in "$xcframework"/*/; do
   slice="${slice%/}"
-  # An unmatched glob comes through literally (bash 3.2 has no nullglob by default).
+  # An unmatched glob comes through literally (nullglob is off by default).
   [ -d "$slice" ] || continue
-  # A slice holds one .framework; the binary inside carries the framework's name.
+  # The only non-slice directory an xcframework root can hold is a code signature.
+  case "$(basename "$slice")" in _*) continue ;; esac
+  # A slice holds one .framework; the binary inside carries the framework's name. A slice without
+  # one is not "nothing to check" — skipping it would let a half-built xcframework pass on the
+  # strength of its other slice.
   framework=$(find "$slice" -maxdepth 1 -name '*.framework' -type d | head -n 1)
-  [ -n "$framework" ] || continue
+  [ -n "$framework" ] || fail "$(basename "$slice"): no .framework bundle"
   name=$(basename "$framework" .framework)
   binary="$framework/$name"
   [ -f "$binary" ] || fail "$slice: no binary at $binary"
 
-  # vtool prints one `minos X.Y` line per build-version load command; a single-arch slice has one.
-  binary_floor=$(vtool -show-build "$binary" | awk '$1 == "minos" { print $2; exit }')
-  [ -n "$binary_floor" ] || fail "$binary: vtool reported no minos (no LC_BUILD_VERSION?)"
-  binary_floor=$(normalize "$binary_floor")
+  # vtool prints one `minos X.Y` line per architecture. Every one is compared, not only the first:
+  # a fat slice (lipo of two targets) is exactly where one architecture can miss the pin while the
+  # other carries it.
+  minos_lines=$(vtool -show-build "$binary" | awk '$1 == "minos" { print $2 }')
+  [ -n "$minos_lines" ] || fail "$binary: vtool reported no minos (no LC_BUILD_VERSION?)"
+  binary_floor=""
+  for arch_floor in $minos_lines; do
+    arch_floor=$(normalize "$arch_floor")
+    if [ -n "$binary_floor" ] && [ "$arch_floor" != "$binary_floor" ]; then
+      fail "$(basename "$slice"): architectures disagree on minos ($binary_floor vs $arch_floor) — one of them missed the pin"
+    fi
+    binary_floor="$arch_floor"
+  done
 
   plist_floor=$(plutil -extract MinimumOSVersion raw -o - "$framework/Info.plist" 2>/dev/null || true)
   [ -n "$plist_floor" ] || fail "$framework/Info.plist has no MinimumOSVersion"
