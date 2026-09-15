@@ -86,6 +86,17 @@ jobs:
         id: version
         run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> "$GITHUB_OUTPUT"
 
+      # Built and checked BEFORE the Maven publish below, for the same reason the start-tag
+      # derivation above sits where it does: the floor check is allowed to fail, and a failure after
+      # the publish would leave the version on Central with no xcframework asset behind it. Nothing
+      # here depends on the publish having happened.
+      - name: Build Autograph.xcframework
+        run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
+
+      # Same gate as ci.yml's swift-package job, on the slices that are about to ship (#197).
+      - name: Check the iOS floor against Package.swift
+        run: .github/scripts/check-ios-floor.sh autograph-apple/build/XCFrameworks/release/Autograph.xcframework
+
       - name: Publish to Maven Central
         run: ./gradlew publishToMavenCentral -Pversion=${{ steps.version.outputs.VERSION }} --stacktrace
         env:
@@ -94,13 +105,6 @@ jobs:
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.GPG_KEY_ID }}
           ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.GPG_PRIVATE_KEY }}
           ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.GPG_PASSPHRASE }}
-
-      - name: Build Autograph.xcframework
-        run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
-
-      # Same gate as ci.yml's swift-package job, on the slices that are about to ship (#197).
-      - name: Check the iOS floor against Package.swift
-        run: .github/scripts/check-ios-floor.sh autograph-apple/build/XCFrameworks/release/Autograph.xcframework
 
       # Kotlin/Native's build output isn't reproducible across separate builds — confirmed by
       # rebuilding the same source on the same machine and observing a different xcframework zip
