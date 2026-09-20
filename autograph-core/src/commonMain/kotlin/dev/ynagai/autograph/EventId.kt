@@ -24,7 +24,8 @@ public object EventId {
      * Backed by the stdlib's [Uuid.generateV7], whose process-wide generator orders ids minted
      * inside one millisecond by a dedicated counter (RFC 9562 §6.2) and treats a wall clock that
      * steps backwards as "not ticking" — it keeps the last timestamp and counts on — so the order
-     * survives an NTP correction too (read off the 2.3.21 source, `UuidV7Generator.generate`).
+     * survives an NTP correction too (read off the stdlib's own, internal
+     * `kotlin.uuid.UuidV7Generator` in the 2.3.21 source — not a class of this library's).
      */
     public val UuidV7: EventIdGenerator = EventIdGenerator { Uuid.generateV7().toString() }
 

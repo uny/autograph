@@ -839,8 +839,8 @@ isolation is the name, not a namespace.
   nothing outside it pins consumers to this one: both claims that once shaped the floor were
   measured false ([#205](https://github.com/uny/autograph/issues/205) — KSP 2.3.x runs under
   Kotlin 2.4, so KSP does not hold anyone on 2.3; and `Uuid.generateV7()` has been in the stdlib
-  since 2.3.0, so nothing here ever needed 2.4).
-  Consumers already on 2.4 are unaffected; the compatibility runs the other way
+  since 2.3.0, so nothing here ever needed 2.4). Consumers already on 2.4 are unaffected; the
+  compatibility runs the other way
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
 - Android `compileSdk` **35** or later, for consumers of the Android artifacts. Kept as low as the
