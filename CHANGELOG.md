@@ -10,6 +10,19 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Changed
 
+- **`event_id` and `session.id` come from the stdlib's `Uuid.generateV7()` again**; the
+  `UuidV7Generator` that 0.8.0 added is deleted ([#205]). 0.8.0 wrote it on the claim that
+  `Uuid.generateV7()` needed Kotlin 2.4 — it does not: it has been in `kotlin-stdlib` since 2.3.0
+  (read off the published 2.3.0 and 2.3.21 jars), so it always sat inside the floor 0.8.0 lowered
+  to. That was the second of #205's two premises to fail; the first, that KSP had no Kotlin 2.4
+  line, is recorded on the issue. The floor itself stays on 2.3, now for the only reason that was
+  ever real — a klib links only from a toolchain at least as new as the one that built it, so the
+  build version is the floor, and it is kept on the oldest line the code allows, as `kotlinx` does.
+  Nothing observable changes for consumers: ids are still UUIDv7, still time-ordered, and ids minted
+  inside one millisecond are still ordered by a dedicated counter — the stdlib's instead of ours.
+  One internal detail moves back to where 0.7.0 had it: a session id's timestamp is wall time, no
+  longer the clock injected into `Stamper`; the clock still drives every session decision.
+
 - **`Autograph.xcframework` is linked at `minos 15.0` again, and stays there** ([#208], [#197]).
   0.8.0 and 0.9.0 shipped `minos 14.0` binaries without anyone choosing to (read off the published
   assets; 0.7.0's are 15.0): nothing in the Gradle build set a deployment target, so it was the

@@ -1,6 +1,5 @@
 package dev.ynagai.autograph
 
-import kotlin.time.Clock
 import kotlin.uuid.Uuid
 
 /**
@@ -18,13 +17,14 @@ public fun interface EventIdGenerator {
 /** Built-in [EventIdGenerator] strategies. */
 public object EventId {
 
-    private val uuidV7 = UuidV7Generator { Clock.System.now().toEpochMilliseconds() }
-
     /**
      * UUIDv7 (RFC 9562): time-ordered, database-index friendly, and monotonic within
      * the lifetime of the process. The recommended default.
+     *
+     * The stdlib's [Uuid.generateV7] — in `kotlin-stdlib` since 2.3.0, so it sits inside the Kotlin
+     * floor. Ids minted inside one millisecond are ordered by its dedicated counter (RFC 9562 §6.2).
      */
-    public val UuidV7: EventIdGenerator = EventIdGenerator { uuidV7.next().toString() }
+    public val UuidV7: EventIdGenerator = EventIdGenerator { Uuid.generateV7().toString() }
 
     /** Random UUIDv4 — matches the default behavior of the Segment SDKs. */
     public val UuidV4: EventIdGenerator = EventIdGenerator { Uuid.random().toString() }

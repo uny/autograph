@@ -72,23 +72,20 @@ class StamperTest {
     }
 
     @Test
-    fun sessionIdsAreTimeOrderedUuidV7FromTheInjectedClock() {
+    fun sessionIdsAreTimeOrderedUuidV7() {
         // Every other assertion about session.id here is equality or inequality, which `Uuid.random()`
-        // would satisfy too — so nothing pinned the *shape* once #205 moved session ids off the
-        // stdlib's UUIDv7 onto Stamper's own generator. Two properties matter and neither was covered:
-        // the id is a v7 (so it sorts), and it is driven by the injected clock rather than wall time,
-        // which is what keeps a test clock — or a caller's — in control of what gets stamped.
+        // would satisfy too — so nothing else pins the *shape*. Two properties matter: the id is a v7
+        // (so it sorts), and a later session's id sorts after an earlier one. The stdlib's
+        // `Uuid.generateV7()` stamps wall time, not the injected clock, so the rotation below is
+        // forced through the test clock while the ordering is what the generator's process-wide
+        // monotonicity guarantees — even when both rotations land in the same wall millisecond.
         val s = stamper()
         val first = s.stamp().session.id
         assertEquals('7', first[14], "session id must be a UUIDv7, got $first")
-        assertEquals(
-            now,
-            first.substringBefore('-').toLong(16) shl 16 or first.substringAfter('-').substringBefore('-').toLong(16),
-            "unix_ts_ms must be the injected clock, not wall time",
-        )
 
         now += 31.minutes.inWholeMilliseconds
         val second = s.stamp().session.id
+        assertNotEquals(first, second)
         assertTrue(second > first, "a later session's id must sort after an earlier one: $first then $second")
     }
 
