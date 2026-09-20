@@ -23,7 +23,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Nothing observable changes for consumers: ids are still UUIDv7, still time-ordered, and ids minted
   inside one millisecond are still ordered by a dedicated counter — the stdlib's instead of ours.
   One internal detail moves back to where 0.7.0 had it: a session id's timestamp is wall time, no
-  longer the clock injected into `Stamper`; the clock still drives every session decision.
+  longer the clock injected into `Stamper`; the clock still drives every session decision. One
+  edge the deleted generator handled and the stdlib's (as of 2.3.21) does not: if the *first*
+  `generateV7()` call in a process sees a wall clock at or before the Unix epoch, the generator's
+  zero initial state takes its "clock not ticking" path and the ids it returns until the clock
+  passes the epoch carry version nibble `0`, not `7`. Left as is: no supported platform boots with
+  such a clock (iOS's floor is 2001, Android's is the build date), and a guard here would be dead
+  code the day the stdlib fixes it.
 
 - **`Autograph.xcframework` is linked at `minos 15.0` again, and stays there** ([#208], [#197]).
   0.8.0 and 0.9.0 shipped `minos 14.0` binaries without anyone choosing to (read off the published
