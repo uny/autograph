@@ -4,8 +4,9 @@
 # outright by anyone still on 2.3. Held on the 2.3 line for that reach (#205 lowered it), the way
 # kotlinx builds coroutines with 2.2. Not because of KSP (KSP 2.3.12 runs under KGP 2.4.10 incl. iOS
 # targets, measured 2026-09-13) and not for Uuid.generateV7() either (in the stdlib since 2.3.0) —
-# raise it only when a fix actually needs 2.4 or the CMP/AGP baselines move to 2.4. The `abiValidation` flip a 2.4 bump needs must land WITH the bump,
-# never alone (CONTRIBUTING.md "Bumping dependencies"), and re-run fixtures/klib-diamond/run.sh.
+# raise it only when a fix actually needs 2.4 or the CMP/AGP baselines move to 2.4. The
+# `abiValidation` flip a 2.4 bump needs must land WITH the bump, never alone (CONTRIBUTING.md
+# "Bumping dependencies"), and re-run fixtures/klib-diamond/run.sh.
 # The dependabot ignore in .github/dependabot.yml mirrors this.
 kotlin = "2.3.21"
 agp = "9.2.1"

@@ -85,7 +85,6 @@ class StamperTest {
 
         now += 31.minutes.inWholeMilliseconds
         val second = s.stamp().session.id
-        assertNotEquals(first, second)
         assertTrue(second > first, "a later session's id must sort after an earlier one: $first then $second")
     }
 

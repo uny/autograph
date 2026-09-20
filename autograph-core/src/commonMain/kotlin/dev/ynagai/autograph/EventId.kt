@@ -21,8 +21,10 @@ public object EventId {
      * UUIDv7 (RFC 9562): time-ordered, database-index friendly, and monotonic within
      * the lifetime of the process. The recommended default.
      *
-     * The stdlib's [Uuid.generateV7] — in `kotlin-stdlib` since 2.3.0, so it sits inside the Kotlin
-     * floor. Ids minted inside one millisecond are ordered by its dedicated counter (RFC 9562 §6.2).
+     * Backed by the stdlib's [Uuid.generateV7], whose process-wide generator orders ids minted
+     * inside one millisecond by a dedicated counter (RFC 9562 §6.2) and treats a wall clock that
+     * steps backwards as "not ticking" — it keeps the last timestamp and counts on — so the order
+     * survives an NTP correction too (read off the 2.3.21 source, `UuidV7Generator.generate`).
      */
     public val UuidV7: EventIdGenerator = EventIdGenerator { Uuid.generateV7().toString() }
 
