@@ -13,9 +13,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 - **`event_id` and `session.id` come from the stdlib's `Uuid.generateV7()` again**; the
   `UuidV7Generator` that 0.8.0 added is deleted ([#205]). 0.8.0 wrote it on the claim that
   `Uuid.generateV7()` needed Kotlin 2.4 — it does not: it has been in `kotlin-stdlib` since 2.3.0
-  (read off the published 2.3.0 and 2.3.21 jars), so it always sat inside the floor 0.8.0 lowered
-  to. That was the second of #205's two premises to fail; the first, that KSP had no Kotlin 2.4
-  line, is recorded on the issue. The floor itself stays on 2.3, now for the only reason that was
+  (read off the published 2.3.0 and 2.3.21 JVM jars *and* the Kotlin/Native 2.3.0 stdlib klib's
+  `kotlin.uuid` metadata, where 2.2.20's has no such symbol), so it always sat inside the floor
+  0.8.0 lowered to. That was the second of #205's two premises to fail; the first — that KSP's
+  2.3-numbered releases could not run on a Kotlin 2.4 project — is recorded on the issue. The floor
+  itself stays on 2.3, now for the only reason that was
   ever real — a klib links only from a toolchain at least as new as the one that built it, so the
   build version is the floor, and it is kept on the oldest line the code allows, as `kotlinx` does.
   Nothing observable changes for consumers: ids are still UUIDv7, still time-ordered, and ids minted

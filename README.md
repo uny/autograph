@@ -835,9 +835,11 @@ isolation is the name, not a namespace.
   *minor*, so `2.3.21` output links from a `2.3.20` toolchain (verified) while a `2.4.10` build is
   rejected outright by any 2.3 one. The build version is therefore the floor, and it is kept on the
   oldest line the library's own code and dependencies allow — the same practice `kotlinx` follows
-  (coroutines 1.11.0 is built with Kotlin 2.2). Nothing in the code needs a newer line: the two
-  things once thought to were both measured false ([#205](https://github.com/uny/autograph/issues/205)
-  — KSP 2.3.x runs under Kotlin 2.4, and `Uuid.generateV7()` has been in the stdlib since 2.3.0).
+  (coroutines 1.11.0 is built with Kotlin 2.2). Nothing in the code needs a newer line, and
+  nothing outside it pins consumers to this one: both claims that once shaped the floor were
+  measured false ([#205](https://github.com/uny/autograph/issues/205) — KSP 2.3.x runs under
+  Kotlin 2.4, so KSP does not hold anyone on 2.3; and `Uuid.generateV7()` has been in the stdlib
+  since 2.3.0, so nothing here ever needed 2.4).
   Consumers already on 2.4 are unaffected; the compatibility runs the other way
 - Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
