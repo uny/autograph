@@ -10,6 +10,28 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Changed
 
+- **`event_id` and `session.id` come from the stdlib's `Uuid.generateV7()` again**; the
+  `UuidV7Generator` that 0.8.0 added is deleted ([#205]). 0.8.0 wrote it on the claim that
+  `Uuid.generateV7()` needed Kotlin 2.4 — it does not: it has been in `kotlin-stdlib` since 2.3.0
+  (read off the published 2.3.0 and 2.3.21 JVM jars *and* the Kotlin/Native 2.3.0 stdlib klib's
+  `kotlin.uuid` metadata, where 2.2.20's has no such symbol), so it always sat inside the floor
+  0.8.0 lowered to. That was the second of #205's two premises to fail; the first — that KSP's
+  2.3-numbered releases could not run on a Kotlin 2.4 project — is recorded on the issue. The floor
+  itself stays on 2.3, now for the only reason that was ever real — a klib links only from a
+  toolchain at least as new as the one that built it, so the build version is the floor, and it is
+  kept on the oldest line the code allows, as `kotlinx` does.
+  Nothing observable changes for consumers: ids are still UUIDv7, still time-ordered, and ids minted
+  inside one millisecond are still ordered by a dedicated counter — the stdlib's instead of ours.
+  One internal detail moves back to where 0.7.0 had it: a session id's timestamp is wall time, no
+  longer the clock injected into `Stamper`; the clock still drives every session decision. One
+  edge the deleted generator handled and the stdlib's (as of 2.3.21) does not: if the *first*
+  `generateV7()` call in a process sees a wall clock at or before the Unix epoch, the generator's
+  zero initial state takes its "clock not ticking" path and the ids it returns carry version nibble
+  `0`, not `7`, until the clock passes the epoch or the counter overflows (32,767 ids). Ordering and
+  uniqueness are unaffected. Left as is: no phone boots with such a clock (iOS's floor is 2001,
+  Android's is the build date), the JVM artifact would need a host that hands the very first id out
+  before NTP has ever set its clock, and a guard here would be dead code the day the stdlib fixes it.
+
 - **`Autograph.xcframework` is linked at `minos 15.0` again, and stays there** ([#208], [#197]).
   0.8.0 and 0.9.0 shipped `minos 14.0` binaries without anyone choosing to (read off the published
   assets; 0.7.0's are 15.0): nothing in the Gradle build set a deployment target, so it was the

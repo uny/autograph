@@ -73,18 +73,22 @@ so raising it is a compatibility decision and not a dependency chore.** A klib c
 version of the compiler that produced it, so a consumer's Kotlin/Native toolchain must be at least as
 new — at *minor* granularity, which is why building with 2.3.21 still leaves 2.3.20 consumers able
 to link, and why a 2.4 build is rejected outright by every consumer still on a 2.3 toolchain. The
-floor sits on the 2.3 line for that reach ([#205](https://github.com/uny/autograph/issues/205)),
-which is also why `autograph-core` owns
-[`UuidV7Generator`](autograph-core/src/commonMain/kotlin/dev/ynagai/autograph/UuidV7Generator.kt)
-instead of calling 2.4's `Uuid.generateV7()`. One reason #205 gave no longer holds and must not be
-used to close a bump: KSP is *not* what keeps consumers on 2.3. KSP decoupled its version from the
-compiler's at 2.3.0, and KSP 2.3.12 runs under KGP 2.4.10 — measured 2026-09-13 on a scratch KMP
-project with `jvm()` + `iosSimulatorArm64()` and a KSP processor on both: code generated, an
-`abi_version=2.4.0` klib produced, no warnings. So a KSP release *numbered* 2.4 is not the trigger;
-the hold ends when the reason to keep 2.3 consumers does — a fix that actually needs 2.4, or the
-Compose Multiplatform / AGP baselines this library tracks moving to 2.4 themselves. Say which in the
-PR. Bumping the patch within a supported minor is the ordinary chore this warning is not about.
-Nothing in CI enforces this — building at the floor is the only thing that keeps it honest.
+floor sits on the 2.3 line for that reach — the same practice `kotlinx` follows, building
+coroutines with Kotlin 2.2 and serialization with 2.3 — and there is no way to publish a klib for a
+*range* of Kotlin versions: the oldest supported minor *is* the build version. Both reasons
+[#205](https://github.com/uny/autograph/issues/205) gave for the line it chose turned out to be
+false, and neither may be reused to argue a bump either way: KSP is *not* what keeps consumers on
+2.3 (KSP decoupled its version from the compiler's at 2.3.0, and KSP 2.3.12 runs under KGP 2.4.10 —
+measured 2026-09-13 on a scratch KMP project with `jvm()` + `iosSimulatorArm64()` and a KSP
+processor on both: code generated, an `abi_version=2.4.0` klib produced, no warnings), and
+`Uuid.generateV7()` never required 2.4 — it is in `kotlin-stdlib` since 2.3.0 (read off the
+published 2.3.0 and 2.3.21 JVM jars with `javap`, and off the Kotlin/Native 2.3.0 stdlib klib's
+`linkdata/package_kotlin.uuid` metadata with `strings`, where the 2.2.20 klib has no such symbol;
+2026-09-20), which is why the `UuidV7Generator` #205 added was deleted again. So the hold ends
+only when the library actually needs a newer line — a fix that needs 2.4, or the Compose
+Multiplatform / AGP baselines this library tracks moving to 2.4 themselves — and the PR says which.
+Bumping the patch within a supported minor is the ordinary chore this warning is not about. Nothing
+in CI enforces this — building at the floor is the only thing that keeps it honest.
 
 **Raising the floor to 2.4 flips the `abiValidation` DSL in every published module, and the flip
 must land in the bump commit — never before it.** KGP 2.4 removed the `enabled` property, so the

@@ -30,8 +30,9 @@ updates:
       # The Kotlin floor is held on the 2.3 line for reach: a klib carries its producing compiler's
       # ABI, so a 2.4 build is rejected outright by every consumer still on a 2.3 toolchain (#205
       # lowered it). It is NOT waiting on KSP — KSP 2.3.12 runs under KGP 2.4.10 incl. iOS targets
-      # (measured 2026-09-13) — so the hold ends on a trigger, not a KSP version number: a fix that
-      # needs 2.4, or the CMP/AGP baselines moving to 2.4. #212 was the last 2.4.x proposal. Two
+      # (measured 2026-09-13) — and nothing in the code wants 2.4 (`Uuid.generateV7()` is in the
+      # stdlib since 2.3.0), so the hold ends on a trigger, not a version number: a fix that needs
+      # 2.4, or the CMP/AGP baselines moving to 2.4. #212 was the last 2.4.x proposal. Two
       # names on purpose, neither of which is `org.jetbrains.kotlinx*`: the artifact form
       # (`kotlin-test`) and the plugin-id form (`org.jetbrains.kotlin.multiplatform` and friends) are
       # what dependabot actually proposes. Drop both when raising the floor; the `abiValidation` flip
