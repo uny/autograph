@@ -46,7 +46,7 @@ kotlin {
 
     androidLibrary {
         namespace = "dev.ynagai.autograph"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        compileSdk = libs.versions.android.coreCompileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
     }
     jvm()

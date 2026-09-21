@@ -18,7 +18,7 @@ kotlin {
 
     androidLibrary {
         namespace = "dev.ynagai.autograph.segment"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        compileSdk = libs.versions.android.coreCompileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         withHostTest {}
     }
