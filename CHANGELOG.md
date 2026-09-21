@@ -18,7 +18,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   they carry no Compose, and 34 is what their own dependencies (`androidx.startup` 1.2.0,
   `androidx.fragment` 1.8.9) declare. A UIKit-, Fragment- or Segment-only consumer never sees the 37.
 
-  This is the second floor move in consecutive releases — 0.8.0 lowered the single floor from 37 to
+  This is the second floor move in quick succession — 0.8.0 lowered the single floor from 37 to
   35 ([#205]) — so the rule that decides it is recorded rather than the number: each floor is exactly
   what its group's own dependencies declare, never higher and never lower, and moves only when they
   do. Holding CMP at 1.11.1 to keep 35 would have meant never taking 1.12 (1.11.1 is the last of its
@@ -1420,9 +1420,9 @@ Initial release.
 [#193]: https://github.com/uny/autograph/issues/193
 [#195]: https://github.com/uny/autograph/issues/195
 [#197]: https://github.com/uny/autograph/issues/197
-[#224]: https://github.com/uny/autograph/issues/224
 [#205]: https://github.com/uny/autograph/issues/205
 [#208]: https://github.com/uny/autograph/issues/208
 [#216]: https://github.com/uny/autograph/issues/216
 [#217]: https://github.com/uny/autograph/pull/217
+[#224]: https://github.com/uny/autograph/issues/224
 [#228]: https://github.com/uny/autograph/issues/228

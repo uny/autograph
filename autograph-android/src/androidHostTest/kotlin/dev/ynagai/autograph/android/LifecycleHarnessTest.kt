@@ -44,8 +44,8 @@ class SecondHarnessFragment : Fragment()
  */
 @RunWith(RobolectricTestRunner::class)
 // 36 is Robolectric 4.16's newest shipped framework — it has nothing above, so this pin cannot
-// follow compileSdk upward. It now sits *above* compileSdk 35, which is fine (Robolectric supplies
-// its own android-all jar rather than the compile SDK) but means no host test exercises 35 itself.
+// follow compileSdk upward. It now sits *above* compileSdk 34, which is fine (Robolectric supplies
+// its own android-all jar rather than the compile SDK) but means no host test exercises 34 itself.
 @Config(sdk = [36])
 class LifecycleHarnessTest {
 
