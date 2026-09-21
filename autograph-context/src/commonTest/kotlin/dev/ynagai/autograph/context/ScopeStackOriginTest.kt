@@ -325,6 +325,22 @@ class ScopeStackOriginTest {
     }
 
     @Test
+    fun a_global_frame_reaches_an_origin_under_a_boundary_and_merges_with_its_scope() {
+        // #237 from a native surface: the app's global frame is under no boundary, so it is a
+        // survivor for every origin, and being global it merges with the surface's own chain rather
+        // than cancelling against it.
+        val stack = ScopeStack()
+        val provider = stack.push(boundary = true)
+        stack.push(scope = props("article_id" to "1"), parent = provider)
+        stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        val activity = stack.push(boundary = true)
+        stack.push(scope = props("checkout_step" to "2"), parent = activity)
+
+        assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current(provider).scope)
+        assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(activity).scope)
+    }
+
+    @Test
     fun scope_merges_along_the_lineage_across_a_boundary() {
         val stack = ScopeStack()
         val host = stack.push(scope = props("tab" to "home"), boundary = true)

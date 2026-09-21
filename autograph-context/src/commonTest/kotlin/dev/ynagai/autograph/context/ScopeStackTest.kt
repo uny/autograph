@@ -257,6 +257,78 @@ class ScopeStackTest {
         assertEquals("row2", stack.current().scope["article_id"]?.jsonPrimitive?.content)
     }
 
+    @Test
+    fun a_hand_pushed_root_without_pushGlobal_still_cancels_against_a_nested_scope() {
+        // #237's repro, kept as written: a plain root is its own tree in the forest, so it is not
+        // comparable to a scope nested under the provider's root, and BOTH drop as ambiguous
+        // siblings. Pinned deliberately — the fix declares app-wide frames (`pushGlobal`) rather
+        // than inferring "a root nothing references is global", which would silently reinterpret
+        // the roots existing callers push (iOS native screen frames are roots) and change a frame's
+        // meaning retroactively the moment something is pushed under it.
+        val stack = ScopeStack()
+        val provider = stack.push()
+        stack.push(scope = props("article_id" to "1"), parent = provider)
+        stack.push(scope = props("tenant_id" to "acme"))
+        assertEquals(JsonObject(emptyMap()), stack.current().scope)
+    }
+
+    @Test
+    fun a_global_frame_merges_with_a_live_scope_chain_instead_of_cancelling_it() {
+        // The #237 case: app-wide keys (a tenant) pushed at startup, a screen's own scope nested
+        // under the provider's root. Both keys must reach the tap.
+        val stack = ScopeStack()
+        val provider = stack.push()
+        stack.push(scope = props("article_id" to "1"), parent = provider)
+        stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current().scope)
+    }
+
+    @Test
+    fun a_global_frame_loses_a_key_clash_to_the_screens_own_scope() {
+        // Global merges outermost, whatever its insertion order: the screen's scope wins a clash,
+        // and an explicit call-site property still wins over both.
+        val stack = ScopeStack()
+        stack.pushGlobal(scope = props("source" to "global", "tenant_id" to "acme"))
+        val provider = stack.push()
+        stack.push(scope = props("source" to "screen"), parent = provider)
+        val ctx = stack.current()
+        assertEquals(props("source" to "screen", "tenant_id" to "acme"), ctx.scope)
+        assertEquals(props("source" to "callsite", "tenant_id" to "acme"), ctx.enrich(props("source" to "callsite")))
+    }
+
+    @Test
+    fun a_global_frame_survives_the_ambiguous_siblings_below_it() {
+        // The #66 rule stays: the rows still drop, the global frame (and the route scope enclosing
+        // the rows) still attribute.
+        val stack = ScopeStack()
+        stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        val route = stack.push(scope = props("tab" to "home"))
+        stack.push(scope = props("row" to "1"), parent = route)
+        stack.push(scope = props("row" to "2"), parent = route)
+        assertEquals(props("tenant_id" to "acme", "tab" to "home"), stack.current().scope)
+    }
+
+    @Test
+    fun two_global_frames_merge_in_insertion_order() {
+        val stack = ScopeStack()
+        stack.pushGlobal(scope = props("a" to "first", "b" to "first"))
+        stack.pushGlobal(scope = props("b" to "second"))
+        assertEquals(props("a" to "first", "b" to "second"), stack.current().scope)
+    }
+
+    @Test
+    fun a_global_frame_is_removable_and_deactivatable_like_any_other() {
+        val stack = ScopeStack()
+        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        stack.push(scope = props("article_id" to "1"))
+        stack.setActive(global, false)
+        assertEquals(props("article_id" to "1"), stack.current().scope)
+        stack.setActive(global, true)
+        assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current().scope)
+        stack.remove(global)
+        assertEquals(props("article_id" to "1"), stack.current().scope)
+    }
+
     /**
      * `parent` is public, so a caller wiring lineage by hand can name a frame the target already
      * encloses. That link is refused (the frame drops to a root) instead of being stored: the ancestry

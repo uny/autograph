@@ -76,10 +76,14 @@ public class ScopeStack {
      * (siblings mounted at once — a list's rows, split-pane, a sheet over content) are ambiguous, and
      * [current] then drops *those* rather than guessing between them, keeping whatever encloses them
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
-     * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. Lineage is
-     * framework-independent — a native surface declares it the same way — so this does not tie the
-     * stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion order
-     * ambiently (the origin-taking [current] additionally ranks a container with its content).
+     * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. A root is its own
+     * tree: it encloses nothing it is not declared the parent of, so a root pushed by hand beside a
+     * provider's root is an ambiguous *sibling* of the scopes nested under that provider, not an
+     * ancestor of them. App-wide context — keys meant to reach every event whatever it is nested in
+     * — is declared with [pushGlobal] instead. Lineage is framework-independent — a native surface
+     * declares it the same way — so this does not tie the stack to Compose. It affects only scope;
+     * [screen]/[section] still resolve by insertion order ambiently (the origin-taking [current]
+     * additionally ranks a container with its content).
      */
     public fun push(
         scope: Map<String, JsonElement> = EmptyJsonObject,
@@ -122,6 +126,36 @@ public class ScopeStack {
         boundary: Boolean,
     ): ScopeHandle {
         val frame = ScopeFrame(scope.asJsonObject(), screen, section, parent?.frame, boundary = boundary)
+        frames.add(frame)
+        snapshot = recompute()
+        return ScopeHandle(frame)
+    }
+
+    /**
+     * Pushes a frame whose [scope] is **app-wide**: it applies to every event, whatever subtree the
+     * event happened in, and so it takes no part in the ambiguity rule of [resolveScope] — it neither
+     * makes another scope-bearing frame ambiguous nor is dropped as one. A tenant, an install id, an
+     * experiment assignment pushed once at startup are the shape; it is the frame a host sharing one
+     * stack between `AutographProvider` and the native captures reaches for.
+     *
+     * A plain [push] with no `parent` does not mean this. That root is its own tree in the forest —
+     * nothing declares it as a parent, it declares none — so beside a provider's root it is an
+     * ambiguous sibling of the `AutographScope` frames nested under that provider, and [current]
+     * drops both rather than guess (#237). Inferring "a root nothing references is global" was
+     * rejected: a frame's meaning would change retroactively the moment something is pushed under
+     * it, and it would silently reinterpret the roots existing pipelines push (the iOS native screen
+     * frames are roots). So app-wide is declared, here.
+     *
+     * Global frames merge **outermost**, in insertion order among themselves, so a screen's own
+     * scope still wins a key clash and an explicit call-site property wins over both — the same
+     * precedence a scope nested outside every other has. Global is fixed for the life of the frame,
+     * like `boundary`; [update] revises the scope but not the flag, and a `parent` given to [update]
+     * is stored but does not change where the frame merges. The frame is otherwise ordinary: it is
+     * under no boundary, so the origin-taking [current] sees it from every origin; [remove] and
+     * [setActive] apply as to any frame; it carries no screen or section.
+     */
+    public fun pushGlobal(scope: Map<String, JsonElement>): ScopeHandle {
+        val frame = ScopeFrame(scope.asJsonObject(), screen = null, section = null, global = true)
         frames.add(frame)
         snapshot = recompute()
         return ScopeHandle(frame)
@@ -322,7 +356,9 @@ public class ScopeStack {
      *   not in — does not; and
      * - every frame that is **under no boundary at all**: a root the app pushed by hand, a screen a
      *   native pipeline that claims no views pushes (iOS), a Compose declaration outside any claimed
-     *   surface. Nothing localizes those, so they apply to every event, exactly as they do ambiently.
+     *   surface. Nothing localizes those, so they apply to every event, exactly as they do ambiently
+     *   — as *members*: a hand-pushed root's scope is still subject to [resolveScope]'s ambiguity
+     *   rule unless it was pushed with [pushGlobal], which is what makes it app-wide.
      *   A boundary-free stack therefore resolves with the same *members* with or without an origin
      *   — except what is nested under an inactive frame of another surface, see below — (and
      *   in the same order, unless a frame was reparented under one pushed after it — see the ranking
@@ -498,6 +534,12 @@ public class ScopeStack {
      * element's own ancestry. Android only: the iOS accessibility bridge carries no such marker, so
      * the drop above is what an ambiguous iOS tap gets (#68).
      *
+     * A [pushGlobal] frame is exempt from all of that: it encloses every subtree by declaration, so
+     * it is neither compared nor dropped. Global frames merge first — outermost, so the lowest
+     * precedence — in insertion order among themselves, and the unambiguous chain merges on top.
+     * Without the exemption an app-wide root and a screen's own scope were two roots of different
+     * trees, incomparable, and both dropped (#237).
+     *
      * [live] is the active subset computed by [recompute]: a demoted surface's scope must not
      * attribute a tap on the surface that replaced it, so selection filters scope exactly as it
      * filters screen. Lineage is unaffected — [encloses] walks the real parent chain, inactive links
@@ -506,17 +548,17 @@ public class ScopeStack {
     private fun resolveScope(live: List<ScopeFrame>): JsonObject {
         val scoped = live.filter { it.scope.isNotEmpty() }
         if (scoped.isEmpty()) return EmptyJsonObject
-        if (scoped.size == 1) return scoped[0].scope
-        val unambiguous = scoped.filter { frame ->
-            scoped.all { other -> frame.encloses(other) || other.encloses(frame) }
+        val (global, local) = scoped.partition { it.global }
+        val base = global.fold(EmptyJsonObject) { acc, frame -> acc.merge(frame.scope) }
+        val unambiguous = if (local.size <= 1) local else local.filter { frame ->
+            local.all { other -> frame.encloses(other) || other.encloses(frame) }
         }
         // Ascending depth is outer→inner, so the deeper frame wins a shared key. Depths are distinct:
         // the survivors lie on one chain, which strictly increases in depth.
-        return unambiguous.sortedBy { it.depth() }
-            .fold(EmptyJsonObject) { acc, frame ->
-                if (acc.isEmpty()) frame.scope else JsonObject(acc + frame.scope)
-            }
+        return unambiguous.sortedBy { it.depth() }.fold(base) { acc, frame -> acc.merge(frame.scope) }
     }
+
+    private fun JsonObject.merge(inner: JsonObject): JsonObject = if (isEmpty()) inner else JsonObject(this + inner)
 
     /**
      * Whether this frame is [other]'s ancestor, or [other] itself. Terminates because [update] refuses
@@ -556,6 +598,8 @@ internal class ScopeFrame(
     var active: Boolean = true,
     /** See the `boundary` [ScopeStack.push] overload. Fixed at push. */
     val boundary: Boolean = false,
+    /** See [ScopeStack.pushGlobal]: exempt from the ambiguity rule, merged outermost. Fixed at push. */
+    val global: Boolean = false,
 )
 
 /**

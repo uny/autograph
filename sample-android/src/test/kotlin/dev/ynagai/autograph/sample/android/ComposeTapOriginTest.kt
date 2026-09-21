@@ -28,6 +28,7 @@ import dev.ynagai.autograph.android.installAutographNativeScreenCapture
 import dev.ynagai.autograph.android.installAutographNativeTapCapture
 import dev.ynagai.autograph.compose.AutocaptureConfig
 import dev.ynagai.autograph.compose.AutographProvider
+import dev.ynagai.autograph.compose.AutographScope
 import dev.ynagai.autograph.compose.TrackScreenViews
 import dev.ynagai.autograph.compose.TrackedScreen
 import dev.ynagai.autograph.context.ScopeStack
@@ -149,6 +150,21 @@ open class DeclaringTapFragment(private val screen: String, private val tag: Str
         val tag = this.tag
         return ComposeView(requireContext()).apply { setContent { DeclaringTappable(screen, tag) } }.also { compose = it }
     }
+}
+
+/** Hosts a composition that declares `Article` and wraps its tappable in an `AutographScope`. */
+class ScopedTapFragment : Fragment() {
+    lateinit var compose: ComposeView
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        ComposeView(requireContext()).apply {
+            setContent {
+                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                    TrackedScreen("Article") {
+                        AutographScope("article_id" to "1") { Box(Modifier.fillMaxSize().testTag("scoped").clickable {}) {} }
+                    }
+                }
+            }
+        }.also { compose = it }
 }
 
 /**
@@ -406,11 +422,11 @@ class ComposeTapOriginTest {
 
     @Test
     fun aFrameTheAppPushedByHandReachesEveryTapWhileTheNativeCaptureIsInstalled() {
-        // A root frame pushed through the public API — an experiment scope at startup — is under no
-        // boundary, so every origin sees it. Dropping it once the capture claims the view tree
-        // would be silent data loss; both pipelines are checked.
+        // An app-wide frame pushed through the public API — an experiment scope at startup — is
+        // under no boundary, so every origin sees it. Dropping it once the capture claims the view
+        // tree would be silent data loss; both pipelines are checked.
         val activity = launch()
-        scopeStack.push(scope = mapOf("experiment" to kotlinx.serialization.json.JsonPrimitive("b")))
+        scopeStack.pushGlobal(scope = mapOf("experiment" to kotlinx.serialization.json.JsonPrimitive("b")))
         val host = InteropFragment()
         activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
         idle()
@@ -421,6 +437,34 @@ class ComposeTapOriginTest {
         nativeTap(activity, OriginFixtures.interopButton!!)
         assertEquals("b", taps.single().second["experiment"]?.jsonPrimitive?.content)
         assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun aGlobalFrameCoexistsWithAScreensOwnAutographScope() {
+        // #237: the test above held only because nothing else on the stack carried scope. With a
+        // screen wrapped in `AutographScope`, a plain hand-pushed root was an ambiguous sibling of
+        // the scope nested under the provider, and BOTH dropped — adding app-wide context removed
+        // the screen scope the app already had. A global frame merges instead: the Compose tap
+        // carries both keys, the native tap (on a surface with no scope of its own) the global one.
+        val activity = launch()
+        val scoped = ScopedTapFragment()
+        val interop = InteropFragment()
+        activity.supportFragmentManager.beginTransaction()
+            .add(activity.container, scoped).add(activity.container, interop).commitNow()
+        idle()
+        scopeStack.pushGlobal(scope = mapOf("tenant_id" to kotlinx.serialization.json.JsonPrimitive("acme")))
+
+        tap(scoped.compose)
+        assertEquals("scoped", taps.single().first)
+        assertEquals("Article", taps.single().second["screen"]?.jsonPrimitive?.content)
+        assertEquals("1", taps.single().second["article_id"]?.jsonPrimitive?.content)
+        assertEquals("acme", taps.single().second["tenant_id"]?.jsonPrimitive?.content)
+
+        taps.clear()
+        nativeTap(activity, OriginFixtures.interopButton!!)
+        assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
+        assertEquals("acme", taps.single().second["tenant_id"]?.jsonPrimitive?.content)
+        assertNull("another surface's AutographScope never reaches a native tap", taps.single().second["article_id"])
     }
 
     @Test
