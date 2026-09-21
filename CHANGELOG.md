@@ -8,6 +8,24 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Changed
+
+- **Compose Multiplatform 1.12.0, and the Android `compileSdk` floor is split in two** ([#224]).
+  `autograph-compose` now requires `compileSdk` **37**, up from 35 — androidx Compose 1.12.0, which
+  CMP 1.12.0 resolves to, declares `minCompileSdk=37`, so this is CMP's own requirement passed
+  through, and a Compose consumer is already compiling there. The other Android artifacts
+  (`autograph-core`, `-context`, `-segment`, `-test`, `-android`) now require **34**, down from 35:
+  they carry no Compose, and 34 is what their own dependencies (`androidx.startup` 1.2.0,
+  `androidx.fragment` 1.8.9) declare. A UIKit-, Fragment- or Segment-only consumer never sees the 37.
+
+  This is the second floor move in quick succession — 0.8.0 lowered the single floor from 37 to
+  35 ([#205]) — so the rule that decides it is recorded rather than the number: each floor is exactly
+  what its group's own dependencies declare, never higher and never lower, and moves only when they
+  do. Holding CMP at 1.11.1 to keep 35 would have meant never taking 1.12 (1.11.1 is the last of its
+  line, with no patch path), and every consumer who does take CMP 1.12 needs 37 regardless of what
+  this library asks. The cold-device tap check CONTRIBUTING requires for a CMP bump was run on
+  1.12.0 before this change: 4/4 taps attributed identically to 1.11.1 on fresh simulators.
+
 ## [0.9.1] - 2026-09-20
 
 ### Changed
@@ -1406,4 +1424,5 @@ Initial release.
 [#208]: https://github.com/uny/autograph/issues/208
 [#216]: https://github.com/uny/autograph/issues/216
 [#217]: https://github.com/uny/autograph/pull/217
+[#224]: https://github.com/uny/autograph/issues/224
 [#228]: https://github.com/uny/autograph/issues/228

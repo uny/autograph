@@ -841,14 +841,16 @@ isolation is the name, not a namespace.
   Kotlin 2.4, so KSP does not hold anyone on 2.3; and `Uuid.generateV7()` has been in the stdlib
   since 2.3.0, so nothing here ever needed 2.4). Consumers already on 2.4 are unaffected; the
   compatibility runs the other way
-- Compose Multiplatform **1.11.1** (`Modifier.trackImpression` uses its stable
+- Compose Multiplatform **1.12.0** (`Modifier.trackImpression` uses its stable
   `Modifier.onVisibilityChanged`)
-- Android `compileSdk` **35** or later, for consumers of the Android artifacts. Kept as low as the
-  published modules' own dependencies allow, since it is a hard requirement on every consumer's
-  build: `compileSdk` 36 needs a newer AGP than 35 does, and a project pinned to an older AGP is
-  usually pinned by an upstream release it does not control
-  ([#205](https://github.com/uny/autograph/issues/205)). The demo app in `sample-android` compiles
-  against 36 for a dependency of its own; that does not reach consumers
+- Android `compileSdk` **37** or later for `autograph-compose`, and **34** or later for the other
+  Android artifacts (`autograph-core`, `-context`, `-segment`, `-test`, `-android`). Each is exactly
+  what that group's own dependencies declare — androidx Compose 1.12.0 for the first, `androidx.startup`
+  / `androidx.fragment` for the second — and moves only when they do
+  ([#224](https://github.com/uny/autograph/issues/224)). A Compose consumer is already compiling
+  against 37 (androidx Compose 1.12.0 requires it), so the first floor costs nothing beyond what CMP
+  itself asks; a UIKit-, Fragment- or Segment-only consumer never sees it. The demo app in
+  `sample-android` compiles against 37 for itself; that does not reach consumers
 - iOS **15.0** or later, for the Swift package — the floor `Package.swift` declares, and the
   `minos` the `Autograph.xcframework` slices are linked at. The two are held together: the binary's
   deployment target is pinned in the Gradle build (`ios-deploymentTarget` in

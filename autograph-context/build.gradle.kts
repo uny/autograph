@@ -20,7 +20,7 @@ kotlin {
     // autograph-android made the switch: this module now ships one Android resource.
     android {
         namespace = "dev.ynagai.autograph.context"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        compileSdk = libs.versions.android.coreCompileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         // Off by default in the KMP library plugin. The one resource is the id used as the
         // `View.setTag` key that carries a surface's ScopeHandle down its view subtree — the channel

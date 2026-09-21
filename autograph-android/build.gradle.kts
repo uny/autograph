@@ -24,7 +24,7 @@ kotlin {
     // `android { }`, not the deprecated `androidLibrary { }` that autograph-segment/-compose still use.
     android {
         namespace = "dev.ynagai.autograph.android"
-        compileSdk = libs.versions.android.compileSdk.get().toInt()
+        compileSdk = libs.versions.android.coreCompileSdk.get().toInt()
         minSdk = libs.versions.android.minSdk.get().toInt()
         // Off by default in the KMP library plugin, which otherwise generates an *empty* resource set
         // for androidMain and no R class. The module ships exactly one resource — the id used as the

@@ -140,16 +140,29 @@ so a bump onto such a line proves nothing about the flag until the default next 
 the floor, change the key and the manifest in one commit and let the check confirm the binary
 followed.
 
-**`android-compileSdk` is the published Android floor**, not a build detail: AGP writes it into
-each AAR's metadata as `minCompileSdk`, so every consumer must compile against at least that. Raise
-it only when a dependency of a *published* module actually demands it, and prefer pinning that
-dependency lower — a newer `compileSdk` also implies a newer AGP, which a consumer pinned by its
-own toolchain may not have. `sample-android` has its own `android-sampleCompileSdk` key so
-the demo app's dependencies cannot push the floor up; `sample-shared` deliberately stays on
-`android-compileSdk`, which is what makes CI prove a Compose consumer can build at the floor.
+**`android-compileSdk` and `android-coreCompileSdk` are the published Android floors**, not build
+details: AGP writes each into its modules' AAR metadata as `minCompileSdk`, so a consumer must
+compile against at least the value of every module it depends on. Each floor sits exactly where its
+group's own dependencies put it, and moves only when they do ([#224](https://github.com/uny/autograph/issues/224)):
+
+- `android-compileSdk` is for the module that draws, `autograph-compose`. It is whatever the
+  androidx Compose line the current `composeMultiplatform` resolves to declares (1.12.0 → 37). A
+  Compose consumer already compiles there, so a lower value buys nobody anything, and a higher one
+  would lock out consumers CMP itself admits. A CMP bump can move it; read the new line's
+  `aar-metadata.properties` and update both together.
+- `android-coreCompileSdk` is for the Android modules that do not draw (`core`, `context`,
+  `segment`, `test`, `android`). Their floor is their own dependencies' — `androidx.startup` and
+  `androidx.fragment` today, both 34 — and `checkAndroidMainAarMetadata` is transitive through
+  project dependencies, so everything that depends on `autograph-core` inherits `core`'s. Raise it
+  only when one of those dependencies demands it, and prefer pinning that dependency lower: a newer
+  `compileSdk` implies a newer AGP, which a consumer pinned by its own toolchain may not have.
+
+`sample-android` has its own `android-sampleCompileSdk` key so the demo app's dependencies cannot
+push either floor up; `sample-shared` deliberately stays on `android-compileSdk`, which is what
+makes CI prove a Compose consumer can build at the floor.
 
 One trap when the offending dependency is `lifecycle`: Compose Multiplatform's own module metadata
-already `requires` a specific jetbrains `lifecycle` version — CMP 1.11.1 asks for 2.9.6 — and Gradle
+already `requires` a specific jetbrains `lifecycle` version — CMP 1.12.0 still asks for 2.9.6 — and Gradle
 resolves to the highest request in the graph. So the catalog value changes nothing unless it sits
 *above* what CMP asks for, which is exactly how the old 2.11.0 pin dragged the floor to 37. Check
 what CMP already requires before pinning it yourself.
