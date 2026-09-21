@@ -341,6 +341,31 @@ class ScopeStackOriginTest {
     }
 
     @Test
+    fun a_global_frame_reparented_by_update_still_reaches_every_origin() {
+        // `isUnderABoundary` walks the parent link, so a global frame given a parent under a surface
+        // would vanish from every other surface's taps. `update` refuses the link for a global frame.
+        val stack = ScopeStack()
+        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        val a = stack.push(boundary = true)
+        stack.update(global, scope = props("tenant_id" to "acme"), parent = a)
+        val b = stack.push(boundary = true)
+        val inB = stack.push(scope = props("checkout_step" to "2"), parent = b)
+        assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(inB).scope)
+    }
+
+    @Test
+    fun a_global_frame_survives_ambiguous_siblings_from_an_origin_too() {
+        // The ambient twin lives in ScopeStackTest; the origin overload builds a different survivor
+        // set before handing it to the same resolveScope, so pin it here as well.
+        val stack = ScopeStack()
+        stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        val provider = stack.push(scope = props("route" to "feed"), boundary = true)
+        stack.push(scope = props("row" to "1"), parent = provider)
+        stack.push(scope = props("row" to "2"), parent = provider)
+        assertEquals(props("tenant_id" to "acme", "route" to "feed"), stack.current(provider).scope)
+    }
+
+    @Test
     fun scope_merges_along_the_lineage_across_a_boundary() {
         val stack = ScopeStack()
         val host = stack.push(scope = props("tab" to "home"), boundary = true)

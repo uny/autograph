@@ -259,12 +259,9 @@ class ScopeStackTest {
 
     @Test
     fun a_hand_pushed_root_without_pushGlobal_still_cancels_against_a_nested_scope() {
-        // #237's repro, kept as written: a plain root is its own tree in the forest, so it is not
-        // comparable to a scope nested under the provider's root, and BOTH drop as ambiguous
-        // siblings. Pinned deliberately — the fix declares app-wide frames (`pushGlobal`) rather
-        // than inferring "a root nothing references is global", which would silently reinterpret
-        // the roots existing callers push (iOS native screen frames are roots) and change a frame's
-        // meaning retroactively the moment something is pushed under it.
+        // #237's repro, kept as written: a plain root is not comparable to a scope nested under the
+        // provider's root, so BOTH drop. Pinned deliberately — app-wide is declared (`pushGlobal`),
+        // never inferred from "a root nothing references"; see the `pushGlobal` kdoc for why.
         val stack = ScopeStack()
         val provider = stack.push()
         stack.push(scope = props("article_id" to "1"), parent = provider)
@@ -314,6 +311,21 @@ class ScopeStackTest {
         stack.pushGlobal(scope = props("a" to "first", "b" to "first"))
         stack.pushGlobal(scope = props("b" to "second"))
         assertEquals(props("a" to "first", "b" to "second"), stack.current().scope)
+    }
+
+    @Test
+    fun update_keeps_a_global_frame_a_root() {
+        // `update` accepts a parent for any handle. A parent under a boundary would hide the global
+        // frame from every other origin (see ScopeStackOriginTest), so the link is refused; scope
+        // still revises in place.
+        val stack = ScopeStack()
+        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        val route = stack.push(scope = props("tab" to "home"))
+        stack.push(scope = props("row" to "1"), parent = route)
+        stack.push(scope = props("row" to "2"), parent = route)
+        stack.update(global, scope = props("tenant_id" to "globex"), parent = route)
+        // Still merged as global (outermost, exempt from the ambiguity rule), not as a child of route.
+        assertEquals(props("tenant_id" to "globex", "tab" to "home"), stack.current().scope)
     }
 
     @Test

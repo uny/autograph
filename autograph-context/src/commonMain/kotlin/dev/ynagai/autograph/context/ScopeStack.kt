@@ -31,8 +31,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * same context and share one `previous_screen` chain. That stack is then yours to replace when the
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
- * **Threading.** [push], [update], [remove], [maskScreen], [setActive] and the origin-taking
- * [current] must be called from the main thread ([push] and [remove] mutate the frame list; the
+ * **Threading.** [push], [pushGlobal], [update], [remove], [maskScreen], [setActive] and the
+ * origin-taking [current] must be called from the main thread ([push], [pushGlobal] and [remove]
+ * mutate the frame list; the
  * others mutate a frame's contents and republish the snapshot, or read the list as it stands). The
  * no-argument [current] is lock-free and safe from any thread: it returns an immutable snapshot that
  * is republished atomically on every mutation, so a background reader always sees a whole,
@@ -76,11 +77,9 @@ public class ScopeStack {
      * (siblings mounted at once — a list's rows, split-pane, a sheet over content) are ambiguous, and
      * [current] then drops *those* rather than guessing between them, keeping whatever encloses them
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
-     * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root. A root is its own
-     * tree: it encloses nothing it is not declared the parent of, so a root pushed by hand beside a
-     * provider's root is an ambiguous *sibling* of the scopes nested under that provider, not an
-     * ancestor of them. App-wide context — keys meant to reach every event whatever it is nested in
-     * — is declared with [pushGlobal] instead. Lineage is framework-independent — a native surface
+     * [ScopeHandle] of the enclosing frame; `null` (the default) marks a root — its own tree, an
+     * ambiguous *sibling* of anything nested under another root, not an ancestor of it; app-wide
+     * context is declared with [pushGlobal] instead. Lineage is framework-independent — a native surface
      * declares it the same way — so this does not tie the stack to Compose. It affects only scope;
      * [screen]/[section] still resolve by insertion order ambiently (the origin-taking [current]
      * additionally ranks a container with its content).
@@ -149,8 +148,9 @@ public class ScopeStack {
      * Global frames merge **outermost**, in insertion order among themselves, so a screen's own
      * scope still wins a key clash and an explicit call-site property wins over both — the same
      * precedence a scope nested outside every other has. Global is fixed for the life of the frame,
-     * like `boundary`; [update] revises the scope but not the flag, and a `parent` given to [update]
-     * is stored but does not change where the frame merges. The frame is otherwise ordinary: it is
+     * like `boundary`: [update] revises the scope but not the flag, and refuses a `parent` — the
+     * frame stays a root, because a parent under a boundary would hide it from every other origin,
+     * which is the one thing a global frame must never be. The frame is otherwise ordinary: it is
      * under no boundary, so the origin-taking [current] sees it from every origin; [remove] and
      * [setActive] apply as to any frame; it carries no screen or section.
      */
@@ -170,7 +170,9 @@ public class ScopeStack {
      * stack.
      *
      * A [parent] that is this frame itself, or one of its descendants, cannot describe a real nesting
-     * and is refused: the frame becomes a root instead. See the note at the assignment below.
+     * and is refused: the frame becomes a root instead. See the note at the assignment below. A
+     * [pushGlobal] frame refuses every [parent] for the same reason it is exempt from the ambiguity
+     * rule: it must stay visible from every origin (see there).
      *
      * This revises scope/screen/section and the parent link only. It never clears a mask set by
      * [maskScreen], and never changes whether the frame is active — those are switches on the frame
@@ -206,7 +208,7 @@ public class ScopeStack {
         // can still merge and report a scope this stack exists to avoid guessing (#66). Refusing here
         // also keeps "parent links form a forest" true for every reader of [frames].
         val requested = parent?.frame
-        val parentFrame = if (requested != null && frame.encloses(requested)) null else requested
+        val parentFrame = if (frame.global || (requested != null && frame.encloses(requested))) null else requested
         if (frame.scope == newScope && frame.screen == screen && frame.section == section &&
             frame.parent === parentFrame
         ) {
