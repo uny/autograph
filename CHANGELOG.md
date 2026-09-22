@@ -14,7 +14,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   experiment assignment pushed once at startup. It reaches every event whatever the event is nested
   in, and it is exempt from the ambiguity rule that drops sibling scopes, merging **outermost** so a
   screen's own scope still wins a key clash and an explicit call-site property wins over both
-  ([#237]). A plain `push()` with no `parent` does not mean this — see Fixed below.
+  ([#237]). Global is fixed for the life of the frame: `update` revises its scope but refuses a
+  `parent`, since a parent under a boundary would hide the frame from every other origin. A plain
+  `push()` with no `parent` does not mean this — see Fixed below.
 
 ### Fixed
 
