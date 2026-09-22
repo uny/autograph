@@ -11,8 +11,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 ### Added
 
 - **`ScopeStack.pushGlobal(scope)`** — a frame whose scope is app-wide: a tenant, an install id, an
-  experiment assignment pushed once at startup. It reaches every event whatever the event is nested
-  in, and it is exempt from the ambiguity rule that drops sibling scopes, merging **outermost** so a
+  experiment assignment pushed once at startup. It reaches every event that reads the stack —
+  autocaptured taps on every pipeline and native screen views — whatever the event is nested in
+  (a Compose `TrackedScreen`'s own `Screen Viewed` emits through `LocalTracker` and does not read
+  it), and it is exempt from the ambiguity rule that drops sibling scopes, merging **outermost** so a
   screen's own scope still wins a key clash and an explicit call-site property wins over both
   ([#237]). Global is fixed for the life of the frame: `update` revises its scope but refuses a
   `parent` (one under a boundary would hide the frame from every other origin) and a `screen` /
