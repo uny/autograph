@@ -637,10 +637,17 @@ fun installNativeCaptures(tracker: Tracker, scopeStack: ScopeStack) {
 }
 ```
 
-Both installers return a handle with `uninstall()`. Keep it if the app ever replaces its tracker —
-the tap captures hold the tracker and stack strongly, so on logout you uninstall and re-install
-rather than relying on the handle being dropped. Installing twice replaces the previous install
-rather than stacking.
+Both installers return a handle with `uninstall()`. Keep it: the tap captures hold the tracker and
+the stack strongly, so an app that replaces its tracker on logout must uninstall rather than rely on
+the handle being dropped.
+
+**Install once, and `uninstall()` before installing again.** Three of the four installers *stack*
+rather than replace — the Android pair each register another `ActivityLifecycleCallbacks`, and the
+iOS tap capture attaches another recognizer to every window — so a second install without an
+uninstall reports every tap twice. Only the iOS screen capture replaces its predecessor (its sink is
+a single process-global slot, and the `viewDidAppear:` swizzle itself installs once and stays). If
+the install site can run more than once — a SwiftUI `.onAppear`, an Activity that re-creates — guard
+it yourself; the samples do.
 
 What each capture does and does not reach is in
 [What is and isn't captured](#what-is-and-isnt-captured); the opt-outs are
