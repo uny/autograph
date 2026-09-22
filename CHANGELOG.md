@@ -8,6 +8,26 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Changed
+
+- **`AutocaptureConfig` is built through an `Autocapture { }` builder** instead of a `data class`
+  constructor, so autocapture can gain a knob without a major release ([#257]).
+  `AutographProvider(tracker, autocapture = AutocaptureConfig())` becomes
+  `AutographProvider(tracker, autocapture = Autocapture())`, and a knob is set in the lambda:
+  `Autocapture { eventName = "Tapped" }`. One token at each call site; there is no deprecation
+  window, per ADR 0001 §5's pre-1.0 rule.
+
+  The old shape had no way to grow. Adding even a defaulted parameter to a `data class` constructor
+  changes the synthetic `DefaultConstructorMarker` bridge, and on Kotlin/Native it changes the
+  exported Swift initializer — so ADR 0001 §2b froze it, with "put the new knob on `AutographConfig`"
+  as the escape hatch for a frozen carrier. **That escape hatch does not reach autocapture**:
+  `AutographConfig` lives in `autograph-core`, is built by the `Autograph { }` DSL, and is not in
+  scope at an `AutographProvider` call site. So every knob `AutocaptureConfig`'s own documentation
+  anticipates — an identification strategy beyond `testTag`, a PII policy, how the iOS gaps surface —
+  needed a major bump to arrive. Each is now a new `var`, which is what §2b's shape buys. The ABI dump
+  records the trade exactly: `copy`, `componentN`, `equals`/`hashCode`/`toString` and the frozen
+  constructor bridge leave; a settable `eventName` and the builder arrive.
+
 ## [0.10.0] - 2026-09-22
 
 ### Added
@@ -1472,4 +1492,5 @@ Initial release.
 [#224]: https://github.com/uny/autograph/issues/224
 [#228]: https://github.com/uny/autograph/issues/228
 [#237]: https://github.com/uny/autograph/issues/237
+[#257]: https://github.com/uny/autograph/issues/257
 [#238]: https://github.com/uny/autograph/issues/238

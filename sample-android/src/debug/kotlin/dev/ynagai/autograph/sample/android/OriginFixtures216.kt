@@ -26,7 +26,7 @@ import androidx.viewpager2.adapter.FragmentStateAdapter
 import androidx.viewpager2.widget.ViewPager2
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.Tracker
-import dev.ynagai.autograph.compose.AutocaptureConfig
+import dev.ynagai.autograph.compose.Autocapture
 import dev.ynagai.autograph.compose.AutographProvider
 import dev.ynagai.autograph.compose.TrackScreenViews
 import dev.ynagai.autograph.compose.TrackedScreen
@@ -55,14 +55,14 @@ object Rig {
 
 @Composable
 private fun Tappable(tag: String) {
-    AutographProvider(Rig.tracker, AutocaptureConfig(), Rig.scopeStack) {
+    AutographProvider(Rig.tracker, Autocapture(), Rig.scopeStack) {
         Box(Modifier.fillMaxSize().testTag(tag).clickable {}) {}
     }
 }
 
 @Composable
 private fun DeclaringTappable(screen: String, tag: String) {
-    AutographProvider(Rig.tracker, AutocaptureConfig(), Rig.scopeStack) {
+    AutographProvider(Rig.tracker, Autocapture(), Rig.scopeStack) {
         TrackedScreen(screen) { Box(Modifier.fillMaxSize().testTag(tag).clickable {}) {} }
     }
 }
@@ -119,7 +119,7 @@ class InteropFragment2 : Fragment() {
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View =
         ComposeView(requireContext()).apply {
             setContent {
-                AutographProvider(Rig.tracker, AutocaptureConfig(), Rig.scopeStack) {
+                AutographProvider(Rig.tracker, Autocapture(), Rig.scopeStack) {
                     TrackedScreen("Detail") {
                         AndroidView(factory = { ctx ->
                             Button(ctx).apply {
@@ -138,7 +138,7 @@ class NavFragment : Fragment() {
     override fun onCreateView(i: LayoutInflater, c: ViewGroup?, s: Bundle?): View =
         ComposeView(requireContext()).apply {
             setContent {
-                AutographProvider(Rig.tracker, AutocaptureConfig(), Rig.scopeStack) {
+                AutographProvider(Rig.tracker, Autocapture(), Rig.scopeStack) {
                     val nav = rememberNavController()
                     nav.TrackScreenViews()
                     NavHost(nav, startDestination = "home") {

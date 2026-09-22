@@ -199,14 +199,14 @@ class ReportTapIfResolvableTest {
         // Deliberately the no-arg config: this pins the default all the way through to the tracked
         // event, so re-hardcoding a literal here instead of the shared constant fails the build.
         // Pinning the constant alone (AutocaptureDefaultsTest) leaves that wiring untested.
-        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) { AutocaptureTarget("share_button") }
+        reportTapIfResolvable(tracker, ScopeStack(), Autocapture()) { AutocaptureTarget("share_button") }
         assertEquals(listOf<Pair<String, String?>>("Element Clicked" to "share_button"), tracker.tracked)
     }
 
     @Test
     fun doesNothingWhenResolveReturnsNull() {
         val tracker = AutocaptureRecordingTracker()
-        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) { null }
+        reportTapIfResolvable(tracker, ScopeStack(), Autocapture()) { null }
         assertTrue(tracker.tracked.isEmpty())
     }
 
@@ -214,14 +214,14 @@ class ReportTapIfResolvableTest {
     fun swallowsAnExceptionFromResolveInsteadOfPropagatingIt() {
         val tracker = AutocaptureRecordingTracker()
         // Must not throw — a throwing resolve() must not kill the caller's while(true) loop.
-        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) { throw RuntimeException("boom") }
+        reportTapIfResolvable(tracker, ScopeStack(), Autocapture()) { throw RuntimeException("boom") }
         assertTrue(tracker.tracked.isEmpty())
     }
 
     @Test
     fun swallowsAnExceptionFromTrackInsteadOfPropagatingIt() {
         // Must not throw — a throwing track() must not kill the caller's while(true) loop.
-        reportTapIfResolvable(ThrowingTracker(), ScopeStack(), AutocaptureConfig()) { AutocaptureTarget("share_button") }
+        reportTapIfResolvable(ThrowingTracker(), ScopeStack(), Autocapture()) { AutocaptureTarget("share_button") }
     }
 
     @Test
@@ -230,7 +230,7 @@ class ReportTapIfResolvableTest {
         val stack = ScopeStack()
         stack.push(scope = JsonObject(mapOf("article_id" to JsonPrimitive("42"))))
         stack.push(screen = "Article", section = "Body")
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("like_button") }
+        reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("like_button") }
 
         val props = tracker.trackedProps.single()
         // The scope this tap happened under — the pre-existing blind spot where autocapture, sitting
@@ -252,7 +252,7 @@ class ReportTapIfResolvableTest {
         stack.maskScreen(sibling)
         assertNull(stack.current().screen, "ambiently the sibling's mask wins")
 
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig(), ProviderOrigin(root) { host }) {
+        reportTapIfResolvable(tracker, stack, Autocapture(), ProviderOrigin(root) { host }) {
             AutocaptureTarget("row")
         }
 
@@ -268,7 +268,7 @@ class ReportTapIfResolvableTest {
         // fragment added while its Activity is showing — so the link cannot be made at push time.
         val host = stack.push(screen = "Host", boundary = true)
 
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig(), ProviderOrigin(root) { host }) {
+        reportTapIfResolvable(tracker, stack, Autocapture(), ProviderOrigin(root) { host }) {
             AutocaptureTarget("row")
         }
 
@@ -285,7 +285,7 @@ class ReportTapIfResolvableTest {
         stack.push(screen = "PushedByHand") // a hybrid app's own native frame, no capture installed
         val root = arrayOf<ScopeHandle?>(stack.push(boundary = true))
 
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig(), ProviderOrigin(root) { null }) {
+        reportTapIfResolvable(tracker, stack, Autocapture(), ProviderOrigin(root) { null }) {
             AutocaptureTarget("row")
         }
 
@@ -301,7 +301,7 @@ class ReportTapIfResolvableTest {
         // screen reaches this state — a stack with history but no frame is a surface that declares
         // nothing.
         val stack = ScopeStack().apply { screenHistory.record("Feed") }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
+        reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("row") }
 
         assertNull(tracker.trackedProps.single()["screen"])
     }
@@ -315,7 +315,7 @@ class ReportTapIfResolvableTest {
             maskScreen(push())
             remove(feed)
         }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
+        reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("row") }
 
         assertNull(tracker.trackedProps.single()["screen"])
     }
@@ -337,7 +337,7 @@ class ReportTapIfResolvableTest {
             screenHistory.record("ComposeFeed")
             push(screen = "ComposeFeed")
         }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("row") }
+        reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("row") }
 
         assertEquals("ComposeFeed", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
@@ -349,7 +349,7 @@ class ReportTapIfResolvableTest {
             screenHistory.record("Feed")
             push(screen = "Article")
         }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("x") }
+        reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("x") }
 
         assertEquals("Article", tracker.trackedProps.single()["screen"]?.jsonPrimitive?.content)
     }
@@ -362,7 +362,7 @@ class ReportTapIfResolvableTest {
         // to AmbientContext.enrich, which writes screen and section independently, so the section
         // must survive; hand-rolling the precedence here used to drop it.
         val stack = ScopeStack().apply { push(section = "Header") }
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { AutocaptureTarget("x") }
+        reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("x") }
 
         val props = tracker.trackedProps.single()
         assertEquals("Header", props["section"]?.jsonPrimitive?.content)
@@ -382,7 +382,7 @@ class ReportTapIfResolvableTest {
         )
         stack.push(screen = "Feed", section = "For You")
 
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) {
+        reportTapIfResolvable(tracker, stack, Autocapture()) {
             AutocaptureTarget(
                 identifier = "row",
                 scope = JsonObject(
@@ -416,7 +416,7 @@ class ReportTapIfResolvableTest {
     @Test
     fun anElementScopeKeyedScreenSurvivesWhenNoScreenIsResolvedAnywhere() {
         val tracker = AutocaptureRecordingTracker()
-        reportTapIfResolvable(tracker, ScopeStack(), AutocaptureConfig()) {
+        reportTapIfResolvable(tracker, ScopeStack(), Autocapture()) {
             AutocaptureTarget(
                 identifier = "row",
                 scope = JsonObject(mapOf("screen" to JsonPrimitive("hijacked"))),
@@ -443,7 +443,7 @@ class AutocaptureObserverTest {
         var clicked = false
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(tracker, autocapture = AutocaptureConfig()) {
+                AutographProvider(tracker, autocapture = Autocapture()) {
                     Box(
                         Modifier
                             .testTag("target")
@@ -466,7 +466,7 @@ class AutocaptureObserverTest {
         val tracker = AutocaptureRecordingTracker()
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(tracker, autocapture = AutocaptureConfig()) {
+                AutographProvider(tracker, autocapture = Autocapture()) {
                     Box(Modifier.testTag("target").size(10.dp).trackClick("Item Clicked", target = "share_button") {})
                 }
             }

@@ -89,6 +89,28 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * `UIAccessibilityTraitButton` are treated as clickable. Taps are silently not captured on other
  * targets (JVM/desktop).
  */
-public data class AutocaptureConfig(
-    val eventName: String = DEFAULT_AUTOCAPTURE_EVENT_NAME,
-)
+public class AutocaptureConfig internal constructor() {
+
+    /**
+     * The event name every autocaptured tap is reported under. The tapped element goes in `target`,
+     * not in the name, so one name covers the whole app and the element is a dimension you group by
+     * rather than a cardinality explosion in the event namespace.
+     */
+    public var eventName: String = DEFAULT_AUTOCAPTURE_EVENT_NAME
+}
+
+/**
+ * Builds the [AutocaptureConfig] for [AutographProvider]: `AutographProvider(tracker, autocapture =
+ * Autocapture { eventName = "Tapped" })`, or `Autocapture()` for the defaults.
+ *
+ * **This shape exists so autocapture can gain a knob without a major release** (ADR 0001 §2b — the
+ * `Autograph { }` shape, applied here). A `data class` with a public constructor cannot: adding even a
+ * defaulted parameter changes the synthetic `DefaultConstructorMarker` bridge, and on Kotlin/Native it
+ * changes the exported Swift initializer. That freeze had no escape hatch here — the ADR's answer for a
+ * frozen carrier is "put the new knob on `AutographConfig`", which is in `autograph-core`, built by a
+ * different DSL, and not in scope at an `AutographProvider` call site. The knobs this type's own
+ * documentation anticipates (an identification strategy beyond `testTag`, a PII policy, how the iOS
+ * gaps are surfaced) each needed a major bump to arrive. Now each is a new `var`.
+ */
+public fun Autocapture(configure: AutocaptureConfig.() -> Unit = {}): AutocaptureConfig =
+    AutocaptureConfig().apply(configure)

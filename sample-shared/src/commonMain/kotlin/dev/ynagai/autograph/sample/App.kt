@@ -27,7 +27,7 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import dev.ynagai.autograph.compose.AutocaptureConfig
+import dev.ynagai.autograph.compose.Autocapture
 import dev.ynagai.autograph.compose.AutographProvider
 import dev.ynagai.autograph.compose.AutographScope
 import dev.ynagai.autograph.compose.TrackedScreen
@@ -62,9 +62,9 @@ public fun App() {
     }
     MaterialTheme {
         Surface(modifier = Modifier.fillMaxSize()) {
-            // autocapture = AutocaptureConfig() reports every tap without instrumenting each
+            // autocapture = Autocapture() reports every tap without instrumenting each
             // element — see the README's "Autocapture" section.
-            AutographProvider(tracker = tracker, autocapture = AutocaptureConfig()) {
+            AutographProvider(tracker = tracker, autocapture = Autocapture()) {
                 // AutographScope attaches a property to every event fired inside — see the README's
                 // "Scoped context" section. Everything below carries article_id: the explicitly
                 // tracked events lexically, and autocaptured taps via the ambient scope stack this
