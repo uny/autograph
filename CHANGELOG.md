@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-22
+
 ### Added
 
 - **`ScopeStack.pushGlobal(scope)`** — a frame whose scope is app-wide: a tenant, an install id, an
@@ -1377,7 +1379,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/uny/autograph/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/uny/autograph/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/uny/autograph/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/uny/autograph/compare/v0.7.0...v0.8.0
