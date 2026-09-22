@@ -26,7 +26,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * The event carries the **scope** resolved from [origin] — the surface's own lineage, read through the
  * origin-taking [ScopeStack.current] exactly as a native tap on that surface reads it (#238). A screen
  * view is an event *of that surface*, so a sibling surface's declaration must not reach it, which is
- * why this is not the ambient snapshot; and it is scope only, not [AmbientContext.enrich], because
+ * why this is not the ambient snapshot. That holds where the surface frames are boundaries (Android);
+ * the iOS native screen frames are roots, so on that boundary-free stack this resolves the same
+ * members as the ambient read and [ScopeStack.resolveScope]'s ambiguity rule is what keeps sibling
+ * scopes apart — one scoped sibling still reaches the event, two drop, exactly as for a native tap.
+ * It is scope only, not [AmbientContext.enrich], because
  * `enrich` writes the reserved `screen` / `section` keys and for a screen event the name already *is*
  * the screen. The scope merges **under** `previous_screen`, a caller property that keeps winning a
  * key clash — the same shape as `autograph-compose`'s `mergeScope`.

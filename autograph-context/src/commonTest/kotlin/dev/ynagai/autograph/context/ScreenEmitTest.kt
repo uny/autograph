@@ -60,6 +60,28 @@ class ScreenEmitTest {
     }
 
     @Test
+    fun on_a_boundary_free_stack_the_ambiguity_rule_is_what_keeps_sibling_scopes_apart() {
+        // The iOS shape: both native pipelines push plain roots (`push(screen = name)`, no boundary),
+        // so nothing walls a sibling off and the screen view resolves the same members a native tap
+        // does. One scoped sibling reaches it; two siblings the stack cannot choose between drop.
+        val stack = ScopeStack()
+        val tracker = RecordingTracker()
+        val first = stack.push(screen = "First")
+        stack.push(parent = first, scope = props("row" to "3"))
+        val second = stack.push(screen = "Second")
+
+        stack.emitScreenView(tracker, "Second", origin = second)
+        assertEquals("Second" to props("row" to "3"), tracker.screens.single())
+
+        val third = stack.push(screen = "Third")
+        stack.push(parent = third, scope = props("row" to "7"))
+        val fourth = stack.push(screen = "Fourth")
+
+        stack.emitScreenView(tracker, "Fourth", origin = fourth)
+        assertEquals("Fourth" to props("previous_screen" to "Second"), tracker.screens[1])
+    }
+
+    @Test
     fun a_global_frame_reaches_a_native_screen_view() {
         // #237: an app-wide frame is exempt from the sibling rule and reaches every event — a native
         // screen view included.

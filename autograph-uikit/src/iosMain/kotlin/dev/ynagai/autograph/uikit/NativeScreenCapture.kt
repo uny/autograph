@@ -247,7 +247,7 @@ private fun onViewDidAppear(self: COpaquePointer?) {
     val name = sink.screenName(controller) ?: return
     // Push the frame and register the entry BEFORE emitting, so that if the tracker throws the frame
     // is already tracked and viewDidDisappear: can still remove it. [emitScreenView] then records and
-    // emits with the correct previous_screen.
+    // emits with the correct previous_screen and the scope resolved from this frame.
     val handle = sink.scopeStack.push(screen = name)
     screenEntries.add(ScreenEntry(sink.owner, sink.scopeStack, handle, weakSetOf(controller)))
     sink.scopeStack.emitScreenView(sink.tracker, name, origin = handle)

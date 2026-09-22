@@ -40,9 +40,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   it, invisibly. A native screen view now carries the scope resolved from its own surface's lineage,
   read through the origin-taking `current(origin)` the way a native tap is — so a hand-pushed root,
   an enclosing scope and a `pushGlobal` frame reach it, and a scope declared under a **sibling**
-  surface does not. Scope only: the reserved `screen` / `section` keys are not written (the name
-  already is the screen), and `previous_screen` keeps winning a key clash. `ScopeStack.emitScreenView`
-  (`@AutographInternalApi`) now takes the emitting frame as a required `origin`.
+  surface does not where the surface frames are boundaries (Android's Activity/Fragment frames). The
+  iOS native screen frames are roots, so on that boundary-free stack the screen view resolves the same
+  members a native tap on that surface does, and the ambiguity rule is what keeps sibling scopes
+  apart: one scoped sibling still reaches it, two drop. Scope only: the reserved `screen` / `section`
+  keys are not written (the name already is the screen), and `previous_screen` keeps winning a key
+  clash. `ScopeStack.emitScreenView` (`@AutographInternalApi`) now takes the emitting frame as a
+  required `origin`.
 
 ### Changed
 
