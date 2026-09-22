@@ -220,13 +220,18 @@ class ComposeHostActivity : ComponentActivity() {
 @Config(sdk = [36])
 class AndroidScreenCaptureTest {
 
-    /** Records each `Screen Viewed` as "name:previous" (previous = "(none)" when absent). */
+    /**
+     * Records each `Screen Viewed` as "name:previous" (previous = "(none)" when absent), and keeps the
+     * full properties in [screenProperties] for the scope assertions (#238).
+     */
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<String>()
+        val screenProperties = mutableListOf<JsonObject>()
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
         override fun screen(name: String, properties: Map<String, JsonElement>) {
             val previous = (properties.asJsonObject()["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
             screens += "$name:$previous"
+            screenProperties += properties.asJsonObject()
         }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
@@ -1228,5 +1233,49 @@ class AndroidScreenCaptureTest {
         // A screen appearing after uninstall is not reported.
         Robolectric.buildActivity(SecondPlainActivity::class.java).setup()
         assertEquals(listOf("PlainActivity:(none)"), tracker.screens)
+    }
+
+    // ---- #238: a native `Screen Viewed` carries the scope of its own lineage, like a native tap ----
+
+    private fun scope(vararg pairs: Pair<String, String>): JsonObject =
+        JsonObject(pairs.associate { (k, v) -> k to JsonPrimitive(v) })
+
+    @Test
+    fun aHandPushedRootScopeReachesAnActivitysScreenView() {
+        // A root the app pushed by hand is under no boundary, so it applies to every event — a
+        // screen view included, once it resolves from the Activity's own frame.
+        install()
+        scopeStack.push(scope = scope("tenant" to "acme"))
+        Robolectric.buildActivity(PlainActivity::class.java).setup()
+
+        assertEquals(listOf("PlainActivity:(none)"), tracker.screens)
+        assertEquals(scope("tenant" to "acme"), tracker.screenProperties.single())
+    }
+
+    @Test
+    fun aGlobalFrameReachesAnActivitysScreenView() {
+        // #237: `pushGlobal` reaches every event, and merges under the caller's `previous_screen`.
+        install()
+        scopeStack.pushGlobal(scope("install" to "i-1"))
+        Robolectric.buildActivity(PlainActivity::class.java).setup()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup()
+
+        assertEquals(listOf("PlainActivity:(none)", "SecondPlainActivity:PlainActivity"), tracker.screens)
+        assertEquals(scope("install" to "i-1", "previous_screen" to "PlainActivity"), tracker.screenProperties[1])
+    }
+
+    @Test
+    fun aScopeUnderASiblingSurfaceDoesNotReachAnActivitysScreenView() {
+        // The negative that decides the design: a scope declared under another surface's boundary —
+        // a mini-player, a neighbouring pager page — must not reach this Activity's screen view, even
+        // though the ambient read sees it.
+        install()
+        val sibling = scopeStack.push(boundary = true)
+        scopeStack.push(parent = sibling, scope = scope("row" to "3"))
+        Robolectric.buildActivity(PlainActivity::class.java).setup()
+
+        assertEquals("3", (scopeStack.current().scope["row"] as? JsonPrimitive)?.content)
+        assertEquals(listOf("PlainActivity:(none)"), tracker.screens)
+        assertEquals(JsonObject(emptyMap()), tracker.screenProperties.single())
     }
 }

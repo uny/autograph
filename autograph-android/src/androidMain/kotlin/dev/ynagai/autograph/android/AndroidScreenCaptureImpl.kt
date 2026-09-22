@@ -633,7 +633,7 @@ internal class AndroidScreenCapture(
         state.emitted = true
         if (configChange) return
         try {
-            scopeStack.emitScreenView(tracker, screen)
+            scopeStack.emitScreenView(tracker, screen, origin = state.handle)
         } catch (_: Throwable) {
             // A throwing tracker must never crash a lifecycle callback; the frame stays regardless.
         }

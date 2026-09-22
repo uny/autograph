@@ -20,16 +20,31 @@ import kotlinx.serialization.json.JsonPrimitive
  * the name, so it cannot re-record an unchanged one); the native callers are the first that can, so the
  * guard lives here rather than in [ScreenHistory.record].
  *
- * Callers push the screen frame first (see their call sites): this only records and emits, so a throwing
- * tracker leaves an already-removable frame behind.
+ * Callers push the screen frame first (see their call sites) and pass it as [origin]: this only records
+ * and emits, so a throwing tracker leaves an already-removable frame behind.
+ *
+ * The event carries the **scope** resolved from [origin] — the surface's own lineage, read through the
+ * origin-taking [ScopeStack.current] exactly as a native tap on that surface reads it (#238). A screen
+ * view is an event *of that surface*, so a sibling surface's declaration must not reach it, which is
+ * why this is not the ambient snapshot. That holds where the surface frames are boundaries (Android);
+ * the iOS native screen frames are roots, so on that boundary-free stack this resolves the same
+ * members as the ambient read (bar the inactive-frame exemptions [ScopeStack.current] documents) and
+ * the scope ambiguity rule is what keeps sibling scopes apart — one scoped sibling still reaches the
+ * event, two drop, exactly as for a native tap.
+ * It is scope only, not [AmbientContext.enrich], because
+ * `enrich` writes the reserved `screen` / `section` keys and for a screen event the name already *is*
+ * the screen. The scope merges **under** `previous_screen`, a caller property that keeps winning a
+ * key clash — the same shape as `autograph-compose`'s `mergeScope`.
  *
  * `@AutographInternalApi`: public only so Autograph's own native modules can share this across the module
  * boundary — Kotlin `internal` would not reach them. Not a supported API for library users.
  */
 @AutographInternalApi
-public fun ScopeStack.emitScreenView(tracker: Tracker, name: String) {
+public fun ScopeStack.emitScreenView(tracker: Tracker, name: String, origin: ScopeHandle) {
     val previous = screenHistory.record(name)?.takeIf { it != name }
-    tracker.screen(name, withPreviousScreen(previous))
+    val scope = current(origin).scope
+    val properties = withPreviousScreen(previous)
+    tracker.screen(name, if (scope.isEmpty()) properties else JsonObject(scope + properties))
 }
 
 /**

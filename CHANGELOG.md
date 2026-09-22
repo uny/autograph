@@ -33,6 +33,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   something is pushed under it and reinterpret the roots existing pipelines push (the iOS native
   screen frames are roots). The `current(origin)` and `resolveScope` kdocs no longer contradict each
   other on this.
+- **A native `Screen Viewed` carried no scope** ([#238]). The one emit path every native screen
+  capture shares — the Android Activity/Fragment lifecycle capture, the iOS UIKit swizzle and the
+  explicit SwiftUI path — sent `previous_screen` and nothing else, while a Compose `TrackedScreen`
+  carried its lexical scope: one event name with a context that depended on which pipeline emitted
+  it, invisibly. A native screen view now carries the scope resolved from its own surface's lineage,
+  read through the origin-taking `current(origin)` the way a native tap is — so a hand-pushed root,
+  an enclosing scope and a `pushGlobal` frame reach it, and a scope declared under a **sibling**
+  surface does not where the surface frames are boundaries (Android's Activity/Fragment frames). The
+  iOS native screen frames are roots, so on that boundary-free stack the screen view resolves the same
+  members a native tap on that surface does, and the ambiguity rule is what keeps sibling scopes
+  apart: one scoped sibling still reaches it, two drop. Scope only: the reserved `screen` / `section`
+  keys are not written (the name already is the screen), and `previous_screen` keeps winning a key
+  clash. `ScopeStack.emitScreenView` (`@AutographInternalApi`) now takes the emitting frame as a
+  required `origin`.
 
 ### Changed
 
@@ -1453,3 +1467,4 @@ Initial release.
 [#224]: https://github.com/uny/autograph/issues/224
 [#228]: https://github.com/uny/autograph/issues/228
 [#237]: https://github.com/uny/autograph/issues/237
+[#238]: https://github.com/uny/autograph/issues/238

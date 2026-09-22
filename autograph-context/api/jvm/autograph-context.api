@@ -32,7 +32,7 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 }
 
 public final class dev/ynagai/autograph/context/ScreenEmitKt {
-	public static final fun emitScreenView (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/Tracker;Ljava/lang/String;)V
+	public static final fun emitScreenView (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;)V
 }
 
 public final class dev/ynagai/autograph/context/ScreenHistory {
