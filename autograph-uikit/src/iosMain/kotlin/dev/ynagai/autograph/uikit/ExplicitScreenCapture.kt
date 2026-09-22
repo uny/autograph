@@ -51,7 +51,7 @@ public class AutographScreenCapture(
     public fun appeared(name: String): AutographScreenView {
         val handle = scopeStack.push(screen = name)
         try {
-            scopeStack.emitScreenView(tracker, name)
+            scopeStack.emitScreenView(tracker, name, origin = handle)
         } catch (_: Throwable) {
         }
         return AutographScreenView(scopeStack, handle)

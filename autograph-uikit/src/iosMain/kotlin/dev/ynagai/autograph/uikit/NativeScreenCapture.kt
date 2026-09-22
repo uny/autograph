@@ -250,7 +250,7 @@ private fun onViewDidAppear(self: COpaquePointer?) {
     // emits with the correct previous_screen.
     val handle = sink.scopeStack.push(screen = name)
     screenEntries.add(ScreenEntry(sink.owner, sink.scopeStack, handle, weakSetOf(controller)))
-    sink.scopeStack.emitScreenView(sink.tracker, name)
+    sink.scopeStack.emitScreenView(sink.tracker, name, origin = handle)
 }
 
 private fun onViewDidDisappear(self: COpaquePointer?) {
