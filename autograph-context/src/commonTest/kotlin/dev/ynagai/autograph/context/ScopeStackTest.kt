@@ -329,6 +329,20 @@ class ScopeStackTest {
     }
 
     @Test
+    fun update_does_not_let_a_global_frame_name_a_screen() {
+        // A global frame survives resolution for every origin, so a screen or section stored on it
+        // would override every surface's own. `update` keeps it scope-only.
+        val stack = ScopeStack()
+        stack.push(screen = "Feed", section = "top")
+        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
+        stack.update(global, scope = props("tenant_id" to "acme"), screen = "Global", section = "all")
+        val ctx = stack.current()
+        assertEquals("Feed", ctx.screen)
+        assertEquals("top", ctx.section)
+        assertEquals(props("tenant_id" to "acme"), ctx.scope)
+    }
+
+    @Test
     fun a_global_frame_is_removable_and_deactivatable_like_any_other() {
         val stack = ScopeStack()
         val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))

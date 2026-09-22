@@ -15,7 +15,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   in, and it is exempt from the ambiguity rule that drops sibling scopes, merging **outermost** so a
   screen's own scope still wins a key clash and an explicit call-site property wins over both
   ([#237]). Global is fixed for the life of the frame: `update` revises its scope but refuses a
-  `parent`, since a parent under a boundary would hide the frame from every other origin. A plain
+  `parent` (one under a boundary would hide the frame from every other origin) and a `screen` /
+  `section` (a frame every origin sees would name the screen of every surface at once). A plain
   `push()` with no `parent` does not mean this — see Fixed below.
 
 ### Fixed

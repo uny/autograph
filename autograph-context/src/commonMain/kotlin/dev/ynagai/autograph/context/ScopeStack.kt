@@ -149,9 +149,10 @@ public class ScopeStack {
      * precedence a scope nested outside every other has. Global is fixed for the life of the frame,
      * like `boundary`: [update] revises the scope but not the flag, and refuses a `parent` — the
      * frame stays a root, because a parent under a boundary would hide it from every other origin,
-     * which is the one thing a global frame must never be. The frame is otherwise ordinary: it is
-     * under no boundary, so the origin-taking [current] sees it from every origin; [remove] and
-     * [setActive] apply as to any frame; it carries no screen or section.
+     * which is the one thing a global frame must never be — and refuses a `screen` or `section`,
+     * because a frame every origin sees would name the screen of every surface at once. The frame
+     * is otherwise ordinary: it is under no boundary, so the origin-taking [current] sees it from
+     * every origin; [remove] and [setActive] apply as to any frame.
      */
     public fun pushGlobal(scope: Map<String, JsonElement>): ScopeHandle {
         val frame = ScopeFrame(scope.asJsonObject(), screen = null, section = null, global = true)
@@ -170,8 +171,8 @@ public class ScopeStack {
      *
      * A [parent] that is this frame itself, or one of its descendants, cannot describe a real nesting
      * and is refused: the frame becomes a root instead. See the note at the assignment below. A
-     * [pushGlobal] frame refuses every [parent] for the same reason it is exempt from the ambiguity
-     * rule: it must stay visible from every origin (see there).
+     * [pushGlobal] frame refuses every [parent], [screen] and [section]: it is a scope-only frame
+     * every origin sees, so it must neither be hidden from one nor name a screen for all (see there).
      *
      * This revises scope/screen/section and the parent link only. It never clears a mask set by
      * [maskScreen], and never changes whether the frame is active — those are switches on the frame
@@ -208,14 +209,18 @@ public class ScopeStack {
         // also keeps "parent links form a forest" true for every reader of [frames].
         val requested = parent?.frame
         val parentFrame = if (frame.global || (requested != null && frame.encloses(requested))) null else requested
-        if (frame.scope == newScope && frame.screen == screen && frame.section == section &&
+        // A global frame is scope-only, and stays so: it survives resolution for every origin, so a
+        // screen or section stored on it would name the screen of every surface at once.
+        val newScreen = if (frame.global) null else screen
+        val newSection = if (frame.global) null else section
+        if (frame.scope == newScope && frame.screen == newScreen && frame.section == newSection &&
             frame.parent === parentFrame
         ) {
             return
         }
         frame.scope = newScope
-        frame.screen = screen
-        frame.section = section
+        frame.screen = newScreen
+        frame.section = newSection
         // Revised in place, like the other fields: a frame moved to a new lineage (e.g. a
         // `movableContentOf` subtree relocated under a different parent) must pick up its new parent
         // without being removed and re-pushed — re-pushing would change its identity and orphan any
