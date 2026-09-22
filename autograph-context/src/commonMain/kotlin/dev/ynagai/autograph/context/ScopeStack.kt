@@ -33,11 +33,10 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * **Threading.** [push], [pushGlobal], [update], [remove], [maskScreen], [setActive] and the
  * origin-taking [current] must be called from the main thread ([push], [pushGlobal] and [remove]
- * mutate the frame list; the
- * others mutate a frame's contents and republish the snapshot, or read the list as it stands). The
- * no-argument [current] is lock-free and safe from any thread: it returns an immutable snapshot that
- * is republished atomically on every mutation, so a background reader always sees a whole,
- * consistent context — never a half-applied one.
+ * mutate the frame list; the others mutate a frame's contents and republish the snapshot, or read
+ * the list as it stands). The no-argument [current] is lock-free and safe from any thread: it
+ * returns an immutable snapshot that is republished atomically on every mutation, so a background
+ * reader always sees a whole, consistent context — never a half-applied one.
  */
 public class ScopeStack {
 
