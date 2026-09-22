@@ -1,7 +1,6 @@
 package dev.ynagai.autograph.sample
 
 import dev.ynagai.autograph.context.ScopeStack
-import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.uikit.AutographNativeTapCapture
 import dev.ynagai.autograph.uikit.installAutographNativeTapCapture
 
@@ -33,7 +32,6 @@ import dev.ynagai.autograph.uikit.installAutographNativeTapCapture
  * **Idempotent.** SwiftUI may run `.onAppear` more than once for the same view, and installing twice
  * would attach a second recognizer to the same window and report every tap twice.
  */
-@OptIn(AutographInternalApi::class)
 public fun installNativeSampleCapture(onTap: (target: String, properties: String) -> Unit) {
     if (installed != null) return
     val scopeStack = ScopeStack()
@@ -43,5 +41,4 @@ public fun installNativeSampleCapture(onTap: (target: String, properties: String
     )
 }
 
-@OptIn(AutographInternalApi::class)
 private var installed: AutographNativeTapCapture? = null

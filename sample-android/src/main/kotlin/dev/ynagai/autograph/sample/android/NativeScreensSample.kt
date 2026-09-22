@@ -1,5 +1,3 @@
-@file:OptIn(AutographInternalApi::class)
-
 package dev.ynagai.autograph.sample.android
 
 import android.app.Application
@@ -18,7 +16,6 @@ import dev.ynagai.autograph.android.AutographNativeScreenCapture
 import dev.ynagai.autograph.android.AutographNativeTapCapture
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
 import dev.ynagai.autograph.android.installAutographNativeTapCapture
-import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import java.util.concurrent.CopyOnWriteArrayList

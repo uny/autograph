@@ -178,7 +178,6 @@ import dev.ynagai.autograph.context.ScopeStack
  *
  * Keep the returned handle: it is the only way to [AutographNativeScreenCapture.uninstall].
  */
-@AutographInternalApi
 public fun installAutographNativeScreenCapture(
     application: Application,
     tracker: Tracker,
@@ -195,7 +194,6 @@ public fun installAutographNativeScreenCapture(
  * A running native screen capture. Created by [installAutographNativeScreenCapture]; keep it to
  * [uninstall].
  */
-@AutographInternalApi
 public class AutographNativeScreenCapture internal constructor(
     private val application: Application,
     private val capture: AndroidScreenCapture,

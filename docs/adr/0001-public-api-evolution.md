@@ -38,6 +38,18 @@ Declarations marked `@AutographInternalApi` are outside every tier. They are `pu
 only because Kotlin's `internal` does not cross a module boundary, and may change in a
 patch release.
 
+**That marker is for machinery, never for an entry point this project tells adopters to call.**
+Until [#240](https://github.com/uny/autograph/issues/240) the four `installAutographNative*`
+functions and the handles they return carried it while the README documented them as the supported
+way to instrument a native surface and this section listed them as the review-enforced public
+surface of their artifacts — so an adopter following the docs had to opt out of a guarantee already
+made, and had no way to tell which of the two statements was the contract. The annotation could not
+enforce the boundary it claimed either: `RequiresOptIn` does not reach the Objective-C header a
+Swift consumer sees, and it is not recorded in the klib dump, so it is invisible to both of this
+project's mechanical checks. The test to apply before adding it: *would we write a README section
+telling someone to call this?* If yes, it belongs in a tier. Something genuinely unfinished wants a
+separate, differently-named opt-in rather than this one.
+
 **Some public surface is not covered by the dump check**, so the review checkpoint of §4 does
 not fire for it and its rules rest on review alone. This is a boundary of the tooling, documented
 here rather than hidden — it is the resolution of
@@ -262,6 +274,26 @@ on this contract.
 - The measurement covers one Kotlin major (2.2.20 – 2.4.10); klib is not a frozen format.
   `fixtures/klib-diamond/run.sh` re-runs the whole matrix in about a minute — run it on a Kotlin
   bump, rather than assuming this bullet still holds.
+
+### 5. Removal goes through deprecation, from 1.0 onward
+
+Everything above governs what may be *added*. The rule for taking something away, which applies
+once 1.0 ships:
+
+- A public declaration in a tiered artifact is removed only after at least **two minor releases**
+  carrying `@Deprecated`, and only in a **major** release. `WARNING` for the first of those minors,
+  `ERROR` for the second: a consumer who upgrades one minor at a time meets a warning before a
+  compile error, and a compile error before the symbol is gone.
+- Every `@Deprecated` carries a `ReplaceWith` when a mechanical replacement exists, and names the
+  alternative in prose when it does not. "Deprecated, removed in the next major" with no successor
+  is a design gap, not a deprecation.
+- The CHANGELOG entry that introduces a deprecation states the release the removal is planned for.
+  Moving that target later is fine; moving it earlier is not.
+- Before 1.0 this does not apply — the README's stability banner says so, and
+  `Modifier.autocaptureScope` is deprecated for removal at 1.0 under the pre-1.0 rule, with no
+  window. It is grandfathered rather than retro-fitted: applying the rule above to it would hold a
+  superseded API past the release that is meant to be the clean line.
+- `@AutographInternalApi` declarations are exempt, as they are from every other rule here.
 
 ## Consequences
 

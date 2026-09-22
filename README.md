@@ -598,6 +598,57 @@ val tracker = Autograph {
 The default logger dumps full event properties — don't wrap a production transport with this in a
 release build (gate it behind a debug-build check, or supply a logger that redacts what it prints).
 
+## Native surfaces: installing the captures
+
+Compose content is instrumented by `AutographProvider` and needs nothing here. A **native** surface —
+a UIKit `UIViewController`, an Android `Activity` or `Fragment`, View/XML content — is opt-in: install
+the captures once at process start, on **one shared `ScopeStack`**. Sharing the stack is what makes a
+hybrid app coherent: a native screen becomes the `previous_screen` of the next Compose one, a tap on a
+toolbar beside a `ComposeView` carries the screen the composition declared, and app-wide context
+pushed once reaches both pipelines.
+
+```kotlin
+// Android — in Application.onCreate()
+class SampleApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        val scopeStack = ScopeStack()
+        val tracker = Autograph { transport(SegmentTransport(analytics)) }
+
+        installAutographNativeScreenCapture(
+            application = this,
+            tracker = tracker,
+            scopeStack = scopeStack,
+            // Return null to opt a surface out. The default is the class's fully-qualified name.
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { it.javaClass.simpleName },
+        )
+        installAutographNativeTapCapture(this, tracker, scopeStack)
+        // Hand the SAME tracker and scopeStack to AutographProvider for the Compose half.
+    }
+}
+```
+
+```kotlin
+// iOS — in your shared module, called once from the app's entry point
+fun installNativeCaptures(tracker: Tracker, scopeStack: ScopeStack) {
+    installAutographNativeScreenCapture(tracker, scopeStack)  // viewDidAppear: swizzle
+    installAutographNativeTapCapture(tracker, scopeStack)     // UIView.hitTest
+}
+```
+
+Both installers return a handle with `uninstall()`. Keep it if the app ever replaces its tracker —
+the tap captures hold the tracker and stack strongly, so on logout you uninstall and re-install
+rather than relying on the handle being dropped. Installing twice replaces the previous install
+rather than stacking.
+
+What each capture does and does not reach is in
+[What is and isn't captured](#what-is-and-isnt-captured); the opt-outs are
+[iOS](#ios-excluding-native-content-from-tap-capture) and
+[Android](#android-excluding-native-content-from-tap-capture). SwiftUI is not covered by the swizzle —
+see [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) and
+[`AutographButton`](#ios-swiftui-clicks-with-autographbutton).
+
 ## iOS: `AutographSegmentSwift`
 
 `SegmentBridge` (the interface `SegmentTransport` calls on iOS) is exported from Kotlin as an

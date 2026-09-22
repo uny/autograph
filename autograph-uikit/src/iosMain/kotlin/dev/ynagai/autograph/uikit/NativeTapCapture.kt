@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.EmptyJsonObject
@@ -69,7 +71,6 @@ import platform.darwin.NSObjectProtocol
  * Keep the returned handle: it is the only way to [AutographNativeTapCapture.uninstall], and the
  * capture holds [tracker] and [scopeStack] strongly until then.
  */
-@AutographInternalApi
 public fun installAutographNativeTapCapture(
     tracker: Tracker,
     scopeStack: ScopeStack,
@@ -83,7 +84,6 @@ public fun installAutographNativeTapCapture(
  * the handle being dropped: an app that replaces its tracker on logout must uninstall, or the
  * recognizers keep reporting into the retired one.
  */
-@AutographInternalApi
 public class AutographNativeTapCapture internal constructor(
     private val tracker: Tracker,
     private val scopeStack: ScopeStack,

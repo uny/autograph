@@ -95,7 +95,6 @@ import platform.objc.sel_registerName
  *
  * Keep the returned handle: it is the only way to [AutographNativeScreenCapture.uninstall].
  */
-@AutographInternalApi
 public fun installAutographNativeScreenCapture(
     tracker: Tracker,
     scopeStack: ScopeStack,
@@ -113,7 +112,6 @@ public fun installAutographNativeScreenCapture(
  * Holds nothing itself; the sink it created (with [tracker] and [scopeStack]) lives in a
  * process-global slot until [uninstall] clears it or another install replaces it.
  */
-@AutographInternalApi
 public class AutographNativeScreenCapture internal constructor(private val owner: Any) {
 
     /**
@@ -136,7 +134,6 @@ public class AutographNativeScreenCapture internal constructor(private val owner
 }
 
 /** The screen name a controller is reported under by default: its class name, verbatim. */
-@AutographInternalApi
 public fun defaultScreenName(controller: UIViewController): String? =
     NSStringFromClass(object_getClass(controller) ?: return null)
 

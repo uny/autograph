@@ -16,6 +16,17 @@ package dev.ynagai.autograph
  *
  * Declarations marked with it sit outside every stability tier in
  * [ADR 0001](../../../../../../../docs/adr/0001-public-api-evolution.md).
+ *
+ * **It is not the marker for an entry point a library user is told to call.** `installAutographNative*`
+ * and the handles they return carried it until #240: the README documents them as the supported way to
+ * instrument a native surface, and ADR 0001 lists them as the review-enforced public surface of their
+ * artifacts, so the annotation was contradicting both — it forced every adopter to opt out of a
+ * guarantee the project had already made, and it is invisible to Swift callers anyway (a
+ * `RequiresOptIn` does not reach the Objective-C header) and to the klib dump, so it could not even
+ * enforce the boundary it claimed. What belongs here is machinery: [Envelope]'s construction for
+ * `autograph-test`, the accessibility-tree walk `autograph-uikit` lends `autograph-compose`, the
+ * `ScopeStack` internals the capture pipelines share. If a declaration needs an opt-in because it is
+ * *not finished*, that is a different statement and wants its own annotation.
  */
 @RequiresOptIn(
     level = RequiresOptIn.Level.ERROR,

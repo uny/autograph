@@ -1,7 +1,6 @@
 package dev.ynagai.autograph.sample
 
 import dev.ynagai.autograph.context.ScopeStack
-import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.uikit.defaultScreenName
 import dev.ynagai.autograph.uikit.installAutographNativeScreenCapture
 import dev.ynagai.autograph.uikit.installAutographNativeTapCapture
@@ -26,7 +25,6 @@ import platform.UIKit.UIViewController
  * **Idempotent.** The swizzle is process-global and installs once; re-entry here would only replace the
  * sink and add a second tap recognizer, so it is guarded.
  */
-@OptIn(AutographInternalApi::class)
 public fun installNativeScreensCapture(
     onScreenLog: (log: String) -> Unit,
     onTap: (target: String, properties: String) -> Unit,
@@ -54,7 +52,6 @@ public fun installNativeScreensCapture(
  * qualifier dropped (`"iosApp.FirstScreen"` → `"FirstScreen"`). Exactly the cleanup a real app does —
  * the default keeps the module prefix precisely so the app, not the library, owns the convention.
  */
-@OptIn(AutographInternalApi::class)
 private fun sampleScreenName(controller: UIViewController): String? =
     defaultScreenName(controller)?.substringAfterLast('.')
 

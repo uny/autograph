@@ -107,7 +107,6 @@ import dev.ynagai.autograph.context.ScopeStack
  * window's callback chain (see [AutographNativeTapCapture.uninstall] for why it must), and it holds
  * this capture — and so [tracker] and [scopeStack] — until that window is destroyed.
  */
-@AutographInternalApi
 public fun installAutographNativeTapCapture(
     application: Application,
     tracker: Tracker,
@@ -123,7 +122,6 @@ public fun installAutographNativeTapCapture(
  * A running native tap capture. Created by [installAutographNativeTapCapture]; keep it to
  * [uninstall].
  */
-@AutographInternalApi
 public class AutographNativeTapCapture internal constructor(
     private val application: Application,
     private val capture: AndroidTapCapture,
