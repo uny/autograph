@@ -8,6 +8,32 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **`ScopeStack.pushGlobal(scope)`** — a frame whose scope is app-wide: a tenant, an install id, an
+  experiment assignment pushed once at startup. It reaches every event whatever the event is nested
+  in, and it is exempt from the ambiguity rule that drops sibling scopes, merging **outermost** so a
+  screen's own scope still wins a key clash and an explicit call-site property wins over both
+  ([#237]). Global is fixed for the life of the frame: `update` revises its scope but refuses a
+  `parent` (one under a boundary would hide the frame from every other origin) and a `screen` /
+  `section` (a frame every origin sees would name the screen of every surface at once). A plain
+  `push()` with no `parent` does not mean this — see Fixed below.
+
+### Fixed
+
+- **A hand-pushed root frame and an `AutographScope` cancelled each other out** ([#237]). On a stack
+  shared between `AutographProvider` and the native captures, a root the app pushed with
+  `push(scope = …)` for its app-wide keys was its own tree in the forest — nothing declared it as a
+  parent — so `resolveScope` treated it and a screen's `AutographScope` (nested under the provider's
+  root) as ambiguous siblings and dropped **both**: adding app-wide context silently removed the
+  screen scope the app already had, on every Compose tap in an instrumented screen. Native taps were
+  unaffected. The fix declares app-wide frames rather than inferring them: push them with
+  `pushGlobal`. A plain root beside a nested scope still resolves to no scope, deliberately —
+  inferring "a root nothing references is global" would change a frame's meaning the moment
+  something is pushed under it and reinterpret the roots existing pipelines push (the iOS native
+  screen frames are roots). The `current(origin)` and `resolveScope` kdocs no longer contradict each
+  other on this.
+
 ### Changed
 
 - **Compose Multiplatform 1.12.0, and the Android `compileSdk` floor is split in two** ([#224]).
@@ -1426,3 +1452,4 @@ Initial release.
 [#217]: https://github.com/uny/autograph/pull/217
 [#224]: https://github.com/uny/autograph/issues/224
 [#228]: https://github.com/uny/autograph/issues/228
+[#237]: https://github.com/uny/autograph/issues/237
