@@ -282,26 +282,35 @@ There's a `JsonObject` overload for non-string values. Notes:
   install id, an experiment assignment — a field every event should carry — cannot be expressed by
   wrapping the Compose root in `AutographScope`, for two reasons that are each deliberate. Its frame
   lives only as long as its composition (a native screen on top of a paused or destroyed Compose
-  screen has no frame to read), and since the frame is nested under the surface hosting the
-  composition, an event on another surface never sees it — that is what keeps one screen's scope off
-  a sibling's taps. Declare it once, at startup, on the stack you share between `AutographProvider`
-  and the native captures:
+  screen has no frame to read), and it is never app-wide on another surface: on Android the frame
+  sits under the hosting Activity/Fragment's boundary, so a tap or screen view on a sibling surface
+  never sees it — that is what keeps one screen's scope off a sibling's taps — while on iOS, where
+  the native screen frames are roots and nothing is a boundary, it reaches a native tap on another
+  surface only while the composition stays resumed, which is leakage, not a declaration. Declare it
+  once, at startup, on the stack you share between `AutographProvider` and the native captures, and
+  keep the handle:
 
   ```kotlin
   val scopeStack = ScopeStack()
-  scopeStack.pushGlobal(mapOf("tenant" to JsonPrimitive(tenantId)))
+  val tenantScope = scopeStack.pushGlobal(mapOf("tenant" to JsonPrimitive(tenantId)))
   // …then hand the same scopeStack to AutographProvider and installAutographNative*.
+  // On a tenant change: scopeStack.update(tenantScope, scope = …). On logout, replace the
+  // stack together with the tracker — nothing resets it for you, Tracker.reset() included.
   ```
 
-  It reaches every autocaptured tap and every screen view on both pipelines — Compose, UIKit,
-  SwiftUI (`.autographScreen`) and Android View — and merges **outermost**, so a screen's
-  `AutographScope` still wins a key clash and an explicit call-site property wins over both. A plain
-  `push(scope = …)` with no parent does **not** mean this: beside a screen's `AutographScope` it is
-  an ambiguous sibling and both are dropped, so app-wide is declared, never inferred. Two limits:
-  the stack is read by **autocapture only** — a `tracker.track(...)` you call yourself from
-  non-Compose code does not see it, so for "on every event without exception" merge in a
-  `Transport` wrapper or the vendor SDK's own plugin — and `EventValidator` runs before the
-  transport, so a tracking plan cannot *require* a key added there.
+  It reaches every event that reads the stack: every autocaptured tap on Compose, UIKit and Android
+  View, and every native `Screen Viewed` — the Android Activity/Fragment capture, the UIKit swizzle
+  and SwiftUI's `.autographScreen`. It merges **outermost**, so a screen's `AutographScope` still
+  wins a key clash and an explicit call-site property wins over both. A plain `push(scope = …)` with
+  no parent does **not** mean this: beside a screen's `AutographScope` it is an ambiguous sibling
+  and both are dropped, so app-wide is declared, never inferred. Two limits. First, Compose's own
+  explicit emitters do not read the stack — the `Screen Viewed` from `TrackedScreen`,
+  `TrackScreenView` and `NavController.TrackScreenViews`, and `trackClick` / `trackImpression`,
+  carry only their lexical `AutographScope` — nor do `AutographButton` (its Swift-side scope only)
+  or any `tracker.track(...)` you call yourself. So on one Compose screen an autocaptured button
+  carries `tenant` and the screen's own `Screen Viewed` does not. For "on every event without exception", merge in a `Transport` wrapper or
+  the vendor SDK's own plugin. Second, `EventValidator` runs before the transport, so a tracking plan
+  cannot *require* a key added there.
 
 ### Autocapture
 
