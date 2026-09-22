@@ -278,6 +278,30 @@ There's a `JsonObject` overload for non-string values. Notes:
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
   already receives, include it there explicitly.
+- **App-wide context is `ScopeStack.pushGlobal`, not an outermost `AutographScope`.** A tenant, an
+  install id, an experiment assignment — a field every event should carry — cannot be expressed by
+  wrapping the Compose root in `AutographScope`, for two reasons that are each deliberate. Its frame
+  lives only as long as its composition (a native screen on top of a paused or destroyed Compose
+  screen has no frame to read), and since the frame is nested under the surface hosting the
+  composition, an event on another surface never sees it — that is what keeps one screen's scope off
+  a sibling's taps. Declare it once, at startup, on the stack you share between `AutographProvider`
+  and the native captures:
+
+  ```kotlin
+  val scopeStack = ScopeStack()
+  scopeStack.pushGlobal(mapOf("tenant" to JsonPrimitive(tenantId)))
+  // …then hand the same scopeStack to AutographProvider and installAutographNative*.
+  ```
+
+  It reaches every autocaptured tap and every screen view on both pipelines — Compose, UIKit,
+  SwiftUI (`.autographScreen`) and Android View — and merges **outermost**, so a screen's
+  `AutographScope` still wins a key clash and an explicit call-site property wins over both. A plain
+  `push(scope = …)` with no parent does **not** mean this: beside a screen's `AutographScope` it is
+  an ambiguous sibling and both are dropped, so app-wide is declared, never inferred. Two limits:
+  the stack is read by **autocapture only** — a `tracker.track(...)` you call yourself from
+  non-Compose code does not see it, so for "on every event without exception" merge in a
+  `Transport` wrapper or the vendor SDK's own plugin — and `EventValidator` runs before the
+  transport, so a tracking plan cannot *require* a key added there.
 
 ### Autocapture
 
