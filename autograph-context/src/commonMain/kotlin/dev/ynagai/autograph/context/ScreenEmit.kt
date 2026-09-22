@@ -28,8 +28,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * view is an event *of that surface*, so a sibling surface's declaration must not reach it, which is
  * why this is not the ambient snapshot. That holds where the surface frames are boundaries (Android);
  * the iOS native screen frames are roots, so on that boundary-free stack this resolves the same
- * members as the ambient read and [ScopeStack.resolveScope]'s ambiguity rule is what keeps sibling
- * scopes apart — one scoped sibling still reaches the event, two drop, exactly as for a native tap.
+ * members as the ambient read (bar the inactive-frame exemptions [ScopeStack.current] documents) and
+ * the scope ambiguity rule is what keeps sibling scopes apart — one scoped sibling still reaches the
+ * event, two drop, exactly as for a native tap.
  * It is scope only, not [AmbientContext.enrich], because
  * `enrich` writes the reserved `screen` / `section` keys and for a screen event the name already *is*
  * the screen. The scope merges **under** `previous_screen`, a caller property that keeps winning a
