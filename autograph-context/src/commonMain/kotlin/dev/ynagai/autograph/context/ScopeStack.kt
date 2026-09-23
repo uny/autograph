@@ -577,9 +577,9 @@ public class ScopeStack {
      * ambiguous rows still attributes every tap under it. Nothing is ever guessed, so no *wrong*
      * scope is reported (#66). Resolving which sibling a tap actually hit needs the tap position,
      * which this framework-independent stack does not have; that is a separate, additive layer —
-     * `Modifier.autocaptureScope` in `autograph-compose`, which reads a marker off the tapped
-     * element's own ancestry. Android only: the iOS accessibility bridge carries no such marker, so
-     * the drop above is what an ambiguous iOS tap gets (#68).
+     * `AutographElementScope` in `autograph-compose`, which reads a marker off the tapped element's
+     * own ancestry, on Android and on iOS (#185). For a tap on an element no such wrapper encloses,
+     * the drop above is all it gets (#68).
      *
      * A [pushGlobal] frame is exempt from all of that: it encloses every subtree by declaration, so
      * it is neither compared nor dropped. Global frames merge first — outermost, so the lowest
