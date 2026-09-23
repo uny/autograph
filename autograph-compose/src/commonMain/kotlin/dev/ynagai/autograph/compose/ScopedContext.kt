@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
@@ -87,7 +88,12 @@ public fun AutographScope(
     // pre-flattened. The decorator stays the source of truth for explicit `track` calls (lexical
     // scope); the stack serves the capture path (dynamic scope). See [ScopeStack].
     MirrorAmbientFrame(LocalScopeStack.current, scope = properties) {
-        CompositionLocalProvider(LocalTracker provides scoped, content = content)
+        val lexicalKeys = LocalLexicalScopeKeys.current
+        CompositionLocalProvider(
+            LocalTracker provides scoped,
+            LocalLexicalScopeKeys provides remember(lexicalKeys, properties) { lexicalKeys + properties.keys },
+            content = content,
+        )
     }
 }
 
@@ -314,6 +320,17 @@ internal expect fun rememberHostSurfaceLookup(): () -> ScopeHandle?
 internal val LocalScopeParent: ProvidableCompositionLocal<Array<ScopeHandle?>?> =
     staticCompositionLocalOf { null }
 
+/**
+ * Every key the enclosing [AutographScope]s define, accumulated down the composition — what a global
+ * frame must yield to in [withGlobalScopeBeneath]. Carried here rather than read off the
+ * [ScopedTracker] chain, which a custom `Tracker` decorator installed between two scopes hides: the
+ * outer scope's keys vanish behind it, and a global frame then beat them. [AutographProvider] resets
+ * it along with the tracker; a `LocalTracker` replaced by hand inside a scope does not, and loses the
+ * global value of any key an enclosing scope defines.
+ */
+internal val LocalLexicalScopeKeys: ProvidableCompositionLocal<Set<String>> =
+    staticCompositionLocalOf { emptySet() }
+
 private val fallbackScopeStack = ScopeStack()
 
 /**
@@ -363,3 +380,25 @@ internal class ScopedTracker(
  */
 internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>): JsonObject =
     if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)
+
+/**
+ * [properties] with [stack]'s global scope merged **beneath** both the call site and every enclosing
+ * `AutographScope`, keeping the documented precedence: an explicit call-site property wins, then a
+ * screen's own `AutographScope`, then an app-wide `pushGlobal` frame.
+ *
+ * Merging it into [properties] directly would invert the middle pair. [ScopedTracker] applies its
+ * scope on the way *out* (`scope + properties`, right wins), so anything handed in as a property beats
+ * the lexical scope — correct for a call-site property and wrong for a global one. Dropping
+ * [lexicalKeys] is what restores the order, and it is exact rather than approximate: a key no
+ * enclosing scope defines cannot be overridden by one, so merging it in early changes nothing.
+ *
+ * Used by the `Screen Viewed` emits, which reach the tracker directly rather than through autocapture
+ * and so would otherwise miss a global frame the native pipelines' screen views carry (#250).
+ */
+@OptIn(AutographInternalApi::class)
+internal fun withGlobalScopeBeneath(stack: ScopeStack, lexicalKeys: Set<String>, properties: JsonObject): JsonObject {
+    val global = stack.globalScope
+    if (global.isEmpty()) return properties
+    val beneath = if (lexicalKeys.isEmpty()) global else global.filterKeys { it !in lexicalKeys }
+    return if (beneath.isEmpty()) properties else JsonObject(beneath + properties)
+}

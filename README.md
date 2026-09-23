@@ -298,19 +298,24 @@ There's a `JsonObject` overload for non-string values. Notes:
   // stack together with the tracker — nothing resets it for you, Tracker.reset() included.
   ```
 
-  It reaches every event that reads the stack: every autocaptured tap on Compose, UIKit and Android
-  View, and every native `Screen Viewed` — the Android Activity/Fragment capture, the UIKit swizzle
-  and SwiftUI's `.autographScreen`. It merges **outermost**, so a screen's `AutographScope` still
+  It reaches **every autocaptured tap** on Compose, UIKit and Android View, and **every
+  `Screen Viewed`** — the Android Activity/Fragment capture, the UIKit swizzle, SwiftUI's
+  `.autographScreen`, and on the Compose side `TrackedScreen`, `TrackScreenView` and
+  `NavController.TrackScreenViews`. It merges **outermost**, so a screen's `AutographScope` still
   wins a key clash and an explicit call-site property wins over both. A plain `push(scope = …)` with
   no parent does **not** mean this: beside a screen's `AutographScope` it is an ambiguous sibling
-  and both are dropped, so app-wide is declared, never inferred. Two limits. First, Compose's own
-  explicit emitters do not read the stack — the `Screen Viewed` from `TrackedScreen`,
-  `TrackScreenView` and `NavController.TrackScreenViews`, and `trackClick` / `trackImpression`,
-  carry only their lexical `AutographScope` — nor do `AutographButton` (its Swift-side scope only)
-  or any `tracker.track(...)` you call yourself. So on one Compose screen an autocaptured button
-  carries `tenant` and the screen's own `Screen Viewed` does not. For "on every event without exception", merge in a `Transport` wrapper or
-  the vendor SDK's own plugin. Second, `EventValidator` runs before the transport, so a tracking plan
-  cannot *require* a key added there.
+  and both are dropped, so app-wide is declared, never inferred.
+
+  Two limits. First, **explicitly instrumented events do not carry it**: `trackClick` /
+  `trackImpression`, `AutographButton` (its Swift-side scope only), and any `tracker.track(...)` you
+  call yourself carry their lexical `AutographScope` and nothing from the stack. That is deliberate —
+  an explicit call has a lexical scope of its own, and the ambient one would attribute it to whichever
+  surface happens to be on display. Screen views are the exception because a global frame is the one
+  thing on the stack that cannot misattribute: it names no screen and takes no part in the
+  sibling-ambiguity rule. For "on every event without exception" today, merge in a `Transport` wrapper
+  or the vendor SDK's own plugin; a first-class route is
+  [#253](https://github.com/uny/autograph/issues/253). Second, `EventValidator` runs before the
+  transport, so a tracking plan cannot *require* a key added there.
 
 ### Autocapture
 

@@ -68,9 +68,18 @@ private fun EmitScreenView(
 ) {
     val tracker = LocalTracker.current
     val history = currentScreenHistory
+    // The one read this path takes from the stack, and deliberately the narrowest one: global frames
+    // only, never the ambient screen/section or a sibling surface's scope. A `Screen Viewed` from
+    // Compose carried no app-wide scope while the native pipelines' did, on the same screen whose
+    // autocaptured taps carried it (#250). Read inside the effect so a frame pushed after this
+    // composition still reaches the emit.
+    val stack = LocalScopeStack.current
+    val lexicalKeys = LocalLexicalScopeKeys.current
     LaunchedEffect(name) {
         val previous = history.record(name)
-        tracker.screen(name, withPreviousScreen(properties, previous))
+        // previous_screen is added first so a global frame sits beneath it too, as on the native path.
+        val withPrevious = withPreviousScreen(properties, previous)
+        tracker.screen(name, withGlobalScopeBeneath(stack, lexicalKeys, withPrevious))
     }
 }
 
