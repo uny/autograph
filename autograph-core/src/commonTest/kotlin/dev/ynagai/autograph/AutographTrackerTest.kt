@@ -545,7 +545,7 @@ class AutographTrackerTest {
     @Test
     fun closeWaitsForAPipelineCallStillInsideTheTransportBeforeFlushing() = runTest {
         val race = CloseRace()
-        val transport = OrderRecordingPipelineTransport(onTrack = race::fireOnce)
+        val transport = OrderRecordingTransport(onTrack = race::fireOnce)
         val tracker = tracker(transport)
         race.target = tracker
 
@@ -554,6 +554,64 @@ class AutographTrackerTest {
         race.closing!!.join()
 
         assertEquals(listOf("track racer", "flush"), transport.log)
+    }
+
+    @Test
+    fun flushAndResetAfterCloseAreDroppedInBothTransportModes() {
+        for (stampsInPipeline in listOf(true, false)) {
+            val transport = OrderRecordingTransport(stampsInPipeline = stampsInPipeline)
+            val tracker = tracker(transport)
+
+            tracker.close()
+            tracker.flush()
+            tracker.reset()
+
+            assertEquals(listOf("flush"), transport.log, "only close()'s own flush (stampsInPipeline=$stampsInPipeline)")
+        }
+    }
+
+    // Codex on #260: a pipeline transport calling close() from inside one of the tracker's own calls
+    // made close() wait on that very call — the full timeout, a false "gave up", and no flush.
+    @Test
+    fun aPipelineTransportClosingFromInsideItsOwnCallDoesNotWaitOnItself() {
+        val logs = mutableListOf<String>()
+        lateinit var tracker: Tracker
+        val transport = OrderRecordingTransport(onTrack = { tracker.close() })
+        tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            logger = AutographLogger { logs += it }
+        }
+
+        tracker.track("closer")
+
+        assertEquals(listOf("flush", "track closer"), transport.log)
+        assertTrue(logs.none { "gave up" in it }, "nothing was left to wait for: $logs")
+    }
+
+    // A pipeline call stuck past the bound must not cost everything already in the transport's queue its
+    // flush: before #254 close() flushed a pipeline transport unconditionally.
+    @Test
+    fun aPipelineDrainCutShortStillFlushes() {
+        val logs = mutableListOf<String>()
+        val stuck = StuckCall()
+        val transport = OrderRecordingTransport(onTrack = stuck::hold)
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            logger = AutographLogger { logs += it }
+            closeDrainTimeoutMillis = 50
+        }
+        val caller = CoroutineScope(Dispatchers.Default).launch { tracker.track("stuck") }
+        stuck.awaitEntered()
+
+        tracker.close()
+        val atClose = transport.log.toList()
+        stuck.release()
+
+        assertEquals(listOf("flush"), atClose)
+        assertTrue(logs.any { "gave up" in it }, "the cut-short drain is still reported: $logs")
+        kotlinx.coroutines.runBlocking { caller.join() }
     }
 
     @Test
@@ -701,9 +759,37 @@ private class CloseRace {
     }
 }
 
-/** A pipeline transport that records track and flush in the order they reach it. */
-private class OrderRecordingPipelineTransport(private val onTrack: () -> Unit) : Transport {
-    override val stampsInPipeline: Boolean get() = true
+/** Holds a call inside the transport until [release], busy-waiting for the same reason [CloseRace] does. */
+private class StuckCall {
+    @Volatile
+    private var entered = false
+
+    @Volatile
+    private var released = false
+
+    fun hold() {
+        entered = true
+        @Suppress("ControlFlowWithEmptyBody")
+        while (!released) {
+        }
+    }
+
+    fun awaitEntered() {
+        @Suppress("ControlFlowWithEmptyBody")
+        while (!entered) {
+        }
+    }
+
+    fun release() {
+        released = true
+    }
+}
+
+/** Records track, flush and reset in the order they reach it; a pipeline transport unless told otherwise. */
+private class OrderRecordingTransport(
+    override val stampsInPipeline: Boolean = true,
+    private val onTrack: () -> Unit = {},
+) : Transport {
     val log = mutableListOf<String>()
 
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
@@ -717,5 +803,9 @@ private class OrderRecordingPipelineTransport(private val onTrack: () -> Unit) :
 
     override fun flush() {
         log += "flush"
+    }
+
+    override fun reset() {
+        log += "reset"
     }
 }

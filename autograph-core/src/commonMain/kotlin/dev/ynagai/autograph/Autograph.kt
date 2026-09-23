@@ -169,10 +169,13 @@ internal class AutographTracker(
 
     /**
      * Pipeline-mode calls accepted but still inside the transport. They run synchronously on the
-     * caller's thread, outside [lock], so [close] waits for this to reach zero before flushing —
-     * otherwise its flush could overtake an accepted call still on its way into the transport.
+     * caller's thread, outside [lock], so [close] waits for them before flushing — otherwise its flush
+     * could overtake an accepted call still on its way into the transport.
      */
     private var inFlight = 0
+
+    /** How many of [inFlight] are on the current thread — calls a reentrant [close] is nested inside. */
+    private val ownInFlight = ThreadLocalCount()
 
     init {
         transport.connect(stamper)
@@ -222,9 +225,11 @@ internal class AutographTracker(
             if (closed) return
             inFlight++
         }
+        ownInFlight.set(ownInFlight.get() + 1)
         try {
             call()
         } finally {
+            ownInFlight.set(ownInFlight.get() - 1)
             synchronized(lock) { inFlight-- }
         }
     }
@@ -325,6 +330,9 @@ internal class AutographTracker(
      * to drain is fixed — the scope's children when the core stamps, the calls still inside the
      * transport ([inFlight]) when it stamps in its own pipeline. The wait itself happens outside the
      * lock, so a `track` racing the shutdown is refused at once rather than blocked for the drain.
+     * A pipeline transport that calls [close] from inside one of this tracker's own calls is not waited
+     * for — it cannot finish until [close] returns — so that call's event reaches the transport after
+     * the flush.
      *
      * Admission stops *through this tracker* only. A pipeline transport's vendor client is not ours:
      * whatever the app or the vendor SDK sends through it directly is still delivered, and stamped.
@@ -339,7 +347,7 @@ internal class AutographTracker(
      * dispatcher is caller-configurable. Joining the children drains whatever is outstanding under any
      * dispatcher.
      *
-     * Bounded by [CLOSE_DRAIN_TIMEOUT_MILLIS] — see [drainBlocking] for why a bound, and for the one
+     * Bounded by [CLOSE_DRAIN_TIMEOUT_MILLIS] by default — see [drainBlocking] for why a bound, and for the one
      * configuration (closing from the tracker's own single-threaded dispatcher) that starves the drain.
      * A drain cut short by the bound is reported through the logger rather than returning silently.
      * Idempotent.
@@ -352,15 +360,21 @@ internal class AutographTracker(
             // be added after this point.
             scope.coroutineContext.job.children.toList()
         }
-        val drained = drainBlocking(closeDrainTimeoutMillis) {
-            if (transport.stampsInPipeline) {
-                // Nothing of ours is queued; wait only for accepted calls still entering the transport,
-                // which owns its own queue — flush is the only thing we can ask of it.
-                while (synchronized(lock) { inFlight } > 0) delay(1)
-            } else {
+        val drained = if (transport.stampsInPipeline) {
+            // Nothing of ours is queued; wait only for accepted calls still entering the transport,
+            // which owns its own queue — flush is the only thing we can ask of it. A close() made from
+            // inside one of those calls cannot wait for the calls it is nested in, so it waits for the
+            // other threads' only. The flush runs even if the wait timed out: the transport's queue is
+            // already full of accepted events, and one stuck call must not cost them their flush.
+            val nested = ownInFlight.get()
+            drainBlocking(closeDrainTimeoutMillis) {
+                while (synchronized(lock) { inFlight } > nested) delay(1)
+            }.also { transport.flush() }
+        } else {
+            drainBlocking(closeDrainTimeoutMillis) {
                 accepted.joinAll()
+                transport.flush()
             }
-            transport.flush()
         }
         if (!drained) {
             report("Autograph: close() gave up after ${closeDrainTimeoutMillis}ms; events it accepted may not have reached the transport")

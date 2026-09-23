@@ -48,7 +48,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   pipeline-mode tracker still delivering, keep the tracker open instead. `close()` still stops
   delivery *through this tracker* only: it does not claim the vendor client underneath, so events the
   app or the vendor SDK sends through that client directly are still delivered and stamped. In pipeline
-  mode, `close()` now also waits for calls already inside the transport before it flushes.
+  mode, `close()` now also waits for calls already inside the transport on other threads before it
+  flushes, and flushes even if that wait times out.
   `notifyForeground`/`notifyBackground` are unaffected, as before.
 
 - **`AutocaptureConfig` is built through an `Autocapture { }` builder** instead of a `data class`
