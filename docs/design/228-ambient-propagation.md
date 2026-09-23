@@ -120,21 +120,25 @@ The repository has since moved to CMP 1.12.0; the mapping has not been re-read t
 | demoted page vs selected page | `ScopeStackOriginTest.a_demoted_pager_pages_declarations_do_not_reach_the_selected_page` |
 | own-surface exemption, lineage half | `ScopeStackOriginTest.an_origin_under_a_demoted_surface_still_sees_the_declarations_beneath_it` |
 | own-surface exemption, beneath half | `ScopeStackOriginTest.a_demoted_frame_beneath_the_origin_in_its_own_surface_does_not_gate_what_is_under_it` |
-| sibling still silenced | `ScopeStackOriginTest.a_demoted_sibling_off_the_origins_lineage_is_silenced_for_that_origin_too` |
+| sibling still silenced | `ScopeStackOriginTest.a_demoted_sibling_off_the_origins_lineage_is_silenced_for_that_origin_too`, `ProviderSelectionUiTest.aTapInTheCurrentCompositionDoesNotPickUpADemotedSiblingsScreen` |
 | (2) provider follows lifecycle | `ProviderSelectionUiTest` (paused host, not-yet-resumed host, page scope, replaced owner) |
-| (3) no ambient fallback | `ProviderSelectionUiTest.aTapInADemotedCompositionStillSeesItsOwnScreenWithNoHostClaimed`, `…aTapInTheCurrentCompositionDoesNotPickUpADemotedSiblingsScreen` |
+| (3) no ambient fallback | `ProviderSelectionUiTest.aTapInADemotedCompositionStillSeesItsOwnScreenWithNoHostClaimed` |
 | (4) select on every resume | `AndroidScreenCaptureTest.aResumedFragmentThatDeclaresNothingStillLetsWhatIsComposedInsideItSpeak` |
 
-The three original `ProviderSelectionUiTest` cases fail 3/3 with `ScopedContext.kt` reverted; the
-three added later each fail against their targeted mutant (ambient fallback restored / lineage-only
-exemption / `lifecycle` key dropped).
+The three original `ProviderSelectionUiTest` cases (paused host, not-yet-resumed host, page scope)
+fail 3/3 with `ScopedContext.kt` reverted. The three added in review each fail against their targeted
+mutant: `aTapInADemotedComposition…` with the ambient fallback restored, `aTapInTheCurrentComposition…`
+with `current(origin)` applying the bit per frame instead of propagating it, and
+`theFrameFollowsAReplacedLifecycleOwnerNotTheOneItWasComposedUnder` with the `lifecycle` key dropped.
+The lineage-only exemption is caught at the stack, by
+`a_demoted_frame_beneath_the_origin_in_its_own_surface_does_not_gate_what_is_under_it`.
 
 ## Re-verifying after a change to selection semantics
 
-The four cells disagree, so probe all of them: **both reads** (`current()` and `current(origin)`) ×
-**both stack shapes** (a boundary-free shared stack, and the Android boundary stack) × **both origins**
-(the current page and the demoted page). `runComposeUiTest` on JVM exercises the unclaimed-host path
-exactly, since the host lookup is `{ null }` there.
+The reads disagree across these cases, so probe all six. On **each stack shape** (a boundary-free
+shared stack, and the Android boundary stack): the ambient `current()`, which takes no origin, and
+`current(origin)` from **each origin** (the current page and the demoted page). `runComposeUiTest` on
+JVM exercises the unclaimed-host path exactly, since the host lookup is `{ null }` there.
 
 ## Out of scope at the time
 
