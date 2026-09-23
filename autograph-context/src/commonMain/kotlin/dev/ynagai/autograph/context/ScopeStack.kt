@@ -136,8 +136,8 @@ public class ScopeStack {
      *
      * "Every event" is the intent and not yet the whole truth, so read it as: every event that reads
      * this stack, plus the `Screen Viewed` emits that read [globalScope] directly. That is every
-     * autocaptured tap on both pipelines, every native `Screen Viewed`, and — since #250 — every
-     * Compose `Screen Viewed`. It is **not** an explicit `trackClick` / `trackImpression` / `track`
+     * autocaptured tap on Compose, UIKit and Android View, every native `Screen Viewed`, and — since
+     * #250 — every Compose `Screen Viewed`. It is **not** an explicit `trackClick` / `trackImpression` / `track`
      * call, which carries its lexical scope and never reads this stack at all; those need the property
      * passed at the call site, or a merge at the transport. See
      * [#253](https://github.com/uny/autograph/issues/253). A tenant, an install id, an
@@ -479,20 +479,15 @@ public class ScopeStack {
      * screen whose autocaptured taps carried it.
      *
      * Merged in insertion order among themselves, so a later global frame wins a key clash, matching
-     * [resolveScope]. Respects the active bit exactly as every other read does: an inactive global
-     * frame, or one nested under an inactive frame, contributes nothing. Empty when nothing global is
-     * pushed, which is the common case.
+     * [resolveScope]. An inactive global frame contributes nothing; a global frame is never nested, so
+     * there is no ancestor to consult. Empty when nothing global is pushed, which is the common case.
      *
      * **Threading.** Main thread only, like the rest of this class.
      */
     public val globalScope: JsonObject
-        get() {
-            val onStack = frames.toHashSet()
-            return frames
-                .filter { it.global && it.active && it.scope.isNotEmpty() }
-                .filterNot { it.hasInactiveAncestorOn(onStack, exempt = { false }) }
-                .fold(EmptyJsonObject) { acc, frame -> acc.merge(frame.scope) }
-        }
+        get() = frames
+            .filter { it.global && it.active && it.scope.isNotEmpty() }
+            .fold(EmptyJsonObject) { acc, frame -> acc.merge(frame.scope) }
 
     /**
      * The ambient snapshot. Here the active bit reaches DOWN the lineage without exemption: a frame
