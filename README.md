@@ -17,9 +17,9 @@ stamped onto every event:
   loss; the sequence restores in-session ordering without trusting client timestamps.
 - **`session_id` / `session_start`** — timeout-based sessions that survive process
   restarts.
-- **`event_timestamp`** — captured the moment `track`/`screen`/`identify` is called,
-  independent of the transport's own event-time field (which can lag behind by however
-  long it batches/enqueues before sending).
+- **`event_timestamp`** — captured the moment `track`/`screen`/`identify` is called, whichever
+  transport is plugged in, so it does not move with however long the transport queues or
+  batches before sending.
 
 The on-disk sequence/session store is written via a write-tmp-then-atomic-rename, so a
 process crash mid-write can never leave a corrupt or partially-written file. It does not
@@ -55,7 +55,12 @@ SPI is vendor-neutral.
 > `context.instrumentation` (or wherever a given transport places it) — `event_id`, `seq`,
 > `global_seq`, `session_id`, `session_start`, `sdk`, `event_timestamp`, `schema_version` —
 > and that object's top-level shape follow semver: no renames or type changes without a
-> major version bump. This is the part of Autograph that gets persisted into a downstream
+> major version bump. Their meaning is part of that contract too: `event_timestamp` is when the
+> event was fired — the `track`/`screen`/`identify` call for Autograph's events, and the vendor
+> SDK's own creation time for an event it generates itself (e.g. Segment's `Application Opened`) —
+> never the later moment a transport's pipeline got round to stamping it. Every transport Autograph
+> ships meets this; a third-party transport that stamps in its own pipeline meets it by passing the
+> event's creation time to `EnvelopeSource.stamp(eventTimestampMillis)`. This is the part of Autograph that gets persisted into a downstream
 > analytics pipeline, so it's safe to build dashboards, data-quality checks, and schema
 > migrations on top of today — everything else (Compose APIs, autocapture config, validator
 > shape, transport adapters) remains unstable under the

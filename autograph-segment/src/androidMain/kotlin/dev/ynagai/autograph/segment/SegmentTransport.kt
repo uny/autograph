@@ -10,6 +10,7 @@ import dev.ynagai.autograph.asJsonObject
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlin.time.Instant
 
 /**
  * Delivers events through Segment's `analytics-kotlin` SDK.
@@ -71,6 +72,14 @@ public class SegmentTransport(
 /**
  * Stamps the Autograph envelope onto every event passing through Segment's pipeline.
  *
+ * `event_timestamp` is the event's own [BaseEvent.timestamp], not the time this plugin runs.
+ * analytics-kotlin sets that field in `Analytics.process()` on the caller's thread, before it hands
+ * the event to its dispatcher — so for `track`/`screen`/`identify` it is the call time, exactly what
+ * the core records for a transport it stamps for, and for an event the Segment SDK generates itself
+ * it is that event's creation time. Stamping with `now` instead would record however long the event
+ * waited in Segment's queue. A `Before` plugin the app registers ahead of this one could rewrite the
+ * field; that is outside what this plugin can defend.
+ *
  * Idempotent: an event that already carries an `instrumentation` block (i.e. this plugin
  * already ran on it) is returned unchanged rather than stamped again, so `messageId` can
  * never be reassigned to a different `event_id` no matter how many times the same
@@ -85,9 +94,21 @@ internal class AutographPlugin(
 
     override fun execute(event: BaseEvent): BaseEvent {
         if (event.context.containsKey("instrumentation")) return event
-        val envelope = envelopes.stamp()
+        val envelope = event.createdAtMillis()?.let(envelopes::stamp) ?: envelopes.stamp()
         event.messageId = envelope.eventId
         event.context = JsonObject(event.context + ("instrumentation" to envelope.toJson()))
         return event
     }
+}
+
+/**
+ * [BaseEvent.timestamp] as epoch millis, or null when it is unset or unparseable — in which case the
+ * caller falls back to stamping with the current time rather than dropping the event.
+ */
+private fun BaseEvent.createdAtMillis(): Long? = try {
+    Instant.parse(timestamp).toEpochMilliseconds()
+} catch (_: UninitializedPropertyAccessException) {
+    null
+} catch (_: IllegalArgumentException) {
+    null
 }
