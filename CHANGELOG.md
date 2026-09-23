@@ -10,6 +10,19 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- **`event_timestamp` means the same thing on Android Segment as everywhere else: when the event was
+  fired, outside Segment's cold-start window** ([#254]). `SegmentTransport` on Android stamps inside
+  Segment's pipeline, and used to record the moment the pipeline reached the event — however long it
+  had waited in Segment's queue — while every core-stamped transport records the
+  `track`/`screen`/`identify` call time. The plugin now stamps with the event's own `timestamp`,
+  which analytics-kotlin sets on the caller's thread before queueing; an event the Segment SDK
+  generates itself carries its own creation time. Pipeline stamping — and with it the sequence
+  numbering of vendor-generated events — is unchanged. The README now states this observation point
+  as part of the stable envelope contract, and says what a third-party pipeline transport has to do
+  to meet it. One window stays open: an event fired before Segment has loaded its settings is held
+  by Segment and replayed with a fresh `timestamp`, so its `event_timestamp` is still the replay
+  time.
+
 - **An event racing `Tracker.close()` is now either drained or refused — the race no longer loses it**
   ([#254]). Admission was a `closed` check followed by a separate launch, and `close()` fixed the work
   to drain from a snapshot in between, so a `track` on another thread could pass the check, launch

@@ -12,8 +12,10 @@ import kotlinx.serialization.json.JsonObject
 public interface EnvelopeSource {
     /**
      * Returns a new envelope, recording the current time as its `event_timestamp`. Thread-safe;
-     * each call advances the sequence counters. Transports that stamp inside their own pipeline
-     * call this, since the app's original call time isn't available to them.
+     * each call advances the sequence counters. A transport that stamps inside its own pipeline
+     * should prefer the overload below with the event's own creation time when its pipeline carries
+     * one (Segment's does) — `event_timestamp` is defined as when the event was fired, not when the
+     * pipeline reached it. This is the fallback for a pipeline that carries no such time.
      */
     public fun stamp(): Envelope
 
@@ -21,8 +23,9 @@ public interface EnvelopeSource {
      * Returns a new envelope recording [eventTimestampMillis] as its `event_timestamp` — captured
      * at the `track`/`screen`/`identify` call site so the timestamp reflects when the app fired the
      * event, not when the serial dispatcher later drained and stamped it (which can lag under
-     * backpressure). Thread-safe; each call advances the sequence counters. The default ignores the
-     * timestamp and delegates to [stamp]; the library core overrides it to honor the value.
+     * backpressure). A transport stamping in its own pipeline passes the event's creation time here
+     * for the same reason. Thread-safe; each call advances the sequence counters. The default ignores
+     * the timestamp and delegates to [stamp]; the library core overrides it to honor the value.
      */
     public fun stamp(eventTimestampMillis: Long): Envelope = stamp()
 
