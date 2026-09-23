@@ -628,6 +628,34 @@ class ScreenTrackingUiTest {
     }
 
     @Test
+    fun aGlobalFrameReachesNavTrackScreenViews() {
+        runComposeUiTest {
+            val tracker = RecordingTracker()
+            val stack = ScopeStack()
+            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("acme"), "previous_screen" to JsonPrimitive("stale")))
+            lateinit var navController: NavHostController
+            setContent {
+                navController = rememberNavController()
+                WithTracker(tracker, stack) {
+                    navController.TrackScreenViews()
+                    NavHost(navController, startDestination = "home") {
+                        composable("home") {}
+                        composable("detail") {}
+                    }
+                }
+            }
+            waitForIdle()
+
+            runOnUiThread { navController.navigate("detail") }
+            waitForIdle()
+
+            assertEquals(listOf("home", "detail"), tracker.names)
+            assertEquals(listOf("acme", "acme"), tracker.screens.map { it.second["tenant"]?.jsonPrimitive?.content })
+            assertEquals("home", tracker.screens[1].second.previousScreen(), "the recorded one wins")
+        }
+    }
+
+    @Test
     fun aNonGlobalFrameDoesNotReachAScreenView() {
         // The other half of the rule: only GLOBAL frames are read. A sibling surface's declaration,
         // which the ambient snapshot would show, must stay off an explicit emit.
