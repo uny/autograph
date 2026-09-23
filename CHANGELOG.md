@@ -8,6 +8,28 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A Compose `Screen Viewed` now carries an app-wide `pushGlobal` scope, as a native one does**
+  ([#250]). #238 made the native `Screen Viewed` read the shared `ScopeStack`; the Compose emitters
+  (`TrackedScreen`, `TrackScreenView`, `NavController.TrackScreenViews`) still went straight to the
+  tracker, so following the README's `pushGlobal` recipe put `tenant` on every autocaptured tap and
+  every native screen view and left it off every Compose one — on the same screen whose own button
+  carried it, invisibly.
+
+  The read is deliberately the narrowest possible: **global frames only**, through the new
+  `ScopeStack.globalScope`. Not the ambient screen/section, not a sibling surface's scope. The rule
+  that only autocapture reads this stack still holds for everything else — `trackClick`,
+  `trackImpression` and your own `track` calls are unchanged — because what motivates that rule does
+  not apply to a global frame: it names no screen and takes no part in the sibling-ambiguity rule,
+  so it is the one thing on the stack an explicit emit cannot be misattributed by.
+
+  Precedence is unchanged and now pinned: an explicit call-site property wins, then the screen's own
+  `AutographScope`, then the global frame. Keeping that order is not free — `ScopedTracker` merges its
+  scope on the way *out*, so a global frame handed in as a property would have beaten the lexical
+  scope; the global keys the lexical chain already defines are dropped before the merge. `pushGlobal`'s
+  KDoc no longer claims it "applies to every event".
+
 ### Changed
 
 - **`AutocaptureConfig` is built through an `Autocapture { }` builder** instead of a `data class`
@@ -1516,4 +1538,5 @@ Initial release.
 [#237]: https://github.com/uny/autograph/issues/237
 [#238]: https://github.com/uny/autograph/issues/238
 [#240]: https://github.com/uny/autograph/issues/240
+[#250]: https://github.com/uny/autograph/issues/250
 [#257]: https://github.com/uny/autograph/issues/257

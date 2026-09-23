@@ -363,3 +363,29 @@ internal class ScopedTracker(
  */
 internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>): JsonObject =
     if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)
+
+/**
+ * [properties] with [global] merged **beneath** both the call site and every lexical scope [tracker]
+ * carries, keeping the documented precedence: an explicit call-site property wins, then a screen's own
+ * `AutographScope`, then an app-wide `pushGlobal` frame.
+ *
+ * Merging [global] into [properties] directly would invert the middle pair. [ScopedTracker] applies its
+ * scope on the way *out* (`scope + properties`, right wins), so anything handed in as a property beats
+ * the lexical scope — correct for a call-site property and wrong for a global one. Dropping the keys the
+ * lexical chain already defines is what restores the order, and it is exact rather than approximate:
+ * a key the chain does not define cannot be overridden by it, so merging it in early changes nothing.
+ *
+ * Used by the `Screen Viewed` emits, which reach the tracker directly rather than through autocapture
+ * and so would otherwise miss a global frame the native pipelines' screen views carry (#250).
+ */
+internal fun withGlobalScopeBeneath(tracker: Tracker, global: JsonObject, properties: JsonObject): JsonObject {
+    if (global.isEmpty()) return properties
+    // The chain is flattened to one level by [AutographScope] today; walking it costs nothing and does
+    // not assume that.
+    val lexicalKeys = generateSequence(tracker) { (it as? ScopedTracker)?.delegate }
+        .filterIsInstance<ScopedTracker>()
+        .flatMap { it.scope.keys }
+        .toSet()
+    val beneath = if (lexicalKeys.isEmpty()) global else global.filterKeys { it !in lexicalKeys }
+    return if (beneath.isEmpty()) properties else JsonObject(beneath + properties)
+}

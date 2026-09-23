@@ -130,9 +130,17 @@ public class ScopeStack {
     }
 
     /**
-     * Pushes a frame whose [scope] is **app-wide**: it applies to every event, whatever subtree the
-     * event happened in, and so it takes no part in the ambiguity rule of [resolveScope] — it neither
-     * makes another scope-bearing frame ambiguous nor is dropped as one. A tenant, an install id, an
+     * Pushes a frame whose [scope] is **app-wide**: it applies whatever subtree the event happened in,
+     * and so it takes no part in the ambiguity rule of [resolveScope] — it neither makes another
+     * scope-bearing frame ambiguous nor is dropped as one.
+     *
+     * "Every event" is the intent and not yet the whole truth, so read it as: every event that reads
+     * this stack, plus the `Screen Viewed` emits that read [globalScope] directly. That is every
+     * autocaptured tap on both pipelines, every native `Screen Viewed`, and — since #250 — every
+     * Compose `Screen Viewed`. It is **not** an explicit `trackClick` / `trackImpression` / `track`
+     * call, which carries its lexical scope and never reads this stack at all; those need the property
+     * passed at the call site, or a merge at the transport. See
+     * [#253](https://github.com/uny/autograph/issues/253). A tenant, an install id, an
      * experiment assignment pushed once at startup are the shape; it is the frame a host sharing one
      * stack between `AutographProvider` and the native captures reaches for.
      *
@@ -465,6 +473,39 @@ public class ScopeStack {
      * which an ambient read cannot claim. Only ancestors on THIS stack count, as in the origin walk
      * — a link off the stack is transparent, never a gate.
      */
+    /**
+     * The merged scope of every live [pushGlobal] frame, and nothing else — no screen, no section, no
+     * frame that a surface or a declaration pushed.
+     *
+     * The narrow read for a path that must **not** consult the ambient snapshot. `ScopeStack`'s rule is
+     * that only autocapture reads it: an explicit `track` call has a lexical scope of its own, and the
+     * ambient one would attribute it to whatever surface happens to be on display. Global frames are
+     * exempt from what motivates that rule — they carry no screen or section, and they take no part in
+     * [resolveScope]'s sibling-ambiguity rule, which is the mechanism that could attribute a neighbour's
+     * declaration to this event. So a global frame is the one thing on this stack an explicit emit can
+     * safely read, and this is the only way to read it without also getting everything else (#250).
+     *
+     * `autograph-compose`'s `TrackedScreen` / `TrackScreenView` / `NavController.TrackScreenViews` use
+     * it, so that a `Screen Viewed` from Compose carries an app-wide tenant or install id exactly as
+     * the native pipelines' `Screen Viewed` does — the two differed until #250, invisibly, on the same
+     * screen whose autocaptured taps carried it.
+     *
+     * Merged in insertion order among themselves, so a later global frame wins a key clash, matching
+     * [resolveScope]. Respects the active bit exactly as every other read does: an inactive global
+     * frame, or one nested under an inactive frame, contributes nothing. Empty when nothing global is
+     * pushed, which is the common case.
+     *
+     * **Threading.** Main thread only, like the rest of this class.
+     */
+    public val globalScope: JsonObject
+        get() {
+            val onStack = frames.toHashSet()
+            return frames
+                .filter { it.global && it.active && it.scope.isNotEmpty() }
+                .filterNot { it.hasInactiveAncestorOn(onStack, exempt = { false }) }
+                .fold(EmptyJsonObject) { acc, frame -> acc.merge(frame.scope) }
+        }
+
     private fun recompute(): AmbientContext {
         val onStack = frames.toHashSet()
         return resolve(frames.filter { frame -> !frame.hasInactiveAncestorOn(onStack, exempt = { false }) })

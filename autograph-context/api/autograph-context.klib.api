@@ -24,6 +24,8 @@ final class dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.con
 final class dev.ynagai.autograph.context/ScopeStack { // dev.ynagai.autograph.context/ScopeStack|null[0]
     constructor <init>() // dev.ynagai.autograph.context/ScopeStack.<init>|<init>(){}[0]
 
+    final val globalScope // dev.ynagai.autograph.context/ScopeStack.globalScope|{}globalScope[0]
+        final fun <get-globalScope>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph.context/ScopeStack.globalScope.<get-globalScope>|<get-globalScope>(){}[0]
     final val screenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory|{}screenHistory[0]
         final fun <get-screenHistory>(): dev.ynagai.autograph.context/ScreenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory.<get-screenHistory>|<get-screenHistory>(){}[0]
 
