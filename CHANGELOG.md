@@ -28,6 +28,28 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   records the trade exactly: `copy`, `componentN`, `equals`/`hashCode`/`toString` and the frozen
   constructor bridge leave; a settable `eventName` and the builder arrive.
 
+- **`installAutographNativeTapCapture` / `installAutographNativeScreenCapture` and the handles they
+  return are no longer `@AutographInternalApi`** ([#240]). They are the documented way to instrument a
+  native surface and ADR 0001 already listed them as public surface — review-enforced in
+  `autograph-android`, dump-covered in `autograph-uikit` — while the annotation said the opposite, that they are
+  unsupported and removable in a patch. An adopter following the README had to opt out of a guarantee
+  the project had already made, and could not tell which statement was the contract. **Adopters can
+  delete the `@OptIn(AutographInternalApi::class)` they were forced to write**; the sample apps' three
+  native entry points now compile with none. `defaultScreenName` (iOS) is public on the same grounds.
+  Nothing about the functions changed, so this is source-compatible in the direction that matters: an
+  existing `@OptIn` still compiles, now redundantly.
+
+  The annotation was never able to enforce what it claimed: `RequiresOptIn` does not reach the
+  Objective-C header a Swift consumer sees, and it is not recorded in the klib dump — removing it from
+  five declarations left `autograph-uikit`'s ABI dump byte-identical. It stays on the genuine
+  cross-module machinery (`ScopeStack` internals, the accessibility-tree walk, `Envelope`
+  construction), and its KDoc now carries the test for when it applies.
+
+- **ADR 0001 gains a removal rule** ([#240]). From 1.0, a public declaration in a tiered artifact is
+  removed only after at least two minor releases carrying `@Deprecated` — `WARNING`, then `ERROR` —
+  and only in a major release, with a `ReplaceWith` or a named successor. The ADR previously governed
+  only what may be *added*. `Modifier.autocaptureScope` keeps its pre-1.0 no-window removal.
+
 ## [0.10.0] - 2026-09-22
 
 ### Added
@@ -1492,5 +1514,6 @@ Initial release.
 [#224]: https://github.com/uny/autograph/issues/224
 [#228]: https://github.com/uny/autograph/issues/228
 [#237]: https://github.com/uny/autograph/issues/237
-[#257]: https://github.com/uny/autograph/issues/257
 [#238]: https://github.com/uny/autograph/issues/238
+[#240]: https://github.com/uny/autograph/issues/240
+[#257]: https://github.com/uny/autograph/issues/257
