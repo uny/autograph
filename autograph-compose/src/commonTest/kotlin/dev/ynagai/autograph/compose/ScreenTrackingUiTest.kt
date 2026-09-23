@@ -593,6 +593,30 @@ class ScreenTrackingUiTest {
     }
 
     @Test
+    fun anOuterScopeWinsOverAGlobalFrameThroughATrackerDecorator() {
+        // A custom Tracker between two AutographScopes hides the outer ScopedTracker from any walk of
+        // the delegate chain; the outer scope's keys must still hold the global frame beneath them.
+        runComposeUiTest {
+            val tracker = RecordingTracker()
+            val stack = ScopeStack()
+            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("global")))
+            setContent {
+                WithTracker(tracker, stack) {
+                    AutographScope("tenant" to "outer") {
+                        val decorated = object : Tracker by LocalTracker.current {}
+                        CompositionLocalProvider(LocalTracker provides decorated) {
+                            AutographScope("region" to "inner") { TrackScreenView("Home") }
+                        }
+                    }
+                }
+            }
+            waitForIdle()
+
+            assertEquals("outer", tracker.screens.single().second["tenant"]?.jsonPrimitive?.content)
+        }
+    }
+
+    @Test
     fun anExplicitPropertyStillWinsOverAGlobalFrame() {
         runComposeUiTest {
             val tracker = RecordingTracker()

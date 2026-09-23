@@ -88,7 +88,12 @@ public fun AutographScope(
     // pre-flattened. The decorator stays the source of truth for explicit `track` calls (lexical
     // scope); the stack serves the capture path (dynamic scope). See [ScopeStack].
     MirrorAmbientFrame(LocalScopeStack.current, scope = properties) {
-        CompositionLocalProvider(LocalTracker provides scoped, content = content)
+        val lexicalKeys = LocalLexicalScopeKeys.current
+        CompositionLocalProvider(
+            LocalTracker provides scoped,
+            LocalLexicalScopeKeys provides remember(lexicalKeys, properties) { lexicalKeys + properties.keys },
+            content = content,
+        )
     }
 }
 
@@ -315,6 +320,15 @@ internal expect fun rememberHostSurfaceLookup(): () -> ScopeHandle?
 internal val LocalScopeParent: ProvidableCompositionLocal<Array<ScopeHandle?>?> =
     staticCompositionLocalOf { null }
 
+/**
+ * Every key the enclosing [AutographScope]s define, accumulated down the composition — what a global
+ * frame must yield to in [withGlobalScopeBeneath]. Carried here rather than read off the
+ * [ScopedTracker] chain, which a custom `Tracker` decorator installed between two scopes hides: the
+ * outer scope's keys vanish behind it, and a global frame then beat them.
+ */
+internal val LocalLexicalScopeKeys: ProvidableCompositionLocal<Set<String>> =
+    staticCompositionLocalOf { emptySet() }
+
 private val fallbackScopeStack = ScopeStack()
 
 /**
@@ -366,29 +380,23 @@ internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>)
     if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)
 
 /**
- * [properties] with [stack]'s global scope merged **beneath** both the call site and every lexical scope [tracker]
- * carries, keeping the documented precedence: an explicit call-site property wins, then a screen's own
- * `AutographScope`, then an app-wide `pushGlobal` frame.
+ * [properties] with [stack]'s global scope merged **beneath** both the call site and every enclosing
+ * `AutographScope`, keeping the documented precedence: an explicit call-site property wins, then a
+ * screen's own `AutographScope`, then an app-wide `pushGlobal` frame.
  *
  * Merging it into [properties] directly would invert the middle pair. [ScopedTracker] applies its
  * scope on the way *out* (`scope + properties`, right wins), so anything handed in as a property beats
- * the lexical scope — correct for a call-site property and wrong for a global one. Dropping the keys the
- * lexical chain already defines is what restores the order, and it is exact rather than approximate:
- * a key the chain does not define cannot be overridden by it, so merging it in early changes nothing.
+ * the lexical scope — correct for a call-site property and wrong for a global one. Dropping
+ * [lexicalKeys] is what restores the order, and it is exact rather than approximate: a key no
+ * enclosing scope defines cannot be overridden by one, so merging it in early changes nothing.
  *
  * Used by the `Screen Viewed` emits, which reach the tracker directly rather than through autocapture
  * and so would otherwise miss a global frame the native pipelines' screen views carry (#250).
  */
 @OptIn(AutographInternalApi::class)
-internal fun withGlobalScopeBeneath(tracker: Tracker, stack: ScopeStack, properties: JsonObject): JsonObject {
+internal fun withGlobalScopeBeneath(stack: ScopeStack, lexicalKeys: Set<String>, properties: JsonObject): JsonObject {
     val global = stack.globalScope
     if (global.isEmpty()) return properties
-    // Only ScopedTracker links can be seen through: a custom Tracker decorator installed between two
-    // AutographScopes hides the outer scope's keys, and a global frame then beats them.
-    val lexicalKeys = generateSequence(tracker) { (it as? ScopedTracker)?.delegate }
-        .filterIsInstance<ScopedTracker>()
-        .flatMap { it.scope.keys }
-        .toSet()
     val beneath = if (lexicalKeys.isEmpty()) global else global.filterKeys { it !in lexicalKeys }
     return if (beneath.isEmpty()) properties else JsonObject(beneath + properties)
 }

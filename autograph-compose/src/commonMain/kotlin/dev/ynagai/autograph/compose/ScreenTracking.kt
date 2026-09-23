@@ -74,11 +74,12 @@ private fun EmitScreenView(
     // autocaptured taps carried it (#250). Read inside the effect so a frame pushed after this
     // composition still reaches the emit.
     val stack = LocalScopeStack.current
+    val lexicalKeys = LocalLexicalScopeKeys.current
     LaunchedEffect(name) {
         val previous = history.record(name)
         // previous_screen is added first so a global frame sits beneath it too, as on the native path.
         val withPrevious = withPreviousScreen(properties, previous)
-        tracker.screen(name, withGlobalScopeBeneath(tracker, stack, withPrevious))
+        tracker.screen(name, withGlobalScopeBeneath(stack, lexicalKeys, withPrevious))
     }
 }
 
