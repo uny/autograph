@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.context
 
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.asJsonObject
 import kotlin.concurrent.Volatile
@@ -483,7 +484,11 @@ public class ScopeStack {
      * there is no ancestor to consult. Empty when nothing global is pushed, which is the common case.
      *
      * **Threading.** Main thread only, like the rest of this class.
+     *
+     * `@AutographInternalApi`: public only so `autograph-compose` can reach it across the module
+     * boundary, like [emitScreenView]. Not a supported API for library users.
      */
+    @AutographInternalApi
     public val globalScope: JsonObject
         get() = frames
             .filter { it.global && it.active && it.scope.isNotEmpty() }

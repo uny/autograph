@@ -78,7 +78,7 @@ private fun EmitScreenView(
         val previous = history.record(name)
         // previous_screen is added first so a global frame sits beneath it too, as on the native path.
         val withPrevious = withPreviousScreen(properties, previous)
-        tracker.screen(name, withGlobalScopeBeneath(tracker, stack.globalScope, withPrevious))
+        tracker.screen(name, withGlobalScopeBeneath(tracker, stack, withPrevious))
     }
 }
 

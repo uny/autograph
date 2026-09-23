@@ -18,11 +18,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   carried it, invisibly.
 
   The read is deliberately the narrowest possible: **global frames only**, through the new
-  `ScopeStack.globalScope`. Not the ambient screen/section, not a sibling surface's scope. The rule
-  that only autocapture reads this stack still holds for everything else — `trackClick`,
-  `trackImpression` and your own `track` calls are unchanged — because what motivates that rule does
-  not apply to a global frame: it names no screen and takes no part in the sibling-ambiguity rule,
-  so it is the one thing on the stack an explicit emit cannot be misattributed by.
+  Autograph-internal `ScopeStack.globalScope`. Not the ambient screen/section, not a sibling surface's
+  scope. The rule that only autocapture reads this stack still holds for everything else —
+  `trackClick`, `trackImpression` and your own `track` calls are unchanged — because what motivates
+  that rule does not apply to a global frame: it names no screen and takes no part in the
+  sibling-ambiguity rule, so it is the one thing on the stack an explicit emit cannot be misattributed
+  by.
 
   Precedence is unchanged and now pinned: an explicit call-site property wins, then the screen's own
   `AutographScope`, then the global frame. Keeping that order is not free — `ScopedTracker` merges its

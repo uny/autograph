@@ -84,7 +84,7 @@ public fun NavController.TrackScreenViews(
                 // Global frames only — see EmitScreenView in ScreenTracking.kt for why this is the
                 // one stack read an explicit emit may take (#250).
                 val properties = withPreviousScreen(EmptyJsonObject, previous)
-                tracker.screen(name, withGlobalScopeBeneath(tracker, stack.globalScope, properties))
+                tracker.screen(name, withGlobalScopeBeneath(tracker, stack, properties))
             }
         }
         // The frame exists by now: the push effect above is declared first, and all DisposableEffects

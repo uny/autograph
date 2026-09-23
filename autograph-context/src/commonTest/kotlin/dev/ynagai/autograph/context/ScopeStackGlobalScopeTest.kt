@@ -1,5 +1,8 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.context
 
+import dev.ynagai.autograph.AutographInternalApi
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlinx.serialization.json.JsonObject

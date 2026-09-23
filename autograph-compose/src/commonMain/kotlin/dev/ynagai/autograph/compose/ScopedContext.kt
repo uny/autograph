@@ -10,6 +10,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
@@ -365,11 +366,11 @@ internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>)
     if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)
 
 /**
- * [properties] with [global] merged **beneath** both the call site and every lexical scope [tracker]
+ * [properties] with [stack]'s global scope merged **beneath** both the call site and every lexical scope [tracker]
  * carries, keeping the documented precedence: an explicit call-site property wins, then a screen's own
  * `AutographScope`, then an app-wide `pushGlobal` frame.
  *
- * Merging [global] into [properties] directly would invert the middle pair. [ScopedTracker] applies its
+ * Merging it into [properties] directly would invert the middle pair. [ScopedTracker] applies its
  * scope on the way *out* (`scope + properties`, right wins), so anything handed in as a property beats
  * the lexical scope — correct for a call-site property and wrong for a global one. Dropping the keys the
  * lexical chain already defines is what restores the order, and it is exact rather than approximate:
@@ -378,7 +379,9 @@ internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>)
  * Used by the `Screen Viewed` emits, which reach the tracker directly rather than through autocapture
  * and so would otherwise miss a global frame the native pipelines' screen views carry (#250).
  */
-internal fun withGlobalScopeBeneath(tracker: Tracker, global: JsonObject, properties: JsonObject): JsonObject {
+@OptIn(AutographInternalApi::class)
+internal fun withGlobalScopeBeneath(tracker: Tracker, stack: ScopeStack, properties: JsonObject): JsonObject {
+    val global = stack.globalScope
     if (global.isEmpty()) return properties
     // Only ScopedTracker links can be seen through: a custom Tracker decorator installed between two
     // AutographScopes hides the outer scope's keys, and a global frame then beats them.
