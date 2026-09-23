@@ -30,8 +30,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 - **`installAutographNativeTapCapture` / `installAutographNativeScreenCapture` and the handles they
   return are no longer `@AutographInternalApi`** ([#240]). They are the documented way to instrument a
-  native surface and ADR 0001 already listed them as the review-enforced public surface of
-  `autograph-uikit` and `autograph-android` — while the annotation said the opposite, that they are
+  native surface and ADR 0001 already listed them as public surface — review-enforced in
+  `autograph-android`, dump-covered in `autograph-uikit` — while the annotation said the opposite, that they are
   unsupported and removable in a patch. An adopter following the README had to opt out of a guarantee
   the project had already made, and could not tell which statement was the contract. **Adopters can
   delete the `@OptIn(AutographInternalApi::class)` they were forced to write**; the sample apps' three
@@ -1514,6 +1514,6 @@ Initial release.
 [#224]: https://github.com/uny/autograph/issues/224
 [#228]: https://github.com/uny/autograph/issues/228
 [#237]: https://github.com/uny/autograph/issues/237
+[#238]: https://github.com/uny/autograph/issues/238
 [#240]: https://github.com/uny/autograph/issues/240
 [#257]: https://github.com/uny/autograph/issues/257
-[#238]: https://github.com/uny/autograph/issues/238

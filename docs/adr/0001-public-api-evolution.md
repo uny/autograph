@@ -41,8 +41,8 @@ patch release.
 **That marker is for machinery, never for an entry point this project tells adopters to call.**
 Until [#240](https://github.com/uny/autograph/issues/240) the four `installAutographNative*`
 functions and the handles they return carried it while the README documented them as the supported
-way to instrument a native surface and this section listed them as the review-enforced public
-surface of their artifacts — so an adopter following the docs had to opt out of a guarantee already
+way to instrument a native surface and this section listed the Android pair as the review-enforced
+public surface of `autograph-android` — so an adopter following the docs had to opt out of a guarantee already
 made, and had no way to tell which of the two statements was the contract. The annotation could not
 enforce the boundary it claimed either: `RequiresOptIn` does not reach the Objective-C header a
 Swift consumer sees, and it is not recorded in the klib dump, so it is invisible to both of this
