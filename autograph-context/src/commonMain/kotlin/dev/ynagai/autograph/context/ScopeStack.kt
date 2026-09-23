@@ -462,18 +462,6 @@ public class ScopeStack {
         generateSequence(this) { it.parent }.any { it.boundary && it in onStack }
 
     /**
-     * The ambient snapshot. Here the active bit reaches DOWN the lineage without exemption: a frame
-     * nested under an inactive frame on this stack is out too, whatever its own bit says. Ambiently,
-     * "is this surface on display?" has to govern everything inside the surface — a `TrackedScreen`
-     * composed inside a demoted pager page, or a frame pushed under it *while* it is demoted (a page
-     * composes at STARTED, before it is ever shown), would otherwise keep naming the ambient screen;
-     * measured, a pager of Compose-declared pages read as the page most recently composed rather than
-     * the one on display (#228). The origin-taking [current] applies the same rule but exempts the
-     * origin's own surface: an origin is the pipeline asserting the event happened in that surface,
-     * which an ambient read cannot claim. Only ancestors on THIS stack count, as in the origin walk
-     * — a link off the stack is transparent, never a gate.
-     */
-    /**
      * The merged scope of every live [pushGlobal] frame, and nothing else — no screen, no section, no
      * frame that a surface or a declaration pushed.
      *
@@ -506,6 +494,18 @@ public class ScopeStack {
                 .fold(EmptyJsonObject) { acc, frame -> acc.merge(frame.scope) }
         }
 
+    /**
+     * The ambient snapshot. Here the active bit reaches DOWN the lineage without exemption: a frame
+     * nested under an inactive frame on this stack is out too, whatever its own bit says. Ambiently,
+     * "is this surface on display?" has to govern everything inside the surface — a `TrackedScreen`
+     * composed inside a demoted pager page, or a frame pushed under it *while* it is demoted (a page
+     * composes at STARTED, before it is ever shown), would otherwise keep naming the ambient screen;
+     * measured, a pager of Compose-declared pages read as the page most recently composed rather than
+     * the one on display (#228). The origin-taking [current] applies the same rule but exempts the
+     * origin's own surface: an origin is the pipeline asserting the event happened in that surface,
+     * which an ambient read cannot claim. Only ancestors on THIS stack count, as in the origin walk
+     * — a link off the stack is transparent, never a gate.
+     */
     private fun recompute(): AmbientContext {
         val onStack = frames.toHashSet()
         return resolve(frames.filter { frame -> !frame.hasInactiveAncestorOn(onStack, exempt = { false }) })
