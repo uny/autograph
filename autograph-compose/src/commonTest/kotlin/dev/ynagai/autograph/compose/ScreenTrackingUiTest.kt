@@ -617,6 +617,28 @@ class ScreenTrackingUiTest {
     }
 
     @Test
+    fun aNestedProviderDropsTheOuterScopesKeys() {
+        // A provider installs a tracker the enclosing AutographScope does not wrap, so that scope's
+        // keys must not hold the global frame back from this subtree's screen views.
+        runComposeUiTest {
+            val outer = RecordingTracker()
+            val inner = RecordingTracker()
+            val stack = ScopeStack()
+            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("global")))
+            setContent {
+                WithTracker(outer, stack) {
+                    AutographScope("tenant" to "outer") {
+                        AutographProvider(inner, scopeStack = stack) { TrackScreenView("Home") }
+                    }
+                }
+            }
+            waitForIdle()
+
+            assertEquals("global", inner.screens.single().second["tenant"]?.jsonPrimitive?.content)
+        }
+    }
+
+    @Test
     fun anExplicitPropertyStillWinsOverAGlobalFrame() {
         runComposeUiTest {
             val tracker = RecordingTracker()

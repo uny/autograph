@@ -86,6 +86,8 @@ public fun AutographProvider(
     CompositionLocalProvider(
         LocalTracker provides tracker,
         LocalScopeStack provides effectiveScopeStack,
+        // The enclosing AutographScopes no longer wrap this tracker, so their keys no longer apply.
+        LocalLexicalScopeKeys provides emptySet(),
     ) {
         // Outside the autocapture branch, like the host registration above, and for a related
         // reason: the frame is what nests this composition's TrackedScreens under the surface

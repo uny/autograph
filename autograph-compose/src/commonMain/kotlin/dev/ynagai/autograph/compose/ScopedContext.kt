@@ -324,7 +324,9 @@ internal val LocalScopeParent: ProvidableCompositionLocal<Array<ScopeHandle?>?> 
  * Every key the enclosing [AutographScope]s define, accumulated down the composition — what a global
  * frame must yield to in [withGlobalScopeBeneath]. Carried here rather than read off the
  * [ScopedTracker] chain, which a custom `Tracker` decorator installed between two scopes hides: the
- * outer scope's keys vanish behind it, and a global frame then beat them.
+ * outer scope's keys vanish behind it, and a global frame then beat them. [AutographProvider] resets
+ * it along with the tracker; a `LocalTracker` replaced by hand inside a scope does not, and loses the
+ * global value of any key an enclosing scope defines.
  */
 internal val LocalLexicalScopeKeys: ProvidableCompositionLocal<Set<String>> =
     staticCompositionLocalOf { emptySet() }
