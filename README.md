@@ -610,12 +610,15 @@ pushed once reaches both pipelines.
 ```kotlin
 // Android — in Application.onCreate()
 class SampleApp : Application() {
+    lateinit var screenCapture: AutographNativeScreenCapture
+    lateinit var tapCapture: AutographNativeTapCapture
+
     override fun onCreate() {
         super.onCreate()
         val scopeStack = ScopeStack()
         val tracker = Autograph { transport(SegmentTransport(analytics)) }
 
-        installAutographNativeScreenCapture(
+        screenCapture = installAutographNativeScreenCapture(
             application = this,
             tracker = tracker,
             scopeStack = scopeStack,
@@ -623,7 +626,7 @@ class SampleApp : Application() {
             activityScreenName = { it.javaClass.simpleName },
             fragmentScreenName = { it.javaClass.simpleName },
         )
-        installAutographNativeTapCapture(this, tracker, scopeStack)
+        tapCapture = installAutographNativeTapCapture(this, tracker, scopeStack)
         // Hand the SAME tracker and scopeStack to AutographProvider for the Compose half.
     }
 }
@@ -631,15 +634,23 @@ class SampleApp : Application() {
 
 ```kotlin
 // iOS — in your shared module, called once from the app's entry point
-fun installNativeCaptures(tracker: Tracker, scopeStack: ScopeStack) {
-    installAutographNativeScreenCapture(tracker, scopeStack)  // viewDidAppear: swizzle
-    installAutographNativeTapCapture(tracker, scopeStack)     // UIView.hitTest
+class NativeCaptures(tracker: Tracker, scopeStack: ScopeStack) {
+    private val screen = installAutographNativeScreenCapture(tracker, scopeStack)  // viewDidAppear: swizzle
+    private val tap = installAutographNativeTapCapture(tracker, scopeStack)        // UIView.hitTest
+
+    fun uninstall() {
+        screen.uninstall()
+        tap.uninstall()
+    }
 }
 ```
 
-Both installers return a handle with `uninstall()`. Keep it: the tap captures hold the tracker and
-the stack strongly, so an app that replaces its tracker on logout must uninstall rather than rely on
-the handle being dropped.
+Both installers return a handle with `uninstall()`. Keep it: the captures hold the tracker and the
+stack (the tap captures strongly, iOS's screen capture in a process-global slot), so dropping the
+handle releases nothing. On logout, uninstall all of them and re-install with a new tracker **and a
+new `ScopeStack`**, handing that same new stack to `AutographProvider` — the stack carries the
+previous user's `previous_screen` and any `pushGlobal` context, and nothing resets it for you
+(`Tracker.reset()` included).
 
 **Install once, and `uninstall()` before installing again.** Three of the four installers *stack*
 rather than replace — the Android pair each register another `ActivityLifecycleCallbacks`, and the
