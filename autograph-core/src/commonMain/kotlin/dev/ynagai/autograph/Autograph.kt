@@ -8,11 +8,13 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.atomicfu.locks.SynchronizedObject
+import kotlinx.atomicfu.locks.synchronized
 import kotlinx.serialization.json.JsonPrimitive
-import kotlin.concurrent.Volatile
 import kotlin.time.Clock
 
 /** Configuration for the [Autograph] builder. */
@@ -73,12 +75,15 @@ public class AutographConfig internal constructor() {
      * **single-threaded / serial** so sequence numbers keep their call order; the default is a
      * single-slot view over [Dispatchers.Default] that owns no thread of its own. Override to
      * integrate with your own threading, or set [Dispatchers.Unconfined] in tests to stamp
-     * synchronously.
+     * synchronously. A dispatcher that runs work inline (`Unconfined`, or any whose
+     * `isDispatchNeeded` is false) also runs delivery inside the tracker's admission lock, serializing
+     * callers behind the transport: fine for tests, not for production.
      */
     public var dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
 
     internal var transport: Transport? = null
     internal var clock: () -> Long = { Clock.System.now().toEpochMilliseconds() }
+    internal var closeDrainTimeoutMillis: Long = CLOSE_DRAIN_TIMEOUT_MILLIS
 
     /** Sets the transport that delivers events, e.g. `SegmentTransport` from `autograph-segment`. */
     public fun transport(transport: Transport) {
@@ -111,7 +116,10 @@ public fun Autograph(configure: AutographConfig.() -> Unit): Tracker {
         clock = config.clock,
         schemaVersion = config.schemaVersion,
     )
-    return AutographTracker(transport, stamper, config.dispatcher, config.validator, config.strictValidation, config.clock, config.logger)
+    return AutographTracker(
+        transport, stamper, config.dispatcher, config.validator, config.strictValidation, config.clock, config.logger,
+        config.closeDrainTimeoutMillis,
+    )
 }
 
 internal class AutographTracker(
@@ -122,6 +130,7 @@ internal class AutographTracker(
     private val strictValidation: Boolean,
     private val clock: () -> Long,
     private val logger: AutographLogger,
+    private val closeDrainTimeoutMillis: Long,
 ) : Tracker {
 
     // A failed analytics delivery must never crash the app, and one failure must not tear down the
@@ -148,12 +157,22 @@ internal class AutographTracker(
     }
 
     /**
-     * Set at the very start of [close], before the drain, so nothing new joins the set of work being
-     * drained — otherwise a `track` racing the shutdown could enqueue after the children were
-     * snapshotted and be cancelled anyway, which is the loss [close] exists to prevent.
+     * Guards the admission cutoff: [closed], [inFlight], and the launch onto [scope] all change under
+     * it, so a call is accepted if and only if it takes the lock before [close] does. Checking [closed]
+     * and launching as two unguarded steps let a `track` racing the shutdown pass the check, then
+     * launch after [close] had snapshotted the children — outside the drain, and cancelled with the
+     * scope: the very loss [close] exists to prevent.
      */
-    @Volatile
+    private val lock = SynchronizedObject()
+
     private var closed = false
+
+    /**
+     * Pipeline-mode calls accepted but still inside the transport. They run synchronously on the
+     * caller's thread, outside [lock], so [close] waits for this to reach zero before flushing —
+     * otherwise its flush could overtake an accepted call still on its way into the transport.
+     */
+    private var inFlight = 0
 
     init {
         transport.connect(stamper)
@@ -177,15 +196,44 @@ internal class AutographTracker(
             // CoroutineExceptionHandler above never sees it. Mirror its swallow-and-[report] here so a
             // throwing pipeline transport honors the same "a failed delivery must never crash the app"
             // contract, and its failure still reaches [logger] instead of propagating into `track`.
-            try {
-                send(null)
-            } catch (e: Exception) {
-                report("Autograph: event delivery failed: ${e.message}")
+            admitInPipeline {
+                try {
+                    send(null)
+                } catch (e: Exception) {
+                    report("Autograph: event delivery failed: ${e.message}")
+                }
             }
         } else {
+            synchronized(lock) {
+                if (closed) return
+                val eventTimestampMillis = clock()
+                scope.launch { send(stamper.stamp(eventTimestampMillis)) }
+            }
+        }
+    }
+
+    /**
+     * Runs [call] on the caller's thread if this tracker is still open, counted in [inFlight] so
+     * [close] can wait for it. The call itself runs outside [lock]: holding a lock across a transport
+     * we don't own would serialize every caller behind it, and deadlock one that calls back in.
+     */
+    private inline fun admitInPipeline(call: () -> Unit) {
+        synchronized(lock) {
             if (closed) return
-            val eventTimestampMillis = clock()
-            scope.launch { send(stamper.stamp(eventTimestampMillis)) }
+            inFlight++
+        }
+        try {
+            call()
+        } finally {
+            synchronized(lock) { inFlight-- }
+        }
+    }
+
+    /** Launches [block] onto [scope] if this tracker is still open, atomically with respect to [close]. */
+    private fun launchIfOpen(block: suspend () -> Unit) {
+        synchronized(lock) {
+            if (closed) return
+            scope.launch { block() }
         }
     }
 
@@ -247,10 +295,9 @@ internal class AutographTracker(
     // serial [scope] so they run after any already-enqueued events.
     override fun flush() {
         if (transport.stampsInPipeline) {
-            transport.flush()
+            admitInPipeline { transport.flush() }
         } else {
-            if (closed) return
-            scope.launch { transport.flush() }
+            launchIfOpen { transport.flush() }
         }
     }
 
@@ -261,10 +308,9 @@ internal class AutographTracker(
             // (EnvelopeSource.reset) inside its pipeline after any already-enqueued events — see
             // EnvelopeSource.reset. Resetting the stamper synchronously here would instead rotate
             // the session out from under events still queued in the pipeline, mis-attributing them.
-            transport.reset()
+            admitInPipeline { transport.reset() }
         } else {
-            if (closed) return
-            scope.launch {
+            launchIfOpen {
                 stamper.reset()
                 transport.reset()
             }
@@ -272,8 +318,16 @@ internal class AutographTracker(
     }
 
     /**
-     * Drains before releasing: stop accepting new work, wait for everything already enqueued to be
+     * Drains before releasing: stop accepting new work, wait for everything already accepted to be
      * stamped and handed to the transport, [Transport.flush] it, and only then cancel the scope.
+     *
+     * The cutoff is one operation in both transport modes: under [lock], [closed] is set and the work
+     * to drain is fixed — the scope's children when the core stamps, the calls still inside the
+     * transport ([inFlight]) when it stamps in its own pipeline. The wait itself happens outside the
+     * lock, so a `track` racing the shutdown is refused at once rather than blocked for the drain.
+     *
+     * Admission stops *through this tracker* only. A pipeline transport's vendor client is not ours:
+     * whatever the app or the vendor SDK sends through it directly is still delivered, and stamped.
      *
      * The old implementation cancelled outright, which silently dropped every enqueued-but-unstamped
      * event — a self-inconsistency for a library whose headline guarantee is that ordering information
@@ -287,22 +341,29 @@ internal class AutographTracker(
      *
      * Bounded by [CLOSE_DRAIN_TIMEOUT_MILLIS] — see [drainBlocking] for why a bound, and for the one
      * configuration (closing from the tracker's own single-threaded dispatcher) that starves the drain.
+     * A drain cut short by the bound is reported through the logger rather than returning silently.
      * Idempotent.
      */
     override fun close() {
-        if (closed) return
-        closed = true
-        if (transport.stampsInPipeline) {
-            // Nothing was ever scheduled onto the scope, so there is nothing of ours to drain; the
-            // transport owns its own queue and flush is the only thing we can ask of it.
-            transport.flush()
-        } else {
-            drainBlocking(CLOSE_DRAIN_TIMEOUT_MILLIS) {
-                // Snapshot first: joining a live sequence would also wait on anything added while we
-                // wait, and `closed` has already stopped this tracker adding more.
-                scope.coroutineContext.job.children.toList().joinAll()
-                transport.flush()
+        val accepted = synchronized(lock) {
+            if (closed) return
+            closed = true
+            // Snapshot under the lock: every launch that won the race is already a child, and none can
+            // be added after this point.
+            scope.coroutineContext.job.children.toList()
+        }
+        val drained = drainBlocking(closeDrainTimeoutMillis) {
+            if (transport.stampsInPipeline) {
+                // Nothing of ours is queued; wait only for accepted calls still entering the transport,
+                // which owns its own queue — flush is the only thing we can ask of it.
+                while (synchronized(lock) { inFlight } > 0) delay(1)
+            } else {
+                accepted.joinAll()
             }
+            transport.flush()
+        }
+        if (!drained) {
+            report("Autograph: close() gave up after ${closeDrainTimeoutMillis}ms; events it accepted may not have reached the transport")
         }
         scope.cancel()
     }

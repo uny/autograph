@@ -1,7 +1,10 @@
 package dev.ynagai.autograph
 
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -16,7 +19,10 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
+import kotlin.concurrent.Volatile
+import kotlin.coroutines.CoroutineContext
 import kotlin.test.assertTrue
+import kotlin.time.Clock
 import kotlin.time.Instant
 import kotlin.time.TimeSource
 
@@ -491,17 +497,83 @@ class AutographTrackerTest {
         assertEquals(1, transport.calls.size, "an event enqueued after close() must never reach the transport")
     }
 
+    // #254: close() used to stop admission only when the core stamps, so swapping in a pipeline
+    // transport silently changed what close() meant for the app.
     @Test
-    fun closeDoesNotAffectAPipelineTransportsOwnDelivery() {
-        // stampsInPipeline transports are handed events synchronously, bypassing this tracker's
-        // scope entirely, so close() (which only cancels that scope) must not stop them.
+    fun closeStopsAdmissionForAPipelineTransportToo() {
         val transport = RecordingTransport(stampsInPipeline = true)
         val tracker = tracker(transport)
 
+        tracker.track("before close")
         tracker.close()
-        tracker.track("still delivered")
+        tracker.track("after close")
+        tracker.screen("after close")
+        tracker.identify("after close")
 
-        assertEquals(1, transport.calls.size)
+        assertEquals(listOf("before close"), transport.calls.map { it.second })
+    }
+
+    // #254: the admission check and the launch were two unguarded steps, so a call could pass the
+    // check, lose the race to close(), and launch after the drain had been fixed — then be cancelled
+    // with the scope. The clock is read inside the admission step, which makes it the hook: it fires
+    // close() on another thread and gives it [CloseRace.WINDOW_MILLIS] to finish. Under the old code
+    // close() finished inside that window and the event was lost; now close() cannot fix its drain
+    // until the admission is complete, so the event is drained instead.
+    @Test
+    fun aCoreStampedCallRacingCloseIsDrainedNotLost() = runTest {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val race = CloseRace()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            clock = {
+                race.fireOnce()
+                Clock.System.now().toEpochMilliseconds()
+            }
+        }
+        race.target = tracker
+
+        race.armed = true
+        tracker.track("racer")
+        race.closing!!.join()
+
+        assertEquals(listOf("racer"), transport.calls.map { it.second })
+    }
+
+    // The pipeline-mode half of the race above: the call is already inside the transport when close()
+    // runs. close()'s flush must wait for it; before #254 it flushed at once, overtaking the call.
+    @Test
+    fun closeWaitsForAPipelineCallStillInsideTheTransportBeforeFlushing() = runTest {
+        val race = CloseRace()
+        val transport = OrderRecordingPipelineTransport(onTrack = race::fireOnce)
+        val tracker = tracker(transport)
+        race.target = tracker
+
+        race.armed = true
+        tracker.track("racer")
+        race.closing!!.join()
+
+        assertEquals(listOf("track racer", "flush"), transport.log)
+    }
+
+    @Test
+    fun closeReportsADrainCutShortByItsTimeout() {
+        val logs = mutableListOf<String>()
+        val tracker = Autograph {
+            transport(RecordingTransport(stampsInPipeline = false))
+            store = InMemorySeqStore()
+            // Accepts work and never runs it, so the drain cannot finish.
+            dispatcher = object : CoroutineDispatcher() {
+                override fun dispatch(context: CoroutineContext, block: Runnable) {}
+            }
+            logger = AutographLogger { logs += it }
+            closeDrainTimeoutMillis = 50
+        }
+
+        tracker.track("stuck")
+        tracker.close()
+
+        assertTrue(logs.any { "gave up" in it }, "a drain cut short must be reported, not silent: $logs")
     }
 
     @Test
@@ -591,5 +663,59 @@ private class SlowRecordingTransport(private val perEventMillis: Int = 2) : Tran
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         names += userId
+    }
+}
+
+/**
+ * Fires [Tracker.close] on another thread from inside an admission, then gives it [WINDOW_MILLIS] to
+ * finish before letting the admission continue — long enough for an unguarded close() to complete
+ * and lose the racing call, which is what the tests using it pin as fixed. Busy-waits for the same
+ * reason [SlowRecordingTransport] does.
+ */
+private class CloseRace {
+    lateinit var target: Tracker
+
+    @Volatile
+    var armed = false
+
+    @Volatile
+    private var closeReturned = false
+
+    var closing: Job? = null
+
+    fun fireOnce() {
+        if (!armed) return
+        armed = false
+        closing = CoroutineScope(Dispatchers.Default).launch {
+            target.close()
+            closeReturned = true
+        }
+        val start = TimeSource.Monotonic.markNow()
+        @Suppress("ControlFlowWithEmptyBody")
+        while (!closeReturned && start.elapsedNow().inWholeMilliseconds < WINDOW_MILLIS) {
+        }
+    }
+
+    companion object {
+        const val WINDOW_MILLIS = 500
+    }
+}
+
+/** A pipeline transport that records track and flush in the order they reach it. */
+private class OrderRecordingPipelineTransport(private val onTrack: () -> Unit) : Transport {
+    override val stampsInPipeline: Boolean get() = true
+    val log = mutableListOf<String>()
+
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        onTrack()
+        log += "track $name"
+    }
+
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {}
+
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {}
+
+    override fun flush() {
+        log += "flush"
     }
 }

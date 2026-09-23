@@ -10,6 +10,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- **An event racing `Tracker.close()` is now either drained or refused — the race no longer loses it**
+  ([#254]). Admission was a `closed` check followed by a separate launch, and `close()` fixed the work
+  to drain from a snapshot in between, so a `track` on another thread could pass the check, launch
+  after the snapshot, and be cancelled with the scope: the exact loss `close()`'s drain exists to
+  prevent. The check, the launch and the snapshot now share one lock; the drain itself waits outside
+  it, so a racing call is refused at once rather than blocked. A drain cut short by its timeout is now
+  reported through `AutographConfig.logger` instead of returning silently.
+
 - **A Compose `Screen Viewed` now carries an app-wide `pushGlobal` scope, as a native one does**
   ([#250]). [#238] made the native `Screen Viewed` read the shared `ScopeStack`; the Compose emitters
   (`TrackedScreen`, `TrackScreenView`, `NavController.TrackScreenViews`) still went straight to the
@@ -32,6 +40,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   KDoc no longer claims it "applies to every event".
 
 ### Changed
+
+- **`Tracker.close()` stops `track`/`screen`/`identify`/`flush`/`reset` whichever transport is plugged
+  in** ([#254]). It used to stop them only when the core stamps; with a transport that stamps in its
+  own pipeline (`SegmentTransport` on Android) they kept reaching the transport after `close()`, so
+  swapping transport silently changed what closing a tracker meant. If you relied on a closed
+  pipeline-mode tracker still delivering, keep the tracker open instead. `close()` still stops
+  delivery *through this tracker* only: it does not claim the vendor client underneath, so events the
+  app or the vendor SDK sends through that client directly are still delivered and stamped. In pipeline
+  mode, `close()` now also waits for calls already inside the transport before it flushes.
+  `notifyForeground`/`notifyBackground` are unaffected, as before.
 
 - **`AutocaptureConfig` is built through an `Autocapture { }` builder** instead of a `data class`
   constructor, so autocapture can gain a knob without a major release ([#257]).
@@ -1540,4 +1558,5 @@ Initial release.
 [#238]: https://github.com/uny/autograph/issues/238
 [#240]: https://github.com/uny/autograph/issues/240
 [#250]: https://github.com/uny/autograph/issues/250
+[#254]: https://github.com/uny/autograph/issues/254
 [#257]: https://github.com/uny/autograph/issues/257
