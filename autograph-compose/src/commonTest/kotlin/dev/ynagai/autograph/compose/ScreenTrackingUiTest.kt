@@ -610,6 +610,24 @@ class ScreenTrackingUiTest {
     }
 
     @Test
+    fun aGlobalPreviousScreenDoesNotMaskTheRecordedOne() {
+        // previous_screen is generated, not scope: a global frame defining it must sit beneath it, as
+        // it does on the native path (ScreenEmit), rather than pass for a call-site property.
+        runComposeUiTest {
+            val tracker = RecordingTracker()
+            val stack = ScopeStack()
+            stack.screenHistory.record("Login")
+            stack.pushGlobal(mapOf("previous_screen" to JsonPrimitive("stale")))
+            setContent {
+                WithTracker(tracker, stack) { TrackScreenView("Home") }
+            }
+            waitForIdle()
+
+            assertEquals("Login", tracker.screens.single().second.previousScreen())
+        }
+    }
+
+    @Test
     fun aNonGlobalFrameDoesNotReachAScreenView() {
         // The other half of the rule: only GLOBAL frames are read. A sibling surface's declaration,
         // which the ambient snapshot would show, must stay off an explicit emit.
