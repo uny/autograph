@@ -655,7 +655,8 @@ previous user's `previous_screen` and any `pushGlobal` context, and nothing rese
 **Install once, and `uninstall()` before installing again.** Three of the four installers *stack*
 rather than replace — the Android pair each register another `ActivityLifecycleCallbacks`, and the
 iOS tap capture attaches another recognizer to every window — so a second install without an
-uninstall reports every tap twice. Only the iOS screen capture replaces its predecessor (its sink is
+uninstall reports every tap twice (either tap capture) or every `Screen Viewed` twice (Android's
+screen capture). Only the iOS screen capture replaces its predecessor (its sink is
 a single process-global slot, and the `viewDidAppear:` swizzle itself installs once and stays). If
 the install site can run more than once — a SwiftUI `.onAppear`, an Activity that re-creates — guard
 it yourself; the samples do.
