@@ -26,7 +26,7 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
 import dev.ynagai.autograph.android.installAutographNativeTapCapture
-import dev.ynagai.autograph.compose.AutocaptureConfig
+import dev.ynagai.autograph.compose.Autocapture
 import dev.ynagai.autograph.compose.AutographProvider
 import dev.ynagai.autograph.compose.AutographScope
 import dev.ynagai.autograph.compose.TrackScreenViews
@@ -51,7 +51,7 @@ import org.robolectric.annotation.Config
 /** One provider-rooted composition with a single tappable element filling it. */
 @Composable
 private fun Tappable(tag: String, content: @Composable () -> Unit = {}) {
-    AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+    AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
         content()
         Box(Modifier.fillMaxSize().testTag(tag).clickable {}) {}
     }
@@ -60,7 +60,7 @@ private fun Tappable(tag: String, content: @Composable () -> Unit = {}) {
 /** A composition that declares [screen] around its tappable. */
 @Composable
 private fun DeclaringTappable(screen: String, tag: String) {
-    AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+    AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
         TrackedScreen(screen) { Box(Modifier.fillMaxSize().testTag(tag).clickable {}) {} }
     }
 }
@@ -97,10 +97,10 @@ class SiblingProvidersFragment : Fragment() {
         ComposeView(requireContext()).apply {
             setContent {
                 androidx.compose.foundation.layout.Column {
-                    AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                    AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
                         TrackedScreen("A") { InteropButton { OriginFixtures.interopButton = it } }
                     }
-                    AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                    AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
                         TrackedScreen("B") { InteropButton { OriginFixtures.secondInteropButton = it } }
                     }
                 }
@@ -113,9 +113,9 @@ class NestedProvidersFragment : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         ComposeView(requireContext()).apply {
             setContent {
-                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
                     TrackedScreen("Outer") {
-                        AutographProvider(OriginFixtures.innerTracker!!, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                        AutographProvider(OriginFixtures.innerTracker!!, Autocapture(), OriginFixtures.scopeStack) {
                             TrackedScreen("Inner") { Box(Modifier.fillMaxSize().testTag("inner").clickable {}) {} }
                         }
                     }
@@ -158,7 +158,7 @@ class ScopedTapFragment : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         ComposeView(requireContext()).apply {
             setContent {
-                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
                     TrackedScreen("Article") {
                         AutographScope("article_id" to "1") { Box(Modifier.fillMaxSize().testTag("scoped").clickable {}) {} }
                     }
@@ -175,7 +175,7 @@ class InteropFragment : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         ComposeView(requireContext()).apply {
             setContent {
-                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
                     TrackedScreen("Detail") {
                         AndroidView(factory = { context ->
                             android.widget.Button(context).apply {
@@ -195,7 +195,7 @@ class NavHostFragment2 : Fragment() {
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
         ComposeView(requireContext()).apply {
             setContent {
-                AutographProvider(OriginFixtures.tracker, AutocaptureConfig(), OriginFixtures.scopeStack) {
+                AutographProvider(OriginFixtures.tracker, Autocapture(), OriginFixtures.scopeStack) {
                     val navController = rememberNavController()
                     navController.TrackScreenViews()
                     NavHost(navController, startDestination = "home") {

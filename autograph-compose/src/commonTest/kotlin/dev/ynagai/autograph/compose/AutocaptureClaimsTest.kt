@@ -170,7 +170,7 @@ class AutocaptureClaimDisposalTest {
         var claims: AutocaptureClaims? = null
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                AutographProvider(NoopTracker(), autocapture = Autocapture()) {
                     claims = LocalAutocaptureClaims.current
                     if (visible) {
                         Box(Modifier.testTag("ignored").size(10.dp).autographIgnore())
@@ -197,7 +197,7 @@ class AutocaptureClaimDisposalTest {
     fun autographIgnoreStillSetsTheSemanticsKey() = runComposeUiTest {
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                AutographProvider(NoopTracker(), autocapture = Autocapture()) {
                     Box(Modifier.testTag("ignored").size(10.dp).autographIgnore())
                 }
             }
@@ -236,7 +236,7 @@ class AutocaptureClaimDisposalTest {
         val tracker = ProbingTracker { markedDuringTrack = claims.instrumentedClickExecutedThisGeneration() }
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(tracker, autocapture = AutocaptureConfig()) {
+                AutographProvider(tracker, autocapture = Autocapture()) {
                     claims = LocalAutocaptureClaims.current!!
                     Box(
                         Modifier.testTag("tracked").size(40.dp).trackClick("Item Clicked") {
@@ -279,7 +279,7 @@ class AutocaptureClaimDisposalTest {
         lateinit var claims: AutocaptureClaims
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                AutographProvider(NoopTracker(), autocapture = Autocapture()) {
                     claims = LocalAutocaptureClaims.current!!
                     Box(Modifier.testTag("tracked").size(40.dp).trackClick("Item Clicked") {})
                 }
@@ -314,7 +314,7 @@ class AutocaptureClaimDisposalTest {
         var claims: AutocaptureClaims? = null
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                AutographProvider(NoopTracker(), autocapture = Autocapture()) {
                     claims = LocalAutocaptureClaims.current
                     Box(Modifier.testTag("tracked").size(10.dp).trackImpression("Card Viewed"))
                 }
@@ -348,7 +348,7 @@ class AutocaptureClaimDisposalTest {
         var actualBoundsInWindow: Rect? = null
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                AutographProvider(NoopTracker(), autocapture = Autocapture()) {
                     claims = LocalAutocaptureClaims.current
                     Box(Modifier.padding(start = 40.dp, top = 60.dp)) {
                         Box(
@@ -377,7 +377,7 @@ class AutocaptureClaimDisposalTest {
         var claims: AutocaptureClaims? = null
         setContent {
             PlatformAutocaptureTestHost {
-                AutographProvider(NoopTracker(), autocapture = AutocaptureConfig()) {
+                AutographProvider(NoopTracker(), autocapture = Autocapture()) {
                     claims = LocalAutocaptureClaims.current
                     Box(Modifier.padding(start = offset)) {
                         Box(Modifier.testTag("ignored").size(10.dp).autographIgnore())

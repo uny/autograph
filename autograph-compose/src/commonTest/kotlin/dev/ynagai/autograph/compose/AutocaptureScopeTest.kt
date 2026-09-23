@@ -1005,7 +1005,7 @@ class AutocaptureScopeTest {
         assertNull(stack.current().scope.str("article_id"))
 
         val resolved = assertNotNull(semanticsRoot().resolveTapAt(centreOf("row2")))
-        reportTapIfResolvable(tracker, stack, AutocaptureConfig()) { resolved }
+        reportTapIfResolvable(tracker, stack, Autocapture()) { resolved }
 
         val props = tracker.trackedProps.single()
         assertEquals("row2", props.str("article_id"), "the tapped row's own scope")

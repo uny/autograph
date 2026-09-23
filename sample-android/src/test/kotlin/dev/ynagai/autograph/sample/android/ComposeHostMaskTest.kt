@@ -13,7 +13,7 @@ import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.android.installAutographNativeScreenCapture
-import dev.ynagai.autograph.compose.AutocaptureConfig
+import dev.ynagai.autograph.compose.Autocapture
 import dev.ynagai.autograph.compose.AutographProvider
 import dev.ynagai.autograph.compose.TrackedScreen
 import dev.ynagai.autograph.context.ScopeStack
@@ -49,7 +49,7 @@ class DeclaringComposeFragment : Fragment() {
         savedInstanceState: Bundle?,
     ): View = ComposeView(requireContext()).apply {
         setContent {
-            AutographProvider(HybridFixtures.tracker, AutocaptureConfig(), HybridFixtures.scopeStack) {
+            AutographProvider(HybridFixtures.tracker, Autocapture(), HybridFixtures.scopeStack) {
                 TrackedScreen("ComposeScreen") { Box(androidx.compose.ui.Modifier) {} }
             }
         }
@@ -64,7 +64,7 @@ class SilentComposeFragment : Fragment() {
         savedInstanceState: Bundle?,
     ): View = ComposeView(requireContext()).apply {
         setContent {
-            AutographProvider(HybridFixtures.tracker, AutocaptureConfig(), HybridFixtures.scopeStack) {
+            AutographProvider(HybridFixtures.tracker, Autocapture(), HybridFixtures.scopeStack) {
                 Box(androidx.compose.ui.Modifier) {}
             }
         }

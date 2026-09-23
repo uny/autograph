@@ -7,16 +7,9 @@
 
 // Library unique name: <dev.ynagai.autograph:autograph-compose>
 final class dev.ynagai.autograph.compose/AutocaptureConfig { // dev.ynagai.autograph.compose/AutocaptureConfig|null[0]
-    constructor <init>(kotlin/String = ...) // dev.ynagai.autograph.compose/AutocaptureConfig.<init>|<init>(kotlin.String){}[0]
-
-    final val eventName // dev.ynagai.autograph.compose/AutocaptureConfig.eventName|{}eventName[0]
+    final var eventName // dev.ynagai.autograph.compose/AutocaptureConfig.eventName|{}eventName[0]
         final fun <get-eventName>(): kotlin/String // dev.ynagai.autograph.compose/AutocaptureConfig.eventName.<get-eventName>|<get-eventName>(){}[0]
-
-    final fun component1(): kotlin/String // dev.ynagai.autograph.compose/AutocaptureConfig.component1|component1(){}[0]
-    final fun copy(kotlin/String = ...): dev.ynagai.autograph.compose/AutocaptureConfig // dev.ynagai.autograph.compose/AutocaptureConfig.copy|copy(kotlin.String){}[0]
-    final fun equals(kotlin/Any?): kotlin/Boolean // dev.ynagai.autograph.compose/AutocaptureConfig.equals|equals(kotlin.Any?){}[0]
-    final fun hashCode(): kotlin/Int // dev.ynagai.autograph.compose/AutocaptureConfig.hashCode|hashCode(){}[0]
-    final fun toString(): kotlin/String // dev.ynagai.autograph.compose/AutocaptureConfig.toString|toString(){}[0]
+        final fun <set-eventName>(kotlin/String) // dev.ynagai.autograph.compose/AutocaptureConfig.eventName.<set-eventName>|<set-eventName>(kotlin.String){}[0]
 }
 
 final class dev.ynagai.autograph.compose/ScreenContext { // dev.ynagai.autograph.compose/ScreenContext|null[0]
@@ -48,6 +41,7 @@ final fun (androidx.compose.ui/Modifier).dev.ynagai.autograph.compose/autographI
 final fun (androidx.compose.ui/Modifier).dev.ynagai.autograph.compose/trackClick(kotlin/String, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/Function0<kotlin/Unit>): androidx.compose.ui/Modifier // dev.ynagai.autograph.compose/trackClick|trackClick@androidx.compose.ui.Modifier(kotlin.String;kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.Function0<kotlin.Unit>){}[0]
 final fun (androidx.compose.ui/Modifier).dev.ynagai.autograph.compose/trackImpression(kotlin/String, kotlinx.serialization.json/JsonObject = ..., kotlin/String? = ..., kotlin/Long = ..., kotlin/Float = ...): androidx.compose.ui/Modifier // dev.ynagai.autograph.compose/trackImpression|trackImpression@androidx.compose.ui.Modifier(kotlin.String;kotlinx.serialization.json.JsonObject;kotlin.String?;kotlin.Long;kotlin.Float){}[0]
 final fun (androidx.navigation/NavController).dev.ynagai.autograph.compose/TrackScreenViews(kotlin/Function1<androidx.navigation/NavDestination, kotlin/String?>?, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // dev.ynagai.autograph.compose/TrackScreenViews|TrackScreenViews@androidx.navigation.NavController(kotlin.Function1<androidx.navigation.NavDestination,kotlin.String?>?;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]
+final fun dev.ynagai.autograph.compose/Autocapture(kotlin/Function1<dev.ynagai.autograph.compose/AutocaptureConfig, kotlin/Unit> = ...): dev.ynagai.autograph.compose/AutocaptureConfig // dev.ynagai.autograph.compose/Autocapture|Autocapture(kotlin.Function1<dev.ynagai.autograph.compose.AutocaptureConfig,kotlin.Unit>){}[0]
 final fun dev.ynagai.autograph.compose/AutographElementScope(kotlin/Array<out kotlin/Pair<kotlin/String, kotlin/String>>..., kotlin/Function3<androidx.compose.foundation.layout/BoxScope, androidx.compose.runtime/Composer, kotlin/Int, kotlin/Unit>, androidx.compose.runtime/Composer?, kotlin/Int) // dev.ynagai.autograph.compose/AutographElementScope|AutographElementScope(kotlin.Array<out|kotlin.Pair<kotlin.String,kotlin.String>>...;kotlin.Function3<androidx.compose.foundation.layout.BoxScope,androidx.compose.runtime.Composer,kotlin.Int,kotlin.Unit>;androidx.compose.runtime.Composer?;kotlin.Int){}[0]
 final fun dev.ynagai.autograph.compose/AutographElementScope(kotlinx.serialization.json/JsonObject, kotlin/Function3<androidx.compose.foundation.layout/BoxScope, androidx.compose.runtime/Composer, kotlin/Int, kotlin/Unit>, androidx.compose.runtime/Composer?, kotlin/Int) // dev.ynagai.autograph.compose/AutographElementScope|AutographElementScope(kotlinx.serialization.json.JsonObject;kotlin.Function3<androidx.compose.foundation.layout.BoxScope,androidx.compose.runtime.Composer,kotlin.Int,kotlin.Unit>;androidx.compose.runtime.Composer?;kotlin.Int){}[0]
 final fun dev.ynagai.autograph.compose/AutographProvider(dev.ynagai.autograph/Tracker, dev.ynagai.autograph.compose/AutocaptureConfig?, dev.ynagai.autograph.context/ScopeStack?, kotlin/Function2<androidx.compose.runtime/Composer, kotlin/Int, kotlin/Unit>, androidx.compose.runtime/Composer?, kotlin/Int, kotlin/Int) // dev.ynagai.autograph.compose/AutographProvider|AutographProvider(dev.ynagai.autograph.Tracker;dev.ynagai.autograph.compose.AutocaptureConfig?;dev.ynagai.autograph.context.ScopeStack?;kotlin.Function2<androidx.compose.runtime.Composer,kotlin.Int,kotlin.Unit>;androidx.compose.runtime.Composer?;kotlin.Int;kotlin.Int){}[0]

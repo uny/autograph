@@ -135,7 +135,7 @@ Card(Modifier.trackImpression("Recipe Viewed", target = "recipe_card")) { Recipe
 // Opt-in: report every tap without instrumenting each element — pass AutocaptureConfig to
 // AutographProvider. Identification prefers testTag, then role, then the accessibility label;
 // displayed text is never collected. Exclude a subtree with Modifier.autographIgnore().
-AutographProvider(tracker, autocapture = AutocaptureConfig()) {
+AutographProvider(tracker, autocapture = Autocapture()) {
     App()
 }
 ```
