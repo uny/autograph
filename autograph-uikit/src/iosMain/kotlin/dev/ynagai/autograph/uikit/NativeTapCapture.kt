@@ -61,10 +61,10 @@ import platform.darwin.NSObjectProtocol
  * this pipeline drops any tap whose hit path crosses one, so a hybrid app reports each tap exactly
  * once, from the pipeline that owns the content. See [AutographComposeHosts].
  *
- * **A native tap carries no `screen` of its own yet.** The Compose path falls back to its
- * `ScreenHistory` when no ambient frame supplies one; there is no native equivalent until #65 adds
- * screen-transition capture, so a native tap's `screen` comes from the shared [scopeStack] or not at
- * all.
+ * **A native tap's `screen` comes from the shared [scopeStack] or not at all.** Nothing falls back to
+ * `ScreenHistory`, on either pipeline: history records what has been seen, not what is on display.
+ * For UIKit screens to reach native taps, also call [installAutographNativeScreenCapture], which
+ * pushes a screen frame onto the same stack for each view controller that names one.
  *
  * **Threading.** Main thread only, to install and to uninstall — it touches UIKit throughout.
  *

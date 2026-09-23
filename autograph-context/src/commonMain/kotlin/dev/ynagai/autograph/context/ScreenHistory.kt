@@ -3,8 +3,9 @@ package dev.ynagai.autograph.context
 import kotlin.concurrent.Volatile
 
 /**
- * The most recently viewed screen, so the next screen view can be enriched with `previous_screen`
- * and an autocaptured event can fall back to a screen when no [ScopeStack] frame supplies one.
+ * The most recently viewed screen, so the next screen view can be enriched with `previous_screen`.
+ * Autograph reads it for nothing else: an autocaptured event takes its screen from [ScopeStack]
+ * frames only, and reports none when no frame supplies one.
  *
  * This lives beside [ScopeStack] rather than inside a UI framework for the same reason [ScopeStack]
  * does: `previous_screen` has to stay continuous across a Compose↔native transition, and it cannot be
