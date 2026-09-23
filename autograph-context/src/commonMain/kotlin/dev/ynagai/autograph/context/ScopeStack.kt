@@ -348,9 +348,10 @@ public class ScopeStack {
      * here for as long as its surface is, and so is a frame pushed under that surface while it is
      * demoted. The origin-taking overload does the same, except within the origin's own surface — see
      * [recompute] — and it is what makes this answer track the display rather than the most recent
-     * composition (#228). A host app enriching its own events should still prefer the origin-taking
-     * overload where it has one: this read cannot tell a sibling surface's declaration from the
-     * event's own.
+     * composition ([#228](https://github.com/uny/autograph/issues/228);
+     * [design notes](https://github.com/uny/autograph/blob/main/docs/design/228-ambient-propagation.md)).
+     * A host app enriching its own events should still prefer the origin-taking overload where it has
+     * one: this read cannot tell a sibling surface's declaration from the event's own.
      */
     public fun current(): AmbientContext = snapshot
 
@@ -419,8 +420,9 @@ public class ScopeStack {
         // own surface: its lineage, or the frames beneath it that no boundary separates from it. The
         // pipeline has placed the event in that surface, and the surface's own demotion (its host
         // paused, the pager page it is on peeking beside the current one) is not evidence against
-        // that. A Compose provider's frame inside the surface mirrors the same demotion, so without
-        // the second half a native tap on a demoted page lost the `TrackedScreen` composed beside it.
+        // that. A Compose provider's frame inside the surface mirrors the same demotion and sits
+        // beneath the origin, which is why the second half is needed
+        // (docs/design/228-ambient-propagation.md).
         val ownSurface = { frame: ScopeFrame -> frame in lineage || frame.isBeneathWithoutBoundary(originFrame, onStack) }
         val survivors = frames.filter { frame ->
             (ownSurface(frame) || !frame.isUnderABoundary(onStack)) && !frame.hasInactiveAncestorOn(onStack, exempt = ownSurface)
@@ -499,12 +501,13 @@ public class ScopeStack {
      * nested under an inactive frame on this stack is out too, whatever its own bit says. Ambiently,
      * "is this surface on display?" has to govern everything inside the surface — a `TrackedScreen`
      * composed inside a demoted pager page, or a frame pushed under it *while* it is demoted (a page
-     * composes at STARTED, before it is ever shown), would otherwise keep naming the ambient screen;
-     * measured, a pager of Compose-declared pages read as the page most recently composed rather than
-     * the one on display (#228). The origin-taking [current] applies the same rule but exempts the
-     * origin's own surface: an origin is the pipeline asserting the event happened in that surface,
-     * which an ambient read cannot claim. Only ancestors on THIS stack count, as in the origin walk
-     * — a link off the stack is transparent, never a gate.
+     * composes at STARTED, before it is ever shown), would otherwise keep naming the ambient screen
+     * ([#228](https://github.com/uny/autograph/issues/228);
+     * [design notes](https://github.com/uny/autograph/blob/main/docs/design/228-ambient-propagation.md)).
+     * The origin-taking [current] applies the same rule but exempts the origin's own surface: an
+     * origin is the pipeline asserting the event happened in that surface, which an ambient read
+     * cannot claim. Only ancestors on THIS stack count, as in the origin walk — a link off the stack
+     * is transparent, never a gate.
      */
     private fun recompute(): AmbientContext {
         val onStack = frames.toHashSet()
