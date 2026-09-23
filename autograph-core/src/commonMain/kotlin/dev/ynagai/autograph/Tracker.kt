@@ -73,10 +73,13 @@ public interface Tracker {
      * returns at the timeout.
      *
      * Idempotent. [track]/[screen]/[identify]/[flush]/[reset] calls made after [close] are dropped,
-     * except when the transport stamps in its own pipeline, in which case they still reach the
-     * transport directly (this tracker never scheduled them onto its scope in the first place).
-     * [notifyForeground] and [notifyBackground] are unaffected either way: they update session state
-     * synchronously and never went through the scope, so they keep working on a closed tracker.
+     * whichever transport is plugged in; a call racing [close] is either accepted and drained (within
+     * the same timeout as everything else accepted), or dropped — the race itself loses nothing. This
+     * stops delivery *through this tracker* only: it does not claim the transport's underlying vendor
+     * client, so events the app or the vendor SDK sends through that client directly are still
+     * delivered (and, for a transport that stamps in its own pipeline, still stamped).
+     * [notifyForeground] and [notifyBackground] are unaffected: they update session state
+     * synchronously, so they keep working on a closed tracker.
      */
     public fun close() {}
 }

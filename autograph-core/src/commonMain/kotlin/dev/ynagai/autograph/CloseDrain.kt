@@ -1,7 +1,8 @@
 package dev.ynagai.autograph
 
 /**
- * Runs [block] to completion on the calling thread, giving up after [timeoutMillis].
+ * Runs [block] to completion on the calling thread, giving up after [timeoutMillis]. Returns whether
+ * [block] completed, so the caller can report a drain that was cut short instead of losing it silently.
  *
  * Exists because [Tracker.close] is a plain, non-suspending function — the shape `Closeable`-style
  * shutdown is expected to have, and the one it already had before it learned to drain — yet the drain
@@ -18,4 +19,4 @@ package dev.ynagai.autograph
  * coroutines being awaited; the timeout still fires (the blocking event loop keeps running), so this
  * degrades to "drained nothing" rather than deadlocking, but nothing is drained.
  */
-internal expect fun drainBlocking(timeoutMillis: Long, block: suspend () -> Unit)
+internal expect fun drainBlocking(timeoutMillis: Long, block: suspend () -> Unit): Boolean
