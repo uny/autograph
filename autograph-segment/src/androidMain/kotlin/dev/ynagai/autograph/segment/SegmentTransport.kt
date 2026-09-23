@@ -77,8 +77,11 @@ public class SegmentTransport(
  * the event to its dispatcher — so for `track`/`screen`/`identify` it is the call time, exactly what
  * the core records for a transport it stamps for, and for an event the Segment SDK generates itself
  * it is that event's creation time. Stamping with `now` instead would record however long the event
- * waited in Segment's queue. A `Before` plugin the app registers ahead of this one could rewrite the
- * field; that is outside what this plugin can defend.
+ * waited in Segment's queue. Two limits this plugin cannot defend: an event fired before Segment has
+ * loaded its settings is held by Segment's `StartupQueue` (which runs ahead of every other `Before`
+ * plugin) and replayed through `Analytics.process()`, which overwrites the field with the replay
+ * time — so for that cold-start window `event_timestamp` is the replay time, as is Segment's own
+ * `timestamp`; and a `Before` plugin the app registers ahead of this one could rewrite the field.
  *
  * Idempotent: an event that already carries an `instrumentation` block (i.e. this plugin
  * already ran on it) is returned unchanged rather than stamped again, so `messageId` can

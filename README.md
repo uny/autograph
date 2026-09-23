@@ -19,7 +19,7 @@ stamped onto every event:
   restarts.
 - **`event_timestamp`** — captured the moment `track`/`screen`/`identify` is called, whichever
   transport is plugged in, so it does not move with however long the transport queues or
-  batches before sending.
+  batches before sending (one Android cold-start exception, noted under the stability contract).
 
 The on-disk sequence/session store is written via a write-tmp-then-atomic-rename, so a
 process crash mid-write can never leave a corrupt or partially-written file. It does not
@@ -57,11 +57,14 @@ SPI is vendor-neutral.
 > and that object's top-level shape follow semver: no renames or type changes without a
 > major version bump. Their meaning is part of that contract too: `event_timestamp` is when the
 > event was fired — the `track`/`screen`/`identify` call for Autograph's events, and the vendor
-> SDK's own creation time for an event it generates itself (e.g. Segment's `Application Opened`) —
-> never the later moment a transport's pipeline got round to stamping it. Every transport Autograph
-> ships meets this; a third-party transport that stamps in its own pipeline meets it by passing the
-> event's creation time to `EnvelopeSource.stamp(eventTimestampMillis)`. This is the part of Autograph that gets persisted into a downstream
-> analytics pipeline, so it's safe to build dashboards, data-quality checks, and schema
+> SDK's own creation time for an event it generates itself (e.g. Segment's `Application Opened` on
+> Android; iOS stamps only Autograph's own events) — not the later moment a transport's pipeline got
+> round to stamping it. A third-party transport that stamps in its own pipeline meets this by passing
+> the event's creation time to `EnvelopeSource.stamp(eventTimestampMillis)`. One known exception: on
+> Android, an event fired before Segment has loaded its settings is held and replayed by Segment,
+> which re-times it, so for that cold-start window `event_timestamp` (like Segment's own
+> `timestamp`) is the replay time. The envelope is the part of Autograph that gets persisted into a
+> downstream analytics pipeline, so it's safe to build dashboards, data-quality checks, and schema
 > migrations on top of today — everything else (Compose APIs, autocapture config, validator
 > shape, transport adapters) remains unstable under the
 > banner above.

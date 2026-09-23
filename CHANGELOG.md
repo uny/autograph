@@ -18,7 +18,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   queueing; an event the Segment SDK generates itself carries its own creation time. Pipeline
   stamping — and with it the sequence numbering of vendor-generated events — is unchanged. The README
   now states this observation point as part of the stable envelope contract, and says what a
-  third-party pipeline transport has to do to meet it.
+  third-party pipeline transport has to do to meet it. One window stays open: an event fired before
+  Segment has loaded its settings is held by Segment and replayed with a fresh `timestamp`, so its
+  `event_timestamp` is still the replay time.
 
 - **An event racing `Tracker.close()` is now either drained or refused — the race no longer loses it**
   ([#254]). Admission was a `closed` check followed by a separate launch, and `close()` fixed the work
