@@ -380,8 +380,8 @@ internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>)
  */
 internal fun withGlobalScopeBeneath(tracker: Tracker, global: JsonObject, properties: JsonObject): JsonObject {
     if (global.isEmpty()) return properties
-    // The chain is flattened to one level by [AutographScope] today; walking it costs nothing and does
-    // not assume that.
+    // Only ScopedTracker links can be seen through: a custom Tracker decorator installed between two
+    // AutographScopes hides the outer scope's keys, and a global frame then beats them.
     val lexicalKeys = generateSequence(tracker) { (it as? ScopedTracker)?.delegate }
         .filterIsInstance<ScopedTracker>()
         .flatMap { it.scope.keys }

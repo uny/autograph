@@ -11,7 +11,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 ### Fixed
 
 - **A Compose `Screen Viewed` now carries an app-wide `pushGlobal` scope, as a native one does**
-  ([#250]). #238 made the native `Screen Viewed` read the shared `ScopeStack`; the Compose emitters
+  ([#250]). [#238] made the native `Screen Viewed` read the shared `ScopeStack`; the Compose emitters
   (`TrackedScreen`, `TrackScreenView`, `NavController.TrackScreenViews`) still went straight to the
   tracker, so following the README's `pushGlobal` recipe put `tenant` on every autocaptured tap and
   every native screen view and left it off every Compose one — on the same screen whose own button
