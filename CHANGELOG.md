@@ -11,10 +11,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 ### Fixed
 
 - **`event_timestamp` means the same thing on Android Segment as everywhere else: when the event was
-  fired** ([#254]). `SegmentTransport` on Android stamps inside Segment's pipeline, and used to record
-  the moment the pipeline reached the event — however long it had waited in Segment's queue — while
-  every core-stamped transport records the `track`/`screen`/`identify` call time. The plugin now
-  stamps with the event's own `timestamp`, which analytics-kotlin sets on the caller's thread before
+  fired, outside Segment's cold-start window** ([#254]). `SegmentTransport` on Android stamps inside
+  Segment's pipeline, and used to record the moment the pipeline reached the event — however long it
+  had waited in Segment's queue — while every core-stamped transport records the
+  `track`/`screen`/`identify` call time. The plugin now stamps with the event's own `timestamp`, which analytics-kotlin sets on the caller's thread before
   queueing; an event the Segment SDK generates itself carries its own creation time. Pipeline
   stamping — and with it the sequence numbering of vendor-generated events — is unchanged. The README
   now states this observation point as part of the stable envelope contract, and says what a

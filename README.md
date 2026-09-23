@@ -57,8 +57,8 @@ SPI is vendor-neutral.
 > and that object's top-level shape follow semver: no renames or type changes without a
 > major version bump. Their meaning is part of that contract too: `event_timestamp` is when the
 > event was fired — the `track`/`screen`/`identify` call for Autograph's events, and the vendor
-> SDK's own creation time for an event it generates itself (e.g. Segment's `Application Opened` on
-> Android; iOS stamps only Autograph's own events) — not the later moment a transport's pipeline got
+> SDK's own creation time for an event it generates itself (e.g. Segment's `Application Backgrounded`
+> on Android; iOS stamps only Autograph's own events) — not the later moment a transport's pipeline got
 > round to stamping it. A third-party transport that stamps in its own pipeline meets this by passing
 > the event's creation time to `EnvelopeSource.stamp(eventTimestampMillis)`. One known exception: on
 > Android, an event fired before Segment has loaded its settings is held and replayed by Segment,
