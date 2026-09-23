@@ -607,11 +607,12 @@ class AutographTrackerTest {
 
         tracker.close()
         val atClose = transport.log.toList()
+        // Released before asserting: a failed assertion must not leave a Default thread spinning.
         stuck.release()
+        kotlinx.coroutines.runBlocking { caller.join() }
 
         assertEquals(listOf("flush"), atClose)
         assertTrue(logs.any { "gave up" in it }, "the cut-short drain is still reported: $logs")
-        kotlinx.coroutines.runBlocking { caller.join() }
     }
 
     @Test
