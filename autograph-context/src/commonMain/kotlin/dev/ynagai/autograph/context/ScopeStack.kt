@@ -130,11 +130,13 @@ public class ScopeStack {
     /**
      * The flag-positional spelling of [push] / [pushSurface], kept only until 1.0:
      * `boundary = true` is [pushSurface], `boundary = false` is [push].
+     *
+     * No `ReplaceWith`: which successor applies depends on the flag's value, and a single
+     * replacement would turn a `boundary = false` call into a boundary.
      */
     @Deprecated(
         "Name the frame's kind instead: pushSurface(...) for boundary = true, push(...) for " +
             "boundary = false. This overload is removed before 1.0.",
-        ReplaceWith("pushSurface(scope, screen, section, parent)"),
     )
     public fun push(
         scope: Map<String, JsonElement> = EmptyJsonObject,
