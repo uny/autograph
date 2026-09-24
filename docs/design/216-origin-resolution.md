@@ -190,9 +190,9 @@ is navigation-compose 2.9.2. The repository still uses fragment 1.8.9 and naviga
 it has since moved to CMP 1.12.0, where fact 2 has not been re-measured.
 
 On iOS nothing localizes: no pipeline claims a view, so the stack is boundary-free and, by the
-invariant above, resolves as it did before (up to the inactive-frame exception #228 added). #223 did change iOS in the same direction as Android — a
-bare `TrackScreenView` or a tracked destination is now visible to `autograph-uikit`'s native tap
-capture through `current()`.
+invariant above, resolves as it did before (up to the inactive-frame exception #228 added). #223
+did change iOS in the same direction as Android — a bare `TrackScreenView` or a tracked destination
+is now visible to `autograph-uikit`'s native tap capture through `current()`.
 
 ## Pinned by
 
