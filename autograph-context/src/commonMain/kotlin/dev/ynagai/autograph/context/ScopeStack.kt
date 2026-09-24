@@ -128,29 +128,6 @@ public class ScopeStack {
     ): ScopeHandle = pushFrame(FrameKind.Surface, scope, screen, section, parent)
 
     /**
-     * The flag-positional spelling of [push] / [pushSurface], kept only until 1.0:
-     * `boundary = true` is [pushSurface], `boundary = false` is [push].
-     *
-     * No `ReplaceWith`: which successor applies depends on the flag's value, and a single
-     * replacement would turn a `boundary = false` call into a boundary.
-     */
-    @Deprecated(
-        "Name the frame's kind instead: pushSurface(...) for boundary = true, push(...) for " +
-            "boundary = false. This overload is removed before 1.0.",
-    )
-    public fun push(
-        scope: Map<String, JsonElement> = EmptyJsonObject,
-        screen: String? = null,
-        section: String? = null,
-        parent: ScopeHandle? = null,
-        boundary: Boolean,
-    ): ScopeHandle = if (boundary) {
-        pushSurface(scope, screen, section, parent)
-    } else {
-        push(scope, screen, section, parent)
-    }
-
-    /**
      * Pushes a frame whose [scope] is **app-wide**: it applies whatever subtree the event happened in,
      * and so it takes no part in the ambiguity rule of [resolveScope] — it neither makes another
      * scope-bearing frame ambiguous nor is dropped as one.

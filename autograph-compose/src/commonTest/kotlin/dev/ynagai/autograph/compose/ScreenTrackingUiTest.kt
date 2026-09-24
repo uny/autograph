@@ -708,7 +708,7 @@ class ScreenTrackingUiTest {
         runComposeUiTest {
             val tracker = RecordingTracker()
             val stack = ScopeStack()
-            val sibling = stack.push(screen = "Sibling", boundary = true)
+            val sibling = stack.pushSurface(screen = "Sibling")
             stack.push(parent = sibling, scope = mapOf("row" to JsonPrimitive("3")))
             setContent {
                 WithTracker(tracker, stack) { TrackScreenView("Home") }

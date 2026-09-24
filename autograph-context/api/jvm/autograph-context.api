@@ -21,9 +21,7 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 	public final fun getScreenHistory ()Ldev/ynagai/autograph/context/ScreenHistory;
 	public final fun maskScreen (Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public final fun push (Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;)Ldev/ynagai/autograph/context/ScopeHandle;
-	public final fun push (Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;Z)Ldev/ynagai/autograph/context/ScopeHandle;
 	public static synthetic fun push$default (Ldev/ynagai/autograph/context/ScopeStack;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;
-	public static synthetic fun push$default (Ldev/ynagai/autograph/context/ScopeStack;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ZILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public final fun pushGlobal (Ljava/util/Map;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public final fun pushSurface (Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public static synthetic fun pushSurface$default (Ldev/ynagai/autograph/context/ScopeStack;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;

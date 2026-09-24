@@ -35,7 +35,7 @@ class ScreenEmitTest {
         val stack = ScopeStack()
         val tracker = RecordingTracker()
         val root = stack.push(scope = props("tenant" to "acme"))
-        val screen = stack.push(parent = root, screen = "Detail", boundary = true)
+        val screen = stack.pushSurface(parent = root, screen = "Detail")
 
         stack.emitScreenView(tracker, "Detail", origin = screen)
 
@@ -49,9 +49,9 @@ class ScreenEmitTest {
         // the screen view must not carry it.
         val stack = ScopeStack()
         val tracker = RecordingTracker()
-        val sibling = stack.push(screen = "Sibling", boundary = true)
+        val sibling = stack.pushSurface(screen = "Sibling")
         stack.push(parent = sibling, scope = props("row" to "3"))
-        val screen = stack.push(screen = "Detail", boundary = true)
+        val screen = stack.pushSurface(screen = "Detail")
         assertEquals("3", (stack.current().scope["row"] as? JsonPrimitive)?.content, "ambient read sees the sibling scope")
 
         stack.emitScreenView(tracker, "Detail", origin = screen)
@@ -88,7 +88,7 @@ class ScreenEmitTest {
         val stack = ScopeStack()
         val tracker = RecordingTracker()
         stack.pushGlobal(props("install" to "i-1"))
-        val screen = stack.push(screen = "Home", boundary = true)
+        val screen = stack.pushSurface(screen = "Home")
 
         stack.emitScreenView(tracker, "Home", origin = screen)
 
@@ -102,14 +102,13 @@ class ScreenEmitTest {
         // screen event the name already is the screen.
         val stack = ScopeStack()
         val tracker = RecordingTracker()
-        val first = stack.push(screen = "First", section = "Tab A", boundary = true)
+        val first = stack.pushSurface(screen = "First", section = "Tab A")
         stack.emitScreenView(tracker, "First", origin = first)
         stack.remove(first)
-        val second = stack.push(
+        val second = stack.pushSurface(
             screen = "Second",
             section = "Tab B",
             scope = props("previous_screen" to "Forged", "tenant" to "acme"),
-            boundary = true,
         )
 
         stack.emitScreenView(tracker, "Second", origin = second)

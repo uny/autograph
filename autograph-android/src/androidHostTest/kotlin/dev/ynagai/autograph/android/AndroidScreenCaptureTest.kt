@@ -1270,7 +1270,7 @@ class AndroidScreenCaptureTest {
         // a mini-player, a neighbouring pager page — must not reach this Activity's screen view, even
         // though the ambient read sees it.
         install()
-        val sibling = scopeStack.push(boundary = true)
+        val sibling = scopeStack.pushSurface()
         scopeStack.push(parent = sibling, scope = scope("row" to "3"))
         Robolectric.buildActivity(PlainActivity::class.java).setup()
 
