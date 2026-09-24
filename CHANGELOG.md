@@ -8,6 +8,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **`ScopeStack.pushSurface(…)`** ([#255]) — the attribution-boundary frame the 0.9.0
+  `push(…, boundary = true)` overload pushed, under its own name. Behaviour is identical; the frame's
+  kind is now named by the call that creates it: `push` (a declaration), `pushSurface` (a boundary),
+  `pushGlobal` (app-wide scope).
+
 ### Fixed
 
 - **`event_timestamp` means the same thing on Android Segment as everywhere else: when the event was
@@ -104,6 +111,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   removed only after at least two minor releases carrying `@Deprecated` — `WARNING`, then `ERROR` —
   and only in a major release, with a `ReplaceWith` or a named successor. The ADR previously governed
   only what may be *added*. `Modifier.autocaptureScope` keeps its pre-1.0 no-window removal.
+
+### Deprecated
+
+- **`ScopeStack.push(…, boundary: Boolean)`** ([#255]). Call `pushSurface(…)` where you passed
+  `boundary = true` and plain `push(…)` where you passed `false`. The overload is removed before 1.0,
+  while removing it is still free.
 
 ## [0.10.0] - 2026-09-22
 
@@ -1573,4 +1586,5 @@ Initial release.
 [#240]: https://github.com/uny/autograph/issues/240
 [#250]: https://github.com/uny/autograph/issues/250
 [#254]: https://github.com/uny/autograph/issues/254
+[#255]: https://github.com/uny/autograph/issues/255
 [#257]: https://github.com/uny/autograph/issues/257

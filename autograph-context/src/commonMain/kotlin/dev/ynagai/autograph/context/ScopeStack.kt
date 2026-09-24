@@ -32,12 +32,13 @@ import kotlinx.serialization.json.JsonPrimitive
  * same context and share one `previous_screen` chain. That stack is then yours to replace when the
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
- * **Threading.** [push], [pushGlobal], [update], [remove], [maskScreen], [setActive] and the
- * origin-taking [current] must be called from the main thread ([push], [pushGlobal] and [remove]
- * mutate the frame list; the others mutate a frame's contents and republish the snapshot, or read
- * the list as it stands). The no-argument [current] is lock-free and safe from any thread: it
- * returns an immutable snapshot that is republished atomically on every mutation, so a background
- * reader always sees a whole, consistent context — never a half-applied one.
+ * **Threading.** [push], [pushSurface], [pushGlobal], [update], [remove], [maskScreen], [setActive]
+ * and the origin-taking [current] must be called from the main thread ([push], [pushSurface],
+ * [pushGlobal] and [remove] mutate the frame list; the others mutate a frame's contents and
+ * republish the snapshot, or read the list as it stands). The no-argument [current] is lock-free
+ * and safe from any thread: it returns an immutable snapshot that is republished atomically on every
+ * mutation, so a background reader always sees a whole, consistent context — never a half-applied
+ * one.
  */
 public class ScopeStack {
 
@@ -89,7 +90,7 @@ public class ScopeStack {
         screen: String? = null,
         section: String? = null,
         parent: ScopeHandle? = null,
-    ): ScopeHandle = push(scope, screen, section, parent, boundary = false)
+    ): ScopeHandle = pushFrame(FrameKind.Declaration, scope, screen, section, parent)
 
     /**
      * [push] for a frame that is also an **attribution boundary**: the pipeline pushing it can tell,
@@ -116,20 +117,37 @@ public class ScopeStack {
      * ([#216](https://github.com/uny/autograph/issues/216);
      * [design notes](https://github.com/uny/autograph/blob/main/docs/design/216-origin-resolution.md)).
      *
-     * Static for the life of the frame; [update] does not revise it. [boundary] has no default so
-     * that a call spelling none of the arguments still resolves to the plain [push] overload.
+     * Being a boundary is static for the life of the frame; [update] revises the contents and the
+     * parent link, never the kind.
      */
+    public fun pushSurface(
+        scope: Map<String, JsonElement> = EmptyJsonObject,
+        screen: String? = null,
+        section: String? = null,
+        parent: ScopeHandle? = null,
+    ): ScopeHandle = pushFrame(FrameKind.Surface, scope, screen, section, parent)
+
+    /**
+     * The flag-positional spelling of [push] / [pushSurface], kept only until 1.0:
+     * `boundary = true` is [pushSurface], `boundary = false` is [push].
+     *
+     * No `ReplaceWith`: which successor applies depends on the flag's value, and a single
+     * replacement would turn a `boundary = false` call into a boundary.
+     */
+    @Deprecated(
+        "Name the frame's kind instead: pushSurface(...) for boundary = true, push(...) for " +
+            "boundary = false. This overload is removed before 1.0.",
+    )
     public fun push(
         scope: Map<String, JsonElement> = EmptyJsonObject,
         screen: String? = null,
         section: String? = null,
         parent: ScopeHandle? = null,
         boundary: Boolean,
-    ): ScopeHandle {
-        val frame = ScopeFrame(scope.asJsonObject(), screen, section, parent?.frame, boundary = boundary)
-        frames.add(frame)
-        snapshot = recompute()
-        return ScopeHandle(frame)
+    ): ScopeHandle = if (boundary) {
+        pushSurface(scope, screen, section, parent)
+    } else {
+        push(scope, screen, section, parent)
     }
 
     /**
@@ -158,15 +176,24 @@ public class ScopeStack {
      * Global frames merge **outermost**, in insertion order among themselves, so a screen's own
      * scope still wins a key clash and an explicit call-site property wins over both — the same
      * precedence a scope nested outside every other has. Global is fixed for the life of the frame,
-     * like `boundary`: [update] revises the scope but not the flag, and refuses a `parent` — the
-     * frame stays a root, because a parent under a boundary would hide it from every other origin,
-     * which is the one thing a global frame must never be — and refuses a `screen` or `section`,
-     * because a frame every origin sees would name the screen of every surface at once. The frame
-     * is otherwise ordinary: it is under no boundary, so the origin-taking [current] sees it from
-     * every origin; [remove] and [setActive] apply as to any frame.
+     * like a [pushSurface] frame's kind: [update] revises the scope but not the kind, and refuses a
+     * `parent` — the frame stays a root, because a parent under a boundary would hide it from every
+     * other origin, which is the one thing a global frame must never be — and refuses a `screen` or
+     * `section`, because a frame every origin sees would name the screen of every surface at once.
+     * The frame is otherwise ordinary: it is under no boundary, so the origin-taking [current] sees
+     * it from every origin; [remove] and [setActive] apply as to any frame.
      */
-    public fun pushGlobal(scope: Map<String, JsonElement>): ScopeHandle {
-        val frame = ScopeFrame(scope.asJsonObject(), screen = null, section = null, global = true)
+    public fun pushGlobal(scope: Map<String, JsonElement>): ScopeHandle =
+        pushFrame(FrameKind.Global, scope, screen = null, section = null, parent = null)
+
+    private fun pushFrame(
+        kind: FrameKind,
+        scope: Map<String, JsonElement>,
+        screen: String?,
+        section: String?,
+        parent: ScopeHandle?,
+    ): ScopeHandle {
+        val frame = ScopeFrame(scope.asJsonObject(), screen, section, parent?.frame, kind = kind)
         frames.add(frame)
         snapshot = recompute()
         return ScopeHandle(frame)
@@ -367,8 +394,8 @@ public class ScopeStack {
      * - the **lineage** of [origin] — itself and every frame it is nested in, following the parent
      *   links declared at [push] / [update] — so a screen named by the surface hosting the origin,
      *   or a mask raised by it, applies;
-     * - the **subtree** beneath [origin], stopping at (and excluding) any frame pushed as a
-     *   `boundary` together with everything under it. What the origin's own pipeline could not
+     * - the **subtree** beneath [origin], stopping at (and excluding) any frame pushed with
+     *   [pushSurface] together with everything under it. What the origin's own pipeline could not
      *   localize further — the `TrackedScreen`s inside a composition — still applies, and what it
      *   could — a surface nested inside the origin, which the pipeline has established the event is
      *   not in — does not; and
@@ -650,11 +677,27 @@ internal class ScopeFrame(
     var maskScreen: Boolean = false,
     /** See [ScopeStack.setActive]: whether this frame takes part in resolution at all. */
     var active: Boolean = true,
-    /** See the `boundary` [ScopeStack.push] overload. Fixed at push. */
-    val boundary: Boolean = false,
-    /** See [ScopeStack.pushGlobal]: exempt from the ambiguity rule, merged outermost. Fixed at push. */
-    val global: Boolean = false,
-)
+    /** Which of [ScopeStack.push] / [ScopeStack.pushSurface] / [ScopeStack.pushGlobal] made it. */
+    val kind: FrameKind = FrameKind.Declaration,
+) {
+    /** See [ScopeStack.pushSurface]. */
+    val boundary: Boolean get() = kind == FrameKind.Surface
+
+    /** See [ScopeStack.pushGlobal]: exempt from the ambiguity rule, merged outermost. */
+    val global: Boolean get() = kind == FrameKind.Global
+}
+
+/** What a [ScopeFrame] is, named by the push that created it. */
+internal enum class FrameKind {
+    /** [ScopeStack.push]: a declaration — scope, a screen, a section, or a mask. */
+    Declaration,
+
+    /** [ScopeStack.pushSurface]: an attribution boundary. */
+    Surface,
+
+    /** [ScopeStack.pushGlobal]: app-wide scope. */
+    Global,
+}
 
 /**
  * An opaque token identifying a pushed frame, for [ScopeStack.update], [ScopeStack.remove],

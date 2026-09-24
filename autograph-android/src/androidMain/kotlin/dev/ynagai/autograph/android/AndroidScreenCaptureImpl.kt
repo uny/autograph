@@ -52,8 +52,8 @@ import dev.ynagai.autograph.context.emitScreenView
  *
  * ## Whose event is it
  *
- * Every frame this capture reserves is a `boundary` ([ScopeStack.push]) nested under the frame of
- * the surface containing it — a fragment under its parent fragment or its Activity — and each
+ * Every frame this capture reserves is a boundary ([ScopeStack.pushSurface]) nested under the frame
+ * of the surface containing it — a fragment under its parent fragment or its Activity — and each
  * surface's root view is claimed with that frame ([autographScopeOwner]). That is what lets what a
  * surface says reach *its own* events and no others: the native tap capture resolves a tap from the
  * nearest claimed ancestor of the tapped view, and the Compose provider nests its composition's root
@@ -503,10 +503,10 @@ internal class AndroidScreenCapture(
      * top. `sample-android`'s `ComposeHostMaskTest` pins the hook, not just the property: moving this
      * reservation to `onFragmentResumed` makes a declared `TrackedScreen` lose to its host's mask.
      *
-     * Every frame is a `boundary` ([ScopeStack.push]): this capture can tell, from the view a tap
-     * landed on, which surface it happened in, so what a surface declares is scoped to its own events
-     * — see the class kdoc. [parent] is the containing surface's frame, the lineage that scoping runs
-     * along.
+     * Every frame is a boundary ([ScopeStack.pushSurface]): this capture can tell, from the view a
+     * tap landed on, which surface it happened in, so what a surface declares is scoped to its own
+     * events — see the class kdoc. [parent] is the containing surface's frame, the lineage that
+     * scoping runs along.
      *
      * Claiming the position must not claim a *voice*, though: an attached surface is not necessarily
      * the visible one, and a `ViewPager2` page cached by `offscreenPageLimit` attaches while a
@@ -525,7 +525,7 @@ internal class AndroidScreenCapture(
      * belief the stack does not share.
      */
     private fun reserveFrame(parent: ScopeHandle?): ScopeHandle =
-        scopeStack.push(parent = parent, boundary = true).also { scopeStack.setActive(it, false) }
+        scopeStack.pushSurface(parent = parent).also { scopeStack.setActive(it, false) }
 
     private fun newSurface(parent: ScopeHandle?): SurfaceState =
         SurfaceState(reserveFrame(parent)).also { it.parent = parent }

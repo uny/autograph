@@ -4,7 +4,9 @@
 - Shipped in: [#222](https://github.com/uny/autograph/pull/222) (`f0f70f4`, 2026-09-11) and
   [#223](https://github.com/uny/autograph/pull/223) (`2dd3086`, 2026-09-12), the last two of the #216
   rebuild stack (#220 → #221 → #222 → #223); first released in 0.9.0
-- Code: `ScopeStack.push(…, boundary)` / `ScopeStack.current(origin)` (`autograph-context`),
+- Code: `ScopeStack.pushSurface` (shipped as `push(…, boundary)`, renamed in
+  [#255](https://github.com/uny/autograph/issues/255)) / `ScopeStack.current(origin)`
+  (`autograph-context`),
   `View.autographScopeOwner` and its listener (`autograph-context`, `ScopeOrigin.android.kt`),
   `ProviderFrame` / `ProviderOrigin` / `KeepLinkedToHost` (`autograph-compose`, `ScopedContext.kt`,
   `HostSurface.android.kt`), `NavController.TrackScreenViews` / `TrackScreenView`
