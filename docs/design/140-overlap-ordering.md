@@ -81,7 +81,7 @@ corner overlap is not trimmable, but the badge sorts later and wins the tie-brea
 measured failure is a corner overhang **straight up** — the two share a `left`, and the one on top
 has the smaller `top`. A strictly *leftward* overhang follows from (3) but was never run.
 
-**UIKit / SwiftUI**: the G1-shaped corner overhang, which Compose also fails, misattributed on
+**UIKit / SwiftUI**: the G1-shaped corner overhang, which Compose also fails, was misattributed on
 SwiftUI too (5). In the one trimmable geometry measured — the full-width strip that CMP trims —
 SwiftUI did not trim (5), so there the tie-break decides an overlap Compose settles. Whether a
 native tree ever trims is not established: one trimmable SwiftUI geometry is not a sweep, and no
