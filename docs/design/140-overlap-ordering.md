@@ -61,10 +61,10 @@ actually fired**. Coordinates below are window pixels.
    (`AccessibilityElement` / `AccessibilityRoot`). The whole `UIView` subtree under the Compose host
    is four views — `ComposeContainerView` → `BackgroundInputView` / `SurfaceMetalView` /
    `OverlayInputView` — all zero-framed, none per element. Compose draws into one Metal surface.
-5. **A native (SwiftUI) tree does not trim.** Measured warm, under an XCUITest runner, because a cold
-   native tree is empty and its silence must not be read as "no trim". `n8_top` covers `n8_big`'s
-   bottom half with exactly the full-width strip CMP trimmed, and `n8_big` still reports the same
-   area as the un-overlapped `n0_solo` (69120). The G1-shaped misattribution reproduced end to end
+5. **The measured native (SwiftUI) tree did not trim.** Measured warm, under an XCUITest runner,
+   because a cold native tree is empty and its silence must not be read as "no trim". `n8_top`
+   covers `n8_big`'s bottom half with exactly the full-width strip CMP trimmed, and `n8_big` still
+   reports the same area as the un-overlapped `n0_solo` (69120). The G1-shaped misattribution reproduced end to end
    through the native resolver of the time (`REPORTED n1_big` / `ORACLE n1_small`). No UIKit
    hierarchy was run.
 
@@ -81,8 +81,11 @@ corner overlap is not trimmable, but the badge sorts later and wins the tie-brea
 measured failure is a corner overhang **straight up** — the two share a `left`, and the one on top
 has the smaller `top`. A strictly *leftward* overhang follows from (3) but was never run.
 
-**UIKit / SwiftUI**: nothing is trimmed (5), so condition 1 always holds and the walk fails whenever
-the on-top element sorts earlier — **strictly broader** than Compose.
+**UIKit / SwiftUI**: in the one geometry measured, the full-width strip CMP trims, SwiftUI did not
+trim (5), so there the tie-break decides an overlap Compose settles. Whether a native tree ever trims
+is not established: one SwiftUI geometry is not a sweep, and no UIKit hierarchy was run. If none
+does, condition 1 always holds and the walk fails whenever the on-top element sorts earlier —
+**strictly broader** than Compose.
 
 ## Refuted along the way
 
@@ -112,8 +115,8 @@ the on-top element sorts earlier — **strictly broader** than Compose.
    the best of the three, wrong only on G1.
 5. **"Untrimmed across a full edge ⇒ on top."** A full-edge overlap is exactly the trimmable case, so
    an untrimmed candidate spanning one cannot be the covered element. With last-emitted as fallback
-   it scores 5/5 — but it was fitted after seeing those five points, and on a native tree nothing is
-   ever trimmed (5), so "untrimmed" carries no information there. The walk is shared, so the rule
+   it scores 5/5 — but it was fitted after seeing those five points, and on the native tree measured
+   nothing was trimmed (5), so "untrimmed" carries no information there. The walk is shared, so the rule
    could not live in it; confining it to the Compose adapter needs the walk to expose its candidate
    set, a public API shape change. Not proposed.
 6. **"The measured failure is up and to the left."** Written in the first three commits of #146 from
@@ -144,8 +147,8 @@ The native pipeline no longer uses this walk, so fact (5) no longer reaches it. 
 walk itself, in two places: `resolveIosElement` in `autograph-compose` — the one shipped caller —
 descends into UIKit interop (`UIKitView` / `UIKitViewController`) hosted *inside* a composition,
 where it walks native nodes; and `deepestAccessibilityHitPath` is public (`@AutographInternalApi`),
-so any other caller that walks a UIKit or SwiftUI tree with it gets the broader condition. No overlap
-inside interop was measured.
+so any other caller that walks a UIKit or SwiftUI tree with it may meet the broader condition, as far
+as (5) generalizes. No overlap inside interop was measured.
 
 ## Version-dependent
 

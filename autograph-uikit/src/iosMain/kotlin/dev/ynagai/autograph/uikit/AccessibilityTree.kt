@@ -157,12 +157,13 @@ import platform.darwin.NSObject
  *
  * - **Compose Multiplatform** narrows it: the bridge trims a covered sibling's `accessibilityFrame`
  *   wherever the remainder is still a rectangle, which settles the overlap before this tie-break is
- *   consulted. What is left is an untrimmable (corner) overlap whose on-top element the bridge emits
- *   earlier — measured for an overhang straight up.
- * - **UIKit / SwiftUI**: no trim was observed (SwiftUI measured, UIKit not), so the tie-break decides
- *   every such overlap alone. Since #191 the native pipeline does not use this walk; the Compose one
+ *   consulted. What is left is an untrimmable overlap (a corner, or an occluder sitting entirely
+ *   inside) whose on-top element the bridge emits earlier — measured for an overhang straight up.
+ * - **UIKit / SwiftUI**: no trim was observed in the one geometry measured (SwiftUI; no UIKit
+ *   hierarchy was run), so there the tie-break was left to decide an overlap Compose settles. One
+ *   geometry is not a sweep. Since #191 the native pipeline does not use this walk; the Compose one
  *   still reaches native nodes through UIKit interop hosted inside a composition, and any other
- *   caller walking a native tree inherits the broader failure.
+ *   caller walking a native tree may meet the same gap.
  *
  * Documented rather than fixed: the obvious rankings (smallest area, first emitted) each scored worse
  * than this one against the recorded fixtures, and the bridged elements have no backing views to read
