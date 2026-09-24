@@ -411,8 +411,9 @@ table is the whole picture, because a gap here produces **no event at all** — 
 > accessibility elements *on demand* too, but its activation path does not require an accessibility
 > client: reading the tree is what triggers it, and this library's walk is such a reader. The gates in
 > front of that are about which scene is live, not about assistive technology — the
-> [design notes](docs/design/135-ios-cold-accessibility.md) name them, per CMP version. So Compose taps resolve in a cold process. That is a dependency on CMP's activation rather
-> than a guarantee, which is why a CMP bump gets a cold-device check
+> [design notes](docs/design/135-ios-cold-accessibility.md) name them, per CMP version. So Compose
+> taps resolve in a cold process. That is a dependency on CMP's activation rather than a guarantee,
+> which is why a CMP bump gets a cold-device check
 > ([#154](https://github.com/uny/autograph/issues/154)).
 
 Known gaps *within* iOS **UIKit** tap capture, all tracked on
