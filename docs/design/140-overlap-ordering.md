@@ -35,7 +35,8 @@ along the way*, 1 and 2).
 ## Measured facts it rests on
 
 Spike on 2026-07-29: iPhone 17 Pro simulator, iOS 26.2, **CMP 1.11.1**. Ten Compose fixtures (G1–G10),
-all bridged, the tree flat under one container. Oracle throughout: **which element's `onClick`
+all bridged, the tree flat under one container — these fixtures declared no traversal group; a tree
+with one is not flat (#188). Oracle throughout: **which element's `onClick`
 actually fired**. Coordinates below are window pixels.
 
 1. **The bridge trims a covered sibling's frame, where the remainder is still a rectangle.** It
@@ -178,7 +179,7 @@ against all five ambiguous cases above, not only the one it was written for.
   accessibility client has touched, why a UIKit/SwiftUI walk sees nothing there, and #189/#191's move
   of the native pipeline onto `hitTest` — has its own notes.
 - The *across-groups* half of the tie-break (a node's `accessibilityElements` searched after all of
-  its `subviews`) predates #140 and follows from the code, not from a measurement; it stays in the
-  walk's KDoc.
+  its `subviews`) predates #140 (`9fb056d`, #69) and was not part of the spike; it stays in the walk's
+  KDoc.
 - A `clickable` escaping a traversal group's published frame (#188) is a drop, not a misattribution,
   and is described in `AutocaptureConfig`'s KDoc.
