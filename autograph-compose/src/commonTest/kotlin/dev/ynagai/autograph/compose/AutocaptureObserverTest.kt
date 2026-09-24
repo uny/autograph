@@ -244,11 +244,11 @@ class ReportTapIfResolvableTest {
     fun anOriginWithAHostResolvesFromTheCompositionsLineageNotTheAmbientStack() {
         val tracker = AutocaptureRecordingTracker()
         val stack = ScopeStack()
-        val host = stack.push(screen = "Host", boundary = true)
-        val root = arrayOf<ScopeHandle?>(stack.push(boundary = true))
+        val host = stack.pushSurface(screen = "Host")
+        val root = arrayOf<ScopeHandle?>(stack.pushSurface())
         stack.push(screen = "Declared", parent = root[0])
         // An excluded surface added beside the composition afterwards — a mini-player — masks.
-        val sibling = stack.push(parent = host, boundary = true)
+        val sibling = stack.pushSurface(parent = host)
         stack.maskScreen(sibling)
         assertNull(stack.current().screen, "ambiently the sibling's mask wins")
 
@@ -263,10 +263,10 @@ class ReportTapIfResolvableTest {
     fun anOriginLinksTheCompositionsRootUnderItsHostAtTapTime() {
         val tracker = AutocaptureRecordingTracker()
         val stack = ScopeStack()
-        val root = arrayOf<ScopeHandle?>(stack.push(boundary = true))
+        val root = arrayOf<ScopeHandle?>(stack.pushSurface())
         // The host is claimed AFTER the composition's root was pushed — the measured order for a
         // fragment added while its Activity is showing — so the link cannot be made at push time.
-        val host = stack.push(screen = "Host", boundary = true)
+        val host = stack.pushSurface(screen = "Host")
 
         reportTapIfResolvable(tracker, stack, Autocapture(), ProviderOrigin(root) { host }) {
             AutocaptureTarget("row")
@@ -283,7 +283,7 @@ class ReportTapIfResolvableTest {
         val tracker = AutocaptureRecordingTracker()
         val stack = ScopeStack()
         stack.push(screen = "PushedByHand") // a hybrid app's own native frame, no capture installed
-        val root = arrayOf<ScopeHandle?>(stack.push(boundary = true))
+        val root = arrayOf<ScopeHandle?>(stack.pushSurface())
 
         reportTapIfResolvable(tracker, stack, Autocapture(), ProviderOrigin(root) { null }) {
             AutocaptureTarget("row")

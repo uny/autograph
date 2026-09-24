@@ -30,7 +30,7 @@ class ScopeStackGlobalScopeTest {
         // read and must not be visible here.
         val stack = ScopeStack()
         stack.pushGlobal(props("tenant" to "acme"))
-        val surface = stack.push(screen = "Feed", scope = props("surface" to "s"), boundary = true)
+        val surface = stack.pushSurface(screen = "Feed", scope = props("surface" to "s"))
         stack.push(parent = surface, scope = props("row" to "3"))
 
         assertEquals(props("tenant" to "acme"), stack.globalScope)

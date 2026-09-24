@@ -11,9 +11,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 ### Added
 
 - **`ScopeStack.pushSurface(…)`** ([#255]) — the attribution-boundary frame the 0.9.0
-  `push(…, boundary = true)` overload pushed, under its own name. Behaviour is identical; the frame's
-  kind is now named by the call that creates it: `push` (a declaration), `pushSurface` (a boundary),
-  `pushGlobal` (app-wide scope).
+  `push(…, boundary = true)` overload pushed, under its own name, replacing that overload (see
+  Removed). Behaviour is identical; the frame's kind is now named by the call that creates it: `push`
+  (a declaration), `pushSurface` (a boundary), `pushGlobal` (app-wide scope).
 
 ### Fixed
 
@@ -112,11 +112,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   and only in a major release, with a `ReplaceWith` or a named successor. The ADR previously governed
   only what may be *added*. `Modifier.autocaptureScope` keeps its pre-1.0 no-window removal.
 
-### Deprecated
+### Removed
 
 - **`ScopeStack.push(…, boundary: Boolean)`** ([#255]). Call `pushSurface(…)` where you passed
-  `boundary = true` and plain `push(…)` where you passed `false`. The overload is removed before 1.0,
-  while removing it is still free.
+  `boundary = true` and plain `push(…)` where you passed `false`. It is removed with no deprecation
+  window, per ADR 0001 §5's pre-1.0 rule.
 
 ## [0.10.0] - 2026-09-22
 

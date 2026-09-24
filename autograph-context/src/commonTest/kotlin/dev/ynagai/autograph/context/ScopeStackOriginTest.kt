@@ -26,8 +26,8 @@ class ScopeStackOriginTest {
         // a mini-player. The mask must reach a tap in the fragment and NOT a tap on the Activity's
         // own view, whatever the insertion order says.
         val stack = ScopeStack()
-        val activity = stack.push(screen = "Main", boundary = true)
-        val miniPlayer = stack.push(parent = activity, boundary = true)
+        val activity = stack.pushSurface(screen = "Main")
+        val miniPlayer = stack.pushSurface(parent = activity)
         stack.maskScreen(miniPlayer)
 
         // Ambiently the mask, being later, wins — the value this test exists to keep away from the
@@ -48,8 +48,8 @@ class ScopeStackOriginTest {
         // The Compose-side S2: a ComposeView in the Activity's own content, next to the mini-player.
         // Its provider frame is nested in the Activity, not in the mini-player.
         val stack = ScopeStack()
-        val activity = stack.push(screen = "Main", boundary = true)
-        val miniPlayer = stack.push(parent = activity, boundary = true)
+        val activity = stack.pushSurface(screen = "Main")
+        val miniPlayer = stack.pushSurface(parent = activity)
         stack.maskScreen(miniPlayer)
         val provider = stack.push(parent = activity)
 
@@ -62,7 +62,7 @@ class ScopeStackOriginTest {
         // A Compose host that names no screen masks; a TrackedScreen composed inside it is the
         // current declaration of that very surface and must win over the mask.
         val stack = ScopeStack()
-        val host = stack.push(boundary = true)
+        val host = stack.pushSurface()
         stack.maskScreen(host)
         val provider = stack.push(parent = host)
         stack.push(screen = "ComposeScreen", parent = provider)
@@ -78,7 +78,7 @@ class ScopeStackOriginTest {
         // declares its screen for it) and the composition's root frame is NOT a boundary, so the
         // toolbar tap carries the screen the composition declares — as it did ambiently.
         val stack = ScopeStack()
-        val host = stack.push(boundary = true)
+        val host = stack.pushSurface()
         stack.maskScreen(host)
         val provider = stack.push(parent = host)
         stack.push(screen = "Detail", parent = provider)
@@ -92,8 +92,8 @@ class ScopeStackOriginTest {
         // A named fragment inside a named Activity: a tap on the Activity's own view is not in the
         // fragment, and the native pipeline knows it — so the fragment's screen must not refine it.
         val stack = ScopeStack()
-        val activity = stack.push(screen = "Main", boundary = true)
-        val fragment = stack.push(screen = "Child", parent = activity, boundary = true)
+        val activity = stack.pushSurface(screen = "Main")
+        val fragment = stack.pushSurface(screen = "Child", parent = activity)
         stack.push(screen = "Grandchild", parent = fragment) // a plain declaration under the fragment
 
         assertEquals("Main", stack.current(activity).screen)
@@ -106,8 +106,8 @@ class ScopeStackOriginTest {
         // (its frames are on the stack, later in insertion order) but off display. A tap on page A
         // must resolve to A — which insertion order alone gets wrong.
         val stack = ScopeStack()
-        val pageA = stack.push(boundary = true)
-        val pageB = stack.push(boundary = true)
+        val pageA = stack.pushSurface()
+        val pageB = stack.pushSurface()
         val providerA = stack.push(parent = pageA)
         val providerB = stack.push(parent = pageB)
         stack.push(screen = "A", parent = providerA)
@@ -130,7 +130,7 @@ class ScopeStackOriginTest {
         // would be silent data loss on a supported API.
         val stack = ScopeStack()
         stack.push(scope = props("experiment" to "b"))
-        val activity = stack.push(boundary = true) // opted out: names nothing
+        val activity = stack.pushSurface() // opted out: names nothing
         stack.push(screen = "Checkout")
 
         val ctx = stack.current(activity)
@@ -162,7 +162,7 @@ class ScopeStackOriginTest {
         val stack = ScopeStack()
         val provider = stack.push()
         stack.push(screen = "Home", parent = provider)
-        val lateHost = stack.push(boundary = true)
+        val lateHost = stack.pushSurface()
         stack.maskScreen(lateHost)
         stack.update(provider, parent = lateHost)
 
@@ -179,7 +179,7 @@ class ScopeStackOriginTest {
         // and let the late mask blank the content (measured).
         val stack = ScopeStack()
         val home = stack.push(screen = "Home")
-        val late = stack.push(boundary = true)
+        val late = stack.pushSurface()
         stack.maskScreen(late)
         stack.update(home, screen = "Home", parent = late) // update replaces contents, so restate them
 
@@ -192,7 +192,7 @@ class ScopeStackOriginTest {
         // The ranking corrects containers only: a root the app pushes AFTER a surface resumed keeps
         // ranking where it was pushed, above that surface's screen.
         val stack = ScopeStack()
-        val fragment = stack.push(screen = "Detail", boundary = true)
+        val fragment = stack.pushSurface(screen = "Detail")
         stack.push(screen = "Later")
         assertEquals("Later", stack.current(fragment).screen)
     }
@@ -200,8 +200,8 @@ class ScopeStackOriginTest {
     @Test
     fun an_inactive_frame_on_the_lineage_contributes_nothing() {
         val stack = ScopeStack()
-        val host = stack.push(screen = "Host", section = "top", scope = props("k" to "v"), boundary = true)
-        val provider = stack.push(parent = host, boundary = true)
+        val host = stack.pushSurface(screen = "Host", section = "top", scope = props("k" to "v"))
+        val provider = stack.pushSurface(parent = host)
         stack.setActive(host, false)
 
         val ctx = stack.current(provider)
@@ -218,9 +218,9 @@ class ScopeStackOriginTest {
         // reported by the host as STARTED — and the page's own TrackedScreen is the right answer,
         // not the current page's and not nothing. Propagate the bit here too and this reads null.
         val stack = ScopeStack()
-        val current = stack.push(boundary = true)
+        val current = stack.pushSurface()
         stack.push(screen = "Current", parent = stack.push(parent = current))
-        val peeking = stack.push(boundary = true)
+        val peeking = stack.pushSurface()
         val provider = stack.push(parent = peeking)
         stack.push(screen = "Peeking", parent = provider)
         stack.setActive(peeking, false)
@@ -259,9 +259,9 @@ class ScopeStackOriginTest {
         // ancestors and that provider frame gates the TrackedScreen composed inside the very surface
         // the event happened in: measured as a masked null where the base read "PageB".
         val stack = ScopeStack()
-        val shell = stack.push(boundary = true)
+        val shell = stack.pushSurface()
         stack.maskScreen(shell)
-        val page = stack.push(parent = shell, boundary = true)
+        val page = stack.pushSurface(parent = shell)
         stack.setActive(page, false)
         val provider = stack.push(parent = page)
         stack.setActive(provider, false)
@@ -274,8 +274,8 @@ class ScopeStackOriginTest {
     @Test
     fun a_stale_origin_resolves_to_what_of_its_lineage_is_still_on_the_stack() {
         val stack = ScopeStack()
-        val host = stack.push(screen = "Host", boundary = true)
-        val provider = stack.push(parent = host, boundary = true)
+        val host = stack.pushSurface(screen = "Host")
+        val provider = stack.pushSurface(parent = host)
         stack.remove(provider)
 
         assertEquals("Host", stack.current(provider).screen)
@@ -284,9 +284,9 @@ class ScopeStackOriginTest {
     @Test
     fun an_origin_from_another_stack_resolves_to_nothing() {
         val other = ScopeStack()
-        val foreign = other.push(screen = "Theirs", boundary = true)
+        val foreign = other.pushSurface(screen = "Theirs")
         val stack = ScopeStack()
-        stack.push(screen = "Mine", boundary = true)
+        stack.pushSurface(screen = "Mine")
 
         val ctx = stack.current(foreign)
         assertNull(ctx.screen)
@@ -299,15 +299,15 @@ class ScopeStackOriginTest {
         // OTHER stack; linking under it must not strand the composition (it is under no boundary of
         // this stack, so it stays global here), and a removed boundary is treated the same way.
         val other = ScopeStack()
-        val foreign = other.push(boundary = true)
+        val foreign = other.pushSurface()
         val stack = ScopeStack()
         val provider = stack.push(parent = foreign)
         stack.push(screen = "Declared", parent = provider)
-        val surface = stack.push(boundary = true)
+        val surface = stack.pushSurface()
 
         assertEquals("Declared", stack.current(surface).screen)
 
-        val removed = stack.push(boundary = true)
+        val removed = stack.pushSurface()
         stack.update(provider, parent = removed)
         stack.remove(removed)
         assertEquals("Declared", stack.current(surface).screen)
@@ -317,7 +317,7 @@ class ScopeStackOriginTest {
     fun scope_beneath_an_origin_still_drops_ambiguous_siblings() {
         // Origin resolution narrows the candidates; it must not turn the #66 drop into a guess.
         val stack = ScopeStack()
-        val provider = stack.push(scope = props("route" to "feed"), boundary = true)
+        val provider = stack.pushSurface(scope = props("route" to "feed"))
         stack.push(scope = props("row" to "1"), parent = provider)
         stack.push(scope = props("row" to "2"), parent = provider)
 
@@ -330,10 +330,10 @@ class ScopeStackOriginTest {
         // survivor for every origin, and being global it merges with the surface's own chain rather
         // than cancelling against it.
         val stack = ScopeStack()
-        val provider = stack.push(boundary = true)
+        val provider = stack.pushSurface()
         stack.push(scope = props("article_id" to "1"), parent = provider)
         stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val activity = stack.push(boundary = true)
+        val activity = stack.pushSurface()
         stack.push(scope = props("checkout_step" to "2"), parent = activity)
 
         assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current(provider).scope)
@@ -346,9 +346,9 @@ class ScopeStackOriginTest {
         // would vanish from every other surface's taps. `update` refuses the link for a global frame.
         val stack = ScopeStack()
         val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val a = stack.push(boundary = true)
+        val a = stack.pushSurface()
         stack.update(global, scope = props("tenant_id" to "acme"), parent = a)
-        val b = stack.push(boundary = true)
+        val b = stack.pushSurface()
         val inB = stack.push(scope = props("checkout_step" to "2"), parent = b)
         assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(inB).scope)
     }
@@ -359,7 +359,7 @@ class ScopeStackOriginTest {
         // set before handing it to the same resolveScope, so pin it here as well.
         val stack = ScopeStack()
         stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val provider = stack.push(scope = props("route" to "feed"), boundary = true)
+        val provider = stack.pushSurface(scope = props("route" to "feed"))
         stack.push(scope = props("row" to "1"), parent = provider)
         stack.push(scope = props("row" to "2"), parent = provider)
         assertEquals(props("tenant_id" to "acme", "route" to "feed"), stack.current(provider).scope)
@@ -368,8 +368,8 @@ class ScopeStackOriginTest {
     @Test
     fun scope_merges_along_the_lineage_across_a_boundary() {
         val stack = ScopeStack()
-        val host = stack.push(scope = props("tab" to "home"), boundary = true)
-        val provider = stack.push(parent = host, boundary = true)
+        val host = stack.pushSurface(scope = props("tab" to "home"))
+        val provider = stack.pushSurface(parent = host)
         stack.push(scope = props("article" to "42"), parent = provider)
 
         assertEquals(props("tab" to "home", "article" to "42"), stack.current(provider).scope)
@@ -378,8 +378,8 @@ class ScopeStackOriginTest {
     @Test
     fun a_boundary_frame_is_an_ordinary_frame_ambiently() {
         val stack = ScopeStack()
-        stack.push(screen = "Feed", boundary = true)
-        val inner = stack.push(screen = "Detail", boundary = true)
+        stack.pushSurface(screen = "Feed")
+        val inner = stack.pushSurface(screen = "Detail")
         assertEquals("Detail", stack.current().screen)
         stack.remove(inner)
         assertEquals("Feed", stack.current().screen)
