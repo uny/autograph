@@ -516,7 +516,9 @@ internal class AndroidScreenCapture(
      * The deactivation changes nothing at this instant — the frame is still empty, and an empty frame
      * contributes nothing to screen, section or scope whether it is active or not (`resolveScope`
      * drops empty scopes before it looks for ambiguity). It matters for what nests under it next: the
-     * ambient read takes an inactive frame's descendants off display with it (#228), so a
+     * ambient read takes an inactive frame's descendants off display with it
+     * ([#228](https://github.com/uny/autograph/issues/228);
+     * [design notes](https://github.com/uny/autograph/blob/main/docs/design/228-ambient-propagation.md)), so a
      * `TrackedScreen` composed inside a cached, not-yet-shown page is born silent, exactly as its
      * surface is. It also makes [SurfaceState.selected] a true mirror of the frame's active bit from
      * the first instant, so the short-circuits in [select]/[deselect] cannot be reasoning from a
@@ -614,14 +616,11 @@ internal class AndroidScreenCapture(
 
         // Selected on every resume, whatever the frame says — including nothing. A resumed surface IS
         // on display, and that is the only question the bit answers; whether it names, masks or
-        // declares nothing is settled above, in the frame's contents. Selecting only a frame that
-        // declares or masks looked equivalent while an empty frame's bit was inert, and stopped being
-        // so when the ambient read began taking a demoted frame's descendants with it (#228): a
-        // Compose-hosting fragment the adopter opted out by name, or a Compose child fragment
-        // contained by a named screen, then silenced every `TrackedScreen` and `AutographScope`
-        // composed inside it for as long as it was on display — and the ambient screen fell back to
-        // an older surface's, a wrong value. Attribution before emission: emitScreenView records
-        // history, and the frame has to be answering by the time anything reads the stack.
+        // declares nothing is settled above, in the frame's contents. The ambient read takes a
+        // deselected frame's descendants with it, so leaving an empty frame off would silence what is
+        // composed inside the surface (docs/design/228-ambient-propagation.md). Attribution before
+        // emission: emitScreenView records history, and the frame has to be answering by the time
+        // anything reads the stack.
         select(state)
 
         if (state.emitted) return // a view of this screen is already in progress; this resume is a return

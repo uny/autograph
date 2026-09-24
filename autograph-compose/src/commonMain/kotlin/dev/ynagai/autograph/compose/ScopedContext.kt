@@ -179,16 +179,17 @@ internal fun MirrorAmbientFrame(
  * under it, so the `TrackedScreen`s and [AutographScope]s of a composition go silent together with
  * the surface showing it and come back with it. `RESUMED ↔ STARTED` is the demotion signal every
  * host emits: a `ViewPager2` page moved off display, an Activity behind a permission prompt, a
- * Compose `UIViewController` after `viewDidDisappear` (which Compose Multiplatform maps to
- * `CREATED`). Measured before this: a pager of Compose-declared pages read ambiently as the page most
- * recently *composed*, not the one on display, because a page composes at `STARTED` — before it is
- * ever shown — and its frames were born active (#228). Seeding from the owner's current state is
- * what makes such a page start silent; the observer then follows the transitions. Taps are not what
- * this is for: they resolve from an origin, which does not propagate the bit within the origin's own
- * surface (see `ScopeStack.current(origin)`), so a tap on a page the host reports as demoted — one
- * peeking beside the current page — still attributes to that page's own screen, while a demoted
- * sibling composition's declarations stay off it. That holds only because [ProviderOrigin.resolve]
- * never reads the ambient snapshot while this frame exists, claimed host or not.
+ * Compose `UIViewController` after it disappears. A page composes at `STARTED`, before it is ever
+ * shown, so seeding from the owner's current state is what makes such a page start silent; the
+ * observer then follows the transitions. Measurements and the iOS lifecycle mapping:
+ * [#228](https://github.com/uny/autograph/issues/228);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/228-ambient-propagation.md).
+ * Taps are not what this is for: they resolve from an origin, which does not propagate the bit
+ * within the origin's own surface (see `ScopeStack.current(origin)`), so a tap on a page the host
+ * reports as demoted — one peeking beside the current page — still attributes to that page's own
+ * screen, while a demoted sibling composition's declarations stay off it. That holds only because
+ * [ProviderOrigin.resolve] never reads the ambient snapshot while this frame exists, claimed host or
+ * not.
  */
 @Composable
 internal fun ProviderFrame(
@@ -269,13 +270,12 @@ internal expect fun KeepLinkedToHost(stack: ScopeStack, origin: ProviderOrigin)
  * exactly as it does under a claimed host; a claimed native surface's frame beside it does not —
  * absent, never borrowed), the composition's own declarations apply whatever this frame's bit says,
  * and another composition's on the same stack apply only while *its* provider frame is active — see
- * `ScopeStack.current(origin)`. Falling back to the ambient [ScopeStack.current] here instead was
- * measured wrong:
- * that read propagates a demoted host's bit down to the composition (see [ProviderFrame]), so a tap
- * on a visible page whose host reports `STARTED` — a `ViewPager2` neighbour peeking beside the
- * current page — lost the page's own `TrackedScreen` and, on a shared stack, took the current
- * page's instead. Nothing claims a host view on iOS or on Android without the native capture, so
- * that fallback was the path of every Compose tap there, not an edge case.
+ * `ScopeStack.current(origin)`. It must not fall back to the ambient [ScopeStack.current]: that read
+ * propagates a demoted host's bit down to the composition (see [ProviderFrame]), so a tap on a
+ * visible page whose host reports `STARTED` would lose the page's own `TrackedScreen` — and this is
+ * the path of every Compose tap on iOS and on Android without the native capture
+ * ([#228](https://github.com/uny/autograph/issues/228);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/228-ambient-propagation.md)).
  */
 internal class ProviderOrigin(
     private val root: Array<ScopeHandle?>,
