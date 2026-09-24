@@ -159,9 +159,9 @@ import platform.darwin.NSObject
  *   wherever the remainder is still a rectangle, which settles the overlap before this tie-break is
  *   consulted. What is left is an untrimmable overlap (a corner, or an occluder sitting entirely
  *   inside) whose on-top element the bridge emits earlier — measured for an overhang straight up.
- * - **UIKit / SwiftUI**: no trim was observed in the one geometry measured (SwiftUI; no UIKit
- *   hierarchy was run), so there the tie-break was left to decide an overlap Compose settles. One
- *   geometry is not a sweep. Since #191 the native pipeline does not use this walk; the Compose one
+ * - **UIKit / SwiftUI**: no trim was observed in the one trimmable geometry measured (SwiftUI; no
+ *   UIKit hierarchy was run), so there the tie-break was left to decide an overlap Compose settles.
+ *   One geometry is not a sweep. Since #191 the native pipeline does not use this walk; the Compose one
  *   still reaches native nodes through UIKit interop hosted inside a composition, and any other
  *   caller walking a native tree may meet the same gap.
  *
