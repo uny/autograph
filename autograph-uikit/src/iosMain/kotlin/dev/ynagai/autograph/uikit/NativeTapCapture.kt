@@ -38,16 +38,13 @@ import platform.darwin.NSObjectProtocol
  * with a `track()` call. Compose content has its own pipeline and is unaffected by any of this.
  *
  * **Why SwiftUI is not captured *warm* either, though it once was.** UIKit and SwiftUI build the
- * accessibility element tree only when an accessibility client has run in the process — VoiceOver, Voice
- * Control, the Accessibility Inspector, an XCUITest runner (#135, measured on a freshly created
- * simulator and again on a rebooted physical device). Until #191 a second resolver walked that tree
- * behind this one, which did name SwiftUI elements — but only in a process where such a client was
- * running. That is not a partial capture, it is a **biased** one: the taps it recorded were exactly
- * those made by assistive-technology users and by test automation, and its silence elsewhere is
- * indistinguishable downstream from nobody having tapped. Data that is quietly conditioned on a user's
- * assistive technology is worse to ship than no data, so the fallback was removed rather than kept for
- * the population it happened to serve. (This also removed the misattribution that same walk produced:
- * a UIView-backed SwiftUI container carrying an identifier could claim a tap on its own contents.)
+ * accessibility element tree only once an accessibility client has run in the process — VoiceOver, Voice
+ * Control, the Accessibility Inspector, an XCUITest runner. A resolver that walked that tree named
+ * SwiftUI elements only there, so what it captured was conditioned on the user's assistive technology
+ * and on test automation, and its silence elsewhere read as nobody having tapped. That is biased data,
+ * worse to ship than none, so #191 removed it
+ * ([#135](https://github.com/uny/autograph/issues/135);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/135-ios-cold-accessibility.md)).
  *
  * A tap that resolves to nothing is at least **not silently** lost: the first time it happens, an
  * `NSLog` line explains why — see [warnOnceIfANativeTapResolvedToNothing] — so a developer running the
@@ -187,7 +184,8 @@ public class AutographNativeTapCapture internal constructor(
      * the whole of native resolution: `hitTest` is the touch-delivery path itself rather than a
      * geometric approximation of it, and it answers in a cold process. There used to be a second,
      * accessibility-walking resolver behind it; #191 removed it, because the only population it still
-     * served was *warm* SwiftUI — see this file's header for why that is worse than not capturing.
+     * served was *warm* SwiftUI — see [installAutographNativeTapCapture] for why that is worse than not
+     * capturing.
      *
      * **The tri-state survives the second resolver it was introduced for**, for a different reason
      * that is easy to lose: it is what keeps the diagnostic honest. Only
@@ -248,14 +246,11 @@ internal var warnedANativeTapResolvedToNothing = false
  * The first time a native tap resolves to nothing, logs once via `NSLog` — loud enough that a developer
  * running the app during integration sees it in the console instead of silent nothing. Never logs again.
  *
- * **No tree-wide check gates this any more, and that is the point of #191's change rather than a
- * regression in precision.** The predecessor, `warnOnceIfAccessibilityTreeIsCold`, asked whether the
- * accessibility tree had been built, because that was what decided whether a native tap could resolve.
- * It no longer decides anything: [resolveNativeTapTargetByHitTest] never reads that tree, so a tap now
- * resolves to nothing for reasons that have nothing to do with coldness — SwiftUI content, which has no
- * per-element backing view at all, or a UIKit control carrying no `accessibilityIdentifier`. Keeping the
- * coldness question would have gated the warning on a fact that is no longer causal: an app whose taps
- * are all being lost on a *warm* tree would have been told nothing.
+ * **No coldness check gates this.** Its predecessor warned only when the whole accessibility tree
+ * was cold; since [resolveNativeTapTargetByHitTest] never reads that tree, coldness no longer decides
+ * whether a tap resolves. SwiftUI content and untagged UIKit controls resolve to nothing warm too, and
+ * a coldness gate would tell such an app nothing (#191; see the design notes linked from
+ * [installAutographNativeTapCapture]).
  *
  * Only [NativeHitTestResolution.Unresolved] reaches here — never a
  * [Dropped][NativeHitTestResolution.Dropped]. See [AutographNativeTapCapture.report] for why that

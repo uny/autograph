@@ -19,11 +19,11 @@ import platform.darwin.NSObject
  * `UIView.accessibilityElements` / `UIAccessibilityElement.accessibilityElements` container API,
  * walked recursively.
  *
- * This is the one mechanism that identifies a tapped element across every iOS UI framework Autograph
- * supports: UIKit and SwiftUI populate this tree natively, and Compose Multiplatform bridges its own
- * semantics tree into it (as `CMPAccessibilityElement`, a `UIAccessibilityElement` subclass). Hence
- * this module: `autograph-compose` resolves CMP taps through it, and a UIKit/SwiftUI-only app can
- * reach it without depending on Compose at all.
+ * Compose Multiplatform bridges its own semantics tree into it (as `CMPAccessibilityElement`, a
+ * `UIAccessibilityElement` subclass), and `autograph-compose` resolves CMP taps through it. UIKit and
+ * SwiftUI populate the same tree, but only once an accessibility client has run in the process, so
+ * since #191 native tap capture does not use this walk — it resolves through `hitTest` (see
+ * `NativeHitTestResolution.kt`).
  *
  * Compose's `SemanticsOwner` is deliberately NOT used on iOS (unlike Android): there is no supported
  * route to one from application code — `LocalComposeScene`, the `ComposeRootRegistry` that
@@ -31,42 +31,20 @@ import platform.darwin.NSObject
  * `internal` or `private` to the Compose UI library. The native accessibility tree is the escape
  * hatch, and it uses only public, documented UIKit API.
  *
- * Confirmed on-device (`ComposeUIViewController` hosted in a real `.app`, installed and launched via
- * `xcrun simctl`, Compose Multiplatform 1.11.1) that this walk reaches Compose's bridged elements
- * **without requiring an accessibility client** — VoiceOver off, no Inspector, no test runner attached.
- * The reason is not that the bridge is built eagerly: since CMP 1.8 (compose-multiplatform-core#1780)
- * it is built on demand. It is that the activation call site cannot distinguish one caller from
- * another — `AccessibilityRoot.accessibilityElements()` calls `activateAccessibilityIfNeeded()` for
- * whoever asks, and this walk asks. Two gates sit in front of that, neither of them tied to assistive
- * technology: `AccessibilityMediator.isEnabled` — set from `ComposeSceneMediator.isAccessibilityEnabled`,
- * which a reversed layer walk at scene setup leaves on unless a `focusable` layer sits above the scene,
- * i.e. it disables only a scene that could not receive the tap anyway — and the traversal itself.
- * (The other two entry points, `focusItemsInRect` and `accessibilityHitTest`, activate the same way
- * behind the same gate.) The old opt-out config `AccessibilitySyncOptions`, whose
- * `WhenRequiredByAccessibilityServices` default would have gated the bridge behind a running screen
- * reader, was removed by #1780 as well, so consumers can no longer turn it off. Do not restate this as
- * unconditional: it is a dependency on CMP's activation path, which is what makes the cold-device check
- * on a CMP bump (#154) more than superstition.
+ * **It reaches Compose's bridged elements without an accessibility client** — VoiceOver off, no
+ * Inspector, no test runner attached. CMP builds its bridge on demand, and the activation call site
+ * (`AccessibilityRoot.accessibilityElements()` → `activateAccessibilityIfNeeded()`) cannot tell this
+ * walk from a screen reader; the gates in front of it are about which scene is live, not about
+ * assistive technology. Do not restate this as unconditional: it is a dependency on a CMP
+ * implementation detail, which is why a CMP bump needs a cold-device check (#154, `CONTRIBUTING.md`).
+ * Those names are Compose-internal and move between releases — the design notes record which version
+ * each was read on ([#135](https://github.com/uny/autograph/issues/135);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/135-ios-cold-accessibility.md)).
  *
- * Those names were read out of the **1.11.1 klib this project resolves**, not out of a development
- * branch — `AccessibilityRoot`, `activateAccessibilityIfNeeded`, all three entry points and
- * `isAccessibilityEnabled` are present in it; `AccessibilitySyncOptions` and
- * `WhenRequiredByAccessibilityServices` are absent from it. They are Compose-internal and free to move,
- * so re-read them on a CMP bump rather than trusting this paragraph.
- *
- * The trajectory is favourable, not fragile: compose-multiplatform-core#2416 (2025-09) added, in so
- * many words, support for **UI Automation** reaching child elements inside accessibility elements —
- * non-screen-reader clients, deliberately — and #2760 (2026-02) added `accessibilityHitTest` as a
- * third activation entry point. Those are the endpoints, not a survey of the eighteen months between
- * them: from #1780 to the 1.11.1 klib above, the opt-out knob is gone and the entry points went from
- * one to three.
- *
- * An earlier attempt concluded the tree was absent because it read
- * `LocalUIView.current.accessibilityElements()` directly, which is empty: Compose attaches the real
- * accessibility root to a *sibling* subview several levels down (`ComposeContainerView.subviews[2]` —
- * `OverlayInputView` — in the traced case, though that index isn't a contract worth hard-coding), not
- * to the view `LocalUIView` itself returns. Walking `subviews` alongside `accessibilityElements` at
- * every `UIView` node ([accessibilityChildren]) finds it regardless of which subview it lives under.
+ * `LocalUIView.current.accessibilityElements()` is empty: Compose attaches the real accessibility root
+ * to a *sibling* subview several levels down, not to the view `LocalUIView` returns. Walking `subviews`
+ * alongside `accessibilityElements` at every `UIView` node ([accessibilityChildren]) finds it wherever
+ * it lives.
  *
  * **What is NOT reachable this way: custom semantics keys.** The bridge only carries the fixed
  * UIAccessibility properties — label, traits, identifier, frame. Anything a caller needs to know
@@ -74,21 +52,10 @@ import platform.darwin.NSObject
  * be tracked outside the tree; `autograph-compose` keeps a positional registry for exactly this
  * reason.
  *
- * **Measured (#156): this walk also flips CMP's internal "a screen reader is active" belief**
- * (`LocalPlatformScreenReader.current.isActive`, set from `AccessibilityRoot`'s `element` setter on
- * tree sync). Cold-device A/B: a single tap that runs this walk flips it `false → true` (further taps
- * are moot once flipped); an identical tap through plain Compose with no walk of ours leaves it
- * `false`, unchanged across repeats. Expected, not a new failure mode — the activation call site this
- * file already documents cannot distinguish an app from a screen reader, and that is exactly what this
- * flag records. Its only confirmed consumer is `isScreenReaderFocusable` (present in the same klib,
- * read inside CMP's own focus-traversal code); the flag itself is `@InternalComposeUiApi` with no
- * supported read path from application code, so no application code sitting downstream of Compose can
- * observe it. Whether it perturbs actual screen-reader traversal order was not independently
- * measurable: the only way to observe AT-facing behaviour is to attach a real AT, and attaching one
- * sets this same flag by itself — so a differential test would compare "AT plus our walk" against
- * "AT alone," not against a walk-free baseline. Autograph's walk cannot manufacture a state a genuine
- * AT visit wouldn't already produce; it can only make CMP believe that arrival happened somewhat
- * earlier and more often than it otherwise would. Closed as a measured non-issue.
+ * **It also flips CMP's internal "a screen reader is active" flag** (#156), for the same reason: the
+ * activation call site cannot tell an app from a screen reader. Measured, and closed as a non-issue —
+ * the flag is `@InternalComposeUiApi` and its one reader sits in CMP's own focus traversal; see the
+ * design notes above.
  */
 
 /**
@@ -102,27 +69,17 @@ import platform.darwin.NSObject
  * **The starting node is not a filter.** Containment gates the descent at every node except [node]
  * itself: [node] is the caller's choice of *where to search*, and its own frame says nothing about
  * where its descendants are. This is not a hypothetical distinction — it is the difference between
- * working and reporting nothing at all. Measured on a simulator created fresh, with no accessibility
- * client ever connected to the process, Compose Multiplatform's `OverlayInputView` (the view
- * `autograph-compose` starts this walk from, via `LocalUIView.current`) reports
- * `accessibilityFrame = CGRectZero`, while every bridged element beneath it already carries a correct
- * frame, identifier and traits. Gating on the starting node dropped **every** Compose tap in that
- * state, for the life of the process — and the tap itself was never in doubt: the element's own
- * `onClick` fired each time. Anything that connects to the accessibility subsystem (XCUITest,
- * VoiceOver, the Accessibility Inspector) populates that frame and hides the whole failure, which is
- * why the `sample-ios` XCUITest suite passed throughout: its runner is itself such a client. See #135.
+ * working and reporting nothing at all: in a process no accessibility client has touched, the view
+ * `autograph-compose` starts from (Compose Multiplatform's `OverlayInputView`, via `LocalUIView.current`)
+ * reports an empty `accessibilityFrame` while every bridged element beneath it is already correct, and
+ * gating on it dropped every Compose tap for the life of the process. XCUITest cannot catch this: its
+ * runner is itself an accessibility client and warms the state away
+ * ([#135](https://github.com/uny/autograph/issues/135);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/135-ios-cold-accessibility.md)).
  *
- * This exemption does **not** rescue a UIKit/SwiftUI walk in that state, and the reason is not the
- * one an earlier version of this note gave (it claimed the native walk's `UIWindow` reports a valid
- * frame when cold — measured false, it reports `CGRectZero` too). Cold, UIKit and SwiftUI have not built
- * an accessibility tree at all: the walk reaches only plain `UIView`s through `subviews`, every one of
- * them reporting an empty frame and no traits, with not a single `SwiftUI.AccessibilityNode` or button
- * trait anywhere. So the exemption gets the walk past the root and every child then prunes on its own
- * empty frame. Compose differs because Compose Multiplatform builds its bridged elements itself, on an
- * activation path that reading the tree is enough to trigger (see the note at the top of this file) —
- * those are present and correct while cold, which is why exempting the root is enough there and only
- * there. It cost the native pipeline its SwiftUI half, which is why #191 stopped that pipeline using
- * this walk at all — see `installAutographNativeTapCapture`.
+ * The exemption does **not** rescue a UIKit/SwiftUI walk in that state: cold, UIKit and SwiftUI have
+ * built no accessibility tree at all, so every child prunes on its own empty frame. That is why the
+ * native pipeline resolves through `hitTest` instead — see `installAutographNativeTapCapture`.
  *
  * **What the exemption does not loosen.** Two properties are preserved deliberately, because relaxing
  * the descent could otherwise turn a dropped event into a misattributed one — the worse failure:
@@ -136,9 +93,9 @@ import platform.darwin.NSObject
  *   attributed the tap whenever any inert child contained it.
  *
  * One consequence is genuinely new: a tap outside [node]'s own frame can now resolve, where it
- * previously always dropped. Both shipped callers pass a root that contains every tap they are asked
- * about (a `UIWindow`, or the Compose host's overlay view), so this widens where the walk's documented
- * overlap ambiguity below can be reached without changing which element any current tap names.
+ * previously always dropped. The one shipped caller passes the Compose host's overlay view, which
+ * contains every tap it is asked about, so this widens where the walk's documented overlap ambiguity
+ * below can be reached without changing which element any current tap names.
  *
  * **Overlap tie-break, and its limits.** Children are searched in reverse order, so among *subviews* a
  * later sibling — the one drawn on top — wins an overlap. That is a true z-order tie-break only for

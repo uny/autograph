@@ -12,33 +12,19 @@ import platform.UIKit.UIView
 /*
  * iOS's native tap resolver — since #191, the only one.
  *
- * Its predecessor identified a tapped element by walking the **accessibility tree**, which
- * UIKit and SwiftUI build on demand — and measured on a physical iPad Pro 11" (3rd gen) running
- * iOS 26.2.1, rebooted and launched from the home screen, they had built nothing at all: 0 of 15 views
- * carried a non-zero `accessibilityFrame`, 0 carried any trait. Every native tap is dropped for the
- * life of such a process (#135). A freshly created simulator was already known to behave this way; the
- * device measurement is what closed the question of whether real hardware differs. It does not.
+ * **Why `hitTest`: it works in a cold process.** UIKit and SwiftUI build the accessibility tree only
+ * once an accessibility client has run, and until then its predecessor, which walked that tree, dropped
+ * every native tap for the life of the process (#135) — measured on a fresh simulator and on a physical
+ * device. `hitTest` never consults accessibility: in the same cold process it returned the real
+ * `UIButton` carrying its `accessibilityIdentifier`, the exact string reported as a target (#189).
  *
- * `hitTest` never consults accessibility. In the same cold process, on the same screen, the same tap
- * position handed to `UIWindow.hitTest` returned the real `UIButton` **carrying its
- * `accessibilityIdentifier`** — the exact string this pipeline reports as a target. That is the whole
- * mechanism here, and it is why this resolver exists (#189).
- *
- * **It rescues the UIKit half only.** Under a SwiftUI button the same cold `hitTest` returned a
- * `PlatformGroupContainer` with a nil identifier and a nil label: SwiftUI creates no per-element
- * backing view, and the `.accessibilityIdentifier(_:)` set on the button appears nowhere in the view
- * hierarchy. The accessibility tree is SwiftUI's only enumeration, and that tree is what needs a
- * client. Do not re-derive this: it was measured twice, on a fresh simulator and on the device, and a
- * later sweep over `List`, `Form`, `Picker` and a plain `Button` found no SwiftUI
- * `.accessibilityIdentifier` anywhere in the view hierarchy — cold *or* warm. This is also the line
- * PostHog draws (UIKit swizzling; SwiftUI element metadata documented as possibly incomplete).
- *
- * **So SwiftUI is not covered at all, and #191 stopped pretending otherwise.** The accessibility
- * resolver did name SwiftUI elements, but only in a process where an accessibility client happened to
- * be running, which made what it captured conditional on the user running VoiceOver or on the tap
- * coming from a test runner. That bias is invisible downstream — silence reads as "nobody tapped this"
- * — so it was removed rather than kept for the population it served. SwiftUI surfaces need explicit
- * instrumentation; `installAutographNativeTapCapture`'s kdoc says so to the developer.
+ * **It rescues the UIKit half only.** SwiftUI creates no per-element backing view, and no SwiftUI
+ * `.accessibilityIdentifier` appears anywhere in the view hierarchy, cold or warm; its accessibility
+ * tree, the only enumeration it has, is what needs a client. #191 removed the warm-only accessibility
+ * fallback rather than keep a capture conditioned on assistive technology, so SwiftUI surfaces need
+ * explicit instrumentation. The measurements, and what was refuted on the way, are in the design notes
+ * ([#135](https://github.com/uny/autograph/issues/135);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/135-ios-cold-accessibility.md)).
  *
  * **Two side benefits, both of them real and neither of them the reason.** `hitTest` *is* the answer
  * to "which view receives this touch" — the accessibility tree is an approximation of it, which is why
@@ -422,7 +408,8 @@ private const val MAX_HIT_CHAIN_DEPTH = 256
  * XCUITest suite, a tap on `native_row_2` inside an identified `List` resolved to `native_list`, where
  * the accessibility resolver had correctly named the row. That is a regression, not a gap — a container
  * claiming its children's taps is a misattribution, the failure this codebase consistently ranks worse
- * than a drop.
+ * than a drop. (A later standalone rig, #191, found no SwiftUI-set identifier on any backing view, cold
+ * or warm; the two observations have not been reconciled. The barrier is right on either account.)
  *
  * A scroll view is therefore a **barrier**, not a skip: [resolveNativeTapTargetByHitTest] stops the
  * upward search at the first one rather than stepping over it. Answering "not interactive" for the
