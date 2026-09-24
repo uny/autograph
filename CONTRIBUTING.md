@@ -171,7 +171,9 @@ what CMP already requires before pinning it yourself.
 check before merging — CI cannot catch a regression here.** iOS Compose autocapture depends on an
 undocumented CMP implementation detail: the accessibility-tree activation call site that autograph's
 tap-time walk relies on (see the kdoc in
-[`AccessibilityTree.kt`](autograph-uikit/src/iosMain/kotlin/dev/ynagai/autograph/uikit/AccessibilityTree.kt)).
+[`AccessibilityTree.kt`](autograph-uikit/src/iosMain/kotlin/dev/ynagai/autograph/uikit/AccessibilityTree.kt),
+and [`docs/design/135-ios-cold-accessibility.md`](docs/design/135-ios-cold-accessibility.md) for the
+names it depends on and the CMP version each was read on).
 `xcodebuild test` in CI is itself an accessibility client, so it warms the exact state a real cold
 launch starts without — a CMP bump that silently breaks cold-start tap resolution would land fully
 green (see [#135](https://github.com/uny/autograph/issues/135)).

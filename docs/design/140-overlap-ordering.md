@@ -181,7 +181,8 @@ against all five ambiguous cases above, not only the one it was written for.
 
 - The cold-accessibility topic — why the walk sees bridged Compose elements in a process no
   accessibility client has touched, why a UIKit/SwiftUI walk sees nothing there, and #189/#191's move
-  of the native pipeline onto `hitTest` — has its own notes.
+  of the native pipeline onto `hitTest` — has its own notes:
+  [`135-ios-cold-accessibility.md`](135-ios-cold-accessibility.md).
 - The *across-groups* half of the tie-break (a node's `accessibilityElements` searched after all of
   its `subviews`) predates #140 (`9fb056d`, #69) and was not part of the spike; it stays in the walk's
   KDoc.
