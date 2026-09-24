@@ -163,8 +163,8 @@ internal fun MirrorAmbientFrame(
  * masks) plus the declarations beneath it, and nothing a sibling surface pushed. See
  * [ProviderOrigin] for how the frame is linked to its host and read at tap time.
  *
- * Deliberately **not** a `boundary` (`ScopeStack.push`), although the observer can localize to it.
- * A composition is how the surface hosting it declares its screen, not a surface of its own: a
+ * Deliberately **not** a boundary (`ScopeStack.pushSurface`), although the observer can localize to
+ * it. A composition is how the surface hosting it declares its screen, not a surface of its own: a
  * native tap on a toolbar beside the `ComposeView`, or on an `AndroidView` interop button inside
  * it, resolves from the *host's* frame and must still see the `TrackedScreen` in here — and a
  * provider nested inside another's composition (a tracker swapped for a subtree) is content the
