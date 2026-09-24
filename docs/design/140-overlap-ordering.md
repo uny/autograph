@@ -64,9 +64,9 @@ actually fired**. Coordinates below are window pixels.
 5. **The measured native (SwiftUI) tree did not trim.** Measured warm, under an XCUITest runner,
    because a cold native tree is empty and its silence must not be read as "no trim". `n8_top`
    covers `n8_big`'s bottom half with exactly the full-width strip CMP trimmed, and `n8_big` still
-   reports the same area as the un-overlapped `n0_solo` (69120). The G1-shaped misattribution reproduced end to end
-   through the native resolver of the time (`REPORTED n1_big` / `ORACLE n1_small`). No UIKit
-   hierarchy was run.
+   reports the same area as the un-overlapped `n0_solo` (69120). The G1-shaped misattribution
+   reproduced end to end through the native resolver of the time (`REPORTED n1_big` /
+   `ORACLE n1_small`). No UIKit hierarchy was run.
 
 ## The failure condition
 
@@ -82,11 +82,11 @@ measured failure is a corner overhang **straight up** — the two share a `left`
 has the smaller `top`. A strictly *leftward* overhang follows from (3) but was never run.
 
 **UIKit / SwiftUI**: the G1-shaped corner overhang, which Compose also fails, misattributed on
-SwiftUI too (5). In the one trimmable geometry measured, the full-width strip CMP trims, SwiftUI did
-not trim (5), so there the tie-break decides an overlap Compose settles. Whether a native tree ever
-trims is not established: one trimmable SwiftUI geometry is not a sweep, and no UIKit hierarchy was
-run. If none does, condition 1 always holds and the walk fails whenever the on-top element sorts
-earlier — **strictly broader** than Compose.
+SwiftUI too (5). In the one trimmable geometry measured — the full-width strip that CMP trims —
+SwiftUI did not trim (5), so there the tie-break decides an overlap Compose settles. Whether a
+native tree ever trims is not established: one trimmable SwiftUI geometry is not a sweep, and no
+UIKit hierarchy was run. If none does, condition 1 always holds and the walk fails whenever the
+on-top element sorts earlier — **strictly broader** than Compose.
 
 ## Refuted along the way
 
