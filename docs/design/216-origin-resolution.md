@@ -104,8 +104,9 @@ them. The rig for the first two was
 
 ## Refuted along the way
 
-Every item is a design that was written, tested, and then reproduced failing — correct→absent or
-correct→wrong. The first nine came out of #222's review, the last two out of #223's.
+Each would have made a value correct→absent or correct→wrong. Items 1–9 were written and tested,
+then reproduced failing in #222's review; item 10 was ruled out while #223 was being designed, before
+any of it was built; item 11 was written, then found in #223's review.
 
 1. **Only lineage and subtree take part.** A root the app pushed by hand (an experiment scope, a
    screen on an opted-out surface) vanished from every tap the moment the capture claimed the view
@@ -203,7 +204,8 @@ capture through `current()`.
 | sibling providers in one `ComposeView` (refuted 3) | `ComposeTapOriginTest.siblingProvidersInOneComposeViewResolveInteropTapsAsTheHostDoes` |
 | container rank and its tie-break (refuted 4, 5) | `ScopeStackOriginTest.a_surface_adopted_late_ranks_no_later_than_the_content_it_hosts`, `…a_late_container_directly_over_its_content_still_ranks_before_it`, `…a_root_pushed_after_a_surfaces_content_still_wins_over_it` |
 | tap-time linking | `AutocaptureObserverTest.anOriginLinksTheCompositionsRootUnderItsHostAtTapTime` |
-| re-link on a late claim (refuted 6, 7) | `ComposeTapOriginTest.aCompositionThatPredatesTheInstallIsRelinkedWhenItsSurfaceIsClaimed`, `…everyOutermostProviderInOneComposeViewIsRelinkedOnALateInstall`, `AndroidTapOriginTest.aFragmentThatPredatesTheInstallIsClaimedWhenItsActivityIsAdopted` |
+| re-link on a late claim (refuted 6, 7) | `ComposeTapOriginTest.aCompositionThatPredatesTheInstallIsRelinkedWhenItsSurfaceIsClaimed`, `…everyOutermostProviderInOneComposeViewIsRelinkedOnALateInstall` |
+| a fragment that predates the install is claimed at adoption | `AndroidTapOriginTest.aFragmentThatPredatesTheInstallIsClaimedWhenItsActivityIsAdopted` |
 | off-stack parents are transparent (refuted 8) | `ScopeStackOriginTest.a_parent_off_this_stack_is_transparent_not_a_boundary`, `…an_origin_from_another_stack_resolves_to_nothing` |
 | parent link kept at resume (refuted 9) | `AndroidTapOriginTest.aTapInAnOptedOutFragmentCarriesTheScreenOfTheSurfaceHostingItNotTheSiblingItCovers` |
 | parent link re-read after a rebuild (fact 3) | `AndroidTapOriginTest.aChildStaysLinkedToItsParentAcrossARebuildOfBothViews` |
@@ -216,10 +218,14 @@ capture through `current()`.
 
 `ComposeTapOriginTest` (`sample-android`) is the one suite that sends real `MotionEvent`s through a
 real `AutographProvider` with the native capture installed, on a plain `Application`; it is the only
-place the Compose half of the Android origin path is exercised end to end. The rule → test pairing
-above follows each test's assertion. #222 and #223 each list the mutants they ran, and each mutant
-failed at least one test; that list does not say which test caught which mutant, so it is not
-repeated here as a pairing.
+place the Compose half of the Android origin path is exercised end to end.
+
+The pairing above follows each test's name and its comment, not a mutant run, with one exception:
+dropping `parent` from the resume-time `update` (refuted 9) was re-run on 2026-09-24 and fails
+`aTapInAnOptedOutFragmentCarriesTheScreenOfTheSurfaceHostingItNotTheSiblingItCovers` and
+`aChildStaysLinkedToItsParentAcrossARebuildOfBothViews` (2 of `AndroidTapOriginTest`'s 9). #222 and
+#223 each list the mutants they ran, and each failed at least one test; neither list says which test
+caught which mutant, so it is not repeated here as a pairing.
 
 ## Re-verifying after a change to origin resolution
 
