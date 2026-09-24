@@ -112,7 +112,9 @@ public class ScopeStack {
      * composition is how the surface hosting it declares its screen, not a surface of its own, so a
      * native tap on a toolbar *beside* the `ComposeView` must still see the `TrackedScreen` inside
      * it. A plain [push] is the right call for any declaration that is not a surface — and a frame
-     * under no boundary at all applies to every event, whatever its origin (see [current]).
+     * under no boundary at all applies to every event, whatever its origin (see [current])
+     * ([#216](https://github.com/uny/autograph/issues/216);
+     * [design notes](https://github.com/uny/autograph/blob/main/docs/design/216-origin-resolution.md)).
      *
      * Static for the life of the frame; [update] does not revise it. [boundary] has no default so
      * that a call spelling none of the arguments still resolves to the plain [push] overload.
@@ -381,7 +383,9 @@ public class ScopeStack {
      *   below).
      *
      * Everything else is out, and that is the point: a sibling surface's declaration, or its mask,
-     * never reaches an event that did not happen in it, whatever the two frames' insertion order.
+     * never reaches an event that did not happen in it, whatever the two frames' insertion order
+     * ([#216](https://github.com/uny/autograph/issues/216);
+     * [design notes](https://github.com/uny/autograph/blob/main/docs/design/216-origin-resolution.md)).
      * The survivors resolve in insertion order — with one correction: **a frame ranks no later than
      * the content nested in it.** A surface adopted late pushes its frame *after* the composition it
      * hosts (an Activity that predates the native capture's install is picked up at its next
@@ -430,9 +434,8 @@ public class ScopeStack {
         // A container ranks where its earliest nested survivor ranks (see the kdoc). Frames sharing a
         // rank are always one ancestor chain — the rank comes from one frame's index, and only its
         // ancestors can borrow it — so their depths are distinct and (rank, depth) totally orders
-        // them, outermost first. That tie-break is load-bearing, not tidiness: the container is the
-        // frame pushed LATER in the case this exists for, so a stable sort alone put the late mask
-        // after the content and blanked it (measured).
+        // them, outermost first. That tie-break is load-bearing, not tidiness: a stable sort alone
+        // keeps a late container after its content (docs/design/216-origin-resolution.md).
         val index = HashMap<ScopeFrame, Int>(survivors.size * 2)
         survivors.forEachIndexed { i, frame -> index[frame] = i }
         val rank = HashMap<ScopeFrame, Int>(survivors.size * 2)

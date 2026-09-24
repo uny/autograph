@@ -169,8 +169,8 @@ internal fun MirrorAmbientFrame(
  * it, resolves from the *host's* frame and must still see the `TrackedScreen` in here — and a
  * provider nested inside another's composition (a tracker swapped for a subtree) is content the
  * outer observer cannot localize out of, so its declarations must stay visible to the outer
- * provider's taps too. Each of those was a correct→absent or correct→wrong regression when this
- * frame was a boundary; all three are pinned.
+ * provider's taps too ([#216](https://github.com/uny/autograph/issues/216);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/216-origin-resolution.md)).
  *
  * The frame carries no contents and is never [ScopeStack.update]d with any, so on its own it
  * changes nothing about the ambient [ScopeStack.current] — an empty frame contributes nothing.
@@ -239,11 +239,11 @@ internal fun ProviderFrame(
  * [ProviderOrigin.resolve] links at tap time, which covers every tap *in this composition*. What it
  * cannot cover is an event somewhere else: a frame under no boundary applies to every origin, so a
  * composition that has not been tapped yet — the off-screen page of a pager — would, unlinked,
- * lend its `TrackedScreen` to a tap on the page beside it. Measured: page A carried `PageB`. The
- * link is made from a posted runnable because the claim on a late-added fragment's view lands
- * after this composition is created (see [ProviderOrigin]) — and re-made when a surface above the
- * host view claims or releases its root later still (a native capture installed after this
- * composition existed), which the capture announces through `View.addAutographScopeOwnerListener`.
+ * lend its `TrackedScreen` to a tap on the page beside it. The link is made from a posted runnable
+ * because the claim on a late-added fragment's view lands after this composition is created (see
+ * [ProviderOrigin]) — and re-made when a surface above the host view claims or releases its root
+ * later still (a native capture installed after this composition existed), which the capture
+ * announces through `View.addAutographScopeOwnerListener`.
  * No-op off Android.
  */
 @Composable
@@ -253,15 +253,15 @@ internal expect fun KeepLinkedToHost(stack: ScopeStack, origin: ProviderOrigin)
  * Where a tap in this composition is resolved from: the [ProviderFrame]'s handle, linked to the
  * frame of the surface hosting the composition **at the moment of the tap**.
  *
- * Linking at tap time rather than once at composition is deliberate, and measured. A composition
- * is created when its view attaches to the window, and for a fragment added while its Activity is
- * already showing that is *before* `onFragmentViewCreated` — the point at which the native screen
- * capture claims the fragment's view. A lookup at composition time then finds the **Activity's**
- * claim instead of the fragment's: a wrong owner, not a missing one. By the time any tap can arrive
- * the claim is in place, and re-reading it per tap also survives a surface being re-claimed under a
- * fresh frame (a fragment's view re-created) or the native capture being installed late. The link
- * is written through [ScopeStack.update], which no-ops when nothing changed, so a steady state
- * costs one ancestry walk per tap and no snapshot churn.
+ * Linking at tap time rather than once at composition is deliberate. A composition can exist before
+ * the native screen capture has claimed its fragment's view, and a lookup then finds the
+ * **Activity's** claim instead: a wrong owner, not a missing one
+ * ([#216](https://github.com/uny/autograph/issues/216);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/216-origin-resolution.md)).
+ * By the time any tap can arrive the claim is in place, and re-reading it per tap also survives a
+ * surface being re-claimed under a fresh frame (a fragment's view re-created) or the native capture
+ * being installed late. The link is written through [ScopeStack.update], which no-ops when nothing
+ * changed, so a steady state costs one ancestry walk per tap and no snapshot churn.
  *
  * With no surface claiming the host view — no native screen capture installed, a platform with no
  * such capture at all, or a `Dialog`/`Popup` window whose view tree sits under no surface's root —
