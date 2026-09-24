@@ -41,10 +41,10 @@ import platform.darwin.NSObject
  * each was read on ([#135](https://github.com/uny/autograph/issues/135);
  * [design notes](https://github.com/uny/autograph/blob/main/docs/design/135-ios-cold-accessibility.md)).
  *
- * `LocalUIView.current.accessibilityElements()` is empty: Compose attaches the real accessibility root
- * to a *sibling* subview several levels down, not to the view `LocalUIView` returns. Walking `subviews`
- * alongside `accessibilityElements` at every `UIView` node ([accessibilityChildren]) finds it wherever
- * it lives.
+ * In one traced setup, `LocalUIView.current.accessibilityElements()` was empty and the real
+ * accessibility root sat on a *sibling* subview several levels down; that location is not a contract.
+ * Walking `subviews` alongside `accessibilityElements` at every `UIView` node ([accessibilityChildren])
+ * finds the root wherever it lives.
  *
  * **What is NOT reachable this way: custom semantics keys.** The bridge only carries the fixed
  * UIAccessibility properties — label, traits, identifier, frame. Anything a caller needs to know
