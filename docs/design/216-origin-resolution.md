@@ -60,8 +60,11 @@ the Compose provider links its root frame under the nearest tagged ancestor of i
 tap time**, from a posted runnable at composition, and again whenever the capture announces a claim
 or release above it (`notifyAutographScopeOwnerChanged` → `addAutographScopeOwnerListener`).
 
-Invariant: **a boundary-free stack resolves to the same members with or without an origin.** That is
-the stack iOS has, and Android without the native screen capture.
+Invariant: **a boundary-free stack resolves to the same members with or without an origin**, except
+under an inactive frame: #228 later made the origin-taking read exempt the origin's own surface from
+the active bit, so a tap on a demoted page still reads that page's screen while the ambient read does
+not (see [`228-ambient-propagation.md`](228-ambient-propagation.md)). That is the stack iOS has, and
+Android without the native screen capture.
 
 ### Declarations are frames (#223)
 
@@ -83,8 +86,7 @@ reading history.
 
 Read on androidx.fragment **1.8.9**, JetBrains navigation-compose **2.9.2**, CMP **1.11.1**, in the
 JVM and Robolectric suites; the on-device run below later confirmed the tap payloads that rest on
-them. The rig for the first two was
-`.claude/handoff/rigs/216-step3-owner-tag-timing-probe.kt.txt` (local, not in the repository).
+them. The first two were read with a local probe that is not in the repository.
 
 1. `Fragment.parentFragment` is already set at `onFragmentPreAttached`, so a fragment's frame can be
    reserved with its lineage in one step.
@@ -166,10 +168,11 @@ Before 0.9.0, on the local `Pixel_9` AVD (API 35) at `fe8f6e5`, the framework-de
 | real `ViewPager2` + `FragmentStateAdapter`, `offscreenPageLimit = 1`, A → B → C → B → A | every tap = the page on display |
 
 Every row carried the expected payload. The interop row also confirms a premise: a `Button` hosted by
-`AndroidView` inside a `ComposeView` is reached by the native capture's pressed walk. The rig lived
-on a local branch (`rig/216-on-device`) that could not be merged — it swaps the instrumentation
-runner — and no longer exists; the table above is the record. The ambient `current()` read on the
-same rig did **not** hold for Compose-declared screens; that became #228.
+`AndroidView` inside a `ComposeView` is reached by the native capture's pressed walk. That rig
+swapped the instrumentation runner and was not merged; the same cases now run as
+`OriginOnDeviceTest` (`sample-android`, `androidTest`, [#233](https://github.com/uny/autograph/pull/233)),
+beside the sample's own captures, in CI's `android-instrumented` job. The ambient `current()` read on
+the original rig did **not** hold for Compose-declared screens; that became #228.
 
 ## Trade accepted
 
@@ -187,7 +190,7 @@ is navigation-compose 2.9.2. The repository still uses fragment 1.8.9 and naviga
 it has since moved to CMP 1.12.0, where fact 2 has not been re-measured.
 
 On iOS nothing localizes: no pipeline claims a view, so the stack is boundary-free and, by the
-invariant above, resolves as it did before. #223 did change iOS in the same direction as Android — a
+invariant above, resolves as it did before (up to the inactive-frame exception #228 added). #223 did change iOS in the same direction as Android — a
 bare `TrackScreenView` or a tracked destination is now visible to `autograph-uikit`'s native tap
 capture through `current()`.
 
@@ -216,9 +219,10 @@ capture through `current()`.
 | untracked destination clears the route | `ScreenTrackingUiTest.anUntrackedDestinationDeclaresNoScreenRatherThanKeepingThePreviousRoute` |
 | route does not attribute another surface | `ComposeTapOriginTest.aNavHostsRouteDoesNotAttributeTapsOnAnotherSurface` |
 
-`ComposeTapOriginTest` (`sample-android`) is the one suite that sends real `MotionEvent`s through a
-real `AutographProvider` with the native capture installed, on a plain `Application`; it is the only
-place the Compose half of the Android origin path is exercised end to end.
+`ComposeTapOriginTest` (`sample-android`, Robolectric) sends real `MotionEvent`s through a real
+`AutographProvider` with the native capture installed, on a plain `Application`; it is the JVM suite
+that exercises the Compose half of the Android origin path end to end. `OriginOnDeviceTest` runs its
+framework-dependent cases on a device (see *Verified on a device*).
 
 The pairing above follows each test's name and its comment, not a mutant run, with one exception:
 dropping `parent` from the resume-time `update` (refuted 9) was re-run on 2026-09-24 and fails
