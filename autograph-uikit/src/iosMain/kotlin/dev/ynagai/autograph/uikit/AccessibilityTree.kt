@@ -151,55 +151,25 @@ import platform.darwin.NSObject
  * subview instead of the overlay.
  *
  * *Within `accessibilityElements`*: the order there is whatever the element's provider chose, and
- * nothing obliges a provider to choose z-order. Across nine Compose Multiplatform fixtures the emitted
- * order fit `(left, top)` lexicographically — **x-primary**. That is a fit to those nine, not a
- * contract; what the fixtures do establish is the two things it is *not*. It is not declaration order
- * (one fixture declares its small element first and the bridge emits it second), and it is not
- * y-primary reading order (one fixture emits the element with the *smaller* `top` second). Either way
- * the order is unrelated to what is drawn on top, so reversing it breaks an overlap in favour of an
- * element chosen for reasons that have nothing to do with which one received the tap. See #140.
+ * nothing obliges a provider to choose z-order — Compose Multiplatform's bridge measurably does not.
+ * So among overlapping siblings that tie on clickability, reversing that order can name the element
+ * underneath rather than the one that received the tap: a misattribution, not a drop.
  *
- * **What narrows this, and only on Compose.** The bridge subtracts an occluding sibling's rect from
- * the **covered** sibling's `accessibilityFrame` when the remainder is still an axis-aligned rectangle
- * — an edge strip. Measured in three fixtures, one per direction (top, bottom, left): the covered
- * element lost exactly the strip its neighbour covered, and no other fixture was trimmed. Since the
- * trim lands on the covered element it is itself a z-order signal, and where it applies the covered
- * element stops containing the tap, so the ambiguity is gone before this tie-break is consulted. It
- * follows real draw order rather than declaration order: two fixtures with identical geometry *and*
- * identical declaration order, differing only by `Modifier.zIndex`, trim differently. No trim was
- * observed where the remainder would not be one rectangle — measured for corner overhangs, where both
- * siblings kept full frames and both contained the tap.
+ * - **Compose Multiplatform** narrows it: the bridge trims a covered sibling's `accessibilityFrame`
+ *   wherever the remainder is still a rectangle, which settles the overlap before this tie-break is
+ *   consulted. What is left is an untrimmable overlap (a corner, or an occluder sitting entirely
+ *   inside) whose on-top element the bridge emits earlier — measured for an overhang straight up.
+ * - **UIKit / SwiftUI**: no trim was observed in the one trimmable geometry measured (SwiftUI; no
+ *   UIKit hierarchy was run), so there the tie-break was left to decide an overlap Compose settles.
+ *   One geometry is not a sweep. Since #191 the native pipeline does not use this walk; the Compose one
+ *   still reaches native nodes through UIKit interop hosted inside a composition, and any other
+ *   caller walking a native tree may meet the same gap.
  *
- * So the resulting misattribution takes two different shapes:
- *
- * - **Compose Multiplatform**: the overlap is not trimmable **and** the element on top sorts earlier
- *   under the order above (further left, or same left and higher). Both are required — a leftward or
- *   upward overhang whose overlap *is* trimmable resolves correctly, as three fixtures did. Measured
- *   to resolve correctly: a full-width overlay over content and a horizontal overlap, because the trim
- *   settles them; a badge overhanging to the top-right, because although its corner overlap is *not*
- *   trimmable the badge sits further right, so it sorts later and wins the tie-break on its own. The
- *   measured failure is a corner overhang **straight up** — the two elements share a `left`, and the
- *   one on top has the smaller `top`, so it sorts first. A strictly *leftward* overhang follows from
- *   the order above but was never run: no fixture put the on-top element at a smaller `left`.
- * - **UIKit / SwiftUI**: no trim was observed. In the one geometry Compose *does* trim — a covered
- *   element under a full-width strip — a SwiftUI button reported the same frame as an identical
- *   un-overlapped one, so the rescue above is absent and the tie-break is left to decide alone. That
- *   makes the same overlap that Compose disambiguates a candidate for misattribution here.
- *   Measured for SwiftUI only; no UIKit hierarchy was run, and one trimmable geometry is not a sweep.
- *   Since #191 this no longer reaches the native pipeline, which does not use this walk; it remains a
- *   live concern for `autograph-compose`, whose iOS resolver does.
- *
- * **Do not reach for the obvious rankings.** Scored against the oracle — which element's handler
- * actually fired — over the five measured ambiguous cases, each is refuted: last-emitted (what this
- * walk does) by the overhang above; smallest-area by two fixtures where the *larger* element is on
- * top; first-emitted by four. Smallest-area survived a first round only because the fixture built to
- * refute it had a trimmable overlap, so the trim removed the covered element from the candidate set
- * before the rule was tested. ("Most-specific-frame", the other ranking #140 floated, coincides with
- * smallest-area on every one of these fixtures and was not scored as a separate rule.) Three refuted
- * rules are not the whole space, but they are the ones worth not re-deriving.
- *
- * All of this is documented rather than fixed — this walk is shared API and its callers should know
- * the edge of the contract they depend on.
+ * Documented rather than fixed: the obvious rankings (smallest area, first emitted) each scored worse
+ * than this one against the recorded fixtures, and the bridged elements have no backing views to read
+ * a draw order from. Do not swap the tie-break without scoring it against those fixtures
+ * ([#140](https://github.com/uny/autograph/issues/140);
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/140-overlap-ordering.md)).
  *
  * **Clickable branches win over the tie-break.** Before z-order is consulted at all, a branch that
  * yields a clickable ([isAccessibilityButton]) is preferred over one that yields none; the reverse

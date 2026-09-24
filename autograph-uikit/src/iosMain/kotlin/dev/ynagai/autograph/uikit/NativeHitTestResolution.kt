@@ -42,8 +42,8 @@ import platform.UIKit.UIView
  *
  * **Two side benefits, both of them real and neither of them the reason.** `hitTest` *is* the answer
  * to "which view receives this touch" — the accessibility tree is an approximation of it, which is why
- * [deepestAccessibilityHitPath] has an entire documented section of overlap and z-order failures
- * (#140). Along a `hitTest` chain those questions do not arise: UIKit already resolved them, including
+ * [deepestAccessibilityHitPath] documents overlap and z-order failures (#140). Along a `hitTest`
+ * chain those questions do not arise: UIKit already resolved them, including
  * `isUserInteractionEnabled`, `isHidden` and `alpha`, none of which the accessibility tree carries.
  * And it is unit-testable — `hitTest` behaves on a hand-built `UIView` tree exactly as it does on a
  * real one, unlike the accessibility walk, which needs a warm client and is why #135 hid behind green

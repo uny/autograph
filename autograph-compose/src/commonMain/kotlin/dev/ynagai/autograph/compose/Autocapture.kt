@@ -64,18 +64,10 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * What that costs is narrow, because misattribution needs two things at once: an overlap Compose
  * Multiplatform cannot trim away — it shrinks a covered sibling's reported bounds wherever the
  * remainder is still a rectangle, settling the overlap before the tie-break is reached — *and* the
- * element on top sorting earlier in the emitted order. Measured to attribute correctly: a full-width
- * overlay and a horizontal overlap, because the trim settles them, and a badge overhanging to the
- * top-right, because although its corner overlap is not trimmable the badge sorts later anyway. The
- * measured failure is a corner overhang straight up. On the native (UIKit/SwiftUI) pipeline no such
- * trim was observed — measured on SwiftUI, with UIKit unmeasured — leaving the tie-break to decide
- * overlaps that Compose disambiguates.
- *
- * `deepestAccessibilityHitPath`'s kdoc in `autograph-uikit` is the canonical account — the exact
- * conditions, the fixture behind each claim, and why the obvious rankings are refuted rather than
- * merely untried. Deliberately summarized rather than restated here: this description had drifted out
- * of step with the implementation once already, and it did so because the same mechanism was spelled
- * out in three places at once.
+ * element on top sorting earlier in the emitted order. A full-width overlay, a horizontal overlap and
+ * a badge overhanging to the top-right all attribute correctly; the measured failure is a corner
+ * overhang straight up. The fixtures, the refuted alternatives and the conditions in full:
+ * [design notes](https://github.com/uny/autograph/blob/main/docs/design/140-overlap-ordering.md).
  *
  * Implemented on Android (via the semantics tree) and iOS (via the UIKit accessibility bridge —
  * see `ElementResolver.ios.kt`). Neither role nor the accessibility label fallback is available on
