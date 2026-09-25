@@ -71,6 +71,19 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   scope; the global keys the lexical chain already defines are dropped before the merge. `pushGlobal`'s
   KDoc no longer claims it "applies to every event".
 
+- **An Android Activity that masked as a fragment shell reports itself again once it owns its content**
+  ([#255]). `AndroidScreenCapture` re-derives what an Activity's frame says at every stop, but the mask
+  it raised as a shell was one-way: an Activity whose fragments were all removed kept resolving
+  `screen = null`, and emitted no `Screen Viewed`, for the rest of its life. The mask is now lifted
+  with `ScopeStack.setScreenMasked` when the Activity re-derives itself as a screen, so its next return
+  names it and reports the view.
+
+- **An Android Activity resumed beside another no longer loses its screen name while it hosts a
+  fragment** ([#255]). Under multi-resume (split screen), an Activity that was already a screen, took
+  a content fragment and was resumed again without stopping had its name cleared, so removing the
+  fragment left `screen = null` instead of the Activity. It keeps its name until its next stop
+  re-derives it.
+
 ### Changed
 
 - **`Tracker.close()` stops `track`/`screen`/`identify`/`flush`/`reset` whichever transport is plugged

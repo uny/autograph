@@ -114,26 +114,22 @@ internal class AndroidScreenCapture(
         /**
          * Whether what this frame says has been settled for the current **mounting**.
          *
-         * Settled at the mounting's first resume. A fragment revisits it when its view is destroyed
-         * and a fresh frame is reserved; an Activity, which never replaces its frame, revisits it at
-         * every stop instead — with the one exception that [masked] cannot be taken back, because
-         * `ScopeStack.maskScreen` is one-way. Re-deciding on every resume looks harmless and is not: the
-         * inputs are time-varying (`isCapturableActivity` asks whether any added fragment has a view;
-         * `isCapturableFragment` walks the live view subtree) while [masked] is one-way, so a plain
-         * Activity that merely pauses and resumes while a view-bearing dialog fragment is attached
-         * was masked *permanently* — measured: after the dialog was dismissed the Activity still
-         * reported `screen = null`, for the rest of its life, while continuing to emit its own name.
+         * Settled at the mounting's first resume, and with it whether the frame masks — the mask
+         * lives on the frame, so it is set only here. A fragment revisits it when its view is
+         * destroyed and a fresh frame is reserved; an Activity, which never replaces its frame,
+         * revisits it at every stop instead. Re-deciding on every resume looks harmless and is not:
+         * the inputs are time-varying (`isCapturableActivity` asks whether any added fragment has a
+         * view; `isCapturableFragment` walks the live view subtree), so a plain Activity that merely
+         * pauses and resumes while it hosts a content fragment would read as a shell and mask — and
+         * removing the fragment resumes nothing, so the mask would stand until the Activity's next
+         * resume. Measured when the mask was still one-way, with a view-bearing dialog fragment
+         * before those stopped counting: the Activity reported `screen = null` for the rest of its
+         * life while continuing to emit its own name.
          */
         var decided = false
 
         /** What [decided] settled: whether this capture treats the surface as a screen of its own. */
         var capturable = false
-
-        /** The frame names a screen — i.e. it resolved to a name at its last resume. */
-        var declaresScreen = false
-
-        /** [ScopeStack.maskScreen] has been applied. One-way, like the call. */
-        var masked = false
 
         /** Our belief about the frame's active bit, so a no-op toggle costs no snapshot. */
         var selected = false
@@ -239,10 +235,10 @@ internal class AndroidScreenCapture(
             // it over them. What it SAYS still has to be re-derived, though: an Activity that owned
             // its content at its first resume and has since become a fragment shell went on emitting
             // its own name on every foreground return — measured, two spurious events per return.
-            // Only `masked` survives, because ScopeStack.maskScreen is one-way; see the residual.
+            // The mask is re-decided with the rest at the next resume; until then it stays on the
+            // frame, which is inactive anyway.
             it.decided = false
             it.capturable = false
-            it.declaresScreen = false
             deselect(it)
         }
     }
@@ -361,11 +357,9 @@ internal class AndroidScreenCapture(
             // (and its fresh frame reserved) inside its parent's performDestroyView, *before* the
             // parent's own — so the child's fresh frame was linked to a parent frame that is about
             // to be replaced. Views come back parent-first, so by the time the child reaches here its
-            // parent holds the frame it will keep. `update` replaces the whole frame, contents
-            // included — safe only because the frame is always fresh and empty at this hook
-            // (reserved at pre-attach or by endMounting); it would blank a screen anywhere else.
+            // parent holds the frame it will keep.
             state.parent = parentOf(f)
-            scopeStack.update(state.handle, parent = state.parent)
+            scopeStack.reparent(state.handle, state.parent)
             claim(v, state)
         }
 
@@ -585,34 +579,30 @@ internal class AndroidScreenCapture(
         // is a reasonable lambda to write, and asking it about Glide's retained worker fragment
         // throws out of a FragmentManager dispatch. `covers` already requires a view, so that is the
         // whole guard.
-        val name = if (capturable || covers) screenName() else null
-        if (!state.decided) {
-            state.decided = true
-            state.capturable = capturable
-            if (!capturable && covers && name != null) {
-                scopeStack.maskScreen(state.handle)
-                state.masked = true
-            }
-        }
+        //
         // What the surface IS is settled once per mounting; what it is CALLED is not. A name that
         // arrives late — `{ it.loadedTitle }`, null until the data does — has to be picked up at the
-        // next resume, and one that goes away has to stop being reported.
-        // `!masked` keeps "absent, never wrong" true of a mask that outlived its reason. An Activity
-        // re-derives what it says at every stop but cannot take a mask back (ScopeStack's switch is
-        // one-way), so on paper it can reach a later mounting believing it is a screen again while
-        // its frame still says there is none, and emit a `Screen Viewed` for a screen no captured
-        // event on it can carry. Defensive, and **untested**: no arrangement I could build reaches
-        // that state — an Activity that stops re-deriving as a shell masks again, and one that does
-        // not was never masked. Kept because the two disagreeing is the worst outcome available here,
-        // not because a case was observed.
-        val screen = if (state.capturable && !state.masked) name else null
-        if (!state.masked) {
-            // `update` replaces the whole frame, parent link included: leaving [parent] out here
-            // silently re-rooted every fragment at its first resume — caught by the tap-payload
-            // test for an opted-out fragment, which then carried no screen instead of its host's.
-            scopeStack.update(state.handle, screen = screen, parent = state.parent)
-            state.declaresScreen = screen != null
+        // next resume, and one that goes away has to stop being reported. So the gate reads the
+        // settled answer, not this resume's: an Activity settled as a screen that has since taken a
+        // content fragment, resumed beside another Activity, is neither capturable nor covering right
+        // now — and gating on that blanked the name it still owns.
+        val deciding = !state.decided
+        if (deciding) {
+            state.decided = true
+            state.capturable = capturable
         }
+        val name = if (state.capturable || covers) screenName() else null
+        // Settled: the frame keeps its mask, and only the name is revised below.
+        val masks = if (deciding) !state.capturable && covers && name != null else null
+        val screen = if (state.capturable) name else null
+        // Raise before `update` and lift after it, so the snapshot in between is still true of the
+        // frame and never lets the screen underneath show through (see ScopeStack.setScreenMasked).
+        if (masks == true) scopeStack.setScreenMasked(state.handle, true)
+        // `update` replaces the whole frame, parent link included: leaving [parent] out here
+        // silently re-rooted every fragment at its first resume — caught by the tap-payload
+        // test for an opted-out fragment, which then carried no screen instead of its host's.
+        scopeStack.update(state.handle, screen = screen, parent = state.parent)
+        if (masks == false) scopeStack.setScreenMasked(state.handle, false)
 
         // Selected on every resume, whatever the frame says — including nothing. A resumed surface IS
         // on display, and that is the only question the bit answers; whether it names, masks or
@@ -629,6 +619,11 @@ internal class AndroidScreenCapture(
         // later, real view of the same class.
         val configChange = pendingConfigChange.remove(className)
         if (screen == null) return
+        // The frame keeps the settled name, but a surface that is right now neither its own screen
+        // nor covering does not report itself: an Activity settled as a screen that has since taken
+        // a content fragment, returning beside another Activity, would otherwise emit its own name
+        // over the fragment the user is looking at. This is where the name gate above used to stop it.
+        if (!capturable && !covers) return
         state.emitted = true
         if (configChange) return
         try {
@@ -667,7 +662,7 @@ internal class AndroidScreenCapture(
      * Ends a fragment's current **mounting**: drops its frame and reserves a fresh one in its place.
      *
      * Everything the old frame held was a statement about the view that has just been destroyed: what
-     * it said (a screen name, or a one-way mask), and, crucially, **its position**. A `detach()`ed
+     * it said (a screen name, or a mask), and, crucially, **its position**. A `detach()`ed
      * fragment is never `onFragmentDetached`, so re-attaching it reused a frame reserved before its
      * sibling's — measured, a re-attached `DetailFragment` emitted its own name while the ambient
      * screen kept saying `SecondFragment`. A fresh frame reserved here lands above everything still
@@ -686,8 +681,6 @@ internal class AndroidScreenCapture(
         scopeStack.remove(state.handle)
         state.handle = reserveFrame(state.parent)
         state.decided = false
-        state.declaresScreen = false
-        state.masked = false
         state.selected = false
     }
 
@@ -725,8 +718,9 @@ internal class AndroidScreenCapture(
         // A single-Activity app's Fragments are the screens; the Activity hosting them is a shell.
         // A DialogFragment is not one of those: it draws its own window *over* the Activity rather
         // than being its content, and counting it made an Activity that merely had a sheet up at its
-        // first resume a shell for good — measured, it then reported no screen at all, permanently,
-        // because the decision is settled once per mounting and the mask is one-way.
+        // first resume a shell for good — measured, while the mask was still one-way, it then reported
+        // no screen at all, permanently; even now it would mask until its next stop, because the
+        // decision is settled once per mounting.
         if (activity is FragmentActivity &&
             activity.supportFragmentManager.fragments.any { it.view != null && !it.isShownAsDialog() }
         ) {
