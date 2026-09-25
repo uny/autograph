@@ -78,6 +78,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   with `ScopeStack.setScreenMasked` when the Activity re-derives itself as a screen, so its next return
   names it and reports the view.
 
+- **An Android Activity resumed beside another no longer loses its screen name while it hosts a
+  fragment** ([#255]). Under multi-resume (split screen), an Activity that was already a screen, took
+  a content fragment and was resumed again without stopping had its name cleared, so removing the
+  fragment left `screen = null` instead of the Activity. It keeps its name until its next stop
+  re-derives it.
+
 ### Changed
 
 - **`Tracker.close()` stops `track`/`screen`/`identify`/`flush`/`reset` whichever transport is plugged
