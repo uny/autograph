@@ -138,9 +138,8 @@ public class ScopeStack {
      * autocaptured tap on Compose, UIKit and Android View, every native `Screen Viewed`, and — since
      * #250 — every Compose `Screen Viewed`. It is **not** an explicit `trackClick` / `trackImpression` / `track`
      * call, which carries its lexical scope and never reads this stack at all. For context every event
-     * must carry, explicit ones included, use [dev.ynagai.autograph.DefaultProperties] (#253). A
-     * tenant, an install id, an experiment assignment pushed once at startup are the shape; it is the
-     * frame a host sharing one stack between `AutographProvider` and the native captures reaches for.
+     * must carry, explicit ones included — a tenant, an install id, an experiment assignment — use
+     * [dev.ynagai.autograph.DefaultProperties] instead (#253).
      *
      * A plain [push] with no `parent` does not mean this. That root is its own tree in the forest —
      * nothing declares it as a parent, it declares none — so beside a provider's root it is an
