@@ -1149,37 +1149,58 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
-    fun anActivityStillMaskingDoesNotReportAScreenItCannotResolve() {
+    fun anActivityThatMaskedAsAShellReportsItselfAgainOnceItOwnsItsContent() {
         install()
-        // An Activity re-derives what it says at every stop but cannot take a mask back, so it can
-        // come back believing it is a screen again while its frame still says there is none. The
-        // ambient value is absent either way; what must not happen is a `Screen Viewed` naming the
-        // Activity, which would also write a coarse Activity-class name into the previous_screen
-        // chain that no captured event on that screen can match. This pins the sequence, not the
-        // `!masked` guard in onSurfaceResumed: removing that guard leaves this green, because the
-        // state it defends against turned out not to be reachable. See its comment.
+        // An Activity re-derives what it says at every stop, and whether it masks with it. One that
+        // masked as a shell and has since lost its fragments owns its content again, so its next
+        // return names it and reports the view. While the mask was one-way it stayed null for the
+        // rest of its life, on a surface nothing else could name.
+        //
+        // `restart()`, not `start()`: `Activity.performStop` skips a second stop until
+        // `performRestart` clears `mStopped`, so a `stop().start()` cycle after the first never
+        // reaches `onActivityStopped`. That is how this test once passed on the one-way outcome.
         val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
         val fm = controller.get().supportFragmentManager
         fm.beginTransaction().add(android.R.id.content, DetailFragment(), "content").commitNow()
         // This return is where the Activity re-derives itself as a shell and masks. The mask is not
         // visible yet — the fragment's frame sits above it and names a screen.
-        controller.pause().stop().start().resume()
+        controller.pause().stop().restart().resume()
         drainMainLooper()
         assertEquals("DetailFragment", scopeStack.current().screen)
 
         fm.beginTransaction().remove(fm.findFragmentByTag("content")!!).commitNow()
-        controller.pause().stop().start().resume()
+        assertNull("still masked until the Activity re-derives", scopeStack.current().screen)
+        controller.pause().stop().restart().resume()
         drainMainLooper()
 
-        assertNull(scopeStack.current().screen)
+        assertEquals("EmptyFragmentActivity", scopeStack.current().screen)
         assertEquals(
             listOf(
                 "EmptyFragmentActivity:(none)",
                 "DetailFragment:EmptyFragmentActivity",
                 "DetailFragment:(none)",
+                "EmptyFragmentActivity:DetailFragment",
             ),
             tracker.screens,
         )
+    }
+
+    @Test
+    fun anActivityDoesNotReDeriveWhatItSaysOnAResumeWithoutAStop() {
+        install()
+        // What an Activity says is settled once per mounting and revisited at a stop, not at every
+        // resume: the inputs vary while it stays on display, and nothing resumes it again when they
+        // change back. Here it becomes a fragment host and is merely paused — it is still the screen
+        // it was, and taking the fragment away shows it.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, DetailFragment(), "content").commitNow()
+        controller.pause().resume()
+        drainMainLooper()
+
+        fm.beginTransaction().remove(fm.findFragmentByTag("content")!!).commitNow()
+
+        assertEquals("EmptyFragmentActivity", scopeStack.current().screen)
     }
 
     @Test

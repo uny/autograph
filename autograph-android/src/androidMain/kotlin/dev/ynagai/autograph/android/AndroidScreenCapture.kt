@@ -136,8 +136,8 @@ import dev.ynagai.autograph.context.ScopeStack
  * child frames and Compose compositions that outlive it. An Activity never replaces its frame at all
  * — its content view lives from `onCreate` to `onDestroy`, one mounting — though what that frame
  * *says* is re-derived at every stop, so an Activity that has become a fragment shell stops reporting
- * itself. A mask is the exception it cannot take back: `maskScreen` is one-way, so an Activity that
- * masked once keeps masking even if it later owns its content again — absent, not wrong.
+ * itself — and whether it masks is re-derived with the rest, so an Activity that masked as a shell
+ * and later owns its content again names itself once more.
  *
  * Between those, two separate switches decide what a frame contributes, because two different
  * questions are being asked and the same signal cannot answer both.
