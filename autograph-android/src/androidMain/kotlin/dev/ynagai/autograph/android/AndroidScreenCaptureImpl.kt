@@ -120,10 +120,11 @@ internal class AndroidScreenCapture(
          * revisits it at every stop instead. Re-deciding on every resume looks harmless and is not:
          * the inputs are time-varying (`isCapturableActivity` asks whether any added fragment has a
          * view; `isCapturableFragment` walks the live view subtree), so a plain Activity that merely
-         * pauses and resumes while a view-bearing dialog fragment is attached would read as a shell
-         * and mask — and dismissing the dialog resumes nothing, so the mask would stand until the
-         * Activity's next resume. Measured when the mask was still one-way: the Activity reported
-         * `screen = null` for the rest of its life while continuing to emit its own name.
+         * pauses and resumes while it hosts a content fragment would read as a shell and mask — and
+         * removing the fragment resumes nothing, so the mask would stand until the Activity's next
+         * resume. Measured when the mask was still one-way, with a view-bearing dialog fragment
+         * before those stopped counting: the Activity reported `screen = null` for the rest of its
+         * life while continuing to emit its own name.
          */
         var decided = false
 
