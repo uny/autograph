@@ -10,6 +10,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- **`DefaultProperties` and `AutographConfig.defaultProperties`** ([#253]) — tracker-owned properties
+  merged into every `track` and `screen` event: explicit calls from any code, `trackClick` /
+  `trackImpression`, and every autocaptured tap and `Screen Viewed`. They are snapshotted on the
+  caller's thread when the event is fired and merged **before** `EventValidator` runs, so a tracking
+  plan may now require a key only a default supplies — the one thing a `Transport` wrapper, the
+  README's previous recommendation, could not do. A default has the lowest precedence: a scope, a
+  call-site property and the reserved `target` all win a clash. `set` / `remove` / `replaceAll` /
+  `clear` are safe from any thread. `identify` traits do not carry them, and `Tracker.reset()` leaves
+  them alone.
+
 - **`ScopeStack.pushSurface(…)`** ([#255]) — the attribution-boundary frame the 0.9.0
   `push(…, boundary = true)` overload pushed, under its own name, replacing that overload (see
   Removed). Behaviour is identical; the frame's kind is now named by the call that creates it: `push`
@@ -1621,6 +1631,7 @@ Initial release.
 [#238]: https://github.com/uny/autograph/issues/238
 [#240]: https://github.com/uny/autograph/issues/240
 [#250]: https://github.com/uny/autograph/issues/250
+[#253]: https://github.com/uny/autograph/issues/253
 [#254]: https://github.com/uny/autograph/issues/254
 [#255]: https://github.com/uny/autograph/issues/255
 [#257]: https://github.com/uny/autograph/issues/257

@@ -320,10 +320,10 @@ There's a `JsonObject` overload for non-string values. Notes:
   an explicit call has a lexical scope of its own, and the ambient one would attribute it to whichever
   surface happens to be on display. Screen views are the exception because a global frame is the one
   thing on the stack that cannot misattribute: it names no screen and takes no part in the
-  sibling-ambiguity rule. For "on every event without exception" today, merge in a `Transport` wrapper
-  or the vendor SDK's own plugin; a first-class route is
-  [#253](https://github.com/uny/autograph/issues/253). Second, `EventValidator` runs before the
-  transport, so a tracking plan cannot *require* a key added there.
+  sibling-ambiguity rule. Second, a tracking plan cannot *require* a key it adds, since an explicit
+  event never carries it. For "on every event without exception", use
+  [`DefaultProperties`](#default-properties) instead — it reaches explicit and autocaptured events
+  alike, and is merged before validation.
 
 ### Autocapture
 
@@ -500,6 +500,42 @@ Every event now carries — this shape is the stable envelope contract described
   }
 }
 ```
+
+## Default properties
+
+Context that belongs to the app rather than to a screen or a call site — a tenant, an install id,
+an experiment assignment — goes on the tracker, so it reaches **every** `track` and `screen` event:
+your own `tracker.track(...)` calls from any code, `trackClick` / `trackImpression`, and every
+autocaptured tap and `Screen Viewed`.
+
+```kotlin
+val defaults = DefaultProperties()
+val tracker = Autograph {
+    transport(SegmentTransport(analytics))
+    defaultProperties = defaults
+}
+defaults.set("tenant", JsonPrimitive(tenantId))
+
+// Later, from any thread — an assignment that arrives after startup:
+defaults.set("checkout_variant", JsonPrimitive("b"))
+// Several keys at once, so no event sees half of the change:
+defaults.replaceAll(mapOf("tenant" to JsonPrimitive(newTenant), "region" to JsonPrimitive("eu")))
+```
+
+- **Merged before [validation](#validation)**, so a tracking plan may require a key only a default
+  supplies. A key merged in a `Transport` wrapper cannot do that — the validator has already run.
+- **Lowest precedence.** A scope (`AutographScope`, the resolved stack scope), an explicit call-site
+  property and the reserved `target` all win a key clash with a default.
+- **Snapshotted when the event is fired**, on the caller's thread: a change made afterwards does not
+  reach an event already fired, however long it waits to be delivered.
+- **Not merged into `identify` traits** — those describe the user, not the event.
+- **`Tracker.reset()` leaves it alone.** On logout, `defaults.clear()` (or remove the keys that
+  described the old session) alongside the reset.
+- Applied by the tracker `Autograph { }` returns. A `Tracker` you implement yourself — a test fake —
+  does not apply it.
+- **iOS:** set the values from Kotlin (shared code). Swift can construct `DefaultProperties` and call
+  `remove` / `clear`, but cannot build the `JsonElement` values `set` / `replaceAll` take — the same
+  limit as `properties` on `track` from Swift.
 
 ## Validation
 

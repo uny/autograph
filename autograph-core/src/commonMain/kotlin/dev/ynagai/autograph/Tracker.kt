@@ -54,7 +54,11 @@ public interface Tracker {
     /** Asks the underlying transport to send any queued events now. */
     public fun flush() {}
 
-    /** Clears user identity and session state, e.g. on logout. */
+    /**
+     * Clears user identity and session state, e.g. on logout. It does not touch
+     * [AutographConfig.defaultProperties]: [clear][DefaultProperties.clear] those alongside it if they
+     * described the old user.
+     */
     public fun reset() {}
 
     /**

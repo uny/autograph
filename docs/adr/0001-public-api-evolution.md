@@ -207,7 +207,7 @@ anything callers are expected to `when` over.
 
 #### 2f. Caller-constructed concrete classes — members may be added, constructors may not
 
-`ScopeStack`, `ScreenHistory` (in `autograph-context`), `DebugTransport`.
+`ScopeStack`, `ScreenHistory` (in `autograph-context`), `DebugTransport`, `DefaultProperties`.
 
 The caller both constructs these and calls them, but unlike 2b they carry behavior rather
 than configuration, and unlike 2a they are not values. Because they are `final` classes

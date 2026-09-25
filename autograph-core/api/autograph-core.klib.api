@@ -95,6 +95,9 @@ sealed interface dev.ynagai.autograph/SeqPersistence { // dev.ynagai.autograph/S
 }
 
 final class dev.ynagai.autograph/AutographConfig { // dev.ynagai.autograph/AutographConfig|null[0]
+    final var defaultProperties // dev.ynagai.autograph/AutographConfig.defaultProperties|{}defaultProperties[0]
+        final fun <get-defaultProperties>(): dev.ynagai.autograph/DefaultProperties? // dev.ynagai.autograph/AutographConfig.defaultProperties.<get-defaultProperties>|<get-defaultProperties>(){}[0]
+        final fun <set-defaultProperties>(dev.ynagai.autograph/DefaultProperties?) // dev.ynagai.autograph/AutographConfig.defaultProperties.<set-defaultProperties>|<set-defaultProperties>(dev.ynagai.autograph.DefaultProperties?){}[0]
     final var dispatcher // dev.ynagai.autograph/AutographConfig.dispatcher|{}dispatcher[0]
         final fun <get-dispatcher>(): kotlinx.coroutines/CoroutineDispatcher // dev.ynagai.autograph/AutographConfig.dispatcher.<get-dispatcher>|<get-dispatcher>(){}[0]
         final fun <set-dispatcher>(kotlinx.coroutines/CoroutineDispatcher) // dev.ynagai.autograph/AutographConfig.dispatcher.<set-dispatcher>|<set-dispatcher>(kotlinx.coroutines.CoroutineDispatcher){}[0]
@@ -141,6 +144,18 @@ final class dev.ynagai.autograph/DebugTransport : dev.ynagai.autograph/Transport
     final fun reset() // dev.ynagai.autograph/DebugTransport.reset|reset(){}[0]
     final fun screen(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.screen|screen(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
     final fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
+}
+
+final class dev.ynagai.autograph/DefaultProperties { // dev.ynagai.autograph/DefaultProperties|null[0]
+    constructor <init>() // dev.ynagai.autograph/DefaultProperties.<init>|<init>(){}[0]
+
+    final val properties // dev.ynagai.autograph/DefaultProperties.properties|{}properties[0]
+        final fun <get-properties>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/DefaultProperties.properties.<get-properties>|<get-properties>(){}[0]
+
+    final fun clear() // dev.ynagai.autograph/DefaultProperties.clear|clear(){}[0]
+    final fun remove(kotlin/String) // dev.ynagai.autograph/DefaultProperties.remove|remove(kotlin.String){}[0]
+    final fun replaceAll(kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>) // dev.ynagai.autograph/DefaultProperties.replaceAll|replaceAll(kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
+    final fun set(kotlin/String, kotlinx.serialization.json/JsonElement) // dev.ynagai.autograph/DefaultProperties.set|set(kotlin.String;kotlinx.serialization.json.JsonElement){}[0]
 }
 
 final class dev.ynagai.autograph/Envelope { // dev.ynagai.autograph/Envelope|null[0]
