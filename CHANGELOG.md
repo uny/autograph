@@ -15,6 +15,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Removed). Behaviour is identical; the frame's kind is now named by the call that creates it: `push`
   (a declaration), `pushSurface` (a boundary), `pushGlobal` (app-wide scope).
 
+- **`ScopeStack.setScreenMasked(handle, masked)`** ([#255]) — raises or **lifts** a frame's mask.
+  `maskScreen` was one-way. Lifting the mask hands resolution back to the frame's contents, which
+  `update` kept revising underneath: a frame that names nothing lets the screen beneath it show
+  through again, and one that names a screen resolves to it. `maskScreen(handle)` is
+  `setScreenMasked(handle, true)`.
+
+- **`ScopeStack.reparent(handle, parent)`** ([#255]) — moves a frame to a new parent (or makes it a
+  root) without touching what it says. Until now the only way was `update(handle, …, parent = …)`,
+  which replaces the frame's scope, screen and section along with the link, so a caller moving a
+  frame had to restate them or blank them. Cycles and parents on a `pushGlobal` frame are refused
+  exactly as `update` refuses them.
+
 ### Fixed
 
 - **`event_timestamp` means the same thing on Android Segment as everywhere else: when the event was
