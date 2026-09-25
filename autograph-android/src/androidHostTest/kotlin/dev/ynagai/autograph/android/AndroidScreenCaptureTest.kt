@@ -1169,7 +1169,8 @@ class AndroidScreenCaptureTest {
         assertEquals("DetailFragment", scopeStack.current().screen)
 
         fm.beginTransaction().remove(fm.findFragmentByTag("content")!!).commitNow()
-        assertNull("still masked until the Activity re-derives", scopeStack.current().screen)
+        assertNull(scopeStack.current().screen)
+        assertTrue("still masked until the Activity re-derives", scopeStack.current().screenMasked)
         controller.pause().stop().restart().resume()
         drainMainLooper()
 
