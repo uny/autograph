@@ -297,9 +297,10 @@ public class ScopeStack {
 
     /**
      * Raises ([masked] `true`) or lifts the mask on the frame [handle] refers to — see [maskScreen]
-     * for what a mask declares. Lifting it lets the frame's own [screen][push] and [section][push]
-     * resolve again: a mask sits over the frame's contents without erasing them, and [update] keeps
-     * revising those contents while the mask is up.
+     * for what a mask declares. Lifting it puts the frame's contents back in charge: a mask sits over
+     * them without erasing them, and [update] keeps revising them while it is up. So a frame that
+     * names nothing — the usual mask — lets the screen beneath it show through again, and one that
+     * names a [screen][push] of its own resolves to that.
      *
      * **A mask is not whether the surface is on display.** It answers "does this surface name a
      * screen?", which does not stop being true while the surface is off-screen; whether the frame
@@ -674,8 +675,9 @@ public class ScopeStack {
     private fun JsonObject.merge(inner: JsonObject): JsonObject = if (isEmpty()) inner else JsonObject(this + inner)
 
     /**
-     * Whether this frame is [other]'s ancestor, or [other] itself. Terminates because [update] refuses
-     * exactly the links that would close a cycle, so the parent graph is always a forest.
+     * Whether this frame is [other]'s ancestor, or [other] itself. Terminates because every write of a
+     * parent link goes through [acceptableParent], which refuses exactly the links that would close a
+     * cycle, so the parent graph is always a forest.
      */
     private fun ScopeFrame.encloses(other: ScopeFrame): Boolean =
         generateSequence(other) { it.parent }.any { it === this }

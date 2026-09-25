@@ -16,9 +16,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   (a declaration), `pushSurface` (a boundary), `pushGlobal` (app-wide scope).
 
 - **`ScopeStack.setScreenMasked(handle, masked)`** ([#255]) — raises or **lifts** a frame's mask.
-  `maskScreen` was one-way; lifting the mask now lets the frame's own screen and section, which
-  `update` kept revising underneath, resolve again. `maskScreen(handle)` is `setScreenMasked(handle,
-  true)`.
+  `maskScreen` was one-way. Lifting the mask hands resolution back to the frame's contents, which
+  `update` kept revising underneath: a frame that names nothing lets the screen beneath it show
+  through again, and one that names a screen resolves to it. `maskScreen(handle)` is
+  `setScreenMasked(handle, true)`.
 
 - **`ScopeStack.reparent(handle, parent)`** ([#255]) — moves a frame to a new parent (or makes it a
   root) without touching what it says. Until now the only way was `update(handle, …, parent = …)`,

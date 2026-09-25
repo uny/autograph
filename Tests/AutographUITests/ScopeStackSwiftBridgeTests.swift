@@ -102,6 +102,28 @@ final class ScopeStackSwiftBridgeTests: XCTestCase {
         XCTAssertTrue(stack.current().screenMasked)
     }
 
+    /// The two revisions added for #255, called from Swift for the same reason as the switches above:
+    /// the bridge is the only place their exported shape is observable.
+    func testSetScreenMaskedAndReparentCrossTheBridge() {
+        let stack = ScopeStack()
+        _ = stack.push(scope: [:], screen: "Feed", section: nil, parent: nil)
+        let container = stack.push(scope: [:], screen: nil, section: nil, parent: nil)
+
+        stack.setScreenMasked(handle: container, masked: true)
+        XCTAssertNil(stack.current().screen)
+        stack.setScreenMasked(handle: container, masked: false)
+        XCTAssertEqual(stack.current().screen, "Feed", "lifted, the screen beneath shows through")
+
+        // Visible from a sibling surface's origin only while it is under no boundary.
+        let pane = stack.pushSurface(scope: [:], screen: "Pane", section: nil, parent: nil)
+        let other = stack.pushSurface(scope: [:], screen: "Other", section: nil, parent: nil)
+        let section = stack.push(scope: [:], screen: nil, section: "Top", parent: nil)
+        XCTAssertEqual(stack.current(origin: other).section, "Top")
+        stack.reparent(handle: section, parent: pane)
+        XCTAssertNil(stack.current(origin: other).section, "moved under the other surface's boundary")
+        XCTAssertEqual(stack.current(origin: pane).section, "Top", "and kept what it says")
+    }
+
     // MARK: - Tracker / Transport
 
     /// Records what the Kotlin core hands a transport, so the Swift-entered dictionary can be
