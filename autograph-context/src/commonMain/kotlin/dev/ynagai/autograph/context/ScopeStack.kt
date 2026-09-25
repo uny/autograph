@@ -35,8 +35,8 @@ import kotlinx.serialization.json.JsonPrimitive
  * **Threading.** [push], [pushSurface], [pushGlobal], [update], [reparent], [remove], [maskScreen],
  * [setScreenMasked], [setActive] and the origin-taking [current] must be called from the main
  * thread ([push], [pushSurface], [pushGlobal] and [remove] mutate the frame list; the others mutate
- * a frame's contents and republish the snapshot, or read the list as it stands). The no-argument [current] is lock-free
- * and safe from any thread: it returns an immutable snapshot that is republished atomically on every
+ * a frame's contents and republish the snapshot, or read the list as it stands). The no-argument
+ * [current] is lock-free and safe from any thread: it returns an immutable snapshot that is republished atomically on every
  * mutation, so a background reader always sees a whole, consistent context — never a half-applied
  * one.
  */
@@ -80,8 +80,8 @@ public class ScopeStack {
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
      * [ScopeHandle] of the enclosing frame (and [reparent] to move it later); `null` (the default)
      * marks a root — its own tree, an ambiguous *sibling* of anything nested under another root, not
-     * an ancestor of it; app-wide context is declared with [pushGlobal] instead. Lineage is framework-independent — a native surface
-     * declares it the same way — so this does not tie the stack to Compose. It affects only scope;
+     * an ancestor of it; app-wide context is declared with [pushGlobal] instead. Lineage is
+     * framework-independent — a native surface declares it the same way — so this does not tie the stack to Compose. It affects only scope;
      * [screen]/[section] still resolve by insertion order ambiently (the origin-taking [current]
      * additionally ranks a container with its content).
      */
