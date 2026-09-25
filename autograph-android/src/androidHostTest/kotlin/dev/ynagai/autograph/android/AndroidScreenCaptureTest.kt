@@ -1223,6 +1223,33 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
+    fun anActivityResumedBesideAnotherDoesNotReportItselfOverItsFragment() {
+        install()
+        // The other half of the settled name under multi-resume: the frame keeps it, but a return
+        // while a content fragment is on display reports the fragment, not the Activity.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        Robolectric.buildActivity(PlainActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, DetailFragment(), "content").commitNow()
+        controller.pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        drainMainLooper()
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "PlainActivity:EmptyFragmentActivity",
+                "DetailFragment:PlainActivity",
+                "SecondPlainActivity:DetailFragment",
+                "DetailFragment:SecondPlainActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
     fun aDialogFragmentInAContainerStillMakesItsActivityAShell() {
         install()
         // `showsDialog` is what the shell test actually means to ask, not the type: a DialogFragment

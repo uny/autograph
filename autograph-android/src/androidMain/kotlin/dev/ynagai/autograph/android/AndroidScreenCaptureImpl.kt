@@ -619,6 +619,11 @@ internal class AndroidScreenCapture(
         // later, real view of the same class.
         val configChange = pendingConfigChange.remove(className)
         if (screen == null) return
+        // The frame keeps the settled name, but a surface that is right now neither its own screen
+        // nor covering does not report itself: an Activity settled as a screen that has since taken
+        // a content fragment, returning beside another Activity, would otherwise emit its own name
+        // over the fragment the user is looking at. This is where the name gate above used to stop it.
+        if (!capturable && !covers) return
         state.emitted = true
         if (configChange) return
         try {
