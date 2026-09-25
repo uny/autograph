@@ -191,8 +191,9 @@ should agree.
 a frame meant to apply everywhere. It was checked as an experiment and **left as it is**:
 
 - **App-wide is already declared, not inferred.** `pushGlobal` (`FrameKind.Global`) is the only
-  frame that means "every event": it is exempt from the ambiguity rule, refuses a parent and names no
-  screen. A plain root under no boundary joins set (3) only as a *member*, subject to the ambiguity
+  frame that means "every event that reads the stack" (an explicit `track` / `trackClick` /
+  `trackImpression` call never does; see its KDoc): it is exempt from the ambiguity rule, refuses
+  a parent and names no screen. A plain root under no boundary joins set (3) only as a *member*, subject to the ambiguity
   rule like any other frame; inferring "a root nothing references is global" was rejected in #237.
 - **Dropping unowned frames from an origin's view is refuted 1.** A frame no pipeline has localized
   is not evidence that the event happened elsewhere, so excluding it turns a correct value into an
