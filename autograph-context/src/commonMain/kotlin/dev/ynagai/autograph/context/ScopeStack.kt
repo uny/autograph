@@ -137,12 +137,12 @@ public class ScopeStack {
      * **Deprecated** in favour of [dev.ynagai.autograph.DefaultProperties] (#253), and removed in 1.0.
      * A default has the same precedence (lowest — a scope and a call-site property win), and it
      * reaches what a global frame never could: an explicit `track` / `trackClick` / `trackImpression`
-     * call — so a tracking plan may require a key a default supplies on every event, not only on
-     * autocaptured ones. Two differences to check before migrating. That reach: an explicit call
+     * call — so a tracking plan may require a key a default supplies on every event, explicit ones
+     * included. Two differences to check before migrating. That reach: an explicit call
      * that carried nothing from this frame carries the default. And lifetime: a default contributes
      * until it is changed or cleared, where this frame stops contributing on [setActive] `false`, on
      * [remove], or when the whole stack is replaced (as on logout) — each of those becomes an
-     * explicit `remove` / `clear` on the defaults at the same point. Until removal the frame behaves
+     * explicit `remove` / `clear` on the defaults at the same point. Until 1.0 the frame behaves
      * exactly as documented below.
      *
      * "Every event" is the intent and not yet the whole truth, so read it as: every event that reads

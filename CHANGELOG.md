@@ -154,7 +154,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   1.0** under ADR 0001 §5's pre-1.0 rule, with a `WARNING`-level `@Deprecated` until then. A default
   has the same precedence (lowest: a scope and a call-site property win), and it reaches what a
   global frame never could — an explicit `track` / `trackClick` / `trackImpression` call — so a
-  tracking plan may require a key a default supplies on every event, not only on autocaptured ones.
+  tracking plan may require a key a default supplies on every event, explicit ones included.
   Two differences to check before migrating. That extra reach: an explicit call that carried nothing
   from the global frame carries the default. And lifetime: a default contributes until it is changed
   or cleared, where a global frame stopped contributing on `setActive(handle, false)`,
