@@ -540,6 +540,7 @@ class ScreenTrackingUiTest {
 
     // ---- #250: an app-wide pushGlobal frame reaches a Compose `Screen Viewed`, as it does a native one ----
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aGlobalFrameReachesATrackScreenView() {
         runComposeUiTest {
@@ -555,6 +556,7 @@ class ScreenTrackingUiTest {
         }
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aGlobalFrameReachesATrackedScreen() {
         runComposeUiTest {
@@ -570,6 +572,7 @@ class ScreenTrackingUiTest {
         }
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aScreenScopeStillWinsOverAGlobalFrame() {
         // The precedence the fix could silently invert: ScopedTracker merges its scope on the way OUT,
@@ -592,6 +595,7 @@ class ScreenTrackingUiTest {
         }
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun anOuterScopeWinsOverAGlobalFrameThroughATrackerDecorator() {
         // A custom Tracker between two AutographScopes hides the outer ScopedTracker from any walk of
@@ -616,6 +620,7 @@ class ScreenTrackingUiTest {
         }
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aNestedProviderDropsTheOuterScopesKeys() {
         // A provider installs a tracker the enclosing AutographScope does not wrap, so that scope's
@@ -638,6 +643,7 @@ class ScreenTrackingUiTest {
         }
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun anExplicitPropertyStillWinsOverAGlobalFrame() {
         runComposeUiTest {
@@ -655,6 +661,7 @@ class ScreenTrackingUiTest {
         }
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aGlobalPreviousScreenDoesNotMaskTheRecordedOne() {
         // previous_screen is generated, not scope: a global frame defining it must sit beneath it, as
@@ -673,6 +680,7 @@ class ScreenTrackingUiTest {
         }
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aGlobalFrameReachesNavTrackScreenViews() {
         runComposeUiTest {

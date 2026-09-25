@@ -155,6 +155,7 @@ class ScopeStackRevisionTest {
         assertEquals(JsonObject(emptyMap()), stack.current().scope, "inner is now a root beside outer")
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_refuses_every_parent() {
         val stack = ScopeStack()

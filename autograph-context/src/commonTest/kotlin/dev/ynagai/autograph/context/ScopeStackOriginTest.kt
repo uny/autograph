@@ -324,6 +324,7 @@ class ScopeStackOriginTest {
         assertEquals(props("route" to "feed"), stack.current(provider).scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_reaches_an_origin_under_a_boundary_and_merges_with_its_scope() {
         // #237 from a native surface: the app's global frame is under no boundary, so it is a
@@ -340,6 +341,7 @@ class ScopeStackOriginTest {
         assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(activity).scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_reparented_under_a_surface_still_reaches_every_origin() {
         // `isUnderABoundary` walks the parent link, so a global frame given a parent under a surface
@@ -353,6 +355,7 @@ class ScopeStackOriginTest {
         assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(inB).scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_survives_ambiguous_siblings_from_an_origin_too() {
         // The ambient twin lives in ScopeStackTest; the origin overload builds a different survivor

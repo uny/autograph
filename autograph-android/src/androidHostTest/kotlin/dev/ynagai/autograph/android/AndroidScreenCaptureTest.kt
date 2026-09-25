@@ -1319,6 +1319,7 @@ class AndroidScreenCaptureTest {
         assertEquals(scope("tenant" to "acme"), tracker.screenProperties.single())
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aGlobalFrameReachesAnActivitysScreenView() {
         // #237: `pushGlobal` reaches every event, and merges under the caller's `previous_screen`.

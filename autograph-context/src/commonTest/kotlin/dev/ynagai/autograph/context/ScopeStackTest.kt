@@ -269,6 +269,7 @@ class ScopeStackTest {
         assertEquals(JsonObject(emptyMap()), stack.current().scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_merges_with_a_live_scope_chain_instead_of_cancelling_it() {
         // The #237 case: app-wide keys (a tenant) pushed at startup, a screen's own scope nested
@@ -280,6 +281,7 @@ class ScopeStackTest {
         assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current().scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_loses_a_key_clash_to_the_screens_own_scope() {
         // Global merges outermost, whatever its insertion order: the screen's scope wins a clash,
@@ -293,6 +295,7 @@ class ScopeStackTest {
         assertEquals(props("source" to "callsite", "tenant_id" to "acme"), ctx.enrich(props("source" to "callsite")))
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_survives_the_ambiguous_siblings_below_it() {
         // The #66 rule stays: the rows still drop, the global frame (and the route scope enclosing
@@ -305,6 +308,7 @@ class ScopeStackTest {
         assertEquals(props("tenant_id" to "acme", "tab" to "home"), stack.current().scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun two_global_frames_merge_in_insertion_order() {
         val stack = ScopeStack()
@@ -313,6 +317,7 @@ class ScopeStackTest {
         assertEquals(props("a" to "first", "b" to "second"), stack.current().scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun reparent_keeps_a_global_frame_a_root() {
         // `reparent` accepts any handle. A parent under a boundary would hide the global frame from
@@ -329,6 +334,7 @@ class ScopeStackTest {
         assertEquals(props("tenant_id" to "globex", "tab" to "home"), stack.current().scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun update_does_not_let_a_global_frame_name_a_screen() {
         // A global frame survives resolution for every origin, so a screen or section stored on it
@@ -343,6 +349,7 @@ class ScopeStackTest {
         assertEquals(props("tenant_id" to "acme"), ctx.scope)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_is_removable_and_deactivatable_like_any_other() {
         val stack = ScopeStack()

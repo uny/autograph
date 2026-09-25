@@ -420,6 +420,7 @@ class ComposeTapOriginTest {
         assertEquals("Main", taps.single().second["screen"]?.jsonPrimitive?.content)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aFrameTheAppPushedByHandReachesEveryTapWhileTheNativeCaptureIsInstalled() {
         // An app-wide frame pushed through the public API — an experiment scope at startup — is
@@ -439,6 +440,7 @@ class ComposeTapOriginTest {
         assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aGlobalFrameCoexistsWithAScreensOwnAutographScope() {
         // #237: the test above held only because nothing else on the stack carried scope. With a
