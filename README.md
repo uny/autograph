@@ -297,23 +297,15 @@ There's a `JsonObject` overload for non-string values. Notes:
   it reaches a native tap on another surface only while the composition stays resumed, which is
   leakage, not a declaration. Nor does a plain `push(scope = …)` with no parent mean app-wide:
   beside a screen's `AutographScope` it is an ambiguous sibling and both are dropped. Put the field
-  on the tracker instead:
-
-  ```kotlin
-  val defaults = DefaultProperties()
-  val tracker = Autograph {
-      transport(SegmentTransport(analytics))
-      defaultProperties = defaults
-  }
-  defaults.set("tenant", JsonPrimitive(tenantId))
-  ```
-
-  It reaches every event the tracker emits — autocaptured taps and `Screen Viewed`s on every
-  surface, and the explicit `trackClick` / `trackImpression` / `tracker.track(...)` calls a scope
-  never reaches — and it merges lowest, so a screen's `AutographScope` still wins a key clash and an
-  explicit call-site property wins over both. `ScopeStack.pushGlobal`, the previous way to declare
-  this, is deprecated and removed in 1.0: a global frame never reached an explicit call, so a
-  tracking plan could not require the key it added.
+  on the tracker instead — a `DefaultProperties` handed to `Autograph { defaultProperties = … }`,
+  then `defaults.set("tenant", JsonPrimitive(tenantId))`; the
+  [Default properties](#default-properties) section has the full recipe and the rules. It reaches
+  every event the tracker emits — autocaptured taps and `Screen Viewed`s on every surface, and the
+  explicit `trackClick` / `trackImpression` / `tracker.track(...)` calls a scope never reaches — and
+  it merges lowest, so a screen's `AutographScope` still wins a key clash and an explicit call-site
+  property wins over both. `ScopeStack.pushGlobal`, the previous way to declare this, is deprecated
+  and removed in 1.0: a global frame never reached an explicit call, so a tracking plan could not
+  require the key it added.
 
 ### Autocapture
 
