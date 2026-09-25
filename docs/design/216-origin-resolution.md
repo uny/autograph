@@ -143,6 +143,7 @@ any of it was built; item 11 was written, then found in #223's review.
 9. **`update(handle, screen = …)` at resume without `parent`.** `update` replaces the whole frame,
    parent link included, so every fragment was re-rooted at its first resume. Only the tap-payload
    test for an opted-out fragment caught it.
+   (Since #255, `update` keeps the parent link; only `reparent` changes it.)
 10. **Delete the history fallback alone.** Every tap under a `NavHost` would have lost its screen; see
     *Declarations are frames*.
 11. **Push the route frame from the tracker-keyed effect.** A tracker swap (logout) removed and
@@ -183,6 +184,29 @@ A bare `TrackScreenView` is ambient within its composition, not scoped: composed
 `LocalScreenContext`, so nested in a `TrackedScreen` the autocaptured path names the inner screen
 while an explicit `trackClick` names the enclosing one. `TrackedScreen` is the answer when the two
 should agree.
+
+## Set (3) is "no ownership known", not "app-wide" (#255)
+
+#255's third step asked whether set (3) conflates two things: a frame nothing has localized yet, and
+a frame meant to apply everywhere. It was checked as an experiment and **left as it is**:
+
+- **App-wide is already declared, not inferred.** `pushGlobal` (`FrameKind.Global`) is the only
+  frame that means "every event that reads the stack" (an explicit `track` / `trackClick` /
+  `trackImpression` call never does; see its KDoc): it is exempt from the ambiguity rule, refuses
+  a parent and names no screen. A plain root under no boundary joins set (3) only as a *member*,
+  subject to the ambiguity rule like any other frame; inferring "a root nothing references is
+  global" was rejected in #237.
+- **Dropping unowned frames from an origin's view is refuted 1.** A frame no pipeline has localized
+  is not evidence that the event happened elsewhere, so excluding it turns a correct value into an
+  absent one — a hand-pushed root, or a composition in an Activity that predates the install until
+  its next resume.
+- **The opposite harm is refuted 6, and it is closed by linking, not by the model.** An unlinked
+  composition lent its screen to a sibling page's tap; the provider now links at composition, at
+  tap time and on every claim, which removes the frame from set (3) as soon as its owner is known.
+- **iOS cannot learn ownership** (no pipeline claims a view), so a separate "pending" kind would only
+  change Android, and only by trading refuted 6's residue for refuted 1's.
+
+The oracle (`ScopeStackTest`, `ScopeStackOriginTest`) needed no edit because nothing changed.
 
 ## Version-dependent
 
