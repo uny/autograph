@@ -38,7 +38,8 @@ import kotlinx.serialization.json.JsonPrimitive
  * a frame's contents and republish the snapshot, or read the list as it stands). The no-argument
  * [current] is lock-free and safe from any thread: it returns an immutable snapshot that is
  * republished atomically on every mutation, so a background reader always sees a whole,
- * consistent context — never a half-applied one.
+ * consistent context — never a half-applied one. The unit is the call: a change that takes two
+ * calls publishes the snapshot in between (see [setScreenMasked] and [reparent]).
  */
 public class ScopeStack {
 
@@ -153,8 +154,8 @@ public class ScopeStack {
      * Global frames merge **outermost**, in insertion order among themselves, so a screen's own
      * scope still wins a key clash and an explicit call-site property wins over both — the same
      * precedence a scope nested outside every other has. Global is fixed for the life of the frame,
-     * like a [pushSurface] frame's kind: [update] revises the scope but not the kind. Both [update]
-     * and [reparent] refuse a `parent` — the frame stays a root, because a parent under a boundary
+     * like a [pushSurface] frame's kind: [update] revises the scope but not the kind. [reparent]
+     * refuses a `parent` — the frame stays a root, because a parent under a boundary
      * would hide it from every other origin, which is the one thing a global frame must never be —
      * and [update] refuses a `screen` or `section`, because a frame every origin sees would name the
      * screen of every surface at once.
@@ -233,6 +234,11 @@ public class ScopeStack {
      * and is refused: the frame becomes a root instead (see the note in [acceptableParent]). A
      * [pushGlobal] frame refuses every parent and stays a root, because a parent under a boundary
      * would hide it from every other origin (see there).
+     *
+     * Moving a frame and changing what it says takes two calls, [reparent] and [update], each
+     * publishing a snapshot. Unlike [setScreenMasked]'s pair, no order makes the one in between true
+     * of the frame: a lock-free reader of [current] can see, for an instant, the new lineage with the
+     * old contents or the reverse.
      *
      * A no-op (and no snapshot churn) if the link is unchanged, the handle was already removed, or it
      * belongs to another stack.
@@ -403,7 +409,7 @@ public class ScopeStack {
      *
      * Three sets of frames take part, and only those:
      * - the **lineage** of [origin] — itself and every frame it is nested in, following the parent
-     *   links declared at [push] / [update] — so a screen named by the surface hosting the origin,
+     *   links declared at [push] / [reparent] — so a screen named by the surface hosting the origin,
      *   or a mask raised by it, applies;
      * - the **subtree** beneath [origin], stopping at (and excluding) any frame pushed with
      *   [pushSurface] together with everything under it. What the origin's own pipeline could not
