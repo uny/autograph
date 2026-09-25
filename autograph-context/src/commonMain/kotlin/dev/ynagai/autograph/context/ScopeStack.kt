@@ -33,9 +33,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
  * **Threading.** [push], [pushSurface], [pushGlobal], [update], [reparent], [remove], [maskScreen],
- * [setScreenMasked], [setActive] and the origin-taking [current] must be called from the main thread ([push], [pushSurface],
- * [pushGlobal] and [remove] mutate the frame list; the others mutate a frame's contents and
- * republish the snapshot, or read the list as it stands). The no-argument [current] is lock-free
+ * [setScreenMasked], [setActive] and the origin-taking [current] must be called from the main
+ * thread ([push], [pushSurface], [pushGlobal] and [remove] mutate the frame list; the others mutate
+ * a frame's contents and republish the snapshot, or read the list as it stands). The no-argument [current] is lock-free
  * and safe from any thread: it returns an immutable snapshot that is republished atomically on every
  * mutation, so a background reader always sees a whole, consistent context — never a half-applied
  * one.
@@ -78,9 +78,9 @@ public class ScopeStack {
      * (siblings mounted at once — a list's rows, split-pane, a sheet over content) are ambiguous, and
      * [current] then drops *those* rather than guessing between them, keeping whatever encloses them
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
-     * [ScopeHandle] of the enclosing frame (and [reparent] to move it later); `null` (the default) marks a root — its own tree, an
-     * ambiguous *sibling* of anything nested under another root, not an ancestor of it; app-wide
-     * context is declared with [pushGlobal] instead. Lineage is framework-independent — a native surface
+     * [ScopeHandle] of the enclosing frame (and [reparent] to move it later); `null` (the default)
+     * marks a root — its own tree, an ambiguous *sibling* of anything nested under another root, not
+     * an ancestor of it; app-wide context is declared with [pushGlobal] instead. Lineage is framework-independent — a native surface
      * declares it the same way — so this does not tie the stack to Compose. It affects only scope;
      * [screen]/[section] still resolve by insertion order ambiently (the origin-taking [current]
      * additionally ranks a container with its content).
@@ -153,10 +153,11 @@ public class ScopeStack {
      * Global frames merge **outermost**, in insertion order among themselves, so a screen's own
      * scope still wins a key clash and an explicit call-site property wins over both — the same
      * precedence a scope nested outside every other has. Global is fixed for the life of the frame,
-     * like a [pushSurface] frame's kind: [update] revises the scope but not the kind, and it and
-     * [reparent] refuse a `parent` — the frame stays a root, because a parent under a boundary would hide it from every
-     * other origin, which is the one thing a global frame must never be — and refuses a `screen` or
-     * `section`, because a frame every origin sees would name the screen of every surface at once.
+     * like a [pushSurface] frame's kind: [update] revises the scope but not the kind. Both [update]
+     * and [reparent] refuse a `parent` — the frame stays a root, because a parent under a boundary
+     * would hide it from every other origin, which is the one thing a global frame must never be —
+     * and [update] refuses a `screen` or `section`, because a frame every origin sees would name the
+     * screen of every surface at once.
      * The frame is otherwise ordinary: it is under no boundary, so the origin-taking [current] sees
      * it from every origin; [remove] and [setActive] apply as to any frame.
      */
@@ -287,7 +288,7 @@ public class ScopeStack {
      * attributed to the screen the user just left: a wrong value, not a missing one, and one that
      * survives every schema check.
      *
-     * Equivalent to [setScreenMasked] with `true`, which is also how a mask is lifted.
+     * Equivalent to [setScreenMasked] with `true`; lift the mask with `false`.
      *
      * A no-op if the frame is already masked, was already removed, or belongs to another stack.
      */
@@ -675,9 +676,10 @@ public class ScopeStack {
     private fun JsonObject.merge(inner: JsonObject): JsonObject = if (isEmpty()) inner else JsonObject(this + inner)
 
     /**
-     * Whether this frame is [other]'s ancestor, or [other] itself. Terminates because every write of a
-     * parent link goes through [acceptableParent], which refuses exactly the links that would close a
-     * cycle, so the parent graph is always a forest.
+     * Whether this frame is [other]'s ancestor, or [other] itself. Terminates because the parent graph
+     * is always a forest: a pushed frame's parent already exists, so nothing can point back at it yet,
+     * and every later revision of a link goes through [acceptableParent], which refuses exactly the
+     * links that would close a cycle.
      */
     private fun ScopeFrame.encloses(other: ScopeFrame): Boolean =
         generateSequence(other) { it.parent }.any { it === this }
