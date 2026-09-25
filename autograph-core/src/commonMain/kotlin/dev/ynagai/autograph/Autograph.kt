@@ -264,8 +264,9 @@ internal class AutographTracker(
 
     /**
      * [properties] with [defaultProperties] snapshotted beneath them — on the caller's thread, before
-     * validation, so the validator judges the event the transport will receive, and a default changed
-     * after this call cannot reach it (#253). A call-site property wins a key clash.
+     * validation, so the validator sees every default the transport will receive, and a default changed
+     * after this call cannot reach it (#253). A call-site property wins a key clash. The reserved
+     * `target` is still added after validation, in [track].
      */
     private fun withDefaults(properties: Map<String, JsonElement>): JsonObject {
         val props = properties.asJsonObject()

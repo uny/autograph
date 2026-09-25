@@ -533,6 +533,9 @@ defaults.replaceAll(mapOf("tenant" to JsonPrimitive(newTenant), "region" to Json
   described the old session) alongside the reset.
 - Applied by the tracker `Autograph { }` returns. A `Tracker` you implement yourself — a test fake —
   does not apply it.
+- **iOS:** set the values from Kotlin (shared code). Swift can construct `DefaultProperties` and call
+  `remove` / `clear`, but cannot build the `JsonElement` values `set` / `replaceAll` take — the same
+  limit as `properties` on `track` from Swift.
 
 ## Validation
 

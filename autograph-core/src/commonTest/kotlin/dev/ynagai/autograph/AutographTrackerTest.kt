@@ -448,6 +448,24 @@ class AutographTrackerTest {
         assertEquals("call-site", properties["tenant"]?.jsonPrimitive?.content)
         assertEquals("share_button", properties["target"]?.jsonPrimitive?.content)
         assertEquals("i-1", properties["install"]?.jsonPrimitive?.content, "a key nothing else sets keeps its default")
+
+        tracker.screen("Home", properties = mapOf("tenant" to JsonPrimitive("call-site")))
+
+        assertEquals("call-site", transport.screenedProperties.single()["tenant"]?.jsonPrimitive?.content)
+    }
+
+    /** Documented: `reset()` rotates the session and leaves the defaults alone. */
+    @Test
+    fun resetLeavesTheDefaultsInPlace() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val defaults = DefaultProperties().apply { set("tenant", JsonPrimitive("acme")) }
+        val tracker = trackerWithDefaults(transport, defaults)
+
+        tracker.reset()
+        tracker.track("After Reset")
+
+        assertEquals("acme", defaults.properties["tenant"]?.jsonPrimitive?.content)
+        assertEquals("acme", transport.trackedProperties.single()["tenant"]?.jsonPrimitive?.content)
     }
 
     @Test
