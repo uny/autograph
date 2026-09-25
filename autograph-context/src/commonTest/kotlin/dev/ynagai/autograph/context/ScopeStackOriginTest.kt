@@ -28,7 +28,7 @@ class ScopeStackOriginTest {
         val stack = ScopeStack()
         val activity = stack.pushSurface(screen = "Main")
         val miniPlayer = stack.pushSurface(parent = activity)
-        stack.maskScreen(miniPlayer)
+        stack.setScreenMasked(miniPlayer, true)
 
         // Ambiently the mask, being later, wins — the value this test exists to keep away from the
         // Activity's own taps.
@@ -50,7 +50,7 @@ class ScopeStackOriginTest {
         val stack = ScopeStack()
         val activity = stack.pushSurface(screen = "Main")
         val miniPlayer = stack.pushSurface(parent = activity)
-        stack.maskScreen(miniPlayer)
+        stack.setScreenMasked(miniPlayer, true)
         val provider = stack.push(parent = activity)
 
         assertEquals("Main", stack.current(provider).screen)
@@ -63,7 +63,7 @@ class ScopeStackOriginTest {
         // current declaration of that very surface and must win over the mask.
         val stack = ScopeStack()
         val host = stack.pushSurface()
-        stack.maskScreen(host)
+        stack.setScreenMasked(host, true)
         val provider = stack.push(parent = host)
         stack.push(screen = "ComposeScreen", parent = provider)
 
@@ -79,7 +79,7 @@ class ScopeStackOriginTest {
         // toolbar tap carries the screen the composition declares — as it did ambiently.
         val stack = ScopeStack()
         val host = stack.pushSurface()
-        stack.maskScreen(host)
+        stack.setScreenMasked(host, true)
         val provider = stack.push(parent = host)
         stack.push(screen = "Detail", parent = provider)
 
@@ -163,8 +163,8 @@ class ScopeStackOriginTest {
         val provider = stack.push()
         stack.push(screen = "Home", parent = provider)
         val lateHost = stack.pushSurface()
-        stack.maskScreen(lateHost)
-        stack.update(provider, parent = lateHost)
+        stack.setScreenMasked(lateHost, true)
+        stack.reparent(provider, lateHost)
 
         assertNull(stack.current().screen, "ambiently the late mask wins")
         assertEquals("Home", stack.current(provider).screen)
@@ -174,14 +174,14 @@ class ScopeStackOriginTest {
     @Test
     fun a_late_container_directly_over_its_content_still_ranks_before_it() {
         // The framework-independent route: a native pipeline pushes `screen =` frames itself and
-        // adopts a surface late through `update(parent =)`. The container and its content then tie
+        // adopts a surface late through `reparent`. The container and its content then tie
         // on rank, and the tie must go to the container — a stable sort alone kept insertion order
         // and let the late mask blank the content (measured).
         val stack = ScopeStack()
         val home = stack.push(screen = "Home")
         val late = stack.pushSurface()
-        stack.maskScreen(late)
-        stack.update(home, screen = "Home", parent = late) // update replaces contents, so restate them
+        stack.setScreenMasked(late, true)
+        stack.reparent(home, late)
 
         assertEquals("Home", stack.current(home).screen)
         assertFalse(stack.current(home).screenMasked)
@@ -260,7 +260,7 @@ class ScopeStackOriginTest {
         // the event happened in: measured as a masked null where the base read "PageB".
         val stack = ScopeStack()
         val shell = stack.pushSurface()
-        stack.maskScreen(shell)
+        stack.setScreenMasked(shell, true)
         val page = stack.pushSurface(parent = shell)
         stack.setActive(page, false)
         val provider = stack.push(parent = page)
@@ -308,7 +308,7 @@ class ScopeStackOriginTest {
         assertEquals("Declared", stack.current(surface).screen)
 
         val removed = stack.pushSurface()
-        stack.update(provider, parent = removed)
+        stack.reparent(provider, removed)
         stack.remove(removed)
         assertEquals("Declared", stack.current(surface).screen)
     }
@@ -341,13 +341,13 @@ class ScopeStackOriginTest {
     }
 
     @Test
-    fun a_global_frame_reparented_by_update_still_reaches_every_origin() {
+    fun a_global_frame_reparented_under_a_surface_still_reaches_every_origin() {
         // `isUnderABoundary` walks the parent link, so a global frame given a parent under a surface
-        // would vanish from every other surface's taps. `update` refuses the link for a global frame.
+        // would vanish from every other surface's taps. `reparent` refuses the link for a global frame.
         val stack = ScopeStack()
         val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
         val a = stack.pushSurface()
-        stack.update(global, scope = props("tenant_id" to "acme"), parent = a)
+        stack.reparent(global, a)
         val b = stack.pushSurface()
         val inB = stack.push(scope = props("checkout_step" to "2"), parent = b)
         assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(inB).scope)

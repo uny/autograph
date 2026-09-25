@@ -598,10 +598,9 @@ internal class AndroidScreenCapture(
         // Raise before `update` and lift after it, so the snapshot in between is still true of the
         // frame and never lets the screen underneath show through (see ScopeStack.setScreenMasked).
         if (masks == true) scopeStack.setScreenMasked(state.handle, true)
-        // `update` replaces the whole frame, parent link included: leaving [parent] out here
-        // silently re-rooted every fragment at its first resume — caught by the tap-payload
-        // test for an opted-out fragment, which then carried no screen instead of its host's.
-        scopeStack.update(state.handle, screen = screen, parent = state.parent)
+        // `update` revises what the frame says and keeps its parent link, which [reparent] owns
+        // (onFragmentViewCreated).
+        scopeStack.update(state.handle, screen = screen)
         if (masks == false) scopeStack.setScreenMasked(state.handle, false)
 
         // Selected on every resume, whatever the frame says — including nothing. A resumed surface IS

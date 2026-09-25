@@ -243,7 +243,8 @@ per gesture. Run with a plain `Application`, never the sample's (refuted 8).
 ## Not here
 
 - #220: the active bit, the one-way mask and why `remove` + `push` is not an un-mask
-  (`ScopeStack.setActive` / `maskScreen` / `update` KDoc).
+  (`ScopeStack.setActive` / `maskScreen` / `update` KDoc). #255 replaced the one-way mask with
+  `setScreenMasked` and moved `update`'s `parent` into `reparent`, which ends refuted 9 as a trap.
 - #221: the fragment lifecycle ordering the selection logic rests on, and the mask decisions in
   `AndroidScreenCapture.onSurfaceResumed` / `endMounting` / `isCapturableActivity` (comments in
   `AndroidScreenCaptureImpl.kt`).

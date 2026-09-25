@@ -35,7 +35,7 @@ final class ScopeStackSwiftBridgeTests: XCTestCase {
     func testUpdateAcceptsASwiftDictionary() {
         let stack = ScopeStack()
         let handle = stack.push(scope: [:], screen: "Cart", section: nil, parent: nil)
-        stack.update(handle: handle, scope: [:], screen: "Cart", section: "Summary", parent: nil)
+        stack.update(handle: handle, scope: [:], screen: "Cart", section: "Summary")
         XCTAssertEqual(stack.current().section, "Summary")
     }
 
@@ -66,7 +66,7 @@ final class ScopeStackSwiftBridgeTests: XCTestCase {
         let feed = stack.push(scope: [:], screen: "Feed", section: nil, parent: nil)
         let mask = stack.push(scope: [:], screen: nil, section: nil, parent: nil)
 
-        stack.maskScreen(handle: mask)
+        stack.setScreenMasked(handle: mask, masked: true)
         XCTAssertNil(stack.current().screen)
         XCTAssertTrue(stack.current().screenMasked)
 
@@ -91,7 +91,7 @@ final class ScopeStackSwiftBridgeTests: XCTestCase {
         _ = stack.push(scope: [:], screen: "Feed", section: nil, parent: nil)
         let screen = stack.push(scope: [:], screen: "Page2", section: nil, parent: nil)
         let mask = stack.push(scope: [:], screen: nil, section: nil, parent: nil)
-        stack.maskScreen(handle: mask)
+        stack.setScreenMasked(handle: mask, masked: true)
 
         let owned: [ScopeHandle] = [screen, mask]
         stack.setActive(handles: owned, active: false)
