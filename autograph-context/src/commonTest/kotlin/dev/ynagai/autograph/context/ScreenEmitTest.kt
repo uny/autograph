@@ -81,6 +81,7 @@ class ScreenEmitTest {
         assertEquals("Fourth" to props("previous_screen" to "Second"), tracker.screens[1])
     }
 
+    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun a_global_frame_reaches_a_native_screen_view() {
         // #237: an app-wide frame is exempt from the sibling rule and reaches every event — a native

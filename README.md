@@ -286,44 +286,26 @@ There's a `JsonObject` overload for non-string values. Notes:
 - **ViewModels / non-Compose emitters** don't see the scope (a `CompositionLocal` covers the
   composition subtree only). Since the scoped value is usually the route argument the ViewModel
   already receives, include it there explicitly.
-- **App-wide context is `ScopeStack.pushGlobal`, not an outermost `AutographScope`.** A tenant, an
-  install id, an experiment assignment — a field every event should carry — cannot be expressed by
-  wrapping the Compose root in `AutographScope`, for two reasons that are each deliberate. Its frame
-  lives only as long as its composition (a native screen on top of a paused or destroyed Compose
-  screen has no frame to read), and it is never app-wide on another surface: on Android the frame
-  sits under the hosting Activity/Fragment's boundary, so a tap or screen view on a sibling surface
-  never sees it — that is what keeps one screen's scope off a sibling's taps — while on iOS, where
-  the native screen frames are roots and nothing is a boundary, it reaches a native tap on another
-  surface only while the composition stays resumed, which is leakage, not a declaration. Declare it
-  once, at startup, on the stack you share between `AutographProvider` and the native captures, and
-  keep the handle:
-
-  ```kotlin
-  val scopeStack = ScopeStack()
-  val tenantScope = scopeStack.pushGlobal(mapOf("tenant" to JsonPrimitive(tenantId)))
-  // …then hand the same scopeStack to AutographProvider and installAutographNative*.
-  // On a tenant change: scopeStack.update(tenantScope, scope = …). On logout, replace the
-  // stack together with the tracker — nothing resets it for you, Tracker.reset() included.
-  ```
-
-  It reaches **every autocaptured tap** on Compose, UIKit and Android View, and **every
-  `Screen Viewed`** — the Android Activity/Fragment capture, the UIKit swizzle, SwiftUI's
-  `.autographScreen`, and on the Compose side `TrackedScreen`, `TrackScreenView` and
-  `NavController.TrackScreenViews`. It merges **outermost**, so a screen's `AutographScope` still
-  wins a key clash and an explicit call-site property wins over both. A plain `push(scope = …)` with
-  no parent does **not** mean this: beside a screen's `AutographScope` it is an ambiguous sibling
-  and both are dropped, so app-wide is declared, never inferred.
-
-  Two limits. First, **explicitly instrumented events do not carry it**: `trackClick` /
-  `trackImpression`, `AutographButton` (its Swift-side scope only), and any `tracker.track(...)` you
-  call yourself carry their lexical `AutographScope` and nothing from the stack. That is deliberate —
-  an explicit call has a lexical scope of its own, and the ambient one would attribute it to whichever
-  surface happens to be on display. Screen views are the exception because a global frame is the one
-  thing on the stack that cannot misattribute: it names no screen and takes no part in the
-  sibling-ambiguity rule. Second, a tracking plan cannot *require* a key it adds, since an explicit
-  event never carries it. For "on every event without exception", use
-  [`DefaultProperties`](#default-properties) instead — it reaches explicit and autocaptured events
-  alike, and is merged before validation.
+- **App-wide context is a [default property](#default-properties), not an outermost
+  `AutographScope`.** A tenant, an install id, an experiment assignment — a field every event should
+  carry — cannot be expressed by wrapping the Compose root in `AutographScope`, for two reasons that
+  are each deliberate. Its frame lives only as long as its composition (a native screen on top of a
+  paused or destroyed Compose screen has no frame to read), and it is never app-wide on another
+  surface: on Android the frame sits under the hosting Activity/Fragment's boundary, so a tap or
+  screen view on a sibling surface never sees it — that is what keeps one screen's scope off a
+  sibling's taps — while on iOS, where the native screen frames are roots and nothing is a boundary,
+  it reaches a native tap on another surface only while the composition stays resumed, which is
+  leakage, not a declaration. Nor does a plain `push(scope = …)` with no parent mean app-wide:
+  beside a screen's `AutographScope` it is an ambiguous sibling and both are dropped. Put the field
+  on the tracker instead — a `DefaultProperties` handed to `Autograph { defaultProperties = … }`,
+  then `defaults.set("tenant", JsonPrimitive(tenantId))`; the
+  [Default properties](#default-properties) section has the full recipe and the rules. It reaches
+  every `track` and `screen` event the tracker emits — autocaptured taps and `Screen Viewed`s on
+  every surface, and the explicit `trackClick` / `trackImpression` / `tracker.track(...)` calls a
+  global frame never reached — and it merges lowest, so a screen's `AutographScope` still wins a key
+  clash and an explicit call-site property wins over both. `ScopeStack.pushGlobal`, the previous way
+  to declare this, is deprecated and removed in 1.0: a global frame never reached an explicit call,
+  so a tracking plan could not require the key it added.
 
 ### Autocapture
 
@@ -699,8 +681,9 @@ Both installers return a handle with `uninstall()`. Keep it: the captures hold t
 stack (the tap captures strongly, iOS's screen capture in a process-global slot), so dropping the
 handle releases nothing. On logout, uninstall all of them and re-install with a new tracker **and a
 new `ScopeStack`**, handing that same new stack to `AutographProvider` — the stack carries the
-previous user's `previous_screen` and any `pushGlobal` context, and nothing resets it for you
-(`Tracker.reset()` included).
+previous user's `previous_screen`, and nothing resets it for you (`Tracker.reset()` included). Clear
+the [default properties](#default-properties) that described the old session before the new tracker
+records anything (or hand it a new `DefaultProperties`), so no event of the new session carries them.
 
 **Install once, and `uninstall()` before installing again.** Three of the four installers *stack*
 rather than replace — the Android pair each register another `ActivityLifecycleCallbacks`, and the

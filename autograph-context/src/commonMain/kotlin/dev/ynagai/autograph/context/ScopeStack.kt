@@ -81,7 +81,8 @@ public class ScopeStack {
      * all — a route scope above ambiguous rows still attributes (see [resolveScope]). Pass the
      * [ScopeHandle] of the enclosing frame (and [reparent] to move it later); `null` (the default)
      * marks a root — its own tree, an ambiguous *sibling* of anything nested under another root, not
-     * an ancestor of it; app-wide context is declared with [pushGlobal] instead. Lineage is
+     * an ancestor of it; app-wide context belongs on the tracker, as
+     * [dev.ynagai.autograph.DefaultProperties], not on this stack. Lineage is
      * framework-independent — a native surface declares it the same way — so this does not tie
      * the stack to Compose. It affects only scope; [screen]/[section] still resolve by insertion
      * order ambiently (the origin-taking [current] additionally ranks a container with its content).
@@ -133,6 +134,17 @@ public class ScopeStack {
      * and so it takes no part in the ambiguity rule of [resolveScope] — it neither makes another
      * scope-bearing frame ambiguous nor is dropped as one.
      *
+     * **Deprecated** in favour of [dev.ynagai.autograph.DefaultProperties] (#253), and removed in 1.0.
+     * A default has the same precedence (lowest — a scope and a call-site property win), and it
+     * reaches what a global frame never could: an explicit `track` / `trackClick` / `trackImpression`
+     * call — so a tracking plan may require a key a default supplies on every event, explicit ones
+     * included. Two differences to check before migrating. That reach: an explicit call
+     * that carried nothing from this frame carries the default. And lifetime: a default contributes
+     * until it is changed or cleared, where this frame stops contributing on [setActive] `false`, on
+     * [remove], or when the whole stack is replaced (as on logout) — each of those becomes an
+     * explicit `remove` / `clear` on the defaults at the same point. Until 1.0 the frame behaves
+     * exactly as documented below.
+     *
      * "Every event" is the intent and not yet the whole truth, so read it as: every event that reads
      * this stack, plus the `Screen Viewed` emits that read [globalScope] directly. That is every
      * autocaptured tap on Compose, UIKit and Android View, every native `Screen Viewed`, and — since
@@ -160,6 +172,17 @@ public class ScopeStack {
      * The frame is otherwise ordinary: it is under no boundary, so the origin-taking [current] sees
      * it from every origin; [remove] and [setActive] apply as to any frame.
      */
+    @Deprecated(
+        "Superseded by DefaultProperties, handed to the tracker as AutographConfig.defaultProperties. " +
+            "It has the same precedence (lowest), and it also reaches explicit track / trackClick / " +
+            "trackImpression calls, which this frame never did. Two differences to check before " +
+            "migrating: that reach, and lifetime — a default contributes until it is changed or " +
+            "cleared, where this frame stops on setActive(false), on remove, or when the stack is " +
+            "replaced (as on logout), so each of those becomes an explicit remove / clear on the " +
+            "defaults. " +
+            "Removed in 1.0.",
+        level = DeprecationLevel.WARNING,
+    )
     public fun pushGlobal(scope: Map<String, JsonElement>): ScopeHandle =
         pushFrame(FrameKind.Global, scope, screen = null, section = null, parent = null)
 

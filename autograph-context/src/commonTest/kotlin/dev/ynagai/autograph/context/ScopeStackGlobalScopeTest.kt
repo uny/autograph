@@ -12,6 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * [ScopeStack.globalScope] — the narrow read an explicit emit may use (#250). What it must return is
  * settled by what it exists to avoid: everything the ambient snapshot would add.
  */
+@Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
 class ScopeStackGlobalScopeTest {
 
     private fun props(vararg pairs: Pair<String, String>): JsonObject =

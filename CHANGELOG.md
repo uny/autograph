@@ -148,6 +148,23 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   and only in a major release, with a `ReplaceWith` or a named successor. The ADR previously governed
   only what may be *added*. `Modifier.autocaptureScope` keeps its pre-1.0 no-window removal.
 
+### Deprecated
+
+- **`ScopeStack.pushGlobal(scope)`** ([#253]) — superseded by `DefaultProperties`, and **removed in
+  1.0** under ADR 0001 §5's pre-1.0 rule, with a `WARNING`-level `@Deprecated` until then. A default
+  has the same precedence (lowest: a scope and a call-site property win), and it reaches what a
+  global frame never could — an explicit `track` / `trackClick` / `trackImpression` call — so a
+  tracking plan may require a key a default supplies on every event, explicit ones included.
+  Two differences to check before migrating. That extra reach: an explicit call that carried nothing
+  from the global frame carries the default. And lifetime: a default contributes until it is changed
+  or cleared, where a global frame stopped contributing on `setActive(handle, false)`,
+  `remove(handle)`, or when you replaced the whole stack (as on logout) — each of those becomes an
+  explicit `remove` / `clear` on the defaults at the same point, or the old context reaches later
+  events.
+  There is no `ReplaceWith`, because the move is from a frame on the stack to a holder handed to the
+  tracker's config, not a mechanical rewrite. The frame behaves exactly as before until 1.0. The
+  README's scoped-context section now recommends `DefaultProperties` for app-wide context.
+
 ### Removed
 
 - **`ScopeStack.push(…, boundary: Boolean)`** ([#255]). Call `pushSurface(…)` where you passed
