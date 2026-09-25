@@ -300,12 +300,12 @@ There's a `JsonObject` overload for non-string values. Notes:
   on the tracker instead — a `DefaultProperties` handed to `Autograph { defaultProperties = … }`,
   then `defaults.set("tenant", JsonPrimitive(tenantId))`; the
   [Default properties](#default-properties) section has the full recipe and the rules. It reaches
-  every event the tracker emits — autocaptured taps and `Screen Viewed`s on every surface, and the
-  explicit `trackClick` / `trackImpression` / `tracker.track(...)` calls a global frame never
-  reached — and it merges lowest, so a screen's `AutographScope` still wins a key clash and an
-  explicit call-site property wins over both. `ScopeStack.pushGlobal`, the previous way to declare
-  this, is deprecated and removed in 1.0: a global frame never reached an explicit call, so a
-  tracking plan could not require the key it added.
+  every `track` and `screen` event the tracker emits — autocaptured taps and `Screen Viewed`s on
+  every surface, and the explicit `trackClick` / `trackImpression` / `tracker.track(...)` calls a
+  global frame never reached — and it merges lowest, so a screen's `AutographScope` still wins a key
+  clash and an explicit call-site property wins over both. `ScopeStack.pushGlobal`, the previous way
+  to declare this, is deprecated and removed in 1.0: a global frame never reached an explicit call,
+  so a tracking plan could not require the key it added.
 
 ### Autocapture
 
@@ -682,7 +682,8 @@ stack (the tap captures strongly, iOS's screen capture in a process-global slot)
 handle releases nothing. On logout, uninstall all of them and re-install with a new tracker **and a
 new `ScopeStack`**, handing that same new stack to `AutographProvider` — the stack carries the
 previous user's `previous_screen`, and nothing resets it for you (`Tracker.reset()` included). Clear
-the [default properties](#default-properties) that described the old session at the same time.
+the [default properties](#default-properties) that described the old session before the new tracker
+records anything (or hand it a new `DefaultProperties`), so no event of the new session carries them.
 
 **Install once, and `uninstall()` before installing again.** Three of the four installers *stack*
 rather than replace — the Android pair each register another `ActivityLifecycleCallbacks`, and the

@@ -137,12 +137,13 @@ public class ScopeStack {
      * **Deprecated** in favour of [dev.ynagai.autograph.DefaultProperties] (#253), and removed in 1.0.
      * A default has the same precedence (lowest — a scope and a call-site property win), and it
      * reaches what a global frame never could: an explicit `track` / `trackClick` / `trackImpression`
-     * call, and the validator — so a tracking plan may require a key a default supplies. Two
-     * differences to check before migrating. That reach: an explicit call that carried nothing from
-     * this frame carries the default. And lifetime: a default contributes until it is changed or
-     * cleared, where this frame stops contributing on [setActive] `false` or [remove] — a frame you
-     * deactivate or remove conditionally becomes an explicit `remove` / `clear` on the defaults at
-     * the same point. Until removal the frame behaves exactly as documented below.
+     * call — so a tracking plan may require a key a default supplies on every event, not only on
+     * autocaptured ones. Two differences to check before migrating. That reach: an explicit call
+     * that carried nothing from this frame carries the default. And lifetime: a default contributes
+     * until it is changed or cleared, where this frame stops contributing on [setActive] `false`, on
+     * [remove], or when the whole stack is replaced (as on logout) — each of those becomes an
+     * explicit `remove` / `clear` on the defaults at the same point. Until removal the frame behaves
+     * exactly as documented below.
      *
      * "Every event" is the intent and not yet the whole truth, so read it as: every event that reads
      * this stack, plus the `Screen Viewed` emits that read [globalScope] directly. That is every
@@ -174,10 +175,11 @@ public class ScopeStack {
     @Deprecated(
         "Superseded by DefaultProperties, handed to the tracker as AutographConfig.defaultProperties. " +
             "It has the same precedence (lowest), and it also reaches explicit track / trackClick / " +
-            "trackImpression calls and the validator, which this frame never did. Two differences to " +
-            "check before migrating: that reach, and lifetime — a default contributes until it is " +
-            "changed or cleared, where this frame stops on setActive(false) or remove, so a frame you " +
-            "deactivate or remove conditionally becomes an explicit remove / clear on the defaults. " +
+            "trackImpression calls, which this frame never did. Two differences to check before " +
+            "migrating: that reach, and lifetime — a default contributes until it is changed or " +
+            "cleared, where this frame stops on setActive(false), on remove, or when the stack is " +
+            "replaced (as on logout), so each of those becomes an explicit remove / clear on the " +
+            "defaults. " +
             "Removed in 1.0.",
         level = DeprecationLevel.WARNING,
     )
