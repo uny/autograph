@@ -1204,6 +1204,24 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
+    fun anActivityResumedBesideAnotherKeepsItsNameAcrossAResumeWithoutAStop() {
+        install()
+        // The same settled decision under multi-resume, where the Activity does not cover its
+        // window: it is still a screen of its own, so its name must still be asked for.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val beside = Robolectric.buildActivity(SecondPlainActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, DetailFragment(), "content").commitNow()
+        controller.pause().resume()
+        drainMainLooper()
+        beside.pause().stop().destroy()
+
+        fm.beginTransaction().remove(fm.findFragmentByTag("content")!!).commitNow()
+
+        assertEquals("EmptyFragmentActivity", scopeStack.current().screen)
+    }
+
+    @Test
     fun aDialogFragmentInAContainerStillMakesItsActivityAShell() {
         install()
         // `showsDialog` is what the shell test actually means to ask, not the type: a DialogFragment

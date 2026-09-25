@@ -578,17 +578,21 @@ internal class AndroidScreenCapture(
         // is a reasonable lambda to write, and asking it about Glide's retained worker fragment
         // throws out of a FragmentManager dispatch. `covers` already requires a view, so that is the
         // whole guard.
-        val name = if (capturable || covers) screenName() else null
+        //
         // What the surface IS is settled once per mounting; what it is CALLED is not. A name that
         // arrives late — `{ it.loadedTitle }`, null until the data does — has to be picked up at the
-        // next resume, and one that goes away has to stop being reported.
-        val masks = if (state.decided) {
-            null // settled: the frame keeps its mask, and only the name is revised below
-        } else {
+        // next resume, and one that goes away has to stop being reported. So the gate reads the
+        // settled answer, not this resume's: an Activity settled as a screen that has since taken a
+        // content fragment, resumed beside another Activity, is neither capturable nor covering right
+        // now — and gating on that blanked the name it still owns.
+        val deciding = !state.decided
+        if (deciding) {
             state.decided = true
             state.capturable = capturable
-            !capturable && covers && name != null
         }
+        val name = if (state.capturable || covers) screenName() else null
+        // Settled: the frame keeps its mask, and only the name is revised below.
+        val masks = if (deciding) !state.capturable && covers && name != null else null
         val screen = if (state.capturable) name else null
         // Raise before `update` and lift after it, so the snapshot in between is still true of the
         // frame and never lets the screen underneath show through (see ScopeStack.setScreenMasked).
