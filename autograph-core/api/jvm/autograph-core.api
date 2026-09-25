@@ -1,4 +1,5 @@
 public final class dev/ynagai/autograph/AutographConfig {
+	public final fun getDefaultProperties ()Ldev/ynagai/autograph/DefaultProperties;
 	public final fun getDispatcher ()Lkotlinx/coroutines/CoroutineDispatcher;
 	public final fun getEventId ()Ldev/ynagai/autograph/EventIdGenerator;
 	public final fun getLogger ()Ldev/ynagai/autograph/AutographLogger;
@@ -9,6 +10,7 @@ public final class dev/ynagai/autograph/AutographConfig {
 	public final fun getStore ()Ldev/ynagai/autograph/SeqStore;
 	public final fun getStrictValidation ()Z
 	public final fun getValidator ()Ldev/ynagai/autograph/EventValidator;
+	public final fun setDefaultProperties (Ldev/ynagai/autograph/DefaultProperties;)V
 	public final fun setDispatcher (Lkotlinx/coroutines/CoroutineDispatcher;)V
 	public final fun setEventId (Ldev/ynagai/autograph/EventIdGenerator;)V
 	public final fun setLogger (Ldev/ynagai/autograph/AutographLogger;)V
@@ -43,6 +45,15 @@ public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Tr
 	public fun reset ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 	public fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
+}
+
+public final class dev/ynagai/autograph/DefaultProperties {
+	public fun <init> ()V
+	public final fun clear ()V
+	public final fun getProperties ()Lkotlinx/serialization/json/JsonObject;
+	public final fun remove (Ljava/lang/String;)V
+	public final fun replaceAll (Ljava/util/Map;)V
+	public final fun set (Ljava/lang/String;Lkotlinx/serialization/json/JsonElement;)V
 }
 
 public final class dev/ynagai/autograph/Envelope {

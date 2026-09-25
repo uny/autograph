@@ -60,6 +60,13 @@ public class AutographConfig internal constructor() {
     public var strictValidation: Boolean = false
 
     /**
+     * Properties merged into every `track`/`screen` event before [validator] runs, at the lowest
+     * precedence — see [DefaultProperties]. Keep the instance you pass here to change them later. Null
+     * (the default) adds nothing.
+     */
+    public var defaultProperties: DefaultProperties? = null
+
+    /**
      * Sink for the library's own diagnostics — a failed delivery, or an event dropped for failing
      * [validator]. Defaults to printing to the console (the historical behavior); set your own to
      * route them into your app's logging framework (Logcat, `os_log`, Timber) or to silence them.
@@ -117,8 +124,8 @@ public fun Autograph(configure: AutographConfig.() -> Unit): Tracker {
         schemaVersion = config.schemaVersion,
     )
     return AutographTracker(
-        transport, stamper, config.dispatcher, config.validator, config.strictValidation, config.clock, config.logger,
-        config.closeDrainTimeoutMillis,
+        transport, stamper, config.dispatcher, config.validator, config.strictValidation, config.defaultProperties,
+        config.clock, config.logger, config.closeDrainTimeoutMillis,
     )
 }
 
@@ -128,6 +135,7 @@ internal class AutographTracker(
     dispatcher: CoroutineDispatcher,
     private val validator: EventValidator?,
     private val strictValidation: Boolean,
+    private val defaultProperties: DefaultProperties?,
     private val clock: () -> Long,
     private val logger: AutographLogger,
     private val closeDrainTimeoutMillis: Long,
@@ -243,15 +251,27 @@ internal class AutographTracker(
     }
 
     override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
-        val props = properties.asJsonObject()
+        val props = withDefaults(properties)
         if (!isValid(name, props)) return
         deliver { transport.track(name, withTarget(props, target), it) }
     }
 
     override fun screen(name: String, properties: Map<String, JsonElement>) {
-        val props = properties.asJsonObject()
+        val props = withDefaults(properties)
         if (!isValid(name, props)) return
         deliver { transport.screen(name, props, it) }
+    }
+
+    /**
+     * [properties] with [defaultProperties] snapshotted beneath them — on the caller's thread, before
+     * validation, so the validator judges the event the transport will receive, and a default changed
+     * after this call cannot reach it (#253). A call-site property wins a key clash.
+     */
+    private fun withDefaults(properties: Map<String, JsonElement>): JsonObject {
+        val props = properties.asJsonObject()
+        val defaults = defaultProperties?.properties
+        if (defaults.isNullOrEmpty()) return props
+        return JsonObject(defaults + props)
     }
 
     /**

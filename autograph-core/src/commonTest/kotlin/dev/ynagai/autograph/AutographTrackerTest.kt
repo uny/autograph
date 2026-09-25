@@ -32,6 +32,7 @@ private class RecordingTransport(
     var envelopes: EnvelopeSource? = null
     val calls = mutableListOf<Triple<String, String, Envelope?>>()
     val trackedProperties = mutableListOf<JsonObject>()
+    val screenedProperties = mutableListOf<JsonObject>()
     val identifiedTraits = mutableListOf<JsonObject>()
 
     override fun connect(envelopes: EnvelopeSource) {
@@ -45,6 +46,7 @@ private class RecordingTransport(
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         calls += Triple("screen", name, envelope)
+        screenedProperties += properties.asJsonObject()
     }
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
@@ -370,6 +372,159 @@ class AutographTrackerTest {
         tracker.screen("Home")
 
         assertEquals(0, transport.calls.size, "a screen event missing a required property must be dropped")
+    }
+
+    // ---- #253: DefaultProperties ----
+
+    private fun trackerWithDefaults(
+        transport: Transport,
+        defaults: DefaultProperties,
+        validator: EventValidator? = null,
+    ): Tracker = Autograph {
+        transport(transport)
+        store = InMemorySeqStore()
+        dispatcher = Dispatchers.Unconfined
+        defaultProperties = defaults
+        this.validator = validator
+    }
+
+    @Test
+    fun defaultPropertiesReachTrackAndScreen() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val defaults = DefaultProperties().apply { set("tenant", JsonPrimitive("acme")) }
+        val tracker = trackerWithDefaults(transport, defaults)
+
+        tracker.track("Recipe Saved")
+        tracker.screen("Home")
+
+        assertEquals("acme", transport.trackedProperties.single()["tenant"]?.jsonPrimitive?.content)
+        assertEquals("acme", transport.screenedProperties.single()["tenant"]?.jsonPrimitive?.content)
+    }
+
+    /**
+     * The point of #253: a tracking plan may require a key that only a default supplies. The control
+     * arm is the same validator on a tracker without the default, which must drop both events — or a
+     * validator that never looked at the key would pass the first half vacuously.
+     */
+    @Test
+    fun aRequiredKeySuppliedOnlyByADefaultSatisfiesTheValidator() {
+        val requireTenant = EventValidator { _, properties ->
+            if (!properties.containsKey("tenant")) "missing required property tenant" else null
+        }
+
+        val control = RecordingTransport(stampsInPipeline = false)
+        trackerWithDefaults(control, DefaultProperties(), requireTenant).apply {
+            track("Recipe Saved")
+            screen("Home")
+        }
+        assertEquals(0, control.calls.size, "without the default, the validator must drop both events")
+
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val defaults = DefaultProperties().apply { set("tenant", JsonPrimitive("acme")) }
+        trackerWithDefaults(transport, defaults, requireTenant).apply {
+            track("Recipe Saved")
+            screen("Home")
+        }
+        assertEquals(listOf("track", "screen"), transport.calls.map { it.first })
+    }
+
+    @Test
+    fun aCallSitePropertyAndTheReservedTargetBothWinOverADefault() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val defaults = DefaultProperties().apply {
+            set("tenant", JsonPrimitive("default"))
+            set("target", JsonPrimitive("default"))
+            set("install", JsonPrimitive("i-1"))
+        }
+        val tracker = trackerWithDefaults(transport, defaults)
+
+        tracker.track(
+            "Recipe Saved",
+            properties = mapOf("tenant" to JsonPrimitive("call-site")),
+            target = "share_button",
+        )
+
+        val properties = transport.trackedProperties.single()
+        assertEquals("call-site", properties["tenant"]?.jsonPrimitive?.content)
+        assertEquals("share_button", properties["target"]?.jsonPrimitive?.content)
+        assertEquals("i-1", properties["install"]?.jsonPrimitive?.content, "a key nothing else sets keeps its default")
+    }
+
+    @Test
+    fun identifyTraitsDoNotCarryDefaults() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val defaults = DefaultProperties().apply { set("tenant", JsonPrimitive("acme")) }
+        val tracker = trackerWithDefaults(transport, defaults)
+
+        tracker.identify("u1", mapOf("plan" to JsonPrimitive("pro")))
+
+        assertEquals(setOf("plan"), transport.identifiedTraits.single().keys)
+    }
+
+    /** An event reflects the defaults at call time, not when the dispatcher later delivers it. */
+    @Test
+    fun defaultsAreSnapshotAtCallTimeNotWhenTheDispatcherDelivers() = runTest {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val defaults = DefaultProperties().apply { set("variant", JsonPrimitive("a")) }
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = StandardTestDispatcher(testScheduler)
+            defaultProperties = defaults
+        }
+
+        tracker.track("Checkout Started")
+        defaults.set("variant", JsonPrimitive("b"))
+        tracker.track("Checkout Completed")
+        assertEquals(0, transport.calls.size, "precondition: nothing is delivered before the dispatcher runs")
+
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("a", "b"),
+            transport.trackedProperties.map { it["variant"]?.jsonPrimitive?.content },
+        )
+    }
+
+    @Test
+    fun aChangeToTheDefaultsReachesTheNextEvent() {
+        val transport = RecordingTransport(stampsInPipeline = false)
+        val defaults = DefaultProperties()
+        val tracker = trackerWithDefaults(transport, defaults)
+
+        tracker.track("e0")
+        defaults.set("tenant", JsonPrimitive("acme"))
+        defaults.set("install", JsonPrimitive("i-1"))
+        tracker.track("e1")
+        defaults.remove("install")
+        tracker.track("e2")
+        defaults.replaceAll(mapOf("tenant" to JsonPrimitive("globex"), "ring" to JsonPrimitive("beta")))
+        tracker.track("e3")
+        defaults.clear()
+        tracker.track("e4")
+
+        assertEquals(
+            listOf(
+                emptyMap(),
+                mapOf("tenant" to "acme", "install" to "i-1"),
+                mapOf("tenant" to "acme"),
+                mapOf("tenant" to "globex", "ring" to "beta"),
+                emptyMap(),
+            ),
+            transport.trackedProperties.map { props -> props.mapValues { it.value.jsonPrimitive.content } },
+        )
+    }
+
+    /** `replaceAll` takes the `Map` interface (#193), so it must copy a map the caller keeps mutating. */
+    @Test
+    fun replaceAllCopiesTheCallersMap() {
+        val defaults = DefaultProperties()
+        val source = mutableMapOf<String, JsonElement>("tenant" to JsonPrimitive("acme"))
+
+        defaults.replaceAll(source)
+        source["tenant"] = JsonPrimitive("globex")
+
+        assertEquals("acme", defaults.properties["tenant"]?.jsonPrimitive?.content)
     }
 
     @Test
