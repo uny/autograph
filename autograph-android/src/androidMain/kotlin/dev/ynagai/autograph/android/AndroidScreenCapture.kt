@@ -33,7 +33,7 @@ import dev.ynagai.autograph.context.ScopeStack
  * screens after the fact.
  *
  * A screen filtered out **by this filter** is **masked**, not merely skipped (see
- * `ScopeStack.maskScreen`). While such a surface is the one on display it clears the ambient screen,
+ * `ScopeStack.setScreenMasked`). While such a surface is the one on display it clears the ambient screen,
  * so events captured on it carry no screen rather than the screen it covered — which is what they
  * would otherwise inherit whenever the screen underneath was only paused, never stopped (a fragment
  * `add`ed on top, a dialog fragment). Content that names a screen for itself — a Compose

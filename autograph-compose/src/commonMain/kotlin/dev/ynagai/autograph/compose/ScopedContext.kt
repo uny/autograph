@@ -138,13 +138,14 @@ internal fun MirrorAmbientFrame(
         }
     }
     // scope/screen/section AND the parent link are all set here, in place, on every recomposition.
-    // Routing the parent through `update` (not the one-shot `push` above) is what keeps a
-    // `movableContentOf` subtree correct: when it relocates under a different frame, this SideEffect
-    // re-runs with the new `parentHolder` and reparents in place, rather than keeping the stale link
-    // a push-time capture would freeze in. `update` no-ops when nothing changed, so this is cheap.
+    // Setting the parent here (not in the one-shot `push` above) is what keeps a `movableContentOf`
+    // subtree correct: when it relocates under a different frame, this SideEffect re-runs with the
+    // new `parentHolder` and reparents in place, rather than keeping the stale link a push-time
+    // capture would freeze in. Both calls no-op when nothing changed, so this is cheap.
     SideEffect {
         handle[0]?.let {
-            stack.update(it, scope = scope, screen = screen, section = section, parent = parentHolder?.get(0))
+            stack.reparent(it, parentHolder?.get(0))
+            stack.update(it, scope = scope, screen = screen, section = section)
         }
     }
     CompositionLocalProvider(LocalScopeParent provides handle, content = content)
@@ -285,7 +286,7 @@ internal class ProviderOrigin(
     fun link(stack: ScopeStack): ScopeHandle? {
         val frame = root[0] ?: return null
         val host = hostSurface()
-        stack.update(frame, parent = host)
+        stack.reparent(frame, host)
         return host
     }
 

@@ -314,16 +314,17 @@ class ScopeStackTest {
     }
 
     @Test
-    fun update_keeps_a_global_frame_a_root() {
-        // `update` accepts a parent for any handle. A parent under a boundary would hide the global
-        // frame from every other origin (see ScopeStackOriginTest), so the link is refused; scope
-        // still revises in place.
+    fun reparent_keeps_a_global_frame_a_root() {
+        // `reparent` accepts any handle. A parent under a boundary would hide the global frame from
+        // every other origin (see ScopeStackOriginTest), so the link is refused; scope still revises
+        // in place.
         val stack = ScopeStack()
         val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
         val route = stack.push(scope = props("tab" to "home"))
         stack.push(scope = props("row" to "1"), parent = route)
         stack.push(scope = props("row" to "2"), parent = route)
-        stack.update(global, scope = props("tenant_id" to "globex"), parent = route)
+        stack.reparent(global, route)
+        stack.update(global, scope = props("tenant_id" to "globex"))
         // Still merged as global (outermost, exempt from the ambiguity rule), not as a child of route.
         assertEquals(props("tenant_id" to "globex", "tab" to "home"), stack.current().scope)
     }
@@ -365,7 +366,7 @@ class ScopeStackTest {
     fun a_frame_reparented_under_itself_is_refused_and_becomes_a_root() {
         val stack = ScopeStack()
         val a = stack.push(scope = props("a" to "1"))
-        stack.update(a, scope = props("a" to "1"), parent = a)
+        stack.reparent(a, a)
         // Refused, so `a` is a root — and a second root scope is its ambiguous sibling, not its child.
         stack.push(scope = props("b" to "2"))
         assertEquals(JsonObject(emptyMap()), stack.current().scope)
@@ -377,12 +378,12 @@ class ScopeStackTest {
         val outer = stack.push(scope = props("a" to "outer"))
         val inner = stack.push(scope = props("b" to "inner"), parent = outer)
         // Pointing the outer frame at its own descendant would close outer -> inner -> outer.
-        stack.update(outer, scope = props("a" to "outer"), parent = inner)
+        stack.reparent(outer, inner)
         // Refused: `outer` stays a root and the chain outer -> inner still merges, unspun.
         assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope)
     }
 
-    // --- maskScreen -------------------------------------------------------------------------------
+    // --- setScreenMasked --------------------------------------------------------------------------
 
     @Test
     fun a_mask_hides_the_screen_beneath_it_and_its_section() {
@@ -390,7 +391,7 @@ class ScopeStackTest {
         stack.push(screen = "Feed", section = "top")
         val mask = stack.push()
         assertEquals("Feed", stack.current().screen, "an unmasked frame is inert")
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         assertNull(stack.current().screen)
         assertNull(stack.current().section, "a mask owns its section too")
     }
@@ -407,7 +408,7 @@ class ScopeStackTest {
         stack.push(screen = "Feed")
         assertFalse(stack.current().screenMasked)
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         assertNull(stack.current().screen)
         assertTrue(stack.current().screenMasked)
 
@@ -424,7 +425,7 @@ class ScopeStackTest {
         val stack = ScopeStack()
         stack.push(screen = "Feed")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         stack.push(section = "Header")
         assertNull(stack.current().screen)
         assertEquals("Header", stack.current().section)
@@ -433,14 +434,14 @@ class ScopeStackTest {
 
     @Test
     fun a_deactivated_mask_stops_masking() {
-        // The whole point of splitting the two switches: a mask that is one-way in CONTENTS must
-        // still stop participating when its surface is demoted. Mutating the active filter to
+        // The whole point of splitting the two switches: a mask that is still raised must stop
+        // participating when its surface is demoted, without being lifted. Mutating the active filter to
         // `it.active || it.maskScreen` would leave a demoted unnamed surface suppressing the screen
         // of the surface the user came back to.
         val stack = ScopeStack()
         stack.push(screen = "Feed")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         assertNull(stack.current().screen)
 
         stack.setActive(mask, false)
@@ -457,7 +458,7 @@ class ScopeStackTest {
         val stack = ScopeStack()
         stack.push(screen = "Feed")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         // The masked surface's own content naming itself: a mask hides what is underneath, not the
         // declarations the surface makes for itself.
         stack.push(screen = "Detail", section = "body")
@@ -470,7 +471,7 @@ class ScopeStackTest {
         val stack = ScopeStack()
         stack.push(scope = props("article_id" to "42"), screen = "Feed")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         assertNull(stack.current().screen)
         assertEquals(props("article_id" to "42"), stack.current().scope)
     }
@@ -480,7 +481,7 @@ class ScopeStackTest {
         val stack = ScopeStack()
         stack.push(screen = "Feed")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         stack.update(mask, scope = props("a" to "1"), screen = "Ignored")
         assertNull(stack.current().screen, "a mask is a switch, not part of the contents update replaces")
         assertEquals(props("a" to "1"), stack.current().scope)
@@ -492,20 +493,20 @@ class ScopeStackTest {
         stack.push(screen = "Feed")
         val removed = stack.push()
         stack.remove(removed)
-        stack.maskScreen(removed)
-        stack.maskScreen(ScopeStack().push())
+        stack.setScreenMasked(removed, true)
+        stack.setScreenMasked(ScopeStack().push(), true)
         assertEquals("Feed", stack.current().screen)
     }
 
     @Test
     fun masking_an_already_masked_frame_republishes_nothing() {
-        // The `|| frame.maskScreen` arm the test above is named for but never reached.
+        // The `frame.maskScreen == masked` arm the test above is named for but never reached.
         val stack = ScopeStack()
         stack.push(screen = "Feed")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         val before = stack.current()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         assertSame(before, stack.current(), "no snapshot churn when nothing changed")
     }
 
@@ -516,7 +517,7 @@ class ScopeStackTest {
         val other = ScopeStack()
         other.push(screen = "Feed")
         val foreign = other.push()
-        ScopeStack().maskScreen(foreign)
+        ScopeStack().setScreenMasked(foreign, true)
         other.update(foreign, scope = props("a" to "1")) // forces a recompute on the owning stack
         assertEquals("Feed", other.current().screen)
     }
@@ -577,7 +578,7 @@ class ScopeStackTest {
         val stack = ScopeStack()
         stack.push(screen = "Feed")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         val later = stack.push(screen = "LaterPage")
         assertEquals("LaterPage", stack.current().screen)
 

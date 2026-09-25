@@ -12,7 +12,7 @@ import kotlinx.serialization.json.JsonPrimitive
 /**
  * [ScopeStack.setScreenMasked] and [ScopeStack.reparent] — the two revisions that used to be missing
  * or folded into [ScopeStack.update] (#255): lifting a mask, and moving a frame without restating
- * what it says.
+ * what it says — and, their counterpart, [ScopeStack.update] no longer moving it.
  */
 class ScopeStackRevisionTest {
 
@@ -42,7 +42,7 @@ class ScopeStackRevisionTest {
         val stack = ScopeStack()
         stack.push(screen = "Feed")
         val container = stack.push()
-        stack.maskScreen(container)
+        stack.setScreenMasked(container, true)
 
         stack.update(container, screen = "Settings", section = "account")
         assertNull(stack.current().screen, "the mask still wins while it is up")
@@ -57,7 +57,7 @@ class ScopeStackRevisionTest {
     fun lifting_a_mask_applies_to_an_origin_read_as_well() {
         val stack = ScopeStack()
         val host = stack.pushSurface(screen = "Host")
-        stack.maskScreen(host)
+        stack.setScreenMasked(host, true)
         assertNull(stack.current(host).screen)
 
         stack.setScreenMasked(host, false)
@@ -103,8 +103,7 @@ class ScopeStackRevisionTest {
 
     @Test
     fun reparent_moves_the_link_and_keeps_what_the_frame_says() {
-        // The contrast with update: `update(handle, parent = p)` replaces the contents with its
-        // defaults, so a caller had to restate them. reparent touches the link only.
+        // reparent touches the link only; update, below, touches everything but the link.
         val stack = ScopeStack()
         val route = stack.push(scope = props("route" to "home"))
         val detached = stack.push(scope = props("row" to "1"), screen = "Detail", section = "body")
@@ -130,13 +129,12 @@ class ScopeStackRevisionTest {
 
     @Test
     fun reparent_adopts_a_frame_late_without_restating_it() {
-        // ScopeStackOriginTest's late-adoption case, where update(parent =) forced the caller to
-        // restate `screen = "Home"`: the container still ranks with its content, and the content —
-        // unrestated — still names the screen.
+        // ScopeStackOriginTest's late-adoption case: the container still ranks with its content, and
+        // the content — unrestated — still names the screen.
         val stack = ScopeStack()
         val home = stack.push(screen = "Home")
         val late = stack.pushSurface()
-        stack.maskScreen(late)
+        stack.setScreenMasked(late, true)
         stack.reparent(home, late)
 
         assertEquals("Home", stack.current(home).screen)
@@ -173,7 +171,7 @@ class ScopeStackRevisionTest {
         val stack = ScopeStack()
         val host = stack.push(screen = "Host")
         val mask = stack.push()
-        stack.maskScreen(mask)
+        stack.setScreenMasked(mask, true)
         val page = stack.push(screen = "Page")
         stack.setActive(page, false)
 
@@ -196,5 +194,23 @@ class ScopeStackRevisionTest {
         stack.reparent(removed, route)
         stack.reparent(ScopeStack().push(), route)
         assertSame(before, stack.current(), "nothing changed, so nothing is republished")
+    }
+
+    // --- update keeps the link ---------------------------------------------------------------------
+
+    @Test
+    fun update_keeps_the_parent_link() {
+        // Before #255, `update` took the parent too and replaced it like the other arguments, so a
+        // caller revising a nested frame without restating its parent re-rooted it — the fragment
+        // re-rooting documented in docs/design/216-origin-resolution.md (refuted 9).
+        val stack = ScopeStack()
+        val route = stack.push(scope = props("route" to "home"))
+        val row = stack.push(scope = props("row" to "1"), parent = route)
+
+        stack.update(row, scope = props("row" to "2"), screen = "Detail")
+        // Still under route. Re-rooted, it would be route's ambiguous sibling and the merged scope
+        // would be empty (reparent_to_null_makes_the_frame_a_root).
+        assertEquals(props("route" to "home", "row" to "2"), stack.current().scope)
+        assertEquals("Detail", stack.current().screen)
     }
 }

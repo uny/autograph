@@ -249,7 +249,7 @@ class ReportTapIfResolvableTest {
         stack.push(screen = "Declared", parent = root[0])
         // An excluded surface added beside the composition afterwards — a mini-player — masks.
         val sibling = stack.pushSurface(parent = host)
-        stack.maskScreen(sibling)
+        stack.setScreenMasked(sibling, true)
         assertNull(stack.current().screen, "ambiently the sibling's mask wins")
 
         reportTapIfResolvable(tracker, stack, Autocapture(), ProviderOrigin(root) { host }) {
@@ -312,7 +312,7 @@ class ReportTapIfResolvableTest {
         val stack = ScopeStack().apply {
             screenHistory.record("Feed")
             val feed = push(screen = "Feed")
-            maskScreen(push())
+            setScreenMasked(push(), true)
             remove(feed)
         }
         reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("row") }
@@ -332,7 +332,7 @@ class ReportTapIfResolvableTest {
         val stack = ScopeStack().apply {
             screenHistory.record("Feed")
             val feed = push(screen = "Feed")
-            maskScreen(push())
+            setScreenMasked(push(), true)
             setActive(feed, false)
             screenHistory.record("ComposeFeed")
             push(screen = "ComposeFeed")

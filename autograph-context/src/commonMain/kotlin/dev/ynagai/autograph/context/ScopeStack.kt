@@ -32,13 +32,14 @@ import kotlinx.serialization.json.JsonPrimitive
  * same context and share one `previous_screen` chain. That stack is then yours to replace when the
  * tracker is — the provider will not swap a caller-supplied stack out from under the native side.
  *
- * **Threading.** [push], [pushSurface], [pushGlobal], [update], [reparent], [remove], [maskScreen],
+ * **Threading.** [push], [pushSurface], [pushGlobal], [update], [reparent], [remove],
  * [setScreenMasked], [setActive] and the origin-taking [current] must be called from the main
  * thread ([push], [pushSurface], [pushGlobal] and [remove] mutate the frame list; the others mutate
  * a frame's contents and republish the snapshot, or read the list as it stands). The no-argument
  * [current] is lock-free and safe from any thread: it returns an immutable snapshot that is
  * republished atomically on every mutation, so a background reader always sees a whole,
- * consistent context — never a half-applied one.
+ * consistent context — never a half-applied one. The unit is the call: a change that takes two
+ * calls publishes the snapshot in between (see [setScreenMasked] and [reparent]).
  */
 public class ScopeStack {
 
@@ -153,8 +154,8 @@ public class ScopeStack {
      * Global frames merge **outermost**, in insertion order among themselves, so a screen's own
      * scope still wins a key clash and an explicit call-site property wins over both — the same
      * precedence a scope nested outside every other has. Global is fixed for the life of the frame,
-     * like a [pushSurface] frame's kind: [update] revises the scope but not the kind. Both [update]
-     * and [reparent] refuse a `parent` — the frame stays a root, because a parent under a boundary
+     * like a [pushSurface] frame's kind: [update] revises the scope but not the kind. [reparent]
+     * refuses a `parent` — the frame stays a root, because a parent under a boundary
      * would hide it from every other origin, which is the one thing a global frame must never be —
      * and [update] refuses a `screen` or `section`, because a frame every origin sees would name the
      * screen of every surface at once.
@@ -180,21 +181,18 @@ public class ScopeStack {
     /**
      * Replaces the contents of the frame [handle] refers to, in place — keeping its position, and
      * thus its precedence, in the stack. Use this instead of [remove] + [push] when a still-mounted
-     * frame's [scope]/[screen]/[section]/[parent] changes: re-pushing would move the frame to the top
-     * and let it wrongly override inner frames that are still on the stack. A no-op (and no snapshot
-     * churn) if the contents are unchanged, the handle was already removed, or it belongs to another
-     * stack.
+     * frame's [scope]/[screen]/[section] changes: re-pushing would move the frame to the top and let
+     * it wrongly override inner frames that are still on the stack. A no-op (and no snapshot churn)
+     * if the contents are unchanged, the handle was already removed, or it belongs to another stack.
      *
-     * [parent] is handled exactly as [reparent] handles it — a link that would close a cycle, or any
-     * link on a [pushGlobal] frame, is refused and the frame becomes a root — and like the other
-     * arguments it is replaced, not kept: omitting it re-roots a nested frame. A [pushGlobal] frame
-     * also refuses every [screen] and [section]: it is a scope-only frame every origin sees, so it
-     * must not name a screen for all (see there).
+     * The arguments are replaced, not merged: omitting one clears it. A [pushGlobal] frame refuses
+     * every [screen] and [section]: it is a scope-only frame every origin sees, so it must not name a
+     * screen for all (see there).
      *
-     * This revises scope/screen/section and the parent link only. It never changes whether the frame
-     * is masked ([setScreenMasked]) or active ([setActive]) — those are switches on the frame rather
-     * than part of the contents this replaces, and a pipeline revising a frame must not flip either
-     * of them by accident. Note the consequence while a frame is masked: a [screen] written here is
+     * This revises scope/screen/section only. It never changes the frame's parent link ([reparent]),
+     * whether it is masked ([setScreenMasked]) or whether it is active ([setActive]) — a pipeline
+     * revising what a frame says must not move it to another lineage or flip either switch by
+     * accident. Note the consequence while a frame is masked: a [screen] written here is
      * stored but does not resolve until the mask is lifted, because the mask wins in [recompute].
      *
      * **To un-mask, use [setScreenMasked]; [remove] + [push] is not a way to.** Re-pushing is the very
@@ -209,43 +207,38 @@ public class ScopeStack {
         scope: Map<String, JsonElement> = EmptyJsonObject,
         screen: String? = null,
         section: String? = null,
-        parent: ScopeHandle? = null,
     ) {
         val frame = handle.frame
         if (frames.none { it === frame }) return
         val newScope = scope.asJsonObject()
-        val parentFrame = frame.acceptableParent(parent)
         // A global frame is scope-only, and stays so: it survives resolution for every origin, so a
         // screen or section stored on it would name the screen of every surface at once.
         val newScreen = if (frame.global) null else screen
         val newSection = if (frame.global) null else section
-        if (frame.scope == newScope && frame.screen == newScreen && frame.section == newSection &&
-            frame.parent === parentFrame
-        ) {
-            return
-        }
+        if (frame.scope == newScope && frame.screen == newScreen && frame.section == newSection) return
         frame.scope = newScope
         frame.screen = newScreen
         frame.section = newSection
-        // Revised in place, like the other fields: a frame moved to a new lineage (e.g. a
-        // `movableContentOf` subtree relocated under a different parent) must pick up its new parent
-        // without being removed and re-pushed — re-pushing would change its identity and orphan any
-        // frames still pointing to it as *their* parent. See [resolveScope] for how the link is used.
-        frame.parent = parentFrame
         snapshot = recompute()
     }
 
     /**
      * Moves the frame [handle] refers to under [parent] — or makes it a root, for `null` — in place,
-     * keeping its position, its contents and its switches. The lineage half of [update], for a caller
-     * whose frame has moved but whose declaration has not: a composition relinked under the surface
-     * now hosting it, a surface adopted after its content was pushed. Unlike [update], it cannot blank
-     * what the frame says by omission.
+     * keeping its position, its contents and its switches. For a caller whose frame has moved but
+     * whose declaration has not: a composition relinked under the surface now hosting it, a surface
+     * adopted after its content was pushed, a `movableContentOf` subtree relocated under a different
+     * parent. Re-pushing instead would change the frame's identity and orphan any frames still
+     * pointing to it as *their* parent. See [resolveScope] for how the link is used.
      *
      * A [parent] that is this frame itself, or one of its descendants, cannot describe a real nesting
      * and is refused: the frame becomes a root instead (see the note in [acceptableParent]). A
      * [pushGlobal] frame refuses every parent and stays a root, because a parent under a boundary
      * would hide it from every other origin (see there).
+     *
+     * Moving a frame and changing what it says takes two calls, [reparent] and [update], each
+     * publishing a snapshot. Unlike [setScreenMasked]'s pair, no order makes the one in between true
+     * of the frame: a lock-free reader of [current] can see, for an instant, the new lineage with the
+     * old contents or the reverse.
      *
      * A no-op (and no snapshot churn) if the link is unchanged, the handle was already removed, or it
      * belongs to another stack.
@@ -260,7 +253,7 @@ public class ScopeStack {
     }
 
     /**
-     * The link [ScopeStack.update] and [ScopeStack.reparent] actually store for a requested [parent].
+     * The link [ScopeStack.reparent] actually stores for a requested [parent].
      *
      * A parent that this frame already encloses would close the lineage into a cycle, and the
      * ancestry walks in [resolveScope] — which run on the main thread inside every mutation — would
@@ -278,9 +271,9 @@ public class ScopeStack {
     }
 
     /**
-     * Turns the frame [handle] refers to into a **mask**: a frame that declares *there is no screen
-     * here*, clearing both screen and section rather than naming one. Frames after it still win, so a
-     * mask hides what is *underneath* it, not everything.
+     * Raises ([masked] `true`) or lifts the **mask** on the frame [handle] refers to. A mask is a frame
+     * that declares *there is no screen here*, clearing both screen and section rather than naming
+     * one. Frames after it still win, so a mask hides what is *underneath* it, not everything.
      *
      * It exists for a surface that comes to the foreground and names no screen of its own — a native
      * container hosting content that reports its own screens. Without a mask, the frame of the screen
@@ -288,17 +281,7 @@ public class ScopeStack {
      * attributed to the screen the user just left: a wrong value, not a missing one, and one that
      * survives every schema check.
      *
-     * Equivalent to [setScreenMasked] with `true`; lift the mask with `false`.
-     *
-     * A no-op if the frame is already masked, was already removed, or belongs to another stack.
-     */
-    public fun maskScreen(handle: ScopeHandle) {
-        setScreenMasked(handle, true)
-    }
-
-    /**
-     * Raises ([masked] `true`) or lifts the mask on the frame [handle] refers to — see [maskScreen]
-     * for what a mask declares. Lifting it puts the frame's contents back in charge: a mask sits over
+     * Lifting it puts the frame's contents back in charge: a mask sits over
      * them without erasing them, and [update] keeps revising them while it is up. So a frame that
      * names nothing — the usual mask — lets the screen beneath it show through again, and one that
      * names a [screen][push] of its own resolves to that.
@@ -426,7 +409,7 @@ public class ScopeStack {
      *
      * Three sets of frames take part, and only those:
      * - the **lineage** of [origin] — itself and every frame it is nested in, following the parent
-     *   links declared at [push] / [update] — so a screen named by the surface hosting the origin,
+     *   links declared at [push] / [reparent] — so a screen named by the surface hosting the origin,
      *   or a mask raised by it, applies;
      * - the **subtree** beneath [origin], stopping at (and excluding) any frame pushed with
      *   [pushSurface] together with everything under it. What the origin's own pipeline could not
@@ -453,7 +436,7 @@ public class ScopeStack {
      * resume), and insertion order alone would let that late mask blank the `TrackedScreen` inside
      * it; ranking the container where its earliest nested survivor ranks keeps the content winning,
      * as it did before the surface was adopted, while a root the app pushed by hand still ranks
-     * where it was pushed. [maskScreen] and [resolveScope] then apply exactly as in [current]: a mask
+     * where it was pushed. [setScreenMasked] and [resolveScope] then apply exactly as in [current]: a mask
      * raised on the lineage clears the screen beneath it, content pushed after it inside the same
      * surface still wins, and a subtree that branches is ambiguous just as it is ambiently. The
      * active bit reaches down the lineage here too — a frame nested under an inactive frame is out —
@@ -737,8 +720,7 @@ internal enum class FrameKind {
 
 /**
  * An opaque token identifying a pushed frame, for [ScopeStack.update], [ScopeStack.reparent],
- * [ScopeStack.remove], [ScopeStack.maskScreen], [ScopeStack.setScreenMasked] and
- * [ScopeStack.setActive].
+ * [ScopeStack.remove], [ScopeStack.setScreenMasked] and [ScopeStack.setActive].
  */
 public class ScopeHandle internal constructor(internal val frame: ScopeFrame)
 
@@ -751,14 +733,14 @@ public class AmbientContext internal constructor(
     public val screen: String?,
     public val section: String?,
     /**
-     * Whether a [ScopeStack.maskScreen] frame is what left [screen] null — i.e. the surface on
-     * display *asserts* it has no screen, rather than simply never having named one.
+     * Whether a masked frame ([ScopeStack.setScreenMasked]) is what left [screen] null — i.e. the
+     * surface on display *asserts* it has no screen, rather than simply never having named one.
      *
      * Both cases read as `screen == null`, and Autograph's own pipelines treat them the same way:
      * they report no screen, and never substitute one from elsewhere. The distinction is published
      * for a pipeline that holds a screen name from another source and has to decide whether the
      * silence is an absence it may fill or an assertion it must respect — a mask is the latter, and
-     * filling it reinstates the screen the user just left ([ScopeStack.maskScreen]).
+     * filling it reinstates the screen the user just left ([ScopeStack.setScreenMasked]).
      *
      * It is deliberately *not* a signal about history. `autograph-compose`'s tap observer once fell
      * back to [ScreenHistory.lastScreen] here and gated the fallback on this flag; the fallback is

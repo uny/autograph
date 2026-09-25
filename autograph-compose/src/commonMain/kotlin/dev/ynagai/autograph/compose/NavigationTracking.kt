@@ -77,9 +77,12 @@ public fun NavController.TrackScreenViews(
                 // Revised in place — never re-pushed, which would move the route above the
                 // destination content it encloses. A null name clears the frame as well as skipping
                 // the report: an untracked destination must not leave the previous route's name
-                // attributing taps on it. The parent goes in on every call because `update` replaces
-                // the frame's contents wholesale, link included.
-                handle[0]?.let { stack.update(it, screen = name, parent = parentHolder?.get(0)) }
+                // attributing taps on it. The parent is re-read on every call: this listener is the
+                // only place the route frame is ever linked.
+                handle[0]?.let {
+                    stack.reparent(it, parentHolder?.get(0))
+                    stack.update(it, screen = name)
+                }
                 if (name == null) return
                 val previous = history.record(name)
                 // Global frames only — see EmitScreenView in ScreenTracking.kt for why this is the
