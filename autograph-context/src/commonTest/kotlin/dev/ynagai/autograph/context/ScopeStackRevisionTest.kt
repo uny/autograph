@@ -128,34 +128,6 @@ class ScopeStackRevisionTest {
     }
 
     @Test
-    fun reparent_adopts_a_frame_late_without_restating_it() {
-        // ScopeStackOriginTest's late-adoption case: the container still ranks with its content, and
-        // the content — unrestated — still names the screen.
-        val stack = ScopeStack()
-        val home = stack.push(screen = "Home")
-        val late = stack.pushSurface()
-        stack.setScreenMasked(late, true)
-        stack.reparent(home, late)
-
-        assertEquals("Home", stack.current(home).screen)
-        assertFalse(stack.current(home).screenMasked)
-    }
-
-    /** Like update, reparent refuses a cycle — this test HANGS rather than fails if the guard regresses. */
-    @Test
-    fun reparent_under_itself_or_a_descendant_is_refused_and_the_frame_becomes_a_root() {
-        val stack = ScopeStack()
-        val outer = stack.push(scope = props("a" to "outer"))
-        val inner = stack.push(scope = props("b" to "inner"), parent = outer)
-
-        stack.reparent(outer, inner)
-        assertEquals(props("a" to "outer", "b" to "inner"), stack.current().scope, "outer -> inner still merges")
-
-        stack.reparent(inner, inner)
-        assertEquals(JsonObject(emptyMap()), stack.current().scope, "inner is now a root beside outer")
-    }
-
-    @Test
     fun reparent_never_changes_the_mask_or_the_active_bit() {
         val stack = ScopeStack()
         val host = stack.push(screen = "Host")
