@@ -23,7 +23,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 - **`ScopeStack.pushSurface(…)`** ([#255]) — the attribution-boundary frame the 0.9.0
   `push(…, boundary = true)` overload pushed, under its own name, replacing that overload (see
   Removed). Behaviour is identical; the frame's kind is now named by the call that creates it: `push`
-  (a declaration), `pushSurface` (a boundary), `pushGlobal` (app-wide scope).
+  (a declaration) or `pushSurface` (a boundary).
 
 - **`ScopeStack.setScreenMasked(handle, masked)`** ([#255]) — raises or **lifts** a frame's mask.
   `maskScreen` was one-way. Lifting the mask hands resolution back to the frame's contents, which
@@ -35,8 +35,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   root) without touching what it says. Until now the only way was `update(handle, …, parent = …)`,
   which replaces the frame's scope, screen and section along with the link, so a caller moving a
   frame had to restate them or blank them. It replaces `update`'s `parent` argument (see Removed).
-  A link that would close a cycle is refused and the frame becomes a root; a `pushGlobal` frame
-  refuses every parent.
+  A link that would close a cycle is refused and the frame becomes a root.
 
 ### Fixed
 
@@ -60,27 +59,6 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   prevent. The check, the launch and the snapshot now share one lock; the drain itself waits outside
   it, so a racing call is refused at once rather than blocked. A drain cut short by its timeout is now
   reported through `AutographConfig.logger` instead of returning silently.
-
-- **A Compose `Screen Viewed` now carries an app-wide `pushGlobal` scope, as a native one does**
-  ([#250]). [#238] made the native `Screen Viewed` read the shared `ScopeStack`; the Compose emitters
-  (`TrackedScreen`, `TrackScreenView`, `NavController.TrackScreenViews`) still went straight to the
-  tracker, so following the README's `pushGlobal` recipe put `tenant` on every autocaptured tap and
-  every native screen view and left it off every Compose one — on the same screen whose own button
-  carried it, invisibly.
-
-  The read is deliberately the narrowest possible: **global frames only**, through the new
-  Autograph-internal `ScopeStack.globalScope`. Not the ambient screen/section, not a sibling surface's
-  scope. The rule that only autocapture reads this stack still holds for everything else —
-  `trackClick`, `trackImpression` and your own `track` calls are unchanged — because what motivates
-  that rule does not apply to a global frame: it names no screen and takes no part in the
-  sibling-ambiguity rule, so it is the one thing on the stack an explicit emit cannot be misattributed
-  by.
-
-  Precedence is unchanged and now pinned: an explicit call-site property wins, then the screen's own
-  `AutographScope`, then the global frame. Keeping that order is not free — `ScopedTracker` merges its
-  scope on the way *out*, so a global frame handed in as a property would have beaten the lexical
-  scope; the global keys the lexical chain already defines are dropped before the merge. `pushGlobal`'s
-  KDoc no longer claims it "applies to every event".
 
 - **An Android Activity that masked as a fragment shell reports itself again once it owns its content**
   ([#255]). `AndroidScreenCapture` re-derives what an Activity's frame says at every stop, but the mask
@@ -148,24 +126,22 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   and only in a major release, with a `ReplaceWith` or a named successor. The ADR previously governed
   only what may be *added*. `Modifier.autocaptureScope` keeps its pre-1.0 no-window removal.
 
-### Deprecated
-
-- **`ScopeStack.pushGlobal(scope)`** ([#253]) — superseded by `DefaultProperties`, and **removed in
-  1.0** under ADR 0001 §5's pre-1.0 rule, with a `WARNING`-level `@Deprecated` until then. A default
-  has the same precedence (lowest: a scope and a call-site property win), and it reaches what a
-  global frame never could — an explicit `track` / `trackClick` / `trackImpression` call — so a
-  tracking plan may require a key a default supplies on every event, explicit ones included.
-  Two differences to check before migrating. That extra reach: an explicit call that carried nothing
-  from the global frame carries the default. And lifetime: a default contributes until it is changed
-  or cleared, where a global frame stopped contributing on `setActive(handle, false)`,
-  `remove(handle)`, or when you replaced the whole stack (as on logout) — each of those becomes an
-  explicit `remove` / `clear` on the defaults at the same point, or the old context reaches later
-  events.
-  There is no `ReplaceWith`, because the move is from a frame on the stack to a holder handed to the
-  tracker's config, not a mechanical rewrite. The frame behaves exactly as before until 1.0. The
-  README's scoped-context section now recommends `DefaultProperties` for app-wide context.
-
 ### Removed
+
+- **`ScopeStack.pushGlobal(scope)`** ([#253]). Hand app-wide context to the tracker instead, as a
+  `DefaultProperties` in `AutographConfig.defaultProperties`. A default has the same precedence
+  (lowest: a scope and a call-site property win), and it reaches what a global frame never could —
+  an explicit `track` / `trackClick` / `trackImpression` call — so a tracking plan may require a key
+  a default supplies on every event, explicit ones included. Two differences to check when
+  migrating. That extra reach: an explicit call that carried nothing from the global frame carries
+  the default. And lifetime: a default contributes until it is changed or cleared, where a global
+  frame stopped contributing on `setActive(handle, false)`, `remove(handle)`, or when you replaced
+  the whole stack (as on logout) — each of those becomes an explicit `remove` / `clear` on the
+  defaults at the same point, or the old context reaches later events. There is no mechanical
+  rewrite: the move is from a frame on the stack to a holder handed to the tracker's config.
+  A plain `push(scope = …)` with no `parent` is **not** a replacement — beside a screen's
+  `AutographScope` it is an ambiguous sibling and both drop, as they have since [#237]. Removed with
+  no deprecation window, per ADR 0001 §5's pre-1.0 rule.
 
 - **`ScopeStack.push(…, boundary: Boolean)`** ([#255]). Call `pushSurface(…)` where you passed
   `boundary = true` and plain `push(…)` where you passed `false`. It is removed with no deprecation
@@ -1647,7 +1623,6 @@ Initial release.
 [#237]: https://github.com/uny/autograph/issues/237
 [#238]: https://github.com/uny/autograph/issues/238
 [#240]: https://github.com/uny/autograph/issues/240
-[#250]: https://github.com/uny/autograph/issues/250
 [#253]: https://github.com/uny/autograph/issues/253
 [#254]: https://github.com/uny/autograph/issues/254
 [#255]: https://github.com/uny/autograph/issues/255

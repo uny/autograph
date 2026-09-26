@@ -420,14 +420,14 @@ class ComposeTapOriginTest {
         assertEquals("Main", taps.single().second["screen"]?.jsonPrimitive?.content)
     }
 
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
     fun aFrameTheAppPushedByHandReachesEveryTapWhileTheNativeCaptureIsInstalled() {
-        // An app-wide frame pushed through the public API — an experiment scope at startup — is
-        // under no boundary, so every origin sees it. Dropping it once the capture claims the view
-        // tree would be silent data loss; both pipelines are checked.
+        // A frame pushed through the public API — an experiment scope at startup — is under no
+        // boundary, so every origin sees it. Dropping it once the capture claims the view tree would
+        // be silent data loss; both pipelines are checked. Nothing else here carries scope, so the
+        // plain root is not an ambiguous sibling of anything (#237).
         val activity = launch()
-        scopeStack.pushGlobal(scope = mapOf("experiment" to kotlinx.serialization.json.JsonPrimitive("b")))
+        scopeStack.push(scope = mapOf("experiment" to kotlinx.serialization.json.JsonPrimitive("b")))
         val host = InteropFragment()
         activity.supportFragmentManager.beginTransaction().add(activity.container, host).commitNow()
         idle()
@@ -438,35 +438,6 @@ class ComposeTapOriginTest {
         nativeTap(activity, OriginFixtures.interopButton!!)
         assertEquals("b", taps.single().second["experiment"]?.jsonPrimitive?.content)
         assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun aGlobalFrameCoexistsWithAScreensOwnAutographScope() {
-        // #237: the test above held only because nothing else on the stack carried scope. With a
-        // screen wrapped in `AutographScope`, a plain hand-pushed root was an ambiguous sibling of
-        // the scope nested under the provider, and BOTH dropped — adding app-wide context removed
-        // the screen scope the app already had. A global frame merges instead: the Compose tap
-        // carries both keys, the native tap (on a surface with no scope of its own) the global one.
-        val activity = launch()
-        val scoped = ScopedTapFragment()
-        val interop = InteropFragment()
-        activity.supportFragmentManager.beginTransaction()
-            .add(activity.container, scoped).add(activity.container, interop).commitNow()
-        idle()
-        scopeStack.pushGlobal(scope = mapOf("tenant_id" to kotlinx.serialization.json.JsonPrimitive("acme")))
-
-        tap(scoped.compose)
-        assertEquals("scoped", taps.single().first)
-        assertEquals("Article", taps.single().second["screen"]?.jsonPrimitive?.content)
-        assertEquals("1", taps.single().second["article_id"]?.jsonPrimitive?.content)
-        assertEquals("acme", taps.single().second["tenant_id"]?.jsonPrimitive?.content)
-
-        taps.clear()
-        nativeTap(activity, OriginFixtures.interopButton!!)
-        assertEquals("Detail", taps.single().second["screen"]?.jsonPrimitive?.content)
-        assertEquals("acme", taps.single().second["tenant_id"]?.jsonPrimitive?.content)
-        assertNull("another surface's AutographScope never reaches a native tap", taps.single().second["article_id"])
     }
 
     @Test

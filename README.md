@@ -301,11 +301,11 @@ There's a `JsonObject` overload for non-string values. Notes:
   then `defaults.set("tenant", JsonPrimitive(tenantId))`; the
   [Default properties](#default-properties) section has the full recipe and the rules. It reaches
   every `track` and `screen` event the tracker emits — autocaptured taps and `Screen Viewed`s on
-  every surface, and the explicit `trackClick` / `trackImpression` / `tracker.track(...)` calls a
-  global frame never reached — and it merges lowest, so a screen's `AutographScope` still wins a key
-  clash and an explicit call-site property wins over both. `ScopeStack.pushGlobal`, the previous way
-  to declare this, is deprecated and removed in 1.0: a global frame never reached an explicit call,
-  so a tracking plan could not require the key it added.
+  every surface, and the explicit `trackClick` / `trackImpression` / `tracker.track(...)` calls —
+  and it merges lowest, so a screen's `AutographScope` still wins a key clash and an explicit
+  call-site property wins over both. `ScopeStack.pushGlobal`, the 0.10.0 way to declare this, has
+  been removed: a global frame never reached an explicit call, so a tracking plan could not require
+  the key it added.
 
 ### Autocapture
 

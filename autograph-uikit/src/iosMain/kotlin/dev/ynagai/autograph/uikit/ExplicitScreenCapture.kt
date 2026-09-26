@@ -38,9 +38,9 @@ public class AutographScreenCapture(
     /**
      * Reports that a screen named [name] appeared: pushes a screen frame onto the stack and emits a
      * `Screen Viewed` carrying the screen it replaced as `previous_screen` and the scope resolved from
-     * the new frame — the same read a native tap on this screen uses, so an app-wide `pushGlobal`
-     * frame, a hand-pushed root and a scope under the shared Compose provider reach it, and sibling
-     * scopes the stack cannot choose between drop. Keep the returned [AutographScreenView] and call
+     * the new frame — the same read a native tap on this screen uses, so a hand-pushed root and a
+     * scope under the shared Compose provider reach it, and sibling scopes the stack cannot choose
+     * between drop. Keep the returned [AutographScreenView] and call
      * [AutographScreenView.disappeared] when the screen leaves.
      *
      * A tracker failure is **never** allowed to escape into the SwiftUI `onAppear` caller — a Kotlin

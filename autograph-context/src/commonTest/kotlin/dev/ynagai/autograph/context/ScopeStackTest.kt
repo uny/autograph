@@ -258,109 +258,16 @@ class ScopeStackTest {
     }
 
     @Test
-    fun a_hand_pushed_root_without_pushGlobal_still_cancels_against_a_nested_scope() {
+    fun a_hand_pushed_root_cancels_against_a_nested_scope() {
         // #237's repro, kept as written: a plain root is not comparable to a scope nested under the
-        // provider's root, so BOTH drop. Pinned deliberately — app-wide is declared (`pushGlobal`),
-        // never inferred from "a root nothing references"; see the `pushGlobal` kdoc for why.
+        // provider's root, so BOTH drop. Pinned deliberately — app-wide is never inferred from "a root
+        // nothing references" (a frame's meaning would change the moment something is pushed under
+        // it); app-wide context is DefaultProperties on the tracker (#253).
         val stack = ScopeStack()
         val provider = stack.push()
         stack.push(scope = props("article_id" to "1"), parent = provider)
         stack.push(scope = props("tenant_id" to "acme"))
         assertEquals(JsonObject(emptyMap()), stack.current().scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_merges_with_a_live_scope_chain_instead_of_cancelling_it() {
-        // The #237 case: app-wide keys (a tenant) pushed at startup, a screen's own scope nested
-        // under the provider's root. Both keys must reach the tap.
-        val stack = ScopeStack()
-        val provider = stack.push()
-        stack.push(scope = props("article_id" to "1"), parent = provider)
-        stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current().scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_loses_a_key_clash_to_the_screens_own_scope() {
-        // Global merges outermost, whatever its insertion order: the screen's scope wins a clash,
-        // and an explicit call-site property still wins over both.
-        val stack = ScopeStack()
-        stack.pushGlobal(scope = props("source" to "global", "tenant_id" to "acme"))
-        val provider = stack.push()
-        stack.push(scope = props("source" to "screen"), parent = provider)
-        val ctx = stack.current()
-        assertEquals(props("source" to "screen", "tenant_id" to "acme"), ctx.scope)
-        assertEquals(props("source" to "callsite", "tenant_id" to "acme"), ctx.enrich(props("source" to "callsite")))
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_survives_the_ambiguous_siblings_below_it() {
-        // The #66 rule stays: the rows still drop, the global frame (and the route scope enclosing
-        // the rows) still attribute.
-        val stack = ScopeStack()
-        stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val route = stack.push(scope = props("tab" to "home"))
-        stack.push(scope = props("row" to "1"), parent = route)
-        stack.push(scope = props("row" to "2"), parent = route)
-        assertEquals(props("tenant_id" to "acme", "tab" to "home"), stack.current().scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun two_global_frames_merge_in_insertion_order() {
-        val stack = ScopeStack()
-        stack.pushGlobal(scope = props("a" to "first", "b" to "first"))
-        stack.pushGlobal(scope = props("b" to "second"))
-        assertEquals(props("a" to "first", "b" to "second"), stack.current().scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun reparent_keeps_a_global_frame_a_root() {
-        // `reparent` accepts any handle. A parent under a boundary would hide the global frame from
-        // every other origin (see ScopeStackOriginTest), so the link is refused; scope still revises
-        // in place.
-        val stack = ScopeStack()
-        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val route = stack.push(scope = props("tab" to "home"))
-        stack.push(scope = props("row" to "1"), parent = route)
-        stack.push(scope = props("row" to "2"), parent = route)
-        stack.reparent(global, route)
-        stack.update(global, scope = props("tenant_id" to "globex"))
-        // Still merged as global (outermost, exempt from the ambiguity rule), not as a child of route.
-        assertEquals(props("tenant_id" to "globex", "tab" to "home"), stack.current().scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun update_does_not_let_a_global_frame_name_a_screen() {
-        // A global frame survives resolution for every origin, so a screen or section stored on it
-        // would override every surface's own. `update` keeps it scope-only.
-        val stack = ScopeStack()
-        stack.push(screen = "Feed", section = "top")
-        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        stack.update(global, scope = props("tenant_id" to "acme"), screen = "Global", section = "all")
-        val ctx = stack.current()
-        assertEquals("Feed", ctx.screen)
-        assertEquals("top", ctx.section)
-        assertEquals(props("tenant_id" to "acme"), ctx.scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_is_removable_and_deactivatable_like_any_other() {
-        val stack = ScopeStack()
-        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        stack.push(scope = props("article_id" to "1"))
-        stack.setActive(global, false)
-        assertEquals(props("article_id" to "1"), stack.current().scope)
-        stack.setActive(global, true)
-        assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current().scope)
-        stack.remove(global)
-        assertEquals(props("article_id" to "1"), stack.current().scope)
     }
 
     /**
