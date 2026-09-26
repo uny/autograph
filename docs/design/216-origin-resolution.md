@@ -196,6 +196,10 @@ a frame meant to apply everywhere. It was checked as an experiment and **left as
   a parent and names no screen. A plain root under no boundary joins set (3) only as a *member*,
   subject to the ambiguity rule like any other frame; inferring "a root nothing references is
   global" was rejected in #237.
+
+  > **Since #253:** `pushGlobal` and `FrameKind.Global` are gone. App-wide context is no longer a
+  > frame on the stack but `DefaultProperties` on the tracker, which also reaches explicit calls.
+  > The point about plain roots stands: one under no boundary joins set (3) only as a member.
 - **Dropping unowned frames from an origin's view is refuted 1.** A frame no pipeline has localized
   is not evidence that the event happened elsewhere, so excluding it turns a correct value into an
   absent one — a hand-pushed root, or a composition in an Activity that predates the install until

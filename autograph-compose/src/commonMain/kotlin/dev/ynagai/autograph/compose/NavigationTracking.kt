@@ -49,7 +49,6 @@ public fun NavController.TrackScreenViews(
     // The latest lambda, so the listener — which outlives a recomposition — does not keep calling
     // the one it captured when it was registered.
     val currentScreenName by rememberUpdatedState(screenName)
-    val lexicalKeys by rememberUpdatedState(LocalLexicalScopeKeys.current)
     // Keyed on the STACK ALONE, exactly as MirrorAmbientFrame's push is, and for the same reason: a
     // frame's position must not move while it is mounted. Folding this into the listener effect below
     // (which is keyed on the tracker) meant a tracker swap on logout removed and re-pushed the route
@@ -85,10 +84,7 @@ public fun NavController.TrackScreenViews(
                 }
                 if (name == null) return
                 val previous = history.record(name)
-                // Global frames only — see EmitScreenView in ScreenTracking.kt for why this is the
-                // one stack read an explicit emit may take (#250).
-                val properties = withPreviousScreen(EmptyJsonObject, previous)
-                tracker.screen(name, withGlobalScopeBeneath(stack, lexicalKeys, properties))
+                tracker.screen(name, withPreviousScreen(EmptyJsonObject, previous))
             }
         }
         // The frame exists by now: the push effect above is declared first, and all DisposableEffects

@@ -324,50 +324,6 @@ class ScopeStackOriginTest {
         assertEquals(props("route" to "feed"), stack.current(provider).scope)
     }
 
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_reaches_an_origin_under_a_boundary_and_merges_with_its_scope() {
-        // #237 from a native surface: the app's global frame is under no boundary, so it is a
-        // survivor for every origin, and being global it merges with the surface's own chain rather
-        // than cancelling against it.
-        val stack = ScopeStack()
-        val provider = stack.pushSurface()
-        stack.push(scope = props("article_id" to "1"), parent = provider)
-        stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val activity = stack.pushSurface()
-        stack.push(scope = props("checkout_step" to "2"), parent = activity)
-
-        assertEquals(props("tenant_id" to "acme", "article_id" to "1"), stack.current(provider).scope)
-        assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(activity).scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_reparented_under_a_surface_still_reaches_every_origin() {
-        // `isUnderABoundary` walks the parent link, so a global frame given a parent under a surface
-        // would vanish from every other surface's taps. `reparent` refuses the link for a global frame.
-        val stack = ScopeStack()
-        val global = stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val a = stack.pushSurface()
-        stack.reparent(global, a)
-        val b = stack.pushSurface()
-        val inB = stack.push(scope = props("checkout_step" to "2"), parent = b)
-        assertEquals(props("tenant_id" to "acme", "checkout_step" to "2"), stack.current(inB).scope)
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_survives_ambiguous_siblings_from_an_origin_too() {
-        // The ambient twin lives in ScopeStackTest; the origin overload builds a different survivor
-        // set before handing it to the same resolveScope, so pin it here as well.
-        val stack = ScopeStack()
-        stack.pushGlobal(scope = props("tenant_id" to "acme"))
-        val provider = stack.pushSurface(scope = props("route" to "feed"))
-        stack.push(scope = props("row" to "1"), parent = provider)
-        stack.push(scope = props("row" to "2"), parent = provider)
-        assertEquals(props("tenant_id" to "acme", "route" to "feed"), stack.current(provider).scope)
-    }
-
     @Test
     fun scope_merges_along_the_lineage_across_a_boundary() {
         val stack = ScopeStack()

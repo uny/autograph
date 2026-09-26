@@ -81,21 +81,6 @@ class ScreenEmitTest {
         assertEquals("Fourth" to props("previous_screen" to "Second"), tracker.screens[1])
     }
 
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_reaches_a_native_screen_view() {
-        // #237: an app-wide frame is exempt from the sibling rule and reaches every event — a native
-        // screen view included.
-        val stack = ScopeStack()
-        val tracker = RecordingTracker()
-        stack.pushGlobal(props("install" to "i-1"))
-        val screen = stack.pushSurface(screen = "Home")
-
-        stack.emitScreenView(tracker, "Home", origin = screen)
-
-        assertEquals(listOf("Home" to props("install" to "i-1")), tracker.screens)
-    }
-
     @Test
     fun scope_merges_under_previous_screen_and_never_writes_screen_or_section() {
         // `previous_screen` is a caller property, so it wins a key clash with the scope; and this is

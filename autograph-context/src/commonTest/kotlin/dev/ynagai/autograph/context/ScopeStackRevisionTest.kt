@@ -155,18 +155,6 @@ class ScopeStackRevisionTest {
         assertEquals(JsonObject(emptyMap()), stack.current().scope, "inner is now a root beside outer")
     }
 
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun a_global_frame_refuses_every_parent() {
-        val stack = ScopeStack()
-        val a = stack.pushSurface(screen = "A")
-        val b = stack.pushSurface(screen = "B")
-        val global = stack.pushGlobal(props("tenant_id" to "acme"))
-
-        stack.reparent(global, a)
-        assertEquals(props("tenant_id" to "acme"), stack.current(b).scope, "still seen from a sibling origin")
-    }
-
     @Test
     fun reparent_never_changes_the_mask_or_the_active_bit() {
         val stack = ScopeStack()

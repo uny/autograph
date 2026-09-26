@@ -1319,19 +1319,6 @@ class AndroidScreenCaptureTest {
         assertEquals(scope("tenant" to "acme"), tracker.screenProperties.single())
     }
 
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun aGlobalFrameReachesAnActivitysScreenView() {
-        // #237: `pushGlobal` reaches every event, and merges under the caller's `previous_screen`.
-        install()
-        scopeStack.pushGlobal(scope("install" to "i-1"))
-        Robolectric.buildActivity(PlainActivity::class.java).setup()
-        Robolectric.buildActivity(SecondPlainActivity::class.java).setup()
-
-        assertEquals(listOf("PlainActivity:(none)", "SecondPlainActivity:PlainActivity"), tracker.screens)
-        assertEquals(scope("install" to "i-1", "previous_screen" to "PlainActivity"), tracker.screenProperties[1])
-    }
-
     @Test
     fun aScopeUnderASiblingSurfaceDoesNotReachAnActivitysScreenView() {
         // The negative that decides the design: a scope declared under another surface's boundary —

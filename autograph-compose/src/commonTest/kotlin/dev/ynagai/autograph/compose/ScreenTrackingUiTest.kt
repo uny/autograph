@@ -52,7 +52,7 @@ private fun WithTracker(tracker: Tracker, content: @Composable () -> Unit) {
     )
 }
 
-/** [WithTracker] over a caller-supplied [stack], for the cases that push a global frame onto it. */
+/** [WithTracker] over a caller-supplied [stack], for the cases that push frames onto it first. */
 @Composable
 private fun WithTracker(tracker: Tracker, stack: ScopeStack, content: @Composable () -> Unit) {
     CompositionLocalProvider(
@@ -538,181 +538,11 @@ class ScreenTrackingUiTest {
         assertNull(after.screens[0].second.previousScreen(), "previous_screen leaked across trackers")
     }
 
-    // ---- #250: an app-wide pushGlobal frame reaches a Compose `Screen Viewed`, as it does a native one ----
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
     @Test
-    fun aGlobalFrameReachesATrackScreenView() {
-        runComposeUiTest {
-            val tracker = RecordingTracker()
-            val stack = ScopeStack()
-            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("acme")))
-            setContent {
-                WithTracker(tracker, stack) { TrackScreenView("Home") }
-            }
-            waitForIdle()
-
-            assertEquals("acme", tracker.screens.single().second["tenant"]?.jsonPrimitive?.content)
-        }
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun aGlobalFrameReachesATrackedScreen() {
-        runComposeUiTest {
-            val tracker = RecordingTracker()
-            val stack = ScopeStack()
-            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("acme")))
-            setContent {
-                WithTracker(tracker, stack) { TrackedScreen("Home") {} }
-            }
-            waitForIdle()
-
-            assertEquals("acme", tracker.screens.single().second["tenant"]?.jsonPrimitive?.content)
-        }
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun aScreenScopeStillWinsOverAGlobalFrame() {
-        // The precedence the fix could silently invert: ScopedTracker merges its scope on the way OUT,
-        // so a global frame handed in as a property would beat the screen's own AutographScope. It must
-        // not — call site > lexical scope > global.
-        runComposeUiTest {
-            val tracker = RecordingTracker()
-            val stack = ScopeStack()
-            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("global"), "install" to JsonPrimitive("i-1")))
-            setContent {
-                WithTracker(tracker, stack) {
-                    AutographScope("tenant" to "lexical") { TrackScreenView("Home") }
-                }
-            }
-            waitForIdle()
-
-            val properties = tracker.screens.single().second
-            assertEquals("lexical", properties["tenant"]?.jsonPrimitive?.content, "the screen's own scope wins")
-            assertEquals("i-1", properties["install"]?.jsonPrimitive?.content, "a key it does not define still arrives")
-        }
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun anOuterScopeWinsOverAGlobalFrameThroughATrackerDecorator() {
-        // A custom Tracker between two AutographScopes hides the outer ScopedTracker from any walk of
-        // the delegate chain; the outer scope's keys must still hold the global frame beneath them.
-        runComposeUiTest {
-            val tracker = RecordingTracker()
-            val stack = ScopeStack()
-            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("global")))
-            setContent {
-                WithTracker(tracker, stack) {
-                    AutographScope("tenant" to "outer") {
-                        val decorated = object : Tracker by LocalTracker.current {}
-                        CompositionLocalProvider(LocalTracker provides decorated) {
-                            AutographScope("region" to "inner") { TrackScreenView("Home") }
-                        }
-                    }
-                }
-            }
-            waitForIdle()
-
-            assertEquals("outer", tracker.screens.single().second["tenant"]?.jsonPrimitive?.content)
-        }
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun aNestedProviderDropsTheOuterScopesKeys() {
-        // A provider installs a tracker the enclosing AutographScope does not wrap, so that scope's
-        // keys must not hold the global frame back from this subtree's screen views.
-        runComposeUiTest {
-            val outer = RecordingTracker()
-            val inner = RecordingTracker()
-            val stack = ScopeStack()
-            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("global")))
-            setContent {
-                WithTracker(outer, stack) {
-                    AutographScope("tenant" to "outer") {
-                        AutographProvider(inner, scopeStack = stack) { TrackScreenView("Home") }
-                    }
-                }
-            }
-            waitForIdle()
-
-            assertEquals("global", inner.screens.single().second["tenant"]?.jsonPrimitive?.content)
-        }
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun anExplicitPropertyStillWinsOverAGlobalFrame() {
-        runComposeUiTest {
-            val tracker = RecordingTracker()
-            val stack = ScopeStack()
-            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("global")))
-            setContent {
-                WithTracker(tracker, stack) {
-                    TrackScreenView("Home", JsonObject(mapOf("tenant" to JsonPrimitive("explicit"))))
-                }
-            }
-            waitForIdle()
-
-            assertEquals("explicit", tracker.screens.single().second["tenant"]?.jsonPrimitive?.content)
-        }
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun aGlobalPreviousScreenDoesNotMaskTheRecordedOne() {
-        // previous_screen is generated, not scope: a global frame defining it must sit beneath it, as
-        // it does on the native path (ScreenEmit), rather than pass for a call-site property.
-        runComposeUiTest {
-            val tracker = RecordingTracker()
-            val stack = ScopeStack()
-            stack.screenHistory.record("Login")
-            stack.pushGlobal(mapOf("previous_screen" to JsonPrimitive("stale")))
-            setContent {
-                WithTracker(tracker, stack) { TrackScreenView("Home") }
-            }
-            waitForIdle()
-
-            assertEquals("Login", tracker.screens.single().second.previousScreen())
-        }
-    }
-
-    @Suppress("DEPRECATION") // pushGlobal is deprecated for DefaultProperties (#253); pinned until removal.
-    @Test
-    fun aGlobalFrameReachesNavTrackScreenViews() {
-        runComposeUiTest {
-            val tracker = RecordingTracker()
-            val stack = ScopeStack()
-            stack.pushGlobal(mapOf("tenant" to JsonPrimitive("acme"), "previous_screen" to JsonPrimitive("stale")))
-            lateinit var navController: NavHostController
-            setContent {
-                navController = rememberNavController()
-                WithTracker(tracker, stack) {
-                    navController.TrackScreenViews()
-                    NavHost(navController, startDestination = "home") {
-                        composable("home") {}
-                        composable("detail") {}
-                    }
-                }
-            }
-            waitForIdle()
-
-            runOnUiThread { navController.navigate("detail") }
-            waitForIdle()
-
-            assertEquals(listOf("home", "detail"), tracker.names)
-            assertEquals(listOf("acme", "acme"), tracker.screens.map { it.second["tenant"]?.jsonPrimitive?.content })
-            assertEquals("home", tracker.screens[1].second.previousScreen(), "the recorded one wins")
-        }
-    }
-
-    @Test
-    fun aNonGlobalFrameDoesNotReachAScreenView() {
-        // The other half of the rule: only GLOBAL frames are read. A sibling surface's declaration,
-        // which the ambient snapshot would show, must stay off an explicit emit.
+    fun aSiblingSurfacesScopeDoesNotReachAScreenView() {
+        // A Compose `Screen Viewed` is an explicit emit and reads nothing off the ambient stack;
+        // app-wide context reaches it through DefaultProperties instead (#253). A sibling surface's
+        // declaration, which the ambient snapshot would show, must stay off it.
         runComposeUiTest {
             val tracker = RecordingTracker()
             val stack = ScopeStack()
