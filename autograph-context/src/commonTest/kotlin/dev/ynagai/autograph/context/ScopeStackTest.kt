@@ -279,10 +279,11 @@ class ScopeStackTest {
     @Test
     fun a_frame_reparented_under_itself_is_refused_and_becomes_a_root() {
         val stack = ScopeStack()
-        val a = stack.push(scope = props("a" to "1"))
-        stack.reparent(a, a)
-        // Refused, so `a` is a root — and a second root scope is its ambiguous sibling, not its child.
-        stack.push(scope = props("b" to "2"))
+        val outer = stack.push(scope = props("a" to "outer"))
+        val inner = stack.push(scope = props("b" to "inner"), parent = outer)
+        stack.reparent(inner, inner)
+        // Refused, so `inner` drops to a root rather than keeping `outer` — and two roots are
+        // ambiguous siblings. Starting from a child is what tells "becomes a root" from a no-op.
         assertEquals(JsonObject(emptyMap()), stack.current().scope)
     }
 
