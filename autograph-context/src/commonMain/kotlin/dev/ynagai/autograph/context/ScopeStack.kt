@@ -308,7 +308,7 @@ public class ScopeStack {
      * into the Swift-facing `Autograph.xcframework` and Kotlin/Native maps only [List]/[Set]/[Map] to
      * an Objective-C collection. A `Collection` parameter degrades to an untyped `id`, i.e. `Any` in
      * Swift — so `setActive(handles: "oops", active: false)` would compile — and `autograph-context`
-     * is SemVer-ABI-stable ([ADR 0001](docs/adr/0001-public-api-evolution.md) §1), so narrowing it
+     * is SemVer-ABI-stable ([ADR 0001](../../../../../../../../docs/adr/0001-public-api-evolution.md) §1), so narrowing it
      * afterwards would need a major bump. Measured in the generated header, both before and after.
      */
     public fun setActive(handles: List<ScopeHandle>, active: Boolean) {
