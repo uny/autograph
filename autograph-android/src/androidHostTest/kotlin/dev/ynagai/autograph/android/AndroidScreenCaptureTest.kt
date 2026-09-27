@@ -1380,7 +1380,13 @@ class AndroidScreenCaptureTest {
         fm.beginTransaction().add(activity.containerA, named).commitNow()
         fm.beginTransaction().setMaxLifecycle(named, Lifecycle.State.STARTED).commitNow()
 
-        visitAnotherActivityWithoutStopping(controller)
+        controller.pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        // Reported from the resume itself, not left to the late check that covers a demotion made
+        // while the host was paused (below): nothing here makes the fragment look like it is coming back.
+        assertEquals("OwnHostActivity:SecondPlainActivity", tracker.screens.last())
+        drainMainLooper()
 
         assertEquals(
             listOf(
@@ -1388,6 +1394,90 @@ class AndroidScreenCaptureTest {
                 "DetailFragment:OwnHostActivity",
                 "SecondPlainActivity:DetailFragment",
                 "OwnHostActivity:SecondPlainActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anActivityWhoseNamedFragmentWasDemotedWhileItWasPausedStillReportsItsReturn() {
+        install()
+        // The same fragment moved down to STARTED only after its host paused — a tab switched from
+        // onActivityResult. That fires no callback, so at the host's resume the fragment still reads
+        // as coming back with it; it never resumes, and the Activity has to report the return late.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val fm = activity.supportFragmentManager
+        val named = DetailFragment()
+        fm.beginTransaction().add(activity.containerA, named).commitNow()
+
+        controller.pause()
+        fm.beginTransaction().setMaxLifecycle(named, Lifecycle.State.STARTED).commitNow()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        drainMainLooper()
+
+        assertEquals(
+            listOf(
+                "OwnHostActivity:(none)",
+                "DetailFragment:OwnHostActivity",
+                "SecondPlainActivity:DetailFragment",
+                "OwnHostActivity:SecondPlainActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anExcludedFragmentResumingBesideAContentFragmentDemotedWhileItWasPausedDoesNotTakeTheReturn() {
+        install()
+        // What resumes has to be content as well: a mini-player coming back beside the demoted
+        // fragment reports nothing, so it must not count as having taken the Activity's return.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val fm = activity.supportFragmentManager
+        val named = DetailFragment()
+        fm.beginTransaction().add(activity.containerA, MiniPlayerFragment()).commitNow()
+        fm.beginTransaction().add(activity.containerA, named).commitNow()
+
+        controller.pause()
+        fm.beginTransaction().setMaxLifecycle(named, Lifecycle.State.STARTED).commitNow()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        drainMainLooper()
+
+        assertEquals("OwnHostActivity:SecondPlainActivity", tracker.screens.last())
+    }
+
+    @Test
+    fun aShellWhosePageWasSwappedWhileItWasPausedReportsOnlyTheNewPage() {
+        install()
+        // The late report above must not fire when a different page did take the return: here the
+        // page that paused with the host is moved down and its sibling raised, both while paused.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        val first = DetailFragment()
+        val second = SecondFragment()
+        fm.beginTransaction().add(android.R.id.content, first, "first").commitNow()
+        fm.beginTransaction().add(android.R.id.content, second, "second")
+            .setMaxLifecycle(second, Lifecycle.State.STARTED).commitNow()
+
+        controller.pause()
+        fm.beginTransaction()
+            .setMaxLifecycle(first, Lifecycle.State.STARTED)
+            .setMaxLifecycle(second, Lifecycle.State.RESUMED)
+            .commitNow()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        drainMainLooper()
+
+        assertEquals("SecondFragment", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "DetailFragment:EmptyFragmentActivity",
+                "SecondPlainActivity:DetailFragment",
+                "SecondFragment:SecondPlainActivity",
             ),
             tracker.screens,
         )
