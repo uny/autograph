@@ -33,6 +33,7 @@ import org.junit.runner.RunWith
 import org.robolectric.Robolectric
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.RuntimeEnvironment
+import org.robolectric.android.controller.ActivityController
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 
@@ -73,6 +74,15 @@ class ComposeHostDialogFragment : DialogFragment() {
         container: ViewGroup?,
         savedInstanceState: Bundle?,
     ): View = ComposeView(requireContext())
+}
+
+/** A native DialogFragment with a view of its own — a named sheet, unlike [ComposeHostDialogFragment]. */
+class ViewDialogFragment : DialogFragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = View(requireContext())
 }
 
 /** A retained worker fragment — no view, so not a surface. Glide's is the everyday example. */
@@ -1245,6 +1255,226 @@ class AndroidScreenCaptureTest {
                 "SecondPlainActivity:DetailFragment",
                 "DetailFragment:SecondPlainActivity",
             ),
+            tracker.screens,
+        )
+    }
+
+    /** Pauses [controller], shows and fully finishes another Activity, and resumes — a return WITHOUT a stop. */
+    private fun visitAnotherActivityWithoutStopping(controller: ActivityController<*>) {
+        controller.pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        drainMainLooper()
+    }
+
+    @Test
+    fun aShellReturningWithoutAStopDoesNotReportItselfOverItsFragment() {
+        install()
+        // #272. The Activity settled as a screen of its own at its first resume and has since taken a
+        // content fragment. Another screen reported while it was paused ends both views, so the
+        // return is a fresh view — of the fragment, which is what is on display. The Activity is a
+        // shell now, as a stop would have re-derived; it must not report itself on the way back.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "content").commitNow()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "DetailFragment:EmptyFragmentActivity",
+                "SecondPlainActivity:DetailFragment",
+                "DetailFragment:SecondPlainActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anActivityWithAnExcludedFragmentBesideItsContentStillReportsItsReturn() {
+        install()
+        // The regression guard for #272: this was already correct, and the obvious fix — gate the
+        // emit on whether the Activity is capturable at THIS resume — breaks it. A mini-player
+        // beside the Activity's own content makes `isCapturableActivity` false, but it reports
+        // nothing itself, so the Activity is still what the user returns to.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(activity.containerA, MiniPlayerFragment()).commitNow()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(
+            listOf(
+                "OwnHostActivity:(none)",
+                "SecondPlainActivity:OwnHostActivity",
+                "OwnHostActivity:SecondPlainActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anActivityWithANamedSheetUpReportsItselfAndTheSheetOnAReturnWithoutAStop() {
+        install()
+        // A shown DialogFragment covers the Activity; it does not replace its content, which is why
+        // `isCapturableActivity` exempts it. A return through a stop re-derives the Activity as its
+        // own screen and reports both; a return without one must agree.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        ViewDialogFragment().show(controller.get().supportFragmentManager, "sheet")
+        drainMainLooper()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "ViewDialogFragment:EmptyFragmentActivity",
+                "SecondPlainActivity:ViewDialogFragment",
+                "EmptyFragmentActivity:SecondPlainActivity",
+                "ViewDialogFragment:EmptyFragmentActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun aNamedSheetOverAnActivityWithAMiniPlayerDoesNotTakeItsReturnAway() {
+        install()
+        // The one shape where the dialog exemption in the return check decides anything: without the
+        // sheet, the mini-player alone leaves the Activity reporting its return (above); a shown sheet
+        // covers the Activity rather than replacing its content, so it must not change that.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(activity.containerA, MiniPlayerFragment()).commitNow()
+        ViewDialogFragment().show(activity.supportFragmentManager, "sheet")
+        drainMainLooper()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(
+            listOf(
+                "OwnHostActivity:(none)",
+                "ViewDialogFragment:OwnHostActivity",
+                "SecondPlainActivity:ViewDialogFragment",
+                "OwnHostActivity:SecondPlainActivity",
+                "ViewDialogFragment:OwnHostActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anActivityWhoseNamedFragmentWasDemotedReportsItselfOnAReturnWithoutAStop() {
+        install()
+        // A named fragment beside the Activity's own content, since moved down to STARTED (a pager
+        // page, a tab): the user is looking at the Activity. That fragment does not resume with its
+        // host, so it must not silence the Activity — nobody would report the return.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val fm = activity.supportFragmentManager
+        val named = DetailFragment()
+        fm.beginTransaction().add(activity.containerA, named).commitNow()
+        fm.beginTransaction().setMaxLifecycle(named, Lifecycle.State.STARTED).commitNow()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(
+            listOf(
+                "OwnHostActivity:(none)",
+                "DetailFragment:OwnHostActivity",
+                "SecondPlainActivity:DetailFragment",
+                "OwnHostActivity:SecondPlainActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun aHiddenNamedFragmentDoesNotTakeAnActivitysReturnAway() {
+        install()
+        // `hide()` keeps a fragment RESUMED, so it pauses and resumes with its host like a visible
+        // one — but it shows nothing, and the Activity's own content is what the user returns to.
+        // (The hidden fragment reporting itself as well is a separate, pre-existing limitation, so
+        // only the Activity's event is asserted.)
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val named = DetailFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, named).commitNow()
+        activity.supportFragmentManager.beginTransaction().hide(named).commitNow()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertTrue(tracker.screens.toString(), "OwnHostActivity:SecondPlainActivity" in tracker.screens)
+    }
+
+    @Test
+    fun aShellWithADemotedPageReportsOnlyTheSelectedPageOnAReturnWithoutAStop() {
+        install()
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        val first = DetailFragment()
+        fm.beginTransaction().add(android.R.id.content, first, "first").commitNow()
+        fm.beginTransaction().add(android.R.id.content, SecondFragment(), "second").commitNow()
+        fm.beginTransaction().setMaxLifecycle(first, Lifecycle.State.STARTED).commitNow()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals("SecondFragment", scopeStack.current().screen)
+        assertEquals(
+            listOf(
+                "EmptyFragmentActivity:(none)",
+                "DetailFragment:EmptyFragmentActivity",
+                "SecondFragment:DetailFragment",
+                "SecondPlainActivity:SecondFragment",
+                "SecondFragment:SecondPlainActivity",
+            ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun aShellThatStayedSilentOnItsReturnReportsItselfOnceItsFragmentIsGone() {
+        install()
+        // Silencing the Activity on a #272 return must not mark a view of it as in progress: it
+        // reported nothing. Once the fragment is removed (which resumes nothing) the Activity's own
+        // content is on display, and its next return is the first view of it since.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().add(android.R.id.content, DetailFragment(), "content").commitNow()
+        visitAnotherActivityWithoutStopping(controller)
+
+        fm.beginTransaction().remove(fm.findFragmentByTag("content")!!).commitNow()
+        controller.pause().resume()
+        drainMainLooper()
+
+        assertEquals("EmptyFragmentActivity", scopeStack.current().screen)
+        assertEquals("EmptyFragmentActivity:DetailFragment", tracker.screens.last())
+    }
+
+    @Test
+    fun aShellOverAnOptedOutFragmentStaysSilentOnAReturnWithoutAStop() {
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailFragment) null else it.javaClass.simpleName },
+        )
+        // An opted-out fragment still replaces the Activity's content. A return through a stop
+        // re-derives the Activity as a shell and reports nothing over it; one without a stop agrees,
+        // rather than reporting the Activity over a screen the adopter chose not to name.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "content").commitNow()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(
+            listOf("EmptyFragmentActivity:(none)", "SecondPlainActivity:EmptyFragmentActivity"),
             tracker.screens,
         )
     }

@@ -212,6 +212,7 @@ internal class AndroidScreenCapture(
             // resolves as it did before masks existed.
             covers = resumedActivities.none { it !== activity },
             screenName = { activityScreenName(activity) },
+            yieldsToFragment = fragmentRegistrations[activity]?.callbacks?.hasReturningContent() == true,
         )
         scheduleDemotionCheck(activity)
     }
@@ -327,6 +328,26 @@ internal class AndroidScreenCapture(
         /** Ends the in-progress view of every fragment of this Activity — see [endViewsOffDisplay]. */
         fun endViews() {
             fragmentStates.values.forEach { it.emitted = false }
+        }
+
+        /**
+         * Whether a fragment that is this Activity's own content is coming back with it — so the
+         * return is that fragment's to report, not the Activity's
+         * ([#272](https://github.com/uny/autograph/issues/272)).
+         *
+         * Read from the host's resume, which runs before any of its fragments resume, so it cannot
+         * ask what is resumed; [SurfaceState.pausedWithHost] is the exact answer to "was on display
+         * when the host left", and nothing has cleared it yet. The rest mirrors what makes
+         * [isCapturableActivity] call the host a shell, restricted to surfaces this capture would
+         * report: a shown dialog covers the Activity without replacing it, a hidden fragment shows
+         * nothing, and an excluded one (a Compose mini-player) reports nothing, so none of those
+         * takes the return away from the Activity. The name is deliberately not asked: an opted-out
+         * fragment still replaces the Activity's content, and a return through a stop — which
+         * re-derives the Activity as a shell — reports nothing over it either.
+         */
+        fun hasReturningContent(): Boolean = fragmentStates.any { (f, state) ->
+            state.pausedWithHost && state.decided && state.capturable &&
+                f.view != null && !f.isHidden && !f.isShownAsDialog()
         }
 
         /** See [scheduleDemotionCheck]. Runs after the host's resume dispatch has finished. */
@@ -564,6 +585,7 @@ internal class AndroidScreenCapture(
         capturable: Boolean,
         covers: Boolean,
         screenName: () -> String?,
+        yieldsToFragment: Boolean = false,
     ) {
         // Two different questions, and the name answers only one of them. `capturable` is what this
         // capture *structurally* declines — a Compose host, a fragment-hosting shell — and that is
@@ -622,7 +644,12 @@ internal class AndroidScreenCapture(
         // nor covering does not report itself: an Activity settled as a screen that has since taken
         // a content fragment, returning beside another Activity, would otherwise emit its own name
         // over the fragment the user is looking at. This is where the name gate above used to stop it.
-        if (!capturable && !covers) return
+        // Covering does not settle it either: alone on display, the same Activity returning without a
+        // stop reported itself over a content fragment that was coming back with it (#272). Gating on
+        // `capturable` alone would also silence an Activity whose content sits beside an excluded
+        // fragment — a mini-player it still owns the screen around — so the fragment has to be one
+        // that will report the return itself.
+        if (!capturable && (!covers || yieldsToFragment)) return
         state.emitted = true
         if (configChange) return
         try {
