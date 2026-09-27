@@ -8,6 +8,21 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Fixed
+
+- **An Android Activity no longer reports its own `Screen Viewed` over its content fragment when it
+  returns without a stop** ([#272]). An Activity that was a screen of its own at its first resume and
+  has since taken a content fragment re-emitted its own name on a pause-only return — a permission
+  prompt or a translucent Activity that reported a screen of its own — ahead of the fragment's, and
+  shifted the fragment's `previous_screen` to it. It now leaves the return to a content fragment that
+  paused with it and resumes with it, as a return through a stop already did. An Activity whose
+  content sits beside an excluded fragment (a Compose mini-player), a demoted page — including one
+  demoted while the Activity was paused — a hidden fragment or a shown sheet still reports its
+  return. One shape is unchanged: a content fragment swapped in **while** the Activity was paused has
+  not been seen yet, so the Activity still reports itself before it. And when the content fragment was
+  demoted while the Activity was paused, the Activity's return is only reported once its resume has
+  finished — after a named sheet that is up at the same time, rather than before it.
+
 ## [0.11.0] - 2026-09-26
 
 ### Added
@@ -1630,3 +1645,4 @@ Initial release.
 [#254]: https://github.com/uny/autograph/issues/254
 [#255]: https://github.com/uny/autograph/issues/255
 [#257]: https://github.com/uny/autograph/issues/257
+[#272]: https://github.com/uny/autograph/issues/272
