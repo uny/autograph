@@ -229,7 +229,12 @@ internal class AndroidScreenCapture(
         // Deselect, but never clear `emitted`: a pause is not the end of a view. A dialog Activity, a
         // permission prompt or a partially-covering Activity all pause the one underneath, and coming
         // back must not report the same screen twice. Stop is what ends a view.
-        activityStates[activity]?.let(::deselect)
+        activityStates[activity]?.let {
+            // A return left to a fragment is settled at the resume that left it, or not at all: the
+            // next resume decides again, under the name it reads then.
+            it.yieldedReturn = null
+            deselect(it)
+        }
     }
 
     override fun onActivityStopped(activity: Activity) {
@@ -290,19 +295,21 @@ internal class AndroidScreenCapture(
      * that left its return to a fragment that paused with it ([FragmentCallbacks.hasReturningContent])
      * is wrong when that fragment was the one moved down, and nothing would report the return. So
      * that return is reported here, late, when no such fragment resumed after all — the only emit
-     * this check makes (#272). Attribution is never deferred, and the late emit needs the host still
-     * on display: one that paused again before this ran reports itself at its next resume instead.
+     * this check makes (#272). Attribution is never deferred.
+     *
+     * A host that paused again before this ran is skipped whole, and its next resume posts the check
+     * again. Its surfaces paused with it a second time, so "not resumed now" no longer means "not
+     * brought back", and clearing their paused-with-host state here would take the next return from
+     * a fragment that is coming back with it.
      */
     private fun scheduleDemotionCheck(activity: Activity) {
         val callbacks = fragmentRegistrations[activity]?.callbacks ?: return
         handler.post {
-            if (!active) return@post
+            if (!active || activity !in resumedActivities) return@post
             activityStates[activity]?.let { state ->
                 val screen = state.yieldedReturn ?: return@let
                 state.yieldedReturn = null
-                if (activity in resumedActivities && !state.emitted && !callbacks.hasResumedContent()) {
-                    emit(state, screen)
-                }
+                if (!state.emitted && !callbacks.hasResumedContent()) emit(state, screen)
             }
             callbacks.confirmDemotions()
         }
@@ -376,8 +383,10 @@ internal class AndroidScreenCapture(
         fun hasResumedContent(): Boolean =
             fragmentStates.any { (f, state) -> f.isResumed && isContent(f, state) }
 
+        // Not only the fragment itself: one nested in a shown dialog is part of that dialog's window.
         private fun isContent(f: Fragment, state: SurfaceState): Boolean =
-            state.decided && state.capturable && f.view != null && !f.isHidden && !f.isShownAsDialog()
+            state.decided && state.capturable && f.view != null && !f.isHidden &&
+                generateSequence(f) { it.parentFragment }.none { it.isShownAsDialog() }
 
         /** See [scheduleDemotionCheck]. Runs after the host's resume dispatch has finished. */
         fun confirmDemotions() {

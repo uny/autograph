@@ -56,6 +56,21 @@ open class ViewFragment : Fragment() {
 
 class DetailFragment : ViewFragment()
 
+/** A shown sheet hosting a named child fragment in its own layout. */
+class NestingDialogFragment : DialogFragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = FrameLayout(requireContext()).apply { id = CHILD_CONTAINER_ID }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        childFragmentManager.beginTransaction().add(CHILD_CONTAINER_ID, SecondFragment(), "child").commitNow()
+    }
+
+    private companion object { const val CHILD_CONTAINER_ID = 4343 }
+}
+
 class SecondFragment : ViewFragment()
 
 /** A fragment whose content is Compose and which declares no screen — the #216 shape. */
@@ -228,6 +243,7 @@ class ComposeHostActivity : ComponentActivity() {
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
+
 class AndroidScreenCaptureTest {
 
     /**
@@ -1481,6 +1497,82 @@ class AndroidScreenCaptureTest {
             ),
             tracker.screens,
         )
+    }
+
+
+    @Test
+    fun aShellPausedAgainBeforeItsReturnWasCheckedStillLeavesTheNextReturnToItsFragment() {
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailFragment) null else it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        // The check posted by a resume runs after the next pause when the Activity leaves at once.
+        // Its fragment paused with it again, so the check must not read it as left behind — the next
+        // return is still the (opted-out) fragment's, and the Activity reports nothing over it.
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "content").commitNow()
+        controller.pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        controller.pause()
+        drainMainLooper()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.resume()
+        drainMainLooper()
+
+        assertEquals(1, tracker.screens.count { it.startsWith("EmptyFragmentActivity:") })
+    }
+
+    @Test
+    fun aReturnLeftToADemotedFragmentIsNotReportedUnderANameTheActivityHasSinceDropped() {
+        var name: String? = "OwnHostActivity"
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { if (it is OwnHostActivity) name else it.javaClass.simpleName },
+            fragmentScreenName = { it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val fm = activity.supportFragmentManager
+        val named = DetailFragment()
+        fm.beginTransaction().add(activity.containerA, named).commitNow()
+        controller.pause()
+        fm.beginTransaction().setMaxLifecycle(named, Lifecycle.State.STARTED).commitNow()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        // The late report belongs to the resume that left the return, not to whichever resume is
+        // current when it runs: this one reads the Activity as opted out.
+        controller.resume()
+        controller.pause()
+        name = null
+        controller.resume()
+        drainMainLooper()
+
+        assertEquals(
+            listOf("OwnHostActivity:(none)", "DetailFragment:OwnHostActivity", "SecondPlainActivity:DetailFragment"),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun aFragmentInsideAShownSheetDoesNotTakeAnActivitysReturnAway() {
+        install()
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(activity.containerA, MiniPlayerFragment()).commitNow()
+        // A sheet's own child fragment is part of the sheet's window, like the sheet itself.
+        NestingDialogFragment().show(activity.supportFragmentManager, "sheet")
+        drainMainLooper()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertTrue(tracker.screens.toString(), "OwnHostActivity:SecondPlainActivity" in tracker.screens)
     }
 
     @Test
