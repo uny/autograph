@@ -243,7 +243,6 @@ class ComposeHostActivity : ComponentActivity() {
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
-
 class AndroidScreenCaptureTest {
 
     /**
@@ -1498,7 +1497,6 @@ class AndroidScreenCaptureTest {
             tracker.screens,
         )
     }
-
 
     @Test
     fun aShellPausedAgainBeforeItsReturnWasCheckedStillLeavesTheNextReturnToItsFragment() {
