@@ -45,6 +45,16 @@ class SecondPlainActivity : Activity()
 
 class EmptyFragmentActivity : FragmentActivity()
 
+/** A fragment-based Compose app's Activity: its only content is a Compose-hosting fragment. */
+class ComposeFragmentShellActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) {
+            supportFragmentManager.beginTransaction().add(android.R.id.content, ComposeHostFragment()).commitNow()
+        }
+    }
+}
+
 /** A fragment with a real (non-null) view — the thing that makes it a screen rather than headless. */
 open class ViewFragment : Fragment() {
     override fun onCreateView(
@@ -1327,6 +1337,93 @@ class AndroidScreenCaptureTest {
                 "SecondPlainActivity:OwnHostActivity",
                 "OwnHostActivity:SecondPlainActivity",
             ),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anActivityWithAMiniPlayerStillAttachedAtItsNextStopReportsNoReturnThroughIt() {
+        install()
+        // A documented limit (#281), pinned so that lifting it is a deliberate change: the pause-only
+        // route above reports this return, the route through a stop does not, because the stop
+        // re-derives the Activity as a shell. Absent, never wrong.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        activity.supportFragmentManager.beginTransaction()
+            .add(activity.containerA, MiniPlayerFragment()).commitNow()
+
+        controller.pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        controller.stop().restart().resume()
+        drainMainLooper()
+
+        assertEquals(listOf("OwnHostActivity:(none)", "SecondPlainActivity:OwnHostActivity"), tracker.screens)
+    }
+
+    @Test
+    fun anActivityWithAMiniPlayerAtItsFirstResumeReportsNothingForItself() {
+        install()
+        // The same limit (#281) without any stop.
+        Robolectric.buildActivity(OwnHostWithMiniPlayerActivity::class.java).setup()
+        drainMainLooper()
+
+        assertEquals(emptyList<String>(), tracker.screens)
+    }
+
+    // The guards any lift of #281 has to keep. Each is a Compose-hosting fragment that REPLACES the
+    // Activity's content, which is structurally the mini-player's shape; each passes on main, and each
+    // fails on the tempting fix — stop counting Compose-hosting fragments, and stop searching fragment
+    // views for Compose — which makes the Activity report its own name over its content.
+
+    @Test
+    fun anActivityWhoseOnlyContentIsAComposeFragmentReportsNothingForItself() {
+        install()
+        val controller = Robolectric.buildActivity(ComposeFragmentShellActivity::class.java).setup()
+        drainMainLooper()
+        assertNull(scopeStack.current().screen)
+        assertTrue(scopeStack.current().screenMasked)
+
+        controller.pause().stop().restart().resume()
+        drainMainLooper()
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(listOf("SecondPlainActivity:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun anActivityThatTookAComposeContentFragmentStopsReportingItselfAtItsNextStop() {
+        install()
+        // The Compose counterpart of anActivityThatHasBecomeAShellStopsReportingItselfOnTheNextReturn.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, ComposeHostFragment(), "content").commitNow()
+
+        controller.pause().stop().restart().resume()
+        drainMainLooper()
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(
+            listOf("EmptyFragmentActivity:(none)", "SecondPlainActivity:EmptyFragmentActivity"),
+            tracker.screens,
+        )
+    }
+
+    @Test
+    fun anActivityThatTookANativeFragmentEmbeddingComposeStopsReportingItselfAtItsNextStop() {
+        install()
+        // The tempting fix walks each fragment's whole view, which holds its children's views too — so
+        // a native screen embedding a Compose widget stopped counting as content, and so would a
+        // NavHostFragment on a Compose destination.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, ContainerNestingFragment(), "content").commitNow()
+
+        controller.pause().stop().restart().resume()
+        drainMainLooper()
+        visitAnotherActivityWithoutStopping(controller)
+
+        assertEquals(
+            listOf("EmptyFragmentActivity:(none)", "SecondPlainActivity:EmptyFragmentActivity"),
             tracker.screens,
         )
     }
