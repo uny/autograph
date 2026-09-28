@@ -35,7 +35,7 @@ import org.robolectric.annotation.Config
  * A capturable Activity with content of its own — a button — and two empty containers fragments
  * can be added into after the Activity has decided what it is.
  */
-class OwnHostActivity : FragmentActivity() {
+open class OwnHostActivity : FragmentActivity() {
     lateinit var ownButton: Button
     val containerA = View.generateViewId()
     val containerB = View.generateViewId()
@@ -50,6 +50,16 @@ class OwnHostActivity : FragmentActivity() {
                 addView(FrameLayout(context).apply { id = containerB })
             },
         )
+    }
+}
+
+/** [OwnHostActivity] with a mini-player already beside its content at its first resume. */
+class OwnHostWithMiniPlayerActivity : OwnHostActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) {
+            supportFragmentManager.beginTransaction().add(containerA, MiniPlayerFragment()).commitNow()
+        }
     }
 }
 
@@ -138,6 +148,39 @@ class AndroidTapOriginTest {
         taps.clear()
         tap(activity, mini.button)
         assertNull("inside the excluded fragment the tap carries no screen", taps.single()["screen"])
+    }
+
+    @Test
+    fun anActivityWithAMiniPlayerStillAttachedAtItsNextStopIsTakenForAShell() {
+        // A documented limit (#281), pinned so that lifting it is a deliberate change. The Activity's
+        // structure cannot tell a mini-player beside its content from a Compose content fragment
+        // replacing it, so the resume after the stop re-derives it as a shell and it masks its own taps.
+        // The screen goes absent, never wrong — and it stays absent across a resume without a stop.
+        val activity = launch()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, MiniPlayerFragment()).commitNow()
+
+        controller.pause().stop().restart().resume()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        tap(activity, activity.ownButton)
+        assertNull(taps.single()["screen"])
+
+        taps.clear()
+        controller.pause().resume()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        tap(activity, activity.ownButton)
+        assertNull(taps.single()["screen"])
+    }
+
+    @Test
+    fun anActivityWithAMiniPlayerAtItsFirstResumeIsTakenForAShell() {
+        // The same limit (#281) without any stop: the first resume already sees the mini-player.
+        install()
+        val built = Robolectric.buildActivity(OwnHostWithMiniPlayerActivity::class.java).setup()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        val activity = built.get()
+
+        tap(activity, activity.ownButton)
+        assertNull(taps.single()["screen"])
     }
 
     @Test

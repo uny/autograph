@@ -103,15 +103,26 @@ import dev.ynagai.autograph.context.ScopeStack
  * `ComposeTapOriginTest`). What the snapshot alone shows is therefore not what a captured tap
  * carries; read `ScopeStack.current(origin)` for the rule.
  *
+ * The capturable-Activity half of that holds only while the Activity is still settled as a screen
+ * of its own, and that is decided from its structure — at its first resume, and again at the first
+ * resume after every stop.
+ * The structure cannot tell an excluded fragment *beside* the Activity's content from one that
+ * *replaces* it (a Compose content fragment in a fragment-based app), so it counts every excluded,
+ * view-bearing fragment as content. A mini-player attached when the Activity first resumes, or when
+ * it resumes after a stop, therefore makes the Activity a shell: its own taps carry no screen and it
+ * reports no `Screen Viewed` for itself until it resumes after a stop with the fragment gone
+ * ([#281](https://github.com/uny/autograph/issues/281)). Like the limits below, a screen goes
+ * absent, never wrong.
+ *
  * The same scoping is what answers the opt-out's hardest case. A surface you opted out with a `null`
  * name does not mask, so `add`ed on top of a screen that is merely paused it used to lend that
  * screen's name to every tap on it — wrong, not absent. A tap in the opted-out surface is now
  * attributed by what *contains* it (its parent fragment, or its Activity — a shell masks, a screen
  * names itself), never by the sibling it happens to cover.
  *
- * Two limits remain, and both are one-sided — a screen goes *absent*, never wrong. `show()`/`hide()`
- * gives no callback, so an excluded fragment hidden that way keeps masking its own taps until it is
- * detached or its Activity is destroyed. And a `DialogFragment` that builds its content in
+ * Two more limits remain, and both are one-sided — a screen goes *absent*, never wrong.
+ * `show()`/`hide()` gives no callback, so an excluded fragment hidden that way keeps masking its own
+ * taps until it is detached or its Activity is destroyed. And a `DialogFragment` that builds its content in
  * `onCreateDialog()` rather than `onCreateView()` has a null `Fragment.view`, is indistinguishable
  * here from a retained worker fragment, and so is skipped rather than masked — measured, such a
  * dialog reports the screen behind it.
