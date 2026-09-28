@@ -175,16 +175,18 @@ AutographProvider(tracker, autocapture = Autocapture()) {
 ### Scoped context
 
 Scope is one of several places a field can live, and the right one depends on what the field
-describes:
+describes. The table covers the events Autograph emits; an event a transport SDK generates on its
+own, such as Segment's lifecycle events, carries at most the envelope (on Android only) and none of
+the rest:
 
 | Kind of field | Where it belongs |
 |:--|:--|
-| Instrumentation — event id, session, sequence numbers, event time, SDK and schema version | The envelope. Autograph stamps it on every event; don't send it yourself |
-| Who the user is — a user id, profile traits | `tracker.identify(userId, traits)`, once, cleared by `reset()`. Not a per-event property: traits are never merged into events. An anonymous id is the transport SDK's own |
-| A constant the ingest side can derive — which app, write key, endpoint | Stamped at ingest rather than sent by the client, when it really is derivable there |
+| Instrumentation — event id, session, sequence numbers, event time, SDK and schema version | The envelope. Autograph stamps it; the sequence numbers follow your `SequenceMode`, and the schema version appears only once you set `schemaVersion`. Don't send it yourself |
+| Who the user is — a user id, profile traits | `tracker.identify(userId, traits)` when the user signs in and again whenever the traits change; `tracker.reset()` on sign-out, which the Segment transport forwards to Segment's own reset. Not a per-event property: Autograph never merges traits into events. An anonymous id is the transport SDK's own |
+| A constant the ingest side can derive — which app or source, the endpoint | Stamped at ingest rather than sent as an event property, when it really is derivable there (the write key the client already sends identifies the source) |
 | App-wide context, or a key a tracking plan requires on every event — a tenant, an install id, an experiment assignment | A [default property](#default-properties) |
-| One screen's context — a route argument | `AutographScope` around the screen, below (screen and section come from `TrackedScreen`) |
-| One element's context among simultaneously-mounted siblings — a list row's id | `AutographElementScope`, below |
+| One screen's context — a route argument | `AutographScope` around the screen, below. Screen and section come from `TrackedScreen`, which hands them to `trackClick` / `trackImpression` and autocaptured taps but not to a plain `track` call |
+| One element's context among simultaneously-mounted siblings — a list row's id | `AutographElementScope`, below — autocaptured taps only; `trackClick` / `trackImpression` / `track` inside it need `AutographScope` or their own `properties` |
 | One event's own detail | The call site's `properties` |
 
 `AutographScope` attaches a property to **every** event emitted from its content — the canonical
