@@ -120,7 +120,7 @@ import dev.ynagai.autograph.context.ScopeStack
  * attributed by what *contains* it (its parent fragment, or its Activity — a shell masks, a screen
  * names itself), never by the sibling it happens to cover.
  *
- * Two limits remain, and both are one-sided — a screen goes *absent*, never wrong. `show()`/`hide()`
+ * Two more limits remain, and both are one-sided — a screen goes *absent*, never wrong. `show()`/`hide()`
  * gives no callback, so an excluded fragment hidden that way keeps masking its own taps until it is
  * detached or its Activity is destroyed. And a `DialogFragment` that builds its content in
  * `onCreateDialog()` rather than `onCreateView()` has a null `Fragment.view`, is indistinguishable

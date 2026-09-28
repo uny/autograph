@@ -1389,6 +1389,27 @@ class AndroidScreenCaptureTest {
         assertEquals("OwnHostActivity", scopeStack.current().screen)
     }
 
+    @Test
+    fun anActivityTakenForAShellByAMiniPlayerReportsItselfAgainOnceItResumesAfterAStopWithoutIt() {
+        install()
+        // The way out of the limit (#281): remove the mini-player, and the next resume after a stop
+        // settles the Activity as a screen of its own again.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val miniPlayer = MiniPlayerFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, miniPlayer).commitNow()
+        controller.pause().stop().restart().resume()
+        drainMainLooper()
+        assertEquals(listOf("OwnHostActivity:(none)"), tracker.screens)
+
+        activity.supportFragmentManager.beginTransaction().remove(miniPlayer).commitNow()
+        controller.pause().stop().restart().resume()
+        drainMainLooper()
+
+        assertEquals(listOf("OwnHostActivity:(none)", "OwnHostActivity:(none)"), tracker.screens)
+        assertEquals("OwnHostActivity", scopeStack.current().screen)
+    }
+
     // The guards any lift of #281 has to keep. Each is a Compose-hosting fragment that REPLACES the
     // Activity's content, which is structurally the mini-player's shape; each passes on main, and each
     // fails on the tempting fix — stop counting Compose-hosting fragments, and stop searching fragment
