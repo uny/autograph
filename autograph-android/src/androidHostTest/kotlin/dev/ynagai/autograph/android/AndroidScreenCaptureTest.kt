@@ -1345,8 +1345,8 @@ class AndroidScreenCaptureTest {
     fun anActivityWithAMiniPlayerStillAttachedAtItsNextStopReportsNoReturnThroughIt() {
         install()
         // A documented limit (#281), pinned so that lifting it is a deliberate change: the pause-only
-        // route above reports this return, the route through a stop does not, because the stop
-        // re-derives the Activity as a shell. Absent, never wrong.
+        // route above reports this return, the route through a stop does not, because the resume after
+        // the stop re-derives the Activity as a shell. Absent, never wrong.
         val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
         val activity = controller.get()
         activity.supportFragmentManager.beginTransaction()
@@ -1368,6 +1368,25 @@ class AndroidScreenCaptureTest {
         drainMainLooper()
 
         assertEquals(emptyList<String>(), tracker.screens)
+    }
+
+    @Test
+    fun anActivityWhoseMiniPlayerIsGoneByTheResumeAfterAStopReportsItsReturn() {
+        install()
+        // The limit's edge (#281): the structure is read at the resume after a stop, not at the stop,
+        // so a mini-player removed while the Activity is stopped never makes it a shell.
+        val controller = Robolectric.buildActivity(OwnHostActivity::class.java).setup()
+        val activity = controller.get()
+        val miniPlayer = MiniPlayerFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, miniPlayer).commitNow()
+
+        controller.pause().stop()
+        activity.supportFragmentManager.beginTransaction().remove(miniPlayer).commitNowAllowingStateLoss()
+        controller.restart().resume()
+        drainMainLooper()
+
+        assertEquals(listOf("OwnHostActivity:(none)", "OwnHostActivity:(none)"), tracker.screens)
+        assertEquals("OwnHostActivity", scopeStack.current().screen)
     }
 
     // The guards any lift of #281 has to keep. Each is a Compose-hosting fragment that REPLACES the

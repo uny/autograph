@@ -154,8 +154,8 @@ class AndroidTapOriginTest {
     fun anActivityWithAMiniPlayerStillAttachedAtItsNextStopIsTakenForAShell() {
         // A documented limit (#281), pinned so that lifting it is a deliberate change. The Activity's
         // structure cannot tell a mini-player beside its content from a Compose content fragment
-        // replacing it, so the stop re-derives it as a shell and it masks its own taps. The screen goes
-        // absent, never wrong — and it stays absent across a resume without a stop.
+        // replacing it, so the resume after the stop re-derives it as a shell and it masks its own taps.
+        // The screen goes absent, never wrong — and it stays absent across a resume without a stop.
         val activity = launch()
         activity.supportFragmentManager.beginTransaction().add(activity.containerA, MiniPlayerFragment()).commitNow()
 

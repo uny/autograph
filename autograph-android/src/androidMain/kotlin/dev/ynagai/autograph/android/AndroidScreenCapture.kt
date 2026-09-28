@@ -104,14 +104,15 @@ import dev.ynagai.autograph.context.ScopeStack
  * carries; read `ScopeStack.current(origin)` for the rule.
  *
  * The capturable-Activity half of that holds only while the Activity is still settled as a screen
- * of its own, and that is decided from its structure — at its first resume and again at every stop.
+ * of its own, and that is decided from its structure — at its first resume, and again at the first
+ * resume after every stop.
  * The structure cannot tell an excluded fragment *beside* the Activity's content from one that
  * *replaces* it (a Compose content fragment in a fragment-based app), so it counts every excluded,
- * view-bearing fragment as content. A mini-player already attached when the Activity first resumes,
- * or still attached when it next stops, therefore makes the Activity a shell: its own taps carry no
- * screen and it reports no `Screen Viewed` for itself until the fragment is gone and the Activity has
- * stopped again ([#281](https://github.com/uny/autograph/issues/281)). Like the limits below, a
- * screen goes absent, never wrong.
+ * view-bearing fragment as content. A mini-player attached when the Activity first resumes, or when
+ * it resumes after a stop, therefore makes the Activity a shell: its own taps carry no screen and it
+ * reports no `Screen Viewed` for itself until it resumes after a stop with the fragment gone
+ * ([#281](https://github.com/uny/autograph/issues/281)). Like the limits below, a screen goes
+ * absent, never wrong.
  *
  * The same scoping is what answers the opt-out's hardest case. A surface you opted out with a `null`
  * name does not mask, so `add`ed on top of a screen that is merely paused it used to lend that
