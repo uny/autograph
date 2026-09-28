@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.11.1] - 2026-09-29
+
 ### Fixed
 
 - **An Android Activity no longer reports its own `Screen Viewed` over its content fragment when it
@@ -26,6 +28,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Activity still reports itself before it. And when the content fragment was demoted while the
   Activity was paused, the Activity's return is only reported once its resume has finished — after
   a named sheet that is up at the same time, rather than before it.
+
+### Documentation
+
+- **README → Scoped context opens with a table of where a field belongs** ([#240]): the envelope for
+  instrumentation, `identify` for who the user is, ingest for what the ingest side can derive, a
+  default property for app-wide context and any key a tracking plan requires on every event,
+  `AutographScope` / `AutographElementScope` for a screen's and an element's context, and the call
+  site for the rest. The section had documented scope alone, so an adopter had to infer the others.
 
 ## [0.11.0] - 2026-09-26
 
@@ -1549,7 +1559,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.11.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.11.1...HEAD
+[0.11.1]: https://github.com/uny/autograph/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/uny/autograph/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/uny/autograph/compare/v0.9.1...v0.10.0
 [0.9.1]: https://github.com/uny/autograph/compare/v0.9.0...v0.9.1
