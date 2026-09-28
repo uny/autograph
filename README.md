@@ -174,6 +174,19 @@ AutographProvider(tracker, autocapture = Autocapture()) {
 
 ### Scoped context
 
+Scope is one of several places a field can live, and the right one depends on what the field
+describes:
+
+| Kind of field | Where it belongs |
+|:--|:--|
+| Instrumentation — event id, session, sequence numbers, event time, SDK and schema version | The envelope. Autograph stamps it on every event; don't send it yourself |
+| Who the user is — a user id, profile traits | `tracker.identify(userId, traits)`, once, cleared by `reset()`. Not a per-event property: traits are never merged into events. An anonymous id is the transport SDK's own |
+| A constant the ingest side can derive — which app, write key, endpoint | Stamped at ingest rather than sent by the client, when it really is derivable there |
+| App-wide context, or a key a tracking plan requires on every event — a tenant, an install id, an experiment assignment | A [default property](#default-properties) |
+| One screen's context — a route argument | `AutographScope` around the screen, below (screen and section come from `TrackedScreen`) |
+| One element's context among simultaneously-mounted siblings — a list row's id | `AutographElementScope`, below |
+| One event's own detail | The call site's `properties` |
+
 `AutographScope` attaches a property to **every** event emitted from its content — the canonical
 case being a route parameter like the `article_id` on `articles/{article_id}` that you want on all
 of that screen's events without threading it through each call:
