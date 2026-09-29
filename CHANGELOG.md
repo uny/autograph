@@ -8,7 +8,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
-## [0.11.1] - 2026-09-29
+## [0.11.1] - 2026-09-30
 
 ### Fixed
 
