@@ -164,6 +164,17 @@ jobs:
         with:
           persist-credentials: false
 
+      # Boot the simulator now so it comes up while Gradle builds, instead of inside `xcodebuild test`
+      # after the build: there it left 3–5 minutes with no output between the last build line and
+      # "Running tests...". `simctl boot` returns as soon as the boot starts (measured: ~1 s);
+      # `bootstatus -b` after the Gradle build waits for it to finish.
+      - name: Boot the test simulator
+        id: simulator
+        run: |
+          udid=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].udid')
+          echo "udid=$udid" >> "$GITHUB_OUTPUT"
+          xcrun simctl boot "$udid"
+
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
@@ -178,13 +189,20 @@ jobs:
       - name: Build Autograph.xcframework
         run: ./gradlew :autograph-apple:assembleAutographReleaseXCFramework --stacktrace
 
+      # A boot that never completes would hang `bootstatus -b`, hence its own short timeout.
+      - name: Wait for the test simulator
+        timeout-minutes: 10
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: xcrun simctl bootstatus "$UDID" -b
+
       # xcodebuild exercises sample-shared's embedAndSignAppleFrameworkForXcode path, which Gradle's
       # `build` does not. `test` also runs iosAppUITests for autocapture hit-testing behavior that
       # compose.uiTest cannot cover.
       - name: Test sample-ios
-        run: |
-          device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
-          xcodebuild test -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,name=$device"
+        env:
+          UDID: ${{ steps.simulator.outputs.udid }}
+        run: xcodebuild test -project sample-ios/iosApp.xcodeproj -scheme iosApp -destination "platform=iOS Simulator,id=$UDID"
 
   # The Android on-device smokes for #65's native screen capture and #63's native tap capture — the
   # coverage Robolectric cannot give (real framework, real windowing, a real back button, real touch
