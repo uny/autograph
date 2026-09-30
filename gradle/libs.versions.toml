@@ -13,7 +13,7 @@ agp = "9.2.1"
 # Follows the current stable line (#224): the Android `compileSdk` floor below is whatever this
 # version's androidx artifacts declare, so a CMP bump can move it — read the new line's
 # `aar-metadata.properties` and the cold-device note in CONTRIBUTING.md before bumping.
-composeMultiplatform = "1.12.0"
+composeMultiplatform = "1.12.1"
 coroutines = "1.11.0"
 serialization = "1.11.0"
 atomicfu = "0.33.0"
