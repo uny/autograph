@@ -973,12 +973,29 @@ final class NativeScreensUITests: XCTestCase {
         app.staticTexts.matching(identifier: "native_screen_view_log_label").firstMatch
     }
 
-    private func waitForScreenLog(_ app: XCUIApplication, _ expected: String) {
-        expectation(
-            for: NSPredicate(format: "label == %@", "Screen views: \(expected)"),
-            evaluatedWith: screenLog(app)
+    /// 15 s, not 5: on a starved CI simulator a single snapshot of this label has been measured at
+    /// over 4 s (against well under 1 s normally), leaving a 5 s window room for one evaluation. The
+    /// longer wait cannot let a spurious entry through — the match is exact, so an extra entry never
+    /// satisfies it — and it returns as soon as the log matches. XCTWaiter rather than
+    /// `waitForExpectations` for the same reason as `waitForLastEventTarget`: the failure then names
+    /// the call site and the value actually seen.
+    private func waitForScreenLog(
+        _ app: XCUIApplication,
+        _ expected: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let seen = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "label == %@", "Screen views: \(expected)"),
+            object: screenLog(app)
         )
-        waitForExpectations(timeout: 5)
+        if XCTWaiter().wait(for: [seen], timeout: 15) != .completed {
+            XCTFail(
+                "expected Screen views: \(expected), last saw \(screenLog(app).label)",
+                file: file,
+                line: line
+            )
+        }
     }
 
     private func lastTarget(_ app: XCUIApplication) -> String {
