@@ -18,8 +18,8 @@ concurrency:
 # All require macOS for iosSimulatorArm64; Apple silicon runners execute its tests natively.
 
 jobs:
-  # Decides whether a PR's diff reaches the Android on-device smoke below. Only that job consults this;
-  # every other job runs on every PR regardless. Path-filtering the workflow's `on.pull_request` instead
+  # Decides whether a PR's diff reaches the Android on-device smoke and sample-ios below. Only those
+  # two jobs consult this; every other job runs on every PR regardless. Path-filtering the workflow's `on.pull_request` instead
   # would silence all of them for an Android-only change, which is the opposite of what is wanted.
   #
   # `HEAD^1` on a pull_request checkout is the base branch tip (HEAD is the merge commit), so the diff
@@ -29,6 +29,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       android: ${{ steps.filter.outputs.android }}
+      ios: ${{ steps.filter.outputs.ios }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         if: github.event_name == 'pull_request'
@@ -53,6 +54,29 @@ jobs:
             android=true
           fi
           echo "android=$android" >> "$GITHUB_OUTPUT"
+
+          # sample-ios is the opposite shape: an allow-list would silently drop coverage the day a new
+          # path starts reaching the app, so this lists what provably cannot reach it and runs on
+          # anything else. Every path must be ignorable to skip; an empty diff runs. Only *source*
+          # directories of Gradle modules are listed — their build scripts are evaluated in the same
+          # build as the iOS tasks. autograph-segment is NOT here: the Apple umbrella exports it.
+          ignore='^(docs/|fixtures/|(README|CHANGELOG|CONTRIBUTING|CODE_OF_CONDUCT|SECURITY)\.md$|LICENSE$|NOTICE$'
+          ignore+='|\.github/(ISSUE_TEMPLATE/|PULL_REQUEST_TEMPLATE\.md$|FUNDING\.yml$|dependabot\.yml$|scripts/)'
+          ignore+='|\.github/workflows/(cd|docs|release-dry-run)\.yml$'
+          ignore+='|(autograph-android|sample-android|autograph-schema|autograph-test)/src/'
+          ignore+='|Sources/AutographSegmentSwift/|Tests/)'
+          git -c core.quotePath=false diff -z --no-renames --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed"
+          ios=false
+          seen=false
+          while IFS= read -r -d '' path; do
+            seen=true
+            if ! [[ $path =~ $ignore ]]; then
+              echo "sample-ios: $path"
+              ios=true
+            fi
+          done < "$RUNNER_TEMP/changed"
+          if [[ $seen == false ]]; then ios=true; fi
+          echo "ios=$ios" >> "$GITHUB_OUTPUT"
 
   # The one job here that guards something CI otherwise cannot reach. cd.yml runs only on a `v*`
   # tag, so the shell it depends on — the gate standing in front of an irreversible publish, and
@@ -156,8 +180,12 @@ jobs:
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -scheme Autograph-Package -destination "platform=iOS Simulator,name=$device"
 
+  # Skipped on a PR whose diff cannot reach the app (see `changes`); always runs on push and
+  # workflow_dispatch, where `changes` reports nothing.
   sample-ios:
     name: sample-ios
+    needs: changes
+    if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
