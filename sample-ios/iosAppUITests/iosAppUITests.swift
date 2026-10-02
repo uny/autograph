@@ -1,5 +1,30 @@
 import XCTest
 
+extension XCTestCase {
+    /// Waits up to 15 s for [element]'s label to equal [expected], failing at the call site with the
+    /// value last seen. The native suites' events reach their labels through SwiftUI state, and the
+    /// Compose ones through a recomposition — neither of which `tap()`'s idle wait is guaranteed to
+    /// cover — and CI's simulator runs at sustained memory pressure, where one snapshot has been
+    /// measured at over 4 s. So a label read straight after a tap can still show the value from
+    /// before it.
+    ///
+    /// For *positive* claims only: a tap produced this, where arriving late and arriving are the same
+    /// thing. Never use it to assert that something did NOT happen — it would pass before a late
+    /// event lands.
+    func waitForLabel(
+        _ element: XCUIElement,
+        _ expected: String,
+        _ message: String = "",
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        let seen = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: element)
+        if XCTWaiter().wait(for: [seen], timeout: 15) != .completed {
+            XCTFail("expected \(expected), last saw \(element.label). \(message)", file: file, line: line)
+        }
+    }
+}
+
 /// Permanent on-device regression coverage for `ElementResolver.ios.kt`'s hit-testing —
 /// `compose.uiTest`'s iOS scene doesn't render into `LocalUIView`, so unit tests alone can't
 /// exercise a live resolve. `XCUIApplication` taps drive real synthetic touches through the OS,
@@ -357,10 +382,7 @@ final class iosAppUITests: XCTestCase {
         let app = launchSettled()
         // TrackedScreen fires its Screen Viewed from a composition effect, so the label recomposes
         // from "(none yet)" a beat after launch. Wait for the value rather than reading it eagerly.
-        let label = app.staticTexts["screen_view_log_label"]
-        let expected = "Screen views: Sample:(none)"
-        expectation(for: NSPredicate(format: "label == %@", expected), evaluatedWith: label)
-        waitForExpectations(timeout: 5)
+        waitForLabel(app.staticTexts["screen_view_log_label"], "Screen views: Sample:(none)")
     }
 }
 
@@ -412,7 +434,7 @@ final class NativeSampleUITests: XCTestCase {
     func testNativeButtonAttribution() {
         let app = launchNativeSample()
         app.buttons["native_plain_button"].tap()
-        XCTAssertEqual(lastEventLabel(app), "Last event target: native_plain_button")
+        waitForLabel(app.staticTexts["native_last_event_label"], "Last event target: native_plain_button")
     }
 
     /// The #82 case, end to end: on a real SwiftUI `List` a full-screen `_UITouchPassthroughView`
@@ -422,7 +444,7 @@ final class NativeSampleUITests: XCTestCase {
     func testNativeListRowAttribution() {
         let app = launchNativeSample()
         app.buttons["native_row_2"].tap()
-        XCTAssertEqual(lastEventLabel(app), "Last event target: native_row_2")
+        waitForLabel(app.staticTexts["native_last_event_label"], "Last event target: native_row_2")
     }
 
     /// The #83 case, end to end, and the one no unit test could have caught: it needs two gestures in
@@ -444,8 +466,8 @@ final class NativeSampleUITests: XCTestCase {
         let identifier = row.identifier
         row.tap()
 
-        XCTAssertEqual(
-            lastEventLabel(app),
+        waitForLabel(
+            app.staticTexts["native_last_event_label"],
             "Last event target: \(identifier)",
             "the tap was attributed to something other than the row it landed on — a begin position left behind by the scroll"
         )
@@ -460,8 +482,8 @@ final class NativeSampleUITests: XCTestCase {
     /// because its baseline is already a value the pipeline produced.
     private func assertCaptureIsStillLive(_ app: XCUIApplication) {
         app.buttons["native_plain_button"].tap()
-        XCTAssertEqual(
-            lastEventLabel(app),
+        waitForLabel(
+            app.staticTexts["native_last_event_label"],
             "Last event target: native_plain_button",
             "capture reported nothing for a known-good tap either — the preceding assertion proved nothing"
         )
@@ -569,8 +591,8 @@ final class IgnoreSampleUITests: XCTestCase {
     /// "nothing was reported" only means something if a known-good tap right after *is* reported.
     private func assertCaptureIsStillLive(_ app: XCUIApplication) {
         app.buttons["ignore_shown_button"].tap()
-        XCTAssertEqual(
-            lastEventLabel(app),
+        waitForLabel(
+            app.staticTexts["native_last_event_label"],
             "Last event target: ignore_shown_button",
             "capture reported nothing for a known-good tap either — the preceding assertion proved nothing"
         )
@@ -586,8 +608,14 @@ final class IgnoreSampleUITests: XCTestCase {
 
         app.buttons["ignore_ignored_button"].tap()
 
+        // The button's own action landing is the sync point: the tap has been delivered and handled by
+        // the time its count shows, so the "not captured" read below is not just early.
+        waitForLabel(
+            app.staticTexts["ignore_ignored_tap_count"],
+            "Ignored taps: 1",
+            "the wrapped button must still receive its own tap"
+        )
         XCTAssertEqual(lastEventLabel(app), before, "an .autographIgnore()'d tap must not be autocaptured")
-        XCTAssertEqual(ignoredTapCount(app), "Ignored taps: 1", "the wrapped button must still receive its own tap")
         assertCaptureIsStillLive(app)
     }
 
@@ -598,12 +626,12 @@ final class IgnoreSampleUITests: XCTestCase {
 
         app.buttons["ignore_ignored_button"].tap()
 
-        XCTAssertEqual(
-            lastEventLabel(app),
+        waitForLabel(
+            app.staticTexts["native_last_event_label"],
             "Last event target: ignore_ignored_button",
             "the button is capturable without .autographIgnore() — so the exclusion is real, not a never-capturable button"
         )
-        XCTAssertEqual(ignoredTapCount(app), "Ignored taps: 1")
+        waitForLabel(app.staticTexts["ignore_ignored_tap_count"], "Ignored taps: 1")
     }
 
     /// The exclusion is one button's rectangle, not the screen's: the adjacent, un-ignored button keeps
@@ -613,7 +641,7 @@ final class IgnoreSampleUITests: XCTestCase {
 
         app.buttons["ignore_shown_button"].tap()
 
-        XCTAssertEqual(lastEventLabel(app), "Last event target: ignore_shown_button")
+        waitForLabel(app.staticTexts["native_last_event_label"], "Last event target: ignore_shown_button")
     }
 }
 
@@ -661,8 +689,8 @@ final class HybridBoundaryUITests: XCTestCase {
 
         // Proves the native capture was alive for the assertion above, rather than never installed.
         app.buttons["native_button_in_hybrid"].tap()
-        XCTAssertEqual(
-            lastEventLabel(app),
+        waitForLabel(
+            app.staticTexts["native_last_event_label"],
             "Last event target: native_button_in_hybrid",
             "native capture reported nothing for a known-good tap either — the assertion above proved nothing"
         )
@@ -690,12 +718,18 @@ final class SwiftUIScreensUITests: XCTestCase {
         return app
     }
 
-    private func waitForScreenLog(_ app: XCUIApplication, _ expected: String) {
-        expectation(
-            for: NSPredicate(format: "label == %@", "Screen views: \(expected)"),
-            evaluatedWith: app.staticTexts["swiftui_screen_view_log_label"]
+    private func waitForScreenLog(
+        _ app: XCUIApplication,
+        _ expected: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) {
+        waitForLabel(
+            app.staticTexts["swiftui_screen_view_log_label"],
+            "Screen views: \(expected)",
+            file: file,
+            line: line
         )
-        waitForExpectations(timeout: 5)
     }
 
     /// The first SwiftUI screen fires exactly one Screen Viewed on entry, with no previous_screen.
@@ -998,8 +1032,12 @@ final class NativeScreensUITests: XCTestCase {
         }
     }
 
+    private func lastTargetLabel(_ app: XCUIApplication) -> XCUIElement {
+        app.staticTexts.matching(identifier: "native_last_event_label").firstMatch
+    }
+
     private func lastTarget(_ app: XCUIApplication) -> String {
-        app.staticTexts.matching(identifier: "native_last_event_label").firstMatch.label
+        lastTargetLabel(app).label
     }
 
     private func lastProps(_ app: XCUIApplication) -> String {
@@ -1042,7 +1080,7 @@ final class NativeScreensUITests: XCTestCase {
         let app = launch()
         waitForScreenLog(app, "FirstScreen:(none)")
         app.buttons["native_first_button"].tap()
-        XCTAssertEqual(lastTarget(app), "Last event target: native_first_button")
+        waitForLabel(lastTargetLabel(app), "Last event target: native_first_button")
         let props = lastProps(app)
         XCTAssertTrue(props.contains("\"screen\":\"FirstScreen\""), "screen missing from props: \(props)")
         XCTAssertFalse(props.contains("\"section\""), "a native screen must carry no section: \(props)")
@@ -1061,7 +1099,7 @@ final class NativeScreensUITests: XCTestCase {
         // A known-good tap first, so the baseline is a value this pipeline produced rather than the
         // initial label — otherwise a dead pipeline would satisfy the assertion below.
         app.buttons["native_first_button"].tap()
-        XCTAssertEqual(lastTarget(app), "Last event target: native_first_button")
+        waitForLabel(lastTargetLabel(app), "Last event target: native_first_button")
 
         // A coordinate tap, not `.tap()`: XCUITest considers a disabled control non-hittable, while
         // UIKit still delivers the touch to it — which is the whole state under test.
@@ -1085,6 +1123,8 @@ final class NativeScreensUITests: XCTestCase {
         app.buttons["native_present_sheet"].tap()
         waitForScreenLog(app, "FirstScreen:(none)|SheetScreen:FirstScreen")
         app.buttons["native_sheet_button"].tap()
+        // Pin the props to this tap's own event before reading them.
+        waitForLabel(lastTargetLabel(app), "Last event target: native_sheet_button")
         XCTAssertTrue(
             lastProps(app).contains("\"screen\":\"SheetScreen\""),
             "a tap on the sheet should carry screen=SheetScreen: \(lastProps(app))"
@@ -1095,7 +1135,7 @@ final class NativeScreensUITests: XCTestCase {
         // FirstScreen is proven restored by a tap carrying its screen again.
         waitForScreenLog(app, "FirstScreen:(none)|SheetScreen:FirstScreen")
         app.buttons["native_first_button"].tap()
-        XCTAssertEqual(lastTarget(app), "Last event target: native_first_button")
+        waitForLabel(lastTargetLabel(app), "Last event target: native_first_button")
         XCTAssertTrue(
             lastProps(app).contains("\"screen\":\"FirstScreen\""),
             "after dismiss the presenter's frame should be current again: \(lastProps(app))"
