@@ -1,5 +1,6 @@
 package dev.ynagai.autograph.context
 
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -22,6 +23,17 @@ class ScopeStackTest {
         assertNull(ctx.screen)
         assertNull(ctx.section)
         assertEquals(props("a" to "1"), ctx.enrich(props("a" to "1")))
+    }
+
+    // #287: a scope never supplies event metadata; the call site's own entry is kept for the tracker.
+    @Test
+    fun enrich_drops_a_scope_entry_under_the_reserved_metadata_key() {
+        val stack = ScopeStack()
+        stack.push(scope = JsonObject(mapOf(RESERVED_METADATA_KEY to props("kind" to "click"), "tenant" to JsonPrimitive("acme"))))
+
+        assertEquals(props("tenant" to "acme"), stack.current().enrich(JsonObject(emptyMap())))
+        val callSite = JsonObject(mapOf(RESERVED_METADATA_KEY to props("kind" to "impression")))
+        assertEquals(callSite + props("tenant" to "acme"), stack.current().enrich(callSite))
     }
 
     @Test

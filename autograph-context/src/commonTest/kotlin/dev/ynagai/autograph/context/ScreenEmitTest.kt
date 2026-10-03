@@ -3,6 +3,7 @@
 package dev.ynagai.autograph.context
 
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -35,6 +36,18 @@ class ScreenEmitTest {
         val stack = ScopeStack()
         val tracker = RecordingTracker()
         val root = stack.push(scope = props("tenant" to "acme"))
+        val screen = stack.pushSurface(parent = root, screen = "Detail")
+
+        stack.emitScreenView(tracker, "Detail", origin = screen)
+
+        assertEquals(listOf("Detail" to props("tenant" to "acme")), tracker.screens)
+    }
+
+    @Test
+    fun a_scope_entry_under_the_reserved_metadata_key_does_not_reach_the_screen_view() {
+        val stack = ScopeStack()
+        val tracker = RecordingTracker()
+        val root = stack.push(scope = JsonObject(mapOf(RESERVED_METADATA_KEY to props("kind" to "click"), "tenant" to JsonPrimitive("acme"))))
         val screen = stack.pushSurface(parent = root, screen = "Detail")
 
         stack.emitScreenView(tracker, "Detail", origin = screen)

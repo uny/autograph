@@ -1,6 +1,7 @@
 package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.Json
@@ -102,7 +103,8 @@ public class AutographElementCapture(
             // Scope underneath, call-site properties on top: a scope entry fills a key the call site
             // did not set, and the call site wins a clash. Identical to `mergeScope` in the Compose
             // path, deliberately.
-            val scoped = if (scope.isEmpty()) properties else JsonObject(scope.toJsonObject() + properties)
+            // The reserved metadata key is left out of the scope, as `mergeScope` does.
+            val scoped = if (scope.isEmpty()) properties else JsonObject(scope.toJsonObject() - RESERVED_METADATA_KEY + properties)
             val context = scopeStack.current()
             // Only screen/section from the stack — never its scope. See the class kdoc.
             var result = scoped

@@ -1,6 +1,7 @@
 package dev.ynagai.autograph.compose
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
 import kotlinx.serialization.json.JsonElement
@@ -69,6 +70,23 @@ class ScopedContextTest {
         assertEquals("42", merged["article_id"]?.jsonPrimitive?.content)
         // The call site's explicit value wins over the ambient scope.
         assertEquals("explicit", merged["section"]?.jsonPrimitive?.content)
+    }
+
+    // #287: event metadata comes from the emit site only. A scope entry under the reserved key is
+    // dropped; the call site's own entry is how the emit site hands metadata to the tracker, so it stays.
+    @Test
+    fun mergeDropsTheScopesReservedMetadataKeyButKeepsTheCallSites() {
+        val fromScope = mergeScope(
+            JsonObject(mapOf(RESERVED_METADATA_KEY to scope("kind" to "click"), "tenant" to JsonPrimitive("acme"))),
+            EmptyJsonObject,
+        )
+        assertEquals(scope("tenant" to "acme"), fromScope)
+
+        val fromCallSite = mergeScope(
+            JsonObject(mapOf(RESERVED_METADATA_KEY to scope("kind" to "click"))),
+            JsonObject(mapOf(RESERVED_METADATA_KEY to scope("kind" to "impression"))),
+        )
+        assertEquals(JsonObject(mapOf(RESERVED_METADATA_KEY to scope("kind" to "impression"))), fromCallSite)
     }
 
     @Test

@@ -1,6 +1,7 @@
 package dev.ynagai.autograph.context
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.asJsonObject
 import kotlin.concurrent.Volatile
 import kotlinx.serialization.json.JsonElement
@@ -670,7 +671,8 @@ public class AmbientContext internal constructor(
      * path applies via its scope decorator and `withScreenContext`.
      */
     public fun enrich(properties: Map<String, JsonElement>): JsonObject {
-        var result = if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)
+        // A scope never supplies event metadata: only the emit site's own entry under the reserved key counts.
+        var result = if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope - RESERVED_METADATA_KEY + properties)
         if (screen != null) result = JsonObject(result + ("screen" to JsonPrimitive(screen)))
         if (section != null) result = JsonObject(result + ("section" to JsonPrimitive(section)))
         return result

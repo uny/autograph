@@ -90,7 +90,7 @@ exception.
 
 #### 2a. Library-produced value types — construction is frozen
 
-`Envelope`, `SessionInfo`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
+`Envelope`, `SessionInfo`, `EventMetadata`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
 
 The library creates these; callers only read them. They are declared
 
@@ -169,7 +169,8 @@ to `AutographConfig`, not to `SessionConfig`.
 
 #### 2c. Caller-implemented SPIs — the member set is frozen for the major version
 
-`Transport`, `SeqStore`, `EventIdGenerator`, `EventValidator`, `SegmentBridge`, `AutographLogger`.
+`Transport`, `SeqStore`, `EventIdGenerator`, `EventValidator`, `SegmentBridge`, `AutographLogger`,
+`MetadataAwareTransport`.
 
 No member is added to one of these within a major version, **including a member with a
 default body**. A new capability is added in one of two ways instead:
@@ -275,7 +276,7 @@ argument they may later need is therefore either given a default at a call site 
 controls, or moved onto `AutographConfig`.
 
 Stateless entry points — the `Autograph { }` builder function, `EventId`, `EmptyJsonObject`,
-`platformSeqStore()` — carry no construction contract at all. Adding a new top-level
+`platformSeqStore()`, and the constants `RESERVED_METADATA_KEY` and `EventKinds` — carry no construction contract at all. Adding a new top-level
 function or `object` member beside them is additive; changing an existing signature is a
 break, with no rule beyond that.
 

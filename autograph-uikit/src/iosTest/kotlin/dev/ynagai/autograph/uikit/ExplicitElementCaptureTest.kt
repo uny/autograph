@@ -1,10 +1,12 @@
 package dev.ynagai.autograph.uikit
 
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.serialization.json.JsonElement
@@ -39,6 +41,21 @@ class ExplicitElementCaptureTest {
         // ...and loses the one it did, matching `mergeScope` on the Compose side.
         assertEquals("call_site", properties["shared"]?.jsonPrimitive?.content)
         assertEquals("pro", properties["plan"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun aScopeEntryUnderTheReservedMetadataKeyIsLeftOut() {
+        val tracker = RecordingElementTracker()
+        val capture = AutographElementCapture(tracker, ScopeStack())
+
+        capture.clicked(
+            name = "save_tapped",
+            scope = mapOf(RESERVED_METADATA_KEY to "click", "article_id" to "42"),
+        )
+
+        val properties = tracker.properties.single()
+        assertFalse(RESERVED_METADATA_KEY in properties, properties.toString())
+        assertEquals("42", properties["article_id"]?.jsonPrimitive?.content)
     }
 
     @Test

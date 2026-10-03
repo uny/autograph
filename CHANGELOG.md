@@ -8,6 +8,39 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **The tracker can carry an event's kind in the envelope instead of its properties** ([#287],
+  [#243]). This is the core half: no event the library emits sets it yet, so delivered events are
+  unchanged. A follow-up marks taps as `click` and impressions as `impression`, with their
+  thresholds. It works like this:
+  - An emit site puts the metadata under the reserved properties key `__autograph`
+    (`RESERVED_METADATA_KEY`). The tracker always removes that key before `EventValidator` runs,
+    even when its value is malformed. It reads only `kind` and `impression.min_duration_ms` /
+    `impression.min_fraction_visible` from the value, and those fields cannot overwrite
+    `event_id`, the sequence numbers or the session.
+  - The metadata is read from the call site only. The tracker discards a `DefaultProperties`
+    entry under the key, and every scope merge discards a scope entry under it: `AutographScope`,
+    a `ScopeStack` frame, an element's autocapture scope, and a SwiftUI `.autographScope`.
+  - For a transport the core stamps for, the metadata goes on the new `Envelope.metadata`, and
+    `toJson()` adds `kind` and a nested `impression` object to `context.instrumentation`. Those
+    keys are additions to the stable envelope contract. Like any appended envelope property, it
+    also changes what `Envelope`'s `equals`, `hashCode` and `toString` cover, which matters only to
+    code that keys a map on an envelope (ADR 0001 §2a).
+  - A transport that stamps in its own pipeline gets the metadata through the new
+    `MetadataAwareTransport` interface, which the core checks with `is` (ADR 0001 §2c).
+    `SegmentTransport` on Android implements it and adds the fields to `context.instrumentation`
+    through Segment's per-event enrichment closure. A pipeline transport that does not implement it
+    still receives the event, without the metadata, and the tracker logs that once.
+  - `DebugTransport` implements `MetadataAwareTransport` too. It forwards the metadata when its
+    delegate does, so wrapping `SegmentTransport` loses nothing. Over a delegate that does not, the
+    tracker treats the pair like the delegate alone: one warning through the logger.
+  - `autograph-test` adds `testEventMetadata(...)` and a `metadata` parameter on `testEnvelope(...)`.
+
+  The key is a convention, not proof that the library produced an event: an app can put the same
+  shape in its own properties. A `Tracker` you implement yourself, such as a test fake, does not
+  remove the key.
+
 ### Changed
 
 - **ADR 0001 freezes the member set of every interface a caller implements** ([#283]). §2c/§2d
@@ -1666,6 +1699,7 @@ Initial release.
 [#237]: https://github.com/uny/autograph/issues/237
 [#238]: https://github.com/uny/autograph/issues/238
 [#240]: https://github.com/uny/autograph/issues/240
+[#243]: https://github.com/uny/autograph/issues/243
 [#253]: https://github.com/uny/autograph/issues/253
 [#254]: https://github.com/uny/autograph/issues/254
 [#255]: https://github.com/uny/autograph/issues/255
@@ -1673,3 +1707,4 @@ Initial release.
 [#272]: https://github.com/uny/autograph/issues/272
 [#281]: https://github.com/uny/autograph/issues/281
 [#283]: https://github.com/uny/autograph/issues/283
+[#287]: https://github.com/uny/autograph/issues/287

@@ -11,6 +11,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.AmbientContext
@@ -362,7 +363,11 @@ internal class ScopedTracker(
 /**
  * Returns [properties] with [scope] merged underneath: a scope entry fills a key the call site did
  * not set, and an explicit call-site entry wins on a clash (`scope + properties`, right wins).
+ *
+ * A scope entry under [RESERVED_METADATA_KEY] is left out: event metadata comes from the emit site
+ * only. The call site's own entry under that key is kept, since that is how the emit site hands its
+ * metadata to the tracker.
  */
 internal fun mergeScope(scope: JsonObject, properties: Map<String, JsonElement>): JsonObject =
-    if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope + properties)
+    if (scope.isEmpty()) properties.asJsonObject() else JsonObject(scope - RESERVED_METADATA_KEY + properties)
 
