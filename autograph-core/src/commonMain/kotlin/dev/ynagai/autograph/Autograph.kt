@@ -251,13 +251,25 @@ internal class AutographTracker(
     }
 
     override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
-        val props = withDefaults(properties)
+        val (props, metadata) = extractMetadata(withDefaults(properties))
         if (!isValid(name, props)) return
-        deliver { transport.track(name, withTarget(props, target), it) }
+        val delivered = withTarget(props, target)
+        if (metadata == null) {
+            deliver { transport.track(name, delivered, it) }
+        } else if (!transport.stampsInPipeline) {
+            deliver { transport.track(name, delivered, it?.copy(metadata = metadata)) }
+        } else if (transport is MetadataAwareTransport) {
+            deliver { transport.track(name, delivered, it, metadata) }
+        } else {
+            warnMetadataDroppedOnce()
+            deliver { transport.track(name, delivered, it) }
+        }
     }
 
     override fun screen(name: String, properties: Map<String, JsonElement>) {
-        val props = withDefaults(properties)
+        // A screen view carries no metadata today, but the reserved key is still removed: it must never
+        // reach a validator or a transport's properties.
+        val (props, _) = extractMetadata(withDefaults(properties))
         if (!isValid(name, props)) return
         deliver { transport.screen(name, props, it) }
     }
@@ -267,12 +279,34 @@ internal class AutographTracker(
      * validation, so the validator sees every default the transport will receive, and a default changed
      * after this call cannot reach it (#253). A call-site property wins a key clash. The reserved
      * `target` is still added after validation, in [track].
+     *
+     * A default under [RESERVED_METADATA_KEY] is left out rather than merged: metadata is read from the
+     * call site only, so a default can neither supply it nor survive into the event's properties.
      */
     private fun withDefaults(properties: Map<String, JsonElement>): JsonObject {
         val props = properties.asJsonObject()
         val defaults = defaultProperties?.properties
         if (defaults.isNullOrEmpty()) return props
-        return JsonObject(defaults + props)
+        return JsonObject(defaults - RESERVED_METADATA_KEY + props)
+    }
+
+    private var warnedMetadataDropped = false
+
+    /**
+     * Logs, once per tracker, that a pipeline transport which is not a [MetadataAwareTransport] is
+     * receiving events without their metadata. Once, because it is a property of the configuration,
+     * not of the event: every later event with metadata loses it the same way.
+     */
+    private fun warnMetadataDroppedOnce() {
+        val first = synchronized(lock) {
+            if (warnedMetadataDropped) false else true.also { warnedMetadataDropped = true }
+        }
+        if (first) {
+            report(
+                "Autograph: ${transport::class.simpleName} stamps in its own pipeline but does not implement " +
+                    "MetadataAwareTransport; events are delivered without their kind and impression thresholds",
+            )
+        }
     }
 
     /**

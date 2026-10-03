@@ -5,6 +5,8 @@ import com.segment.analytics.kotlin.core.BaseEvent
 import com.segment.analytics.kotlin.core.platform.Plugin
 import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.EnvelopeSource
+import dev.ynagai.autograph.EventMetadata
+import dev.ynagai.autograph.MetadataAwareTransport
 import dev.ynagai.autograph.Transport
 import dev.ynagai.autograph.asJsonObject
 import kotlinx.coroutines.launch
@@ -27,10 +29,14 @@ import kotlin.time.Instant
  * `Before` plugins, so there is nothing left in the retry path that could reassign
  * `messageId`. [AutographPlugin.execute] is additionally idempotent (see its KDoc) as a
  * defensive guarantee for this same property, independent of that architectural argument.
+ *
+ * An event's [EventMetadata] (its kind, an impression's thresholds) is added to the same
+ * `context.instrumentation` block through Segment's per-event enrichment closure, which runs after
+ * every `Before` and `Enrichment` plugin — so after [AutographPlugin] has stamped the event.
  */
 public class SegmentTransport(
     private val analytics: Analytics,
-) : Transport {
+) : Transport, MetadataAwareTransport {
 
     private lateinit var envelopes: EnvelopeSource
 
@@ -43,6 +49,10 @@ public class SegmentTransport(
 
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         analytics.track(name, properties.asJsonObject())
+    }
+
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
+        analytics.track(name, properties.asJsonObject()) { event -> event?.withMetadata(metadata) }
     }
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
@@ -102,6 +112,20 @@ internal class AutographPlugin(
         event.context = JsonObject(event.context + ("instrumentation" to envelope.toJson()))
         return event
     }
+}
+
+/**
+ * Adds [metadata]'s fields to the `instrumentation` block [AutographPlugin] stamped onto this event.
+ *
+ * Only an existing block is extended. The plugin treats any `instrumentation` block as "already
+ * stamped", so creating one here on an event it has not reached would make it skip the stamp and lose
+ * the envelope — worse than losing the metadata. The metadata's keys cannot overwrite the envelope's,
+ * since [EventMetadata.toJson] writes none of them.
+ */
+internal fun BaseEvent.withMetadata(metadata: EventMetadata): BaseEvent {
+    val instrumentation = context["instrumentation"] as? JsonObject ?: return this
+    context = JsonObject(context + ("instrumentation" to JsonObject(instrumentation + metadata.toJson())))
+    return this
 }
 
 /**

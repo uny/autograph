@@ -51,6 +51,12 @@ public data class Envelope internal constructor(
      * the library.
      */
     val schemaVersion: String? = null,
+    /**
+     * How the event was produced — its kind and, for an impression, its visibility thresholds — or
+     * null for an event that carries none, such as a plain `track` call. Serialized into this same
+     * block, not under a key of its own. See [EventMetadata].
+     */
+    val metadata: EventMetadata? = null,
 ) {
     /** Serializes this envelope as a JSON object for embedding into event context. */
     public fun toJson(): JsonObject = buildJsonObject {
@@ -62,6 +68,7 @@ public data class Envelope internal constructor(
         put("sdk", sdk)
         put("event_timestamp", eventTimestamp)
         schemaVersion?.let { put("schema_version", it) }
+        metadata?.toJson()?.forEach { (key, value) -> put(key, value) }
     }
 }
 
@@ -82,6 +89,7 @@ public fun createEnvelope(
     sdk: String,
     eventTimestamp: String,
     schemaVersion: String? = null,
+    metadata: EventMetadata? = null,
 ): Envelope = Envelope(
     eventId = eventId,
     session = SessionInfo(id = sessionId, startEpochMillis = sessionStartEpochMillis),
@@ -90,4 +98,16 @@ public fun createEnvelope(
     sdk = sdk,
     eventTimestamp = eventTimestamp,
     schemaVersion = schemaVersion,
+    metadata = metadata,
 )
+
+/**
+ * Builds an [EventMetadata] with caller-chosen field values, for the same reason and with the same
+ * lack of guarantees as [createEnvelope]. Use `testEventMetadata(...)` from `autograph-test` instead.
+ */
+@AutographInternalApi
+public fun createEventMetadata(
+    kind: String? = null,
+    impressionMinDurationMs: Long? = null,
+    impressionMinFractionVisible: Double? = null,
+): EventMetadata = EventMetadata(kind, impressionMinDurationMs, impressionMinFractionVisible)

@@ -3,7 +3,9 @@ package dev.ynagai.autograph.test
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.Envelope
 import dev.ynagai.autograph.EnvelopeSource
+import dev.ynagai.autograph.EventMetadata
 import dev.ynagai.autograph.createEnvelope
+import dev.ynagai.autograph.createEventMetadata
 
 /**
  * Builds an [Envelope] with exactly the field values you ask for, for tests that need to assert on a
@@ -33,6 +35,7 @@ public fun testEnvelope(
     sdk: String = "autograph/test",
     eventTimestamp: String = "2026-01-01T00:00:00.000Z",
     schemaVersion: String? = null,
+    metadata: EventMetadata? = null,
 ): Envelope = createEnvelope(
     eventId = eventId,
     sessionId = sessionId,
@@ -42,4 +45,17 @@ public fun testEnvelope(
     sdk = sdk,
     eventTimestamp = eventTimestamp,
     schemaVersion = schemaVersion,
+    metadata = metadata,
 )
+
+/**
+ * Builds an [EventMetadata] with exactly the field values you ask for — to pass to [testEnvelope], or
+ * to call a `MetadataAwareTransport` directly in a test of your own transport. Like [testEnvelope], it
+ * may gain parameters as the metadata grows.
+ */
+@OptIn(AutographInternalApi::class)
+public fun testEventMetadata(
+    kind: String? = null,
+    impressionMinDurationMs: Long? = null,
+    impressionMinFractionVisible: Double? = null,
+): EventMetadata = createEventMetadata(kind, impressionMinDurationMs, impressionMinFractionVisible)

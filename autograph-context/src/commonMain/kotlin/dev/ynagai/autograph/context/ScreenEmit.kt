@@ -2,6 +2,7 @@ package dev.ynagai.autograph.context
 
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -44,7 +45,7 @@ public fun ScopeStack.emitScreenView(tracker: Tracker, name: String, origin: Sco
     val previous = screenHistory.record(name)?.takeIf { it != name }
     val scope = current(origin).scope
     val properties = withPreviousScreen(previous)
-    tracker.screen(name, if (scope.isEmpty()) properties else JsonObject(scope + properties))
+    tracker.screen(name, if (scope.isEmpty()) properties else JsonObject(scope - RESERVED_METADATA_KEY + properties))
 }
 
 /**

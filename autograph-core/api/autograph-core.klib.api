@@ -41,6 +41,10 @@ abstract interface dev.ynagai.autograph/EnvelopeSource { // dev.ynagai.autograph
     open fun stamp(kotlin/Long): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/EnvelopeSource.stamp|stamp(kotlin.Long){}[0]
 }
 
+abstract interface dev.ynagai.autograph/MetadataAwareTransport { // dev.ynagai.autograph/MetadataAwareTransport|null[0]
+    abstract fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?, dev.ynagai.autograph/EventMetadata) // dev.ynagai.autograph/MetadataAwareTransport.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?;dev.ynagai.autograph.EventMetadata){}[0]
+}
+
 abstract interface dev.ynagai.autograph/SeqStore { // dev.ynagai.autograph/SeqStore|null[0]
     abstract fun getLong(kotlin/String): kotlin/Long? // dev.ynagai.autograph/SeqStore.getLong|getLong(kotlin.String){}[0]
     abstract fun getString(kotlin/String): kotlin/String? // dev.ynagai.autograph/SeqStore.getString|getString(kotlin.String){}[0]
@@ -132,7 +136,7 @@ final class dev.ynagai.autograph/AutographConfig { // dev.ynagai.autograph/Autog
     final fun transport(dev.ynagai.autograph/Transport) // dev.ynagai.autograph/AutographConfig.transport|transport(dev.ynagai.autograph.Transport){}[0]
 }
 
-final class dev.ynagai.autograph/DebugTransport : dev.ynagai.autograph/Transport { // dev.ynagai.autograph/DebugTransport|null[0]
+final class dev.ynagai.autograph/DebugTransport : dev.ynagai.autograph/MetadataAwareTransport, dev.ynagai.autograph/Transport { // dev.ynagai.autograph/DebugTransport|null[0]
     constructor <init>(dev.ynagai.autograph/Transport, kotlin/Function1<kotlin/String, kotlin/Unit> = ...) // dev.ynagai.autograph/DebugTransport.<init>|<init>(dev.ynagai.autograph.Transport;kotlin.Function1<kotlin.String,kotlin.Unit>){}[0]
 
     final val stampsInPipeline // dev.ynagai.autograph/DebugTransport.stampsInPipeline|{}stampsInPipeline[0]
@@ -144,6 +148,7 @@ final class dev.ynagai.autograph/DebugTransport : dev.ynagai.autograph/Transport
     final fun reset() // dev.ynagai.autograph/DebugTransport.reset|reset(){}[0]
     final fun screen(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.screen|screen(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
     final fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?) // dev.ynagai.autograph/DebugTransport.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?){}[0]
+    final fun track(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>, dev.ynagai.autograph/Envelope?, dev.ynagai.autograph/EventMetadata) // dev.ynagai.autograph/DebugTransport.track|track(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;dev.ynagai.autograph.Envelope?;dev.ynagai.autograph.EventMetadata){}[0]
 }
 
 final class dev.ynagai.autograph/DefaultProperties { // dev.ynagai.autograph/DefaultProperties|null[0]
@@ -165,6 +170,8 @@ final class dev.ynagai.autograph/Envelope { // dev.ynagai.autograph/Envelope|nul
         final fun <get-eventTimestamp>(): kotlin/String // dev.ynagai.autograph/Envelope.eventTimestamp.<get-eventTimestamp>|<get-eventTimestamp>(){}[0]
     final val globalSeq // dev.ynagai.autograph/Envelope.globalSeq|{}globalSeq[0]
         final fun <get-globalSeq>(): kotlin/Long? // dev.ynagai.autograph/Envelope.globalSeq.<get-globalSeq>|<get-globalSeq>(){}[0]
+    final val metadata // dev.ynagai.autograph/Envelope.metadata|{}metadata[0]
+        final fun <get-metadata>(): dev.ynagai.autograph/EventMetadata? // dev.ynagai.autograph/Envelope.metadata.<get-metadata>|<get-metadata>(){}[0]
     final val schemaVersion // dev.ynagai.autograph/Envelope.schemaVersion|{}schemaVersion[0]
         final fun <get-schemaVersion>(): kotlin/String? // dev.ynagai.autograph/Envelope.schemaVersion.<get-schemaVersion>|<get-schemaVersion>(){}[0]
     final val sdk // dev.ynagai.autograph/Envelope.sdk|{}sdk[0]
@@ -181,10 +188,28 @@ final class dev.ynagai.autograph/Envelope { // dev.ynagai.autograph/Envelope|nul
     final fun component5(): kotlin/String // dev.ynagai.autograph/Envelope.component5|component5(){}[0]
     final fun component6(): kotlin/String // dev.ynagai.autograph/Envelope.component6|component6(){}[0]
     final fun component7(): kotlin/String? // dev.ynagai.autograph/Envelope.component7|component7(){}[0]
+    final fun component8(): dev.ynagai.autograph/EventMetadata? // dev.ynagai.autograph/Envelope.component8|component8(){}[0]
     final fun equals(kotlin/Any?): kotlin/Boolean // dev.ynagai.autograph/Envelope.equals|equals(kotlin.Any?){}[0]
     final fun hashCode(): kotlin/Int // dev.ynagai.autograph/Envelope.hashCode|hashCode(){}[0]
     final fun toJson(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/Envelope.toJson|toJson(){}[0]
     final fun toString(): kotlin/String // dev.ynagai.autograph/Envelope.toString|toString(){}[0]
+}
+
+final class dev.ynagai.autograph/EventMetadata { // dev.ynagai.autograph/EventMetadata|null[0]
+    final val impressionMinDurationMs // dev.ynagai.autograph/EventMetadata.impressionMinDurationMs|{}impressionMinDurationMs[0]
+        final fun <get-impressionMinDurationMs>(): kotlin/Long? // dev.ynagai.autograph/EventMetadata.impressionMinDurationMs.<get-impressionMinDurationMs>|<get-impressionMinDurationMs>(){}[0]
+    final val impressionMinFractionVisible // dev.ynagai.autograph/EventMetadata.impressionMinFractionVisible|{}impressionMinFractionVisible[0]
+        final fun <get-impressionMinFractionVisible>(): kotlin/Double? // dev.ynagai.autograph/EventMetadata.impressionMinFractionVisible.<get-impressionMinFractionVisible>|<get-impressionMinFractionVisible>(){}[0]
+    final val kind // dev.ynagai.autograph/EventMetadata.kind|{}kind[0]
+        final fun <get-kind>(): kotlin/String? // dev.ynagai.autograph/EventMetadata.kind.<get-kind>|<get-kind>(){}[0]
+
+    final fun component1(): kotlin/String? // dev.ynagai.autograph/EventMetadata.component1|component1(){}[0]
+    final fun component2(): kotlin/Long? // dev.ynagai.autograph/EventMetadata.component2|component2(){}[0]
+    final fun component3(): kotlin/Double? // dev.ynagai.autograph/EventMetadata.component3|component3(){}[0]
+    final fun equals(kotlin/Any?): kotlin/Boolean // dev.ynagai.autograph/EventMetadata.equals|equals(kotlin.Any?){}[0]
+    final fun hashCode(): kotlin/Int // dev.ynagai.autograph/EventMetadata.hashCode|hashCode(){}[0]
+    final fun toJson(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/EventMetadata.toJson|toJson(){}[0]
+    final fun toString(): kotlin/String // dev.ynagai.autograph/EventMetadata.toString|toString(){}[0]
 }
 
 final class dev.ynagai.autograph/InMemorySeqStore : dev.ynagai.autograph/SeqStore { // dev.ynagai.autograph/InMemorySeqStore|null[0]
@@ -230,10 +255,21 @@ final object dev.ynagai.autograph/EventId { // dev.ynagai.autograph/EventId|null
         final fun <get-UuidV7>(): dev.ynagai.autograph/EventIdGenerator // dev.ynagai.autograph/EventId.UuidV7.<get-UuidV7>|<get-UuidV7>(){}[0]
 }
 
+final object dev.ynagai.autograph/EventKinds { // dev.ynagai.autograph/EventKinds|null[0]
+    final const val CLICK // dev.ynagai.autograph/EventKinds.CLICK|{}CLICK[0]
+        final fun <get-CLICK>(): kotlin/String // dev.ynagai.autograph/EventKinds.CLICK.<get-CLICK>|<get-CLICK>(){}[0]
+    final const val IMPRESSION // dev.ynagai.autograph/EventKinds.IMPRESSION|{}IMPRESSION[0]
+        final fun <get-IMPRESSION>(): kotlin/String // dev.ynagai.autograph/EventKinds.IMPRESSION.<get-IMPRESSION>|<get-IMPRESSION>(){}[0]
+}
+
+final const val dev.ynagai.autograph/RESERVED_METADATA_KEY // dev.ynagai.autograph/RESERVED_METADATA_KEY|{}RESERVED_METADATA_KEY[0]
+    final fun <get-RESERVED_METADATA_KEY>(): kotlin/String // dev.ynagai.autograph/RESERVED_METADATA_KEY.<get-RESERVED_METADATA_KEY>|<get-RESERVED_METADATA_KEY>(){}[0]
+
 final val dev.ynagai.autograph/EmptyJsonObject // dev.ynagai.autograph/EmptyJsonObject|{}EmptyJsonObject[0]
     final fun <get-EmptyJsonObject>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/EmptyJsonObject.<get-EmptyJsonObject>|<get-EmptyJsonObject>(){}[0]
 
 final fun (kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>).dev.ynagai.autograph/asJsonObject(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/asJsonObject|asJsonObject@kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>(){}[0]
 final fun dev.ynagai.autograph/Autograph(kotlin/Function1<dev.ynagai.autograph/AutographConfig, kotlin/Unit>): dev.ynagai.autograph/Tracker // dev.ynagai.autograph/Autograph|Autograph(kotlin.Function1<dev.ynagai.autograph.AutographConfig,kotlin.Unit>){}[0]
-final fun dev.ynagai.autograph/createEnvelope(kotlin/String, kotlin/String, kotlin/Long, kotlin/Long?, kotlin/Long?, kotlin/String, kotlin/String, kotlin/String? = ...): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/createEnvelope|createEnvelope(kotlin.String;kotlin.String;kotlin.Long;kotlin.Long?;kotlin.Long?;kotlin.String;kotlin.String;kotlin.String?){}[0]
+final fun dev.ynagai.autograph/createEnvelope(kotlin/String, kotlin/String, kotlin/Long, kotlin/Long?, kotlin/Long?, kotlin/String, kotlin/String, kotlin/String? = ..., dev.ynagai.autograph/EventMetadata? = ...): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/createEnvelope|createEnvelope(kotlin.String;kotlin.String;kotlin.Long;kotlin.Long?;kotlin.Long?;kotlin.String;kotlin.String;kotlin.String?;dev.ynagai.autograph.EventMetadata?){}[0]
+final fun dev.ynagai.autograph/createEventMetadata(kotlin/String? = ..., kotlin/Long? = ..., kotlin/Double? = ...): dev.ynagai.autograph/EventMetadata // dev.ynagai.autograph/createEventMetadata|createEventMetadata(kotlin.String?;kotlin.Long?;kotlin.Double?){}[0]
 final fun dev.ynagai.autograph/platformSeqStore(): dev.ynagai.autograph/SeqStore // dev.ynagai.autograph/platformSeqStore|platformSeqStore(){}[0]

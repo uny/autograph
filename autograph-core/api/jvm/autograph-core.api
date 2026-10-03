@@ -35,7 +35,7 @@ public abstract interface class dev/ynagai/autograph/AutographLogger {
 	public abstract fun log (Ljava/lang/String;)V
 }
 
-public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Transport {
+public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/MetadataAwareTransport, dev/ynagai/autograph/Transport {
 	public fun <init> (Ldev/ynagai/autograph/Transport;Lkotlin/jvm/functions/Function1;)V
 	public synthetic fun <init> (Ldev/ynagai/autograph/Transport;Lkotlin/jvm/functions/Function1;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun connect (Ldev/ynagai/autograph/EnvelopeSource;)V
@@ -45,6 +45,7 @@ public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Tr
 	public fun reset ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 	public fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
+	public fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;Ldev/ynagai/autograph/EventMetadata;)V
 }
 
 public final class dev/ynagai/autograph/DefaultProperties {
@@ -64,10 +65,12 @@ public final class dev/ynagai/autograph/Envelope {
 	public final fun component5 ()Ljava/lang/String;
 	public final fun component6 ()Ljava/lang/String;
 	public final fun component7 ()Ljava/lang/String;
+	public final fun component8 ()Ldev/ynagai/autograph/EventMetadata;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getEventId ()Ljava/lang/String;
 	public final fun getEventTimestamp ()Ljava/lang/String;
 	public final fun getGlobalSeq ()Ljava/lang/Long;
+	public final fun getMetadata ()Ldev/ynagai/autograph/EventMetadata;
 	public final fun getSchemaVersion ()Ljava/lang/String;
 	public final fun getSdk ()Ljava/lang/String;
 	public final fun getSeq ()Ljava/lang/Long;
@@ -78,8 +81,10 @@ public final class dev/ynagai/autograph/Envelope {
 }
 
 public final class dev/ynagai/autograph/EnvelopeKt {
-	public static final fun createEnvelope (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Ldev/ynagai/autograph/Envelope;
-	public static synthetic fun createEnvelope$default (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
+	public static final fun createEnvelope (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/EventMetadata;)Ldev/ynagai/autograph/Envelope;
+	public static synthetic fun createEnvelope$default (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/EventMetadata;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
+	public static final fun createEventMetadata (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;)Ldev/ynagai/autograph/EventMetadata;
+	public static synthetic fun createEventMetadata$default (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;ILjava/lang/Object;)Ldev/ynagai/autograph/EventMetadata;
 }
 
 public abstract interface class dev/ynagai/autograph/EnvelopeSource {
@@ -102,6 +107,29 @@ public abstract interface class dev/ynagai/autograph/EventIdGenerator {
 	public abstract fun next ()Ljava/lang/String;
 }
 
+public final class dev/ynagai/autograph/EventKinds {
+	public static final field CLICK Ljava/lang/String;
+	public static final field IMPRESSION Ljava/lang/String;
+	public static final field INSTANCE Ldev/ynagai/autograph/EventKinds;
+}
+
+public final class dev/ynagai/autograph/EventMetadata {
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/Long;
+	public final fun component3 ()Ljava/lang/Double;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getImpressionMinDurationMs ()Ljava/lang/Long;
+	public final fun getImpressionMinFractionVisible ()Ljava/lang/Double;
+	public final fun getKind ()Ljava/lang/String;
+	public fun hashCode ()I
+	public final fun toJson ()Lkotlinx/serialization/json/JsonObject;
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class dev/ynagai/autograph/EventMetadataKt {
+	public static final field RESERVED_METADATA_KEY Ljava/lang/String;
+}
+
 public abstract interface class dev/ynagai/autograph/EventValidator {
 	public abstract fun validate (Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
 }
@@ -114,6 +142,10 @@ public final class dev/ynagai/autograph/InMemorySeqStore : dev/ynagai/autograph/
 	public fun putLong (Ljava/lang/String;J)V
 	public fun putString (Ljava/lang/String;Ljava/lang/String;)V
 	public fun remove (Ljava/lang/String;)V
+}
+
+public abstract interface class dev/ynagai/autograph/MetadataAwareTransport {
+	public abstract fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;Ldev/ynagai/autograph/EventMetadata;)V
 }
 
 public abstract interface class dev/ynagai/autograph/SeqPersistence {
