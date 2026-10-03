@@ -128,6 +128,8 @@ public final class dev/ynagai/autograph/EventMetadata {
 
 public final class dev/ynagai/autograph/EventMetadataKt {
 	public static final field RESERVED_METADATA_KEY Ljava/lang/String;
+	public static final fun withEventMetadata (Ljava/util/Map;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;)Lkotlinx/serialization/json/JsonObject;
+	public static synthetic fun withEventMetadata$default (Ljava/util/Map;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;ILjava/lang/Object;)Lkotlinx/serialization/json/JsonObject;
 }
 
 public abstract interface class dev/ynagai/autograph/EventValidator {

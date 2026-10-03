@@ -99,6 +99,21 @@ public struct AutographTracking {
         capture.clickedJson(name: event, propertiesJson: propertiesJson, scope: scope, target: target)
     }
 
+    /// ``AutographButton``'s path: the same event as ``track(_:properties:target:)``, additionally marked
+    /// `kind` `click`. Internal because only a call from the tapped button's own action earns that mark —
+    /// ``track(_:properties:target:)`` can be called from anywhere, so it claims no kind.
+    internal func trackButtonTap(
+        _ event: String,
+        properties: [String: String],
+        target: String?
+    ) {
+        guard let capture else {
+            AutographTrackingDiagnostics.missingCapture(event)
+            return
+        }
+        capture.buttonClicked(name: event, properties: properties, scope: scope, target: target)
+    }
+
 }
 
 // MARK: - Environment plumbing

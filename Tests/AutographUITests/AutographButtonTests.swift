@@ -95,13 +95,35 @@ final class AutographButtonTests: XCTestCase {
         handle.capture = AutographElementCapture(tracker: tracker, scopeStack: ScopeStack())
         handle.scope = ["article_id": "42"]
 
-        handle.track("save_tapped", properties: ["plan": "pro"], target: "save_button")
+        handle.trackButtonTap("save_tapped", properties: ["plan": "pro"], target: "save_button")
 
         let event = try? XCTUnwrap(tracker.events.first)
         XCTAssertEqual(event?.name, "save_tapped")
         XCTAssertEqual(event?.target, "save_button")
         XCTAssertEqual(event?.properties["article_id"], "\"42\"")
         XCTAssertEqual(event?.properties["plan"], "\"pro\"")
+    }
+
+    /// Only the button's path claims `kind` `click` (#287): `autograph.track` can be called from a timer
+    /// as easily as from a touch, so it must not. Checked from Swift because both paths take the same
+    /// `String` arguments — a wrapper that called the wrong Kotlin method would compile either way.
+    @MainActor
+    func testOnlyTheButtonPathMarksTheEventAsAClick() {
+        let tracker = RecordingTracker()
+
+        var handle = AutographTracking()
+        handle.capture = AutographElementCapture(tracker: tracker, scopeStack: ScopeStack())
+
+        handle.trackButtonTap("save_tapped", properties: [:], target: nil)
+        handle.track("save_tapped")
+        handle.track("save_tapped", propertiesJson: "{}")
+
+        XCTAssertEqual(tracker.events.count, 3)
+        // Reading the values is the point: a nested object here traps in the Swift bridge (see
+        // `RESERVED_METADATA_KEY`), which is why the library writes the value as a JSON string.
+        XCTAssertEqual(tracker.events[0].properties["__autograph"], #""{\"kind\":\"click\"}""#)
+        XCTAssertNil(tracker.events[1].properties["__autograph"])
+        XCTAssertNil(tracker.events[2].properties["__autograph"])
     }
 
     @MainActor

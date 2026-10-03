@@ -1,16 +1,22 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.uikit
 
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.withEventMetadata
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
 /**
  * Explicit click instrumentation for **Swift** callers — the receiving end of the `AutographUI`
- * Swift product's `AutographButton` and `autograph.track(_:)`.
+ * Swift product's `AutographButton` ([buttonClicked]) and `autograph.track(_:)` ([clicked],
+ * [clickedJson]).
  *
  * ## Why this exists at all
  *
@@ -31,6 +37,13 @@ import kotlinx.serialization.json.JsonPrimitive
  * 1. [scope] — the caller's ambient scope, lowest precedence
  * 2. [properties] — the call site's own values, which win over the scope
  * 3. `target`, then `screen` / `section` — reserved keys written on top
+ *
+ * ## Event kind
+ *
+ * Only [buttonClicked] marks its event `kind` `click` ([EventKinds.CLICK], carried in the envelope
+ * metadata). `AutographButton` calls it from the button's own action, so the event is known to come
+ * from a tap. [clicked] and [clickedJson] serve `autograph.track(_:)`, which can be called from a
+ * timer or a completion handler as easily as from a touch, so they claim no kind.
  *
  * **[scope] is passed in, not read from [scopeStack], and that is deliberate.**
  * `ScopeStack.resolveScope()` drops sibling frames that are neither's ancestor, because an
@@ -70,7 +83,21 @@ public class AutographElementCapture(
         scope: Map<String, String> = emptyMap(),
         target: String? = null,
     ) {
-        emit(name, properties.toJsonObject(), scope, target)
+        emit(name, properties.toJsonObject(), scope, target, kind = null)
+    }
+
+    /**
+     * [clicked] for `AutographButton`: the same event, additionally marked `kind` `click` in its
+     * envelope metadata. Call it only from the action of the control the user tapped — see the class
+     * kdoc's "Event kind".
+     */
+    public fun buttonClicked(
+        name: String,
+        properties: Map<String, String> = emptyMap(),
+        scope: Map<String, String> = emptyMap(),
+        target: String? = null,
+    ) {
+        emit(name, properties.toJsonObject(), scope, target, kind = EventKinds.CLICK)
     }
 
     /**
@@ -90,7 +117,7 @@ public class AutographElementCapture(
         scope: Map<String, String> = emptyMap(),
         target: String? = null,
     ) {
-        emit(name, parseJsonObject(propertiesJson), scope, target)
+        emit(name, parseJsonObject(propertiesJson), scope, target, kind = null)
     }
 
     private fun emit(
@@ -98,6 +125,7 @@ public class AutographElementCapture(
         properties: JsonObject,
         scope: Map<String, String>,
         target: String?,
+        kind: String?,
     ) {
         try {
             // Scope underneath, call-site properties on top: a scope entry fills a key the call site
@@ -110,6 +138,7 @@ public class AutographElementCapture(
             var result = scoped
             context.screen?.let { result = JsonObject(result + ("screen" to JsonPrimitive(it))) }
             context.section?.let { result = JsonObject(result + ("section" to JsonPrimitive(it))) }
+            if (kind != null) result = result.withEventMetadata(kind)
             tracker.track(name, result, target)
         } catch (_: Throwable) {
             // Never unwind into Swift. A dropped event is recoverable; a crash in someone's app
