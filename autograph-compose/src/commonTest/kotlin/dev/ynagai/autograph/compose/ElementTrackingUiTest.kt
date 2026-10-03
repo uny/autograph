@@ -21,13 +21,22 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import dev.ynagai.autograph.Autograph
+import dev.ynagai.autograph.Envelope
+import dev.ynagai.autograph.EventKinds
+import dev.ynagai.autograph.InMemorySeqStore
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.Transport
 import dev.ynagai.autograph.asJsonObject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonPrimitive
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNull
 
 private class ElementRecordingTracker : Tracker {
@@ -42,6 +51,16 @@ private class ElementRecordingTracker : Tracker {
     }
     override fun screen(name: String, properties: Map<String, JsonElement>) {}
     override fun identify(userId: String, traits: Map<String, JsonElement>) {}
+}
+
+/** Records what reaches a transport behind the tracker [Autograph] builds, envelope included. */
+private class EnvelopeRecordingTransport : Transport {
+    val tracked = mutableListOf<Pair<JsonObject, Envelope?>>()
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        tracked += properties.asJsonObject() to envelope
+    }
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {}
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {}
 }
 
 /** The root-space centre of the element tagged [tag] — where a user tapping it would land. */
@@ -182,6 +201,67 @@ class ElementTrackingUiTest {
         val properties = tracker.tracked.single().second
         assertEquals("Home", properties["screen"]?.jsonPrimitive?.content)
         assertNull(properties["section"], "no section was provided in the ambient context")
+    }
+
+    /**
+     * #287: the click kind is written last, so an [AutographScope] entry under the reserved key is
+     * neither read as metadata nor able to relabel the event.
+     */
+    @Test
+    fun trackClickIsMarkedAsAClickOverAScopeEntryUnderTheReservedKey() = runComposeUiTest {
+        val tracker = ElementRecordingTracker()
+        setContent {
+            WithElementTracker(tracker) {
+                AutographScope(JsonObject(mapOf(RESERVED_METADATA_KEY to JsonObject(mapOf("kind" to JsonPrimitive("impression")))))) {
+                    Box(Modifier.testTag("target").size(10.dp).trackClick("Item Clicked") {})
+                }
+            }
+        }
+        waitForIdle()
+
+        onNodeWithTag("target").performClick()
+        waitForIdle()
+
+        assertEquals(
+            JsonPrimitive("""{"kind":"${EventKinds.CLICK}"}"""),
+            tracker.tracked.single().second[RESERVED_METADATA_KEY],
+        )
+    }
+
+    /**
+     * #287/#243, end to end through the tracker [Autograph] builds: the impression's kind and both
+     * thresholds leave `properties` and land on the envelope, and `0.3f` arrives as `0.3`, not as the
+     * float's binary expansion. A recording fake could show only that the key was written.
+     */
+    @Test
+    fun trackImpressionCarriesItsKindAndThresholdsToTheEnvelope() = runComposeUiTest {
+        val transport = EnvelopeRecordingTransport()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+        }
+        setContent {
+            WithElementTracker(tracker) {
+                Box(Modifier.size(10.dp).trackImpression("Item Viewed", minDurationMs = 250L, minFractionVisible = 0.3f))
+            }
+        }
+        waitForIdle()
+        mainClock.advanceTimeBy(300L)
+        waitForIdle()
+
+        val (properties, envelope) = transport.tracked.single()
+        assertFalse(RESERVED_METADATA_KEY in properties, properties.toString())
+        val metadata = envelope?.metadata
+        assertEquals(EventKinds.IMPRESSION, metadata?.kind)
+        assertEquals(250L, metadata?.impressionMinDurationMs)
+        assertEquals(0.3, metadata?.impressionMinFractionVisible)
+    }
+
+    /** Pins the claim [toDecimalDouble] rests on, on every target this module's tests run on. */
+    @Test
+    fun aFloatThresholdConvertsToTheDecimalItsCallerWrote() {
+        assertEquals(listOf(0.3, 0.5, 0.1, 0.75, 1.0, 0.0), listOf(0.3f, 0.5f, 0.1f, 0.75f, 1f, 0f).map { it.toDecimalDouble() })
     }
 
     /**

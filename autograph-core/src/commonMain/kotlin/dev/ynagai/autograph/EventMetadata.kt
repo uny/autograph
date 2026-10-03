@@ -1,5 +1,7 @@
 package dev.ynagai.autograph
 
+import kotlinx.serialization.SerializationException
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -16,11 +18,19 @@ import kotlinx.serialization.json.putJsonObject
  * The tracker built by [Autograph] **always removes** this key, before [AutographConfig.validator]
  * runs, so it never reaches a validator or a transport's `properties` — even when its value is
  * malformed. Only the fields listed on [EventMetadata] are read from it; anything else is discarded.
- * The value is a nested object:
+ * The value is a JSON object **encoded as a string**:
  *
  * ```json
- * "__autograph": { "kind": "impression", "impression": { "min_duration_ms": 500, "min_fraction_visible": 0.5 } }
+ * "__autograph": "{\"kind\":\"impression\",\"impression\":{\"min_duration_ms\":500,\"min_fraction_visible\":0.5}}"
  * ```
+ *
+ * A string rather than a nested object because of Swift: Kotlin/Native hands a [JsonObject] value to
+ * Objective-C as a dictionary, not as a `JsonElement`, so a [Tracker] implemented in Swift crashes the
+ * process the moment it reads a nested object out of its `properties`. That was measured both for
+ * this key and for an app's own nested property, so it is not specific to metadata. A string crosses
+ * that bridge intact. The tracker also accepts the object itself, unencoded, which is what a Kotlin
+ * caller would naturally write. A string longer than [MAX_ENCODED_METADATA_LENGTH] characters, or
+ * nested deeper than the metadata ever is, is not parsed and carries nothing.
  *
  * It is a convention, not proof that the library produced the event: an app can put the same shape
  * in its own properties, and the tracker treats it the same way. Only the call-site `properties` are
@@ -113,7 +123,7 @@ internal fun extractMetadata(properties: JsonObject): Pair<JsonObject, EventMeta
 }
 
 private fun parseMetadata(raw: JsonElement): EventMetadata? {
-    val obj = raw as? JsonObject ?: return null
+    val obj = raw as? JsonObject ?: raw.stringOrNull()?.let(::parseObjectOrNull) ?: return null
     val kind = obj["kind"].stringOrNull()?.takeIf { it.isNotEmpty() }
     val impression = obj["impression"] as? JsonObject
     val minDurationMs = impression?.get("min_duration_ms").numberOrNull()?.longOrNull?.takeIf { it >= 0 }
@@ -123,6 +133,52 @@ private fun parseMetadata(raw: JsonElement): EventMetadata? {
     return EventMetadata(kind, minDurationMs, minFractionVisible)
 }
 
+/**
+ * The longest encoded metadata string the tracker parses. The library's own value is under 150
+ * characters; the bound exists so that an arbitrary string under the reserved key cannot make
+ * `track` do unbounded work.
+ */
+private const val MAX_ENCODED_METADATA_LENGTH = 1024
+
+/**
+ * At most this many `{` / `[` in an encoded metadata string, counted without regard to quoting, so a
+ * bracket inside a string value counts too. The library writes two. The JSON parser recurses per
+ * level, so without this bound a deeply nested value could overflow the stack of the thread calling
+ * `track`, an error the tracker cannot catch.
+ */
+private const val MAX_ENCODED_METADATA_BRACKETS = 8
+
+private fun parseObjectOrNull(json: String): JsonObject? {
+    if (json.length > MAX_ENCODED_METADATA_LENGTH) return null
+    if (json.count { it == '{' || it == '[' } > MAX_ENCODED_METADATA_BRACKETS) return null
+    return try {
+        Json.parseToJsonElement(json) as? JsonObject
+    } catch (_: SerializationException) {
+        null
+    }
+}
+
 private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
 private fun JsonElement?.numberOrNull(): JsonPrimitive? = (this as? JsonPrimitive)?.takeIf { !it.isString }
+
+/**
+ * These properties with the library's [EventMetadata] written on top under [RESERVED_METADATA_KEY],
+ * for Autograph's own emit sites. Apply it last, after any scope merge, so the emit site's value is
+ * the one the tracker reads; whatever was under the key before is replaced.
+ *
+ * Built from [EventMetadata.toJson], so the shape the tracker parses back and the shape written to
+ * `context.instrumentation` cannot drift apart. Encoded as a string, for the reason given on
+ * [RESERVED_METADATA_KEY].
+ */
+@AutographInternalApi
+public fun Map<String, JsonElement>.withEventMetadata(
+    kind: String,
+    impressionMinDurationMs: Long? = null,
+    impressionMinFractionVisible: Double? = null,
+): JsonObject = JsonObject(
+    this + (
+        RESERVED_METADATA_KEY to
+            JsonPrimitive(EventMetadata(kind, impressionMinDurationMs, impressionMinFractionVisible).toJson().toString())
+        ),
+)

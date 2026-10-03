@@ -10,13 +10,19 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
-- **The tracker can carry an event's kind in the envelope instead of its properties** ([#287],
-  [#243]). This is the core half: no event the library emits sets it yet, so delivered events are
-  unchanged. A follow-up marks taps as `click` and impressions as `impression`, with their
-  thresholds. It works like this:
+- **Events carry their kind in the envelope instead of their properties** ([#287], [#243]).
+  `Modifier.trackClick`, Compose autocapture, the Android and iOS native tap captures and SwiftUI's
+  `AutographButton` mark their events `kind` `click`. `Modifier.trackImpression` marks its event
+  `impression` with its `min_duration_ms` and `min_fraction_visible`; the float threshold arrives as
+  the decimal you wrote, so `0.3f` is `0.3`. A plain `track` call carries no kind, and neither does
+  SwiftUI's `autograph.track(_:)`, because it can be called from a timer as easily as from a touch.
+  `AutographElementCapture` gains `buttonClicked(...)`, the path `AutographButton` now uses. It
+  works like this:
   - An emit site puts the metadata under the reserved properties key `__autograph`
-    (`RESERVED_METADATA_KEY`). The tracker always removes that key before `EventValidator` runs,
-    even when its value is malformed. It reads only `kind` and `impression.min_duration_ms` /
+    (`RESERVED_METADATA_KEY`), as a JSON object encoded as a string. A string, because Kotlin/Native
+    hands a nested object to Swift as a dictionary, and a `Tracker` implemented in Swift crashes
+    when it reads one. The tracker also accepts the object unencoded. It always removes the key
+    before `EventValidator` runs, even when its value is malformed. It reads only `kind` and `impression.min_duration_ms` /
     `impression.min_fraction_visible` from the value, and those fields cannot overwrite
     `event_id`, the sequence numbers or the session.
   - The metadata is read from the call site only. The tracker discards a `DefaultProperties`
@@ -39,7 +45,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
   The key is a convention, not proof that the library produced an event: an app can put the same
   shape in its own properties. A `Tracker` you implement yourself, such as a test fake, does not
-  remove the key.
+  remove the key, so a fake standing in for the real tracker now sees `__autograph` in the
+  properties of every event listed above.
 
 ### Changed
 

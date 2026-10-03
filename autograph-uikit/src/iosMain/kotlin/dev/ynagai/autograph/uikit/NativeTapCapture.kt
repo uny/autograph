@@ -3,10 +3,12 @@
 package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.withEventMetadata
 import platform.Foundation.NSHashTable
 import platform.Foundation.NSHashTableObjectPointerPersonality
 import platform.Foundation.NSHashTableWeakMemory
@@ -222,7 +224,7 @@ public class AutographNativeTapCapture internal constructor(
     }
 
     private fun track(target: String) {
-        tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject), target)
+        tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK), target)
     }
 }
 

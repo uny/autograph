@@ -1,7 +1,12 @@
 package dev.ynagai.autograph.uikit
 
+import dev.ynagai.autograph.Autograph
+import dev.ynagai.autograph.Envelope
+import dev.ynagai.autograph.EventKinds
+import dev.ynagai.autograph.InMemorySeqStore
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.Transport
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import kotlin.test.Test
@@ -9,6 +14,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -142,6 +148,49 @@ class ExplicitElementCaptureTest {
     }
 
     /**
+     * `buttonClicked` is `AutographButton`'s path and the only one that claims `kind` `click`: it is
+     * written over a scope entry under the reserved key rather than losing to it.
+     */
+    @Test
+    fun onlyButtonClickedMarksTheEventAsAClick() {
+        val tracker = RecordingElementTracker()
+        val capture = AutographElementCapture(tracker, ScopeStack())
+
+        capture.buttonClicked(name = "save_tapped", scope = mapOf(RESERVED_METADATA_KEY to "impression"))
+        capture.clicked(name = "save_tapped")
+        capture.clickedJson(name = "save_tapped", propertiesJson = """{"a":1}""")
+
+        val (button, plain, json) = tracker.properties
+        assertEquals(JsonPrimitive("""{"kind":"${EventKinds.CLICK}"}"""), button[RESERVED_METADATA_KEY])
+        assertFalse(RESERVED_METADATA_KEY in plain, plain.toString())
+        assertFalse(RESERVED_METADATA_KEY in json, json.toString())
+    }
+
+    /**
+     * Through the tracker [Autograph] builds: the mark leaves `properties` and lands on the envelope,
+     * which a recording fake cannot show, since a fake does not strip the reserved key.
+     */
+    @Test
+    fun buttonClickedReachesTheEnvelopeAsKindClick() {
+        val transport = EnvelopeRecordingTransport()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+        }
+        val capture = AutographElementCapture(tracker, ScopeStack())
+
+        capture.buttonClicked(name = "save_tapped", properties = mapOf("plan" to "pro"))
+        capture.clicked(name = "delete_tapped")
+
+        val (button, plain) = transport.tracked
+        assertEquals(EventKinds.CLICK, button.second?.metadata?.kind)
+        assertFalse(RESERVED_METADATA_KEY in button.first, button.first.toString())
+        assertEquals("pro", button.first["plan"]?.jsonPrimitive?.content)
+        assertNull(plain.second?.metadata)
+    }
+
+    /**
      * A failing tracker must not unwind into Swift: a Kotlin exception crossing into a Swift caller
      * with no `@Throws` terminates the app, and an analytics event is never worth that.
      */
@@ -151,7 +200,20 @@ class ExplicitElementCaptureTest {
 
         capture.clicked(name = "save_tapped")
         capture.clickedJson(name = "save_tapped", propertiesJson = """{"a":1}""")
+        capture.buttonClicked(name = "save_tapped")
     }
+}
+
+private class EnvelopeRecordingTransport : Transport {
+    val tracked = mutableListOf<Pair<JsonObject, Envelope?>>()
+
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        tracked += properties.asJsonObject() to envelope
+    }
+
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) = Unit
+
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) = Unit
 }
 
 private class RecordingElementTracker : Tracker {

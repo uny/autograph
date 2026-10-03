@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
@@ -242,9 +243,10 @@ class ReportTapIfResolvableTest {
     }
 
     // #287: the element's own scope sits in the call-site slot of enrich, so it must lose the reserved
-    // metadata key before it gets there — or an app-written scope would be read as event metadata.
+    // metadata key before it gets there — or an app-written scope would be read as event metadata. What
+    // ends up under the key is autocapture's own `click`, never the scope's `impression`.
     @Test
-    fun anElementScopeEntryUnderTheReservedMetadataKeyIsLeftOut() {
+    fun anElementScopeEntryUnderTheReservedMetadataKeyIsReplacedByTheClickKind() {
         val tracker = AutocaptureRecordingTracker()
         val scope = JsonObject(
             mapOf(
@@ -255,7 +257,15 @@ class ReportTapIfResolvableTest {
 
         reportTapIfResolvable(tracker, ScopeStack(), Autocapture()) { AutocaptureTarget("like_button", scope) }
 
-        assertEquals(JsonObject(mapOf("row" to JsonPrimitive("3"))), tracker.trackedProps.single())
+        assertEquals(
+            JsonObject(
+                mapOf(
+                    "row" to JsonPrimitive("3"),
+                    RESERVED_METADATA_KEY to JsonPrimitive("""{"kind":"${EventKinds.CLICK}"}"""),
+                ),
+            ),
+            tracker.trackedProps.single(),
+        )
     }
 
     @Test
