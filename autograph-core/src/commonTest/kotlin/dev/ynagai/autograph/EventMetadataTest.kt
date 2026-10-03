@@ -187,6 +187,40 @@ class EventMetadataTest {
         )
         // A non-integer duration is not truncated into one.
         assertNull(parse(buildJsonObject { putJsonObject("impression") { put("min_duration_ms", 1.5) } }))
+        // A bad kind, a bad fraction, or a non-object impression drops only itself.
+        assertEquals(
+            EventMetadata(null, 500L, null),
+            parse(
+                buildJsonObject {
+                    put("kind", 1)
+                    putJsonObject("impression") {
+                        put("min_duration_ms", 500)
+                        put("min_fraction_visible", -0.1)
+                    }
+                },
+            ),
+        )
+        assertEquals(
+            EventMetadata("click", null, null),
+            parse(buildJsonObject { put("kind", "click"); put("impression", "500") }),
+        )
+    }
+
+    @Test
+    fun theRangeBoundsAreInclusive() {
+        fun parse(duration: Long, fraction: Double) = extractMetadata(
+            props(
+                RESERVED_METADATA_KEY to buildJsonObject {
+                    putJsonObject("impression") {
+                        put("min_duration_ms", duration)
+                        put("min_fraction_visible", fraction)
+                    }
+                },
+            ),
+        ).second
+
+        assertEquals(EventMetadata(null, 0L, 0.0), parse(0L, 0.0))
+        assertEquals(EventMetadata(null, 0L, 1.0), parse(0L, 1.0))
     }
 
     @Test
@@ -324,6 +358,17 @@ class EventMetadataTest {
         delegate.tracked.forEach { assertEquals(JsonObject(emptyMap()), it.properties) }
         assertEquals(1, logs.size, logs.toString())
         assertTrue(logs.single().contains("MetadataAwareTransport"), logs.single())
+        // The warning names the transport that drops the metadata, not the wrapper, which implements the capability.
+        assertTrue(logs.single().startsWith("Autograph: PlainTransport "), logs.single())
+    }
+
+    @Test
+    fun debugTransportCalledDirectlyOverAnIncapableDelegateStillDeliversTheEvent() {
+        val delegate = PlainTransport(stampsInPipeline = true)
+
+        DebugTransport(delegate) {}.track("Hero Seen", JsonObject(emptyMap()), null, EventMetadata("impression", 500L, 0.5))
+
+        assertEquals("Hero Seen", delegate.tracked.single().name)
     }
 
     @Test
@@ -345,5 +390,12 @@ class EventMetadataTest {
 
         assertEquals(setOf("impression"), json.keys)
         assertEquals(setOf("min_duration_ms"), json["impression"]!!.jsonObject.keys)
+    }
+
+    @Test
+    fun aKindWithoutThresholdsHasNoImpressionBlock() {
+        val json = EventMetadata(kind = EventKinds.CLICK, impressionMinDurationMs = null, impressionMinFractionVisible = null).toJson()
+
+        assertEquals(setOf("kind"), json.keys)
     }
 }

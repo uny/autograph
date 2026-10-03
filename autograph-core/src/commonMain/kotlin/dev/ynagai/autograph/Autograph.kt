@@ -321,8 +321,10 @@ internal class AutographTracker(
             if (warnedMetadataDropped) false else true.also { warnedMetadataDropped = true }
         }
         if (first) {
+            // Name the transport that loses the metadata, not a DebugTransport wrapped around it.
+            val dropping = (transport as? DebugTransport)?.innermostDelegate ?: transport
             report(
-                "Autograph: ${transport::class.simpleName ?: "the transport"} stamps in its own pipeline but does not implement " +
+                "Autograph: ${dropping::class.simpleName ?: "the transport"} stamps in its own pipeline but does not implement " +
                     "MetadataAwareTransport; events are delivered without their kind and impression thresholds",
             )
         }
