@@ -446,14 +446,18 @@ class EventMetadataTest {
 
     @Test
     fun aStringThatIsNotAJsonObjectIsRemovedAndCarriesNothing() {
-        for (raw in listOf("click", "{not json", "[1,2]", "\"click\"", "")) {
+        val tooDeep = """{"kind":"click","x":""" + "[".repeat(10_000) + "]".repeat(10_000) + "}"
+        val tooLong = """{"kind":"click","x":"""" + "a".repeat(2_000) + "\"}"
+        // Each of these three parses to a valid `click` without its bound, so they fail if a bound goes.
+        val tooManyBrackets = """{"kind":"click","x":[[[[[[[[]]]]]]]]}"""
+        for (raw in listOf("click", "{not json", "[1,2]", "\"click\"", "", tooDeep, tooLong, tooManyBrackets)) {
             val transport = PlainTransport(stampsInPipeline = false)
 
             tracker(transport).track("Hero Seen", props(RESERVED_METADATA_KEY to JsonPrimitive(raw)))
 
             val event = transport.tracked.single()
-            assertEquals(props(), event.properties, "for $raw")
-            assertNull(event.envelope?.metadata, "for $raw")
+            assertEquals(props(), event.properties, "for ${raw.take(40)}")
+            assertNull(event.envelope?.metadata, "for ${raw.take(40)}")
         }
     }
 }

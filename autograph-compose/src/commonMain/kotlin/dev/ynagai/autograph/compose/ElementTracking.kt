@@ -103,8 +103,9 @@ internal fun withScreenContext(properties: JsonObject, context: ScreenContext?):
 }
 
 /**
- * This threshold as the decimal its caller wrote: `0.3f` becomes `0.3`, where [Float.toDouble] gives
+ * This threshold through its string form: `0.3f` becomes `0.3`, where [Float.toDouble] gives
  * `0.30000001192092896`. `Float.toString` prints the shortest decimal that reads back as the same
- * float on the JVM and on Kotlin/Native alike, which is what makes the round trip exact.
+ * float, so a threshold written with few digits comes out as written. Measured on the JVM and on
+ * Kotlin/Native by this module's tests.
  */
 internal fun Float.toDecimalDouble(): Double = toString().toDouble()

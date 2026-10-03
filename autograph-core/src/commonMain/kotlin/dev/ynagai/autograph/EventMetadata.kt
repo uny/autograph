@@ -26,9 +26,11 @@ import kotlinx.serialization.json.putJsonObject
  *
  * A string rather than a nested object because of Swift: Kotlin/Native hands a [JsonObject] value to
  * Objective-C as a dictionary, not as a `JsonElement`, so a [Tracker] implemented in Swift crashes the
- * process the moment it reads a nested object out of its `properties` — measured, and true of any
- * nested value, not only this one. A string crosses that bridge intact. The tracker also accepts the
- * object itself, unencoded, which is what a Kotlin caller would naturally write.
+ * process the moment it reads a nested object out of its `properties`. That was measured both for
+ * this key and for an app's own nested property, so it is not specific to metadata. A string crosses
+ * that bridge intact. The tracker also accepts the object itself, unencoded, which is what a Kotlin
+ * caller would naturally write. A string longer than [MAX_ENCODED_METADATA_LENGTH] characters, or
+ * nested deeper than the metadata ever is, is not parsed and carries nothing.
  *
  * It is a convention, not proof that the library produced the event: an app can put the same shape
  * in its own properties, and the tracker treats it the same way. Only the call-site `properties` are
@@ -131,12 +133,30 @@ private fun parseMetadata(raw: JsonElement): EventMetadata? {
     return EventMetadata(kind, minDurationMs, minFractionVisible)
 }
 
-private fun parseObjectOrNull(json: String): JsonObject? =
-    try {
+/**
+ * The longest encoded metadata string the tracker parses. The library's own value is under 150
+ * characters; the bound exists so that an arbitrary string under the reserved key cannot make
+ * `track` do unbounded work.
+ */
+private const val MAX_ENCODED_METADATA_LENGTH = 1024
+
+/**
+ * At most this many `{` / `[` in an encoded metadata string, counted without regard to quoting, so a
+ * bracket inside a string value counts too. The library writes two. The JSON parser recurses per
+ * level, so without this bound a deeply nested value could overflow the stack of the thread calling
+ * `track`, an error the tracker cannot catch.
+ */
+private const val MAX_ENCODED_METADATA_BRACKETS = 8
+
+private fun parseObjectOrNull(json: String): JsonObject? {
+    if (json.length > MAX_ENCODED_METADATA_LENGTH) return null
+    if (json.count { it == '{' || it == '[' } > MAX_ENCODED_METADATA_BRACKETS) return null
+    return try {
         Json.parseToJsonElement(json) as? JsonObject
     } catch (_: SerializationException) {
         null
     }
+}
 
 private fun JsonElement?.stringOrNull(): String? = (this as? JsonPrimitive)?.takeIf { it.isString }?.content
 
