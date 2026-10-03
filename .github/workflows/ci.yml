@@ -182,12 +182,13 @@ jobs:
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -scheme Autograph-Package -destination "platform=iOS Simulator,name=$device"
 
-  # Skipped on a PR whose diff cannot reach the app (see `changes`); always runs on push and
-  # workflow_dispatch, where `changes` reports nothing.
+  # Skipped only when `changes` succeeded and reported `ios=false` — a PR whose diff provably cannot
+  # reach the app. Anything else runs: push and workflow_dispatch (no output), a failed `changes`,
+  # and a missing output (a masked or unwritten one), since none of those proves the diff ignorable.
   sample-ios:
     name: sample-ios
     needs: changes
-    if: github.event_name != 'pull_request' || needs.changes.outputs.ios == 'true'
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios != 'false') }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
