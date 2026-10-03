@@ -8,6 +8,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Changed
+
+- **ADR 0001 freezes the member set of every interface a caller implements** ([#283]). §2c/§2d
+  allowed a new member with a default body. That keeps a Kotlin implementor compiling, but not a
+  Swift one: Kotlin/Native exports every interface member as `@required`, so a Swift class that
+  conforms to `Tracker`, `Transport`, `SegmentBridge` or another §2c/§2d interface stops compiling.
+  From 1.0, those member sets are frozen for the major version. A new capability is a separate
+  interface the library checks with `is`, which was measured to work for Swift conformers, or a
+  value object passed through an existing member.
+
 ## [0.11.1] - 2026-09-30
 
 ### Fixed
@@ -1662,3 +1672,4 @@ Initial release.
 [#257]: https://github.com/uny/autograph/issues/257
 [#272]: https://github.com/uny/autograph/issues/272
 [#281]: https://github.com/uny/autograph/issues/281
+[#283]: https://github.com/uny/autograph/issues/283

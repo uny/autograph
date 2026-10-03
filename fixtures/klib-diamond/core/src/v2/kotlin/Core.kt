@@ -3,7 +3,10 @@ package fixture
 public interface Transport {
     public fun send(event: String)
 
-    /** ADDED in v2 — a default-bodied member, which ADR 0001 §2c permits without a major bump. */
+    /**
+     * ADDED in v2 — a default-bodied member. Binary-additive for Kotlin, but ADR 0001 §2c forbids it
+     * within a major version because it breaks Swift source compatibility.
+     */
     public fun flush() {
         lastFlushDefaultRan = true
     }

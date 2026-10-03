@@ -47,7 +47,7 @@ publish core -PfixtureVersion=1.0 -PapiGen=v1 -PkotlinVersion="$OLD_KOTLIN"
 say "publishing dependent:1.0 (compiled against core 1.0, never recompiled)"
 publish dependent -PkotlinVersion="$OLD_KOTLIN"
 
-say "publishing core:1.1 (adds the three ADR-permitted changes)"
+say "publishing core:1.1 (adds three binary-additive changes)"
 publish core -PfixtureVersion=1.1 -PapiGen=v2 -PkotlinVersion="$NEW_KOTLIN"
 
 say "publishing core:1.2 (negative control — a genuine ABI break)"
