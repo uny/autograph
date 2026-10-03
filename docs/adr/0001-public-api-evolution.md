@@ -3,6 +3,9 @@
 - **Status:** Accepted
 - **Date:** 2026-07-21
 - **Issue:** [#53](https://github.com/uny/autograph/issues/53)
+- **Amended:** 2026-10-03 — §2c/§2d freeze the member set of every caller-implemented
+  interface, because a default body does not keep a Swift conformer compiling
+  ([#283](https://github.com/uny/autograph/issues/283#issuecomment-5920254763))
 
 ## Context
 
@@ -18,8 +21,9 @@ be made later without the major bump they exist to avoid.
 Two facts shaped the answer:
 
 - The mechanism is already in use. `Transport.flush()` and `EnvelopeSource.stamp(Long)`
-  were both added after the fact as members with default bodies, and neither broke an
-  implementor.
+  were both added after the fact as members with default bodies, and neither broke a
+  Kotlin implementor. (Neither would have kept a Swift implementor compiling — §2c records
+  why, and why that changed the rule.)
 - The absence of a policy already cost us a decision. [#52](https://github.com/uny/autograph/issues/52)
   kept `close()`'s drain timeout as a `private const` rather than a public knob
   specifically because there was no rule for what adding a public knob would commit us to.
@@ -33,6 +37,10 @@ Two facts shaped the answer:
 | `autograph-core`, `autograph-context` | **SemVer ABI stable.** Binary-compatible within a major version; this ADR's rules apply in full. |
 | `autograph-compose`, `autograph-uikit`, `autograph-android`, `autograph-segment` | **Stable API, constrained toolchain.** The same source and binary rules apply, but each is bounded by a dependency it does not control (the Compose compiler, the iOS SDK / Xcode, the Android SDK and AGP, the Segment SDK — one each, respectively). A major bump in one of those may force a break that is not ours to schedule. |
 | `autograph-test`, `autograph-schema` | **Source-compatible on a best-effort basis; no ABI guarantee.** These are development-time helpers — a test transport and a code generator. They are not on an app's release-critical path, so freezing them would buy safety nobody is asking for. `autograph-schema` therefore does not run `abiValidation()`, and that is deliberate rather than an oversight. |
+
+The guarantee covers Swift *source* compatibility for the Kotlin/Native artifacts as well as
+binary compatibility: an app's Swift code that compiles against one minor version compiles
+against the next. §2c records the constraint that follows.
 
 Declarations marked `@AutographInternalApi` are outside every tier. They are `public`
 only because Kotlin's `internal` does not cross a module boundary, and may change in a
@@ -159,35 +167,84 @@ particular `SessionConfig` keeps its single `backgroundTimeout` parameter; a fut
 session knob (foreground timeout, maximum session length, new-session-on-launch) is added
 to `AutographConfig`, not to `SessionConfig`.
 
-#### 2c. Caller-implemented SPIs — additions must carry a safe default body
+#### 2c. Caller-implemented SPIs — the member set is frozen for the major version
 
 `Transport`, `SeqStore`, `EventIdGenerator`, `EventValidator`, `SegmentBridge`, `AutographLogger`.
 
-Every member added to one of these after 1.0 ships with a default body. The default must
-be **correct, not merely compiling**: `SeqStore.flush()`'s no-op default is acceptable only
-because it is genuinely right for a synchronous store, and an implementor that inherits it
-loses nothing.
+No member is added to one of these within a major version, **including a member with a
+default body**. A new capability is added in one of two ways instead:
 
-When a new capability has no default that is safe for an implementor who has never heard of
-it, it does **not** become a member. It becomes a separate optional interface that the core
-probes with `is`:
+- as a separate interface that the core probes with `is`:
 
-```kotlin
-public interface SomethingCapable { public fun something() }
-// core: if (transport is SomethingCapable) transport.something()
-```
+  ```kotlin
+  public interface SomethingCapable { public fun something() }
+  // core: if (transport is SomethingCapable) transport.something()
+  ```
 
-The rule exists because a default body that silently does the wrong thing is worse than a
-compile error — it converts a break we would have caught into data loss we would not.
+- or as a library-produced value object (§2a) passed through a member that already exists,
+  which can then gain properties freely.
 
-#### 2d. Caller-called interfaces — same default-body rule
+A capability interface is itself a caller-implemented interface under this section, so its
+member set is frozen once it ships. A second capability is a second interface.
+
+**Why a default body is not enough.** A Kotlin default body keeps a Kotlin implementor
+compiling, and keeps an already-compiled one linking (§4). It does nothing for Swift.
+Kotlin/Native's Objective-C export declares every member of an exported interface
+`@required`, including members with a default body. The generated `Autograph.h` has no
+`@optional` member at all. So `SeqStore.flush()`, whose no-op default this section used to
+hold up as the model, is a method every Swift `SeqStore` has to write. A member added later
+with a default body is therefore a new requirement for every Swift class that already
+conforms, and a default body does nothing to keep such a class compiling.
+
+These conformers exist today. `AutographSegmentBridge` (`Sources/AutographSegmentSwift`)
+implements `SegmentBridge`. The Swift `Tracker` fakes in `Tests/AutographUITests` and the
+sample app's `SwiftUIExplicitTracker` implement every member of `Tracker`, including
+`close`, `flush` and `reset`, which have Kotlin default bodies. Swift source compatibility is
+part of the 1.0 contract, so the rule follows Swift, the stricter of the two languages.
+
+**Why `is` works for Swift.** This was measured with Kotlin/Native 2.3.21, using a
+`macos_arm64` framework called from Swift. A Kotlin `x is Cap` check, where `Cap` is a
+second exported interface, returns `true` for a Swift class that adopts `Cap`. That holds
+whether the class adopts it in its declaration or in a Swift extension. The check returns
+`false` for a class that does not adopt `Cap`. A Swift class compiled before `Cap` existed
+keeps compiling, and the core simply never treats it as a `Cap`. The probe defined both
+interfaces in the same framework as the check. A setup that splits them across two
+Kotlin/Native frameworks was not measured.
+
+The `is` route moves the old rule's question rather than removing it. A capability that an
+implementor never heard of goes unused, so the core's behavior when the probe fails must be
+**correct, not merely compiling**. Behavior that silently does the wrong thing is worse than a
+compile error, because it turns a break we would have caught into data loss we would not.
+If no fallback is correct, the capability is not optional, and it waits for the next major
+version.
+
+The members that already have default bodies, such as `Transport.connect`/`flush`/`reset`
+and `SeqStore.flush()`, keep them. The defaults still save Kotlin implementors the work, and
+Swift implementors already write those members.
+
+**A decorator hides a capability it does not declare.** A wrapper forwards only the
+members it knows about, so an `is` probe that reaches a wrapper fails even when the wrapped
+object has the capability. The library's own wrappers, the public `DebugTransport` (§2f) and
+the internal `ScopedTracker` in `autograph-compose`, are reviewed whenever a capability is
+added: Kotlin cannot make a class conform only when its delegate does, so a wrapper either
+declares the capability and supplies its own correct behavior, or hides it. Wrappers that
+callers write are outside our control, which is a second reason the fallback has to be
+correct. Where the capability acts on a resource, the fallback must also respect the
+wrapper's ownership: a wrapper that does not own what it wraps must not become a route to
+release it.
+
+Before 1.0 these interfaces may still change, but a change is a migration for implementors,
+and the CHANGELOG says so. A default body does not make the change free.
+
+#### 2d. Caller-called interfaces — the same freeze
 
 `Tracker`, `EnvelopeSource`.
 
-These are called rather than implemented in normal use, but consumers legitimately fake
-`Tracker` in their own tests. Converting them to an abstract class with an internal
-constructor — which would let us add abstract members freely — would break that, so it is
-rejected. They follow 2c's rule instead.
+These are called rather than implemented in normal use, but consumers legitimately implement
+them. They fake `Tracker` in their own tests, wrap it in decorators (the library has an
+internal one, `ScopedTracker`), and conform to it from Swift. Converting them to an
+abstract class with an internal constructor, which would let us add abstract members
+freely, would break all of that, so it is rejected. They follow 2c's rule instead.
 
 #### 2e. Enums and sealed hierarchies — the case set is frozen for the major version
 
@@ -212,7 +269,7 @@ anything callers are expected to `when` over.
 The caller both constructs these and calls them, but unlike 2b they carry behavior rather
 than configuration, and unlike 2a they are not values. Because they are `final` classes
 nobody implements, **adding a public member is binary-additive and allowed** — the freedom
-2c and 2d have to buy with a default body. What is frozen is the *constructor*: these have
+2c and 2d do not have. What is frozen is the *constructor*: these have
 public constructors, so a new parameter is an ABI break exactly as in 2b. A construction
 argument they may later need is therefore either given a default at a call site the library
 controls, or moved onto `AutographConfig`.
@@ -244,11 +301,11 @@ on this contract.
   ([#104](https://github.com/uny/autograph/issues/104); fixture and full results in
   `fixtures/klib-diamond/`). The mixed-version diamond — an app resolving `autograph-core:1.1`
   while linking an `autograph-segment:1.0` klib compiled against `1.0` — was reproduced for all
-  three permitted change kinds (default-bodied SPI member, property on an internal-constructor
-  class, enum constant). All three link and run, on `iosSimulatorArm64` and `macosArm64` alike,
-  and unchanged whether the old half was built by Kotlin 2.2.20, 2.3.0, or 2.4.0 against a
-  2.4.10 consumer. A deliberate ABI break in the same rig does fail, so the green result is not
-  an inert fixture.
+  three binary-additive change kinds (default-bodied SPI member, property on an
+  internal-constructor class, enum constant). All three link and run, on `iosSimulatorArm64`
+  and `macosArm64` alike, and unchanged whether the old half was built by Kotlin 2.2.20,
+  2.3.0, or 2.4.0 against a 2.4.10 consumer. A deliberate ABI break in the same rig does
+  fail, so the green result is not an inert fixture.
 
   The reason is that Kotlin/Native does not load a klib the way a JVM loads a class file: a klib
   carries serialized IR, and the link step re-lowers the whole graph against whichever `core`
@@ -256,6 +313,11 @@ on this contract.
   adding to `core` cannot invalidate it. **The multi-module rules in §2 are therefore trusted on
   Kotlin/Native as well as the JVM, and lockstep release is no longer load-bearing** — it stays
   the practice because it is simpler, not because the alternative was shown to be unsafe.
+
+  These results cover binary compatibility for Kotlin. Two of the three changes are no longer
+  permitted within a major version: a default-bodied member, because §2c found it breaks Swift
+  *source* compatibility, which this measurement does not cover, and an enum constant, which
+  §2e already forbade. The rig keeps all three as a record of binary compatibility.
 
 - **No Gradle version constraint is warranted, and shipping one would be worse than the risk.**
   What does fail is the *reverse* diamond — a module linked against an `autograph-core` older
@@ -299,12 +361,16 @@ once 1.0 ships:
 
 - The one irreversible item — `Envelope`/`SessionInfo` construction — is settled before the
   freeze, and the type most likely to grow is the one that can now grow indefinitely.
-- Future API decisions become mechanical: identify which of 2a–2e the type falls under and
+- Future API decisions become mechanical: identify which of 2a–2f the type falls under and
   the answer follows. #52's timeout, revisited under this ADR, would be an
   `AutographConfig` `var` (2b) if it is ever wanted publicly.
 - Two things are deliberately harder than they were: adding an enum constant, and adding a
   parameter to a config `data class`. Both now cost a major bump, which is the accurate
   price rather than a hidden one.
+- Adding a member to an interface that callers implement (§2c/§2d) costs a major version,
+  even with a default body. Kotlin alone would allow it, but a Swift conformer would stop
+  compiling, so the major version is the real price. A new capability is a separate
+  interface probed with `is`, and its fallback is part of its design.
 - Freezing `SessionConfig` rather than converting it to the 2b shape is a bet that session
   knobs will be few. If that bet loses, the cost is a slightly awkward split — a session
   setting living on `AutographConfig` next to `session` — not a break.

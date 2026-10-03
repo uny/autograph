@@ -54,9 +54,11 @@ classification determines what you are allowed to add. In short:
 
 - New configuration goes on `AutographConfig` as a `var`, not into a config `data class`
   constructor (which cannot gain a parameter without breaking ABI).
-- New members on an SPI (`Transport`, `SeqStore`, …) must carry a default body that is
-  genuinely correct for an implementor who has never heard of the feature. If no such
-  default exists, add a separate optional interface instead.
+- Do not add members to an interface that callers implement (`Transport`, `SeqStore`,
+  `Tracker`, …), even with a default body. Kotlin/Native exports every member to Swift as
+  `@required`, so a default body does not keep a Swift conformer compiling. Add a separate
+  interface that the library checks with `is`, and make the fallback correct for an
+  implementor who has never heard of it.
 - `Envelope` and `SessionInfo` are constructed by the library only; their constructors are
   intentionally `internal`. Tests construct them through `testEnvelope(...)` in
   `autograph-test` — including tests that fake `EnvelopeSource`, which now need that

@@ -36,9 +36,11 @@ question.
 - `core` — the library under test, published three times from three source generations:
   - `1.0` (`src/v1`) baseline: a `Transport` SPI, an `Envelope` with an `internal` constructor,
     an enum.
-  - `1.1` (`src/v2`) adds exactly the three things ADR 0001 permits without a major bump: a
-    default-bodied member on the SPI (§2c), a property on the internal-constructor class (§2a),
-    an enum constant (§2e).
+  - `1.1` (`src/v2`) adds three binary-additive changes: a default-bodied member on the SPI, a
+    property on the internal-constructor class (§2a), and an enum constant. Only the property is
+    permitted without a major bump today. ADR 0001 §2c forbids the member because it breaks Swift
+    source compatibility, and §2e forbids the enum constant. The rig keeps all three as a record
+    of binary compatibility.
   - `1.2` (`src/v3`) **negative control** — `Transport.send` gains a required parameter. A real
     ABI break, present only to prove the fixture can go red.
 - `dependent` — an SPI implementor in another module, compiled against `core:1.0`, published as
@@ -54,7 +56,7 @@ unchanged with the old half built by Kotlin 2.2.20, 2.3.0, or 2.4.0.
 
 | Arm | Graph | Outcome |
 | --- | --- | --- |
-| `upgrade` | `dependent:1.0` (built against core 1.0) + `core:1.1` | **Works.** All three permitted changes link and run. |
+| `upgrade` | `dependent:1.0` (built against core 1.0) + `core:1.1` | **Works.** All three binary-additive changes link and run. |
 | `downgrade` | `dependent:1.1` (built against core 1.1) + `core:1.0`, forced | **Fails**, at runtime: `IrLinkageError`. |
 | `break` (control) | `dependent:1.0` + `core:1.2` | **Fails**, at runtime: `IrLinkageError`. |
 
