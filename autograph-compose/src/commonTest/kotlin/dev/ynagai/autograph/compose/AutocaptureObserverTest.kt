@@ -17,6 +17,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeHandle
@@ -238,6 +239,23 @@ class ReportTapIfResolvableTest {
         assertEquals("42", props["article_id"]?.jsonPrimitive?.content)
         assertEquals("Article", props["screen"]?.jsonPrimitive?.content)
         assertEquals("Body", props["section"]?.jsonPrimitive?.content)
+    }
+
+    // #287: the element's own scope sits in the call-site slot of enrich, so it must lose the reserved
+    // metadata key before it gets there — or an app-written scope would be read as event metadata.
+    @Test
+    fun anElementScopeEntryUnderTheReservedMetadataKeyIsLeftOut() {
+        val tracker = AutocaptureRecordingTracker()
+        val scope = JsonObject(
+            mapOf(
+                RESERVED_METADATA_KEY to JsonObject(mapOf("kind" to JsonPrimitive("impression"))),
+                "row" to JsonPrimitive("3"),
+            ),
+        )
+
+        reportTapIfResolvable(tracker, ScopeStack(), Autocapture()) { AutocaptureTarget("like_button", scope) }
+
+        assertEquals(JsonObject(mapOf("row" to JsonPrimitive("3"))), tracker.trackedProps.single())
     }
 
     @Test

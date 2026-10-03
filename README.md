@@ -53,9 +53,9 @@ SPI is vendor-neutral.
 >
 > **Exception — the envelope is stable now.** The fields stamped under
 > `context.instrumentation` (or wherever a given transport places it) — `event_id`, `seq`,
-> `global_seq`, `session_id`, `session_start`, `sdk`, `event_timestamp`, `schema_version` —
-> and that object's top-level shape follow semver: no renames or type changes without a
-> major version bump. Their meaning is part of that contract too: `event_timestamp` is when the
+> `global_seq`, `session_id`, `session_start`, `sdk`, `event_timestamp`, `schema_version`,
+> `kind`, `impression` — and that object's top-level shape follow semver: no renames or type
+> changes without a major version bump. Their meaning is part of that contract too: `event_timestamp` is when the
 > event was fired — the `track`/`screen`/`identify` call for Autograph's events, and the vendor
 > SDK's own creation time for an event it generates itself (e.g. Segment's `Application Backgrounded`
 > on Android; iOS stamps only Autograph's own events) — not the later moment a transport's pipeline got
@@ -493,7 +493,12 @@ Every event now carries — this shape is the stable envelope contract described
     "seq": 42,                   // gap ⇒ an event was lost
     "sdk": "autograph/0.1.0",
     "event_timestamp": "2026-07-11T09:12:03.456Z", // captured at call time, not the transport's own
-    "schema_version": "2024-01" // your own tracking-plan version, if set — omitted otherwise
+    "schema_version": "2024-01", // your own tracking-plan version, if set — omitted otherwise
+    "kind": "impression",        // what produced the event, for events the library emits — omitted otherwise
+    "impression": {              // an impression's thresholds — present only on impressions
+      "min_duration_ms": 500,
+      "min_fraction_visible": 0.5
+    }
   }
 }
 ```

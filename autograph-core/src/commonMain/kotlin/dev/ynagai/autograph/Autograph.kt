@@ -258,11 +258,18 @@ internal class AutographTracker(
             deliver { transport.track(name, delivered, it) }
         } else if (!transport.stampsInPipeline) {
             deliver { transport.track(name, delivered, it?.copy(metadata = metadata)) }
-        } else if (transport is MetadataAwareTransport) {
-            deliver { transport.track(name, delivered, it, metadata) }
         } else {
-            warnMetadataDroppedOnce()
-            deliver { transport.track(name, delivered, it) }
+            val sink = transport.metadataSink()
+            deliver {
+                if (sink != null) {
+                    sink.track(name, delivered, it, metadata)
+                } else {
+                    // Warned from inside delivery, so an event refused because the tracker is closed
+                    // does not claim to have been delivered without its metadata.
+                    warnMetadataDroppedOnce()
+                    transport.track(name, delivered, it)
+                }
+            }
         }
     }
 
@@ -293,6 +300,18 @@ internal class AutographTracker(
     private var warnedMetadataDropped = false
 
     /**
+     * This transport as the receiver of an event's metadata, or null when the metadata would not reach
+     * the transport that stamps it. A [DebugTransport] declares the capability so it never hides it, but
+     * forwards metadata only to a delegate that has it too; looking through it here keeps the wrapped
+     * and unwrapped configurations warning the same way, once, through [logger].
+     */
+    private fun Transport.metadataSink(): MetadataAwareTransport? = when (this) {
+        is DebugTransport -> takeIf { metadataReachesDelegate }
+        is MetadataAwareTransport -> this
+        else -> null
+    }
+
+    /**
      * Logs, once per tracker, that a pipeline transport which is not a [MetadataAwareTransport] is
      * receiving events without their metadata. Once, because it is a property of the configuration,
      * not of the event: every later event with metadata loses it the same way.
@@ -303,7 +322,7 @@ internal class AutographTracker(
         }
         if (first) {
             report(
-                "Autograph: ${transport::class.simpleName} stamps in its own pipeline but does not implement " +
+                "Autograph: ${transport::class.simpleName ?: "the transport"} stamps in its own pipeline but does not implement " +
                     "MetadataAwareTransport; events are delivered without their kind and impression thresholds",
             )
         }

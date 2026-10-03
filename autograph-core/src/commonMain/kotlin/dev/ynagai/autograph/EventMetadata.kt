@@ -24,7 +24,8 @@ import kotlinx.serialization.json.putJsonObject
  *
  * It is a convention, not proof that the library produced the event: an app can put the same shape
  * in its own properties, and the tracker treats it the same way. Only the call-site `properties` are
- * read — a value under this key in [DefaultProperties] or in a compose scope is removed and ignored.
+ * read — a value under this key in [DefaultProperties] or in any scope (compose, `ScopeStack`, an
+ * element's autocapture scope, a SwiftUI scope) is removed and ignored.
  *
  * A [Tracker] you implement yourself, such as a test fake, does not strip it, so a fake standing in
  * for the real tracker sees this key in the `properties` of events the library emits.
@@ -89,6 +90,9 @@ public data class EventMetadata internal constructor(
  * A pipeline transport that does not implement it still receives the event, through
  * [Transport.track], without the metadata, and the tracker logs that once through
  * [AutographConfig.logger].
+ *
+ * There is no `screen` counterpart: a screen view carries no metadata. If one ever does, it gets a
+ * second capability interface, since this one's member set is frozen once it ships (ADR 0001 §2c).
  */
 public interface MetadataAwareTransport {
     /**

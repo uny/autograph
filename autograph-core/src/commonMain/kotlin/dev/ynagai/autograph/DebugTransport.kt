@@ -26,9 +26,9 @@ import kotlinx.serialization.json.JsonObject
  *
  * It is a [MetadataAwareTransport], so wrapping a pipeline transport does not hide that capability
  * from the tracker: an event's [EventMetadata] is logged and forwarded when [delegate] is one too.
- * When [delegate] is a pipeline transport that is not, the event is delivered without its metadata,
- * as the tracker would do unwrapped, but the notice goes to [log] on each such event instead of to
- * [AutographConfig.logger] — the tracker sees a capable transport here and does not warn.
+ * When [delegate] is a pipeline transport that is not, the tracker looks through this wrapper and
+ * treats the pair exactly as it treats [delegate] alone: the event is delivered without its metadata,
+ * and [AutographConfig.logger] is told once.
  */
 public class DebugTransport(
     private val delegate: Transport,
@@ -53,10 +53,18 @@ public class DebugTransport(
         if (delegate is MetadataAwareTransport) {
             delegate.track(name, props, envelope, metadata)
         } else {
-            log("Autograph [track] \"$name\": ${delegate::class.simpleName} does not implement MetadataAwareTransport; metadata dropped")
+            // The tracker does not route here for such a delegate (see [metadataReachesDelegate]); a direct
+            // caller gets the same outcome it would: the event, without the metadata.
             delegate.track(name, props, envelope)
         }
     }
+
+    /** Whether metadata handed to this wrapper reaches a transport that can use it, through any nesting. */
+    internal val metadataReachesDelegate: Boolean
+        get() = when (delegate) {
+            is DebugTransport -> delegate.metadataReachesDelegate
+            else -> delegate is MetadataAwareTransport
+        }
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         val props = properties.asJsonObject()

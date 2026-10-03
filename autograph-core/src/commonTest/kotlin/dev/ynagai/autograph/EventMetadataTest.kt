@@ -312,15 +312,31 @@ class EventMetadataTest {
     }
 
     @Test
-    fun debugTransportDeliversWithoutMetadataToAnIncapableDelegateAndSaysSo() {
+    fun debugTransportOverAnIncapableDelegateWarnsOnceThroughTheLoggerLikeTheDelegateAlone() {
         val delegate = PlainTransport(stampsInPipeline = true)
-        val lines = mutableListOf<String>()
+        val logs = mutableListOf<String>()
+        val tracker = tracker(DebugTransport(DebugTransport(delegate) {}) {}, logs)
 
-        tracker(DebugTransport(delegate) { lines += it })
-            .track("Hero Seen", props(RESERVED_METADATA_KEY to impressionMetadata))
+        tracker.track("Hero Seen", props(RESERVED_METADATA_KEY to impressionMetadata))
+        tracker.track("Button Tapped", props(RESERVED_METADATA_KEY to buildJsonObject { put("kind", "click") }))
 
-        assertEquals(JsonObject(emptyMap()), delegate.tracked.single().properties)
-        assertTrue(lines.any { it.contains("metadata dropped") }, lines.toString())
+        assertEquals(2, delegate.tracked.size)
+        delegate.tracked.forEach { assertEquals(JsonObject(emptyMap()), it.properties) }
+        assertEquals(1, logs.size, logs.toString())
+        assertTrue(logs.single().contains("MetadataAwareTransport"), logs.single())
+    }
+
+    @Test
+    fun aClosedTrackerDoesNotWarnAboutAnEventItRefused() {
+        val transport = PlainTransport(stampsInPipeline = true)
+        val logs = mutableListOf<String>()
+        val tracker = tracker(transport, logs)
+        tracker.close()
+
+        tracker.track("Hero Seen", props(RESERVED_METADATA_KEY to impressionMetadata))
+
+        assertEquals(emptyList(), transport.tracked)
+        assertEquals(emptyList(), logs)
     }
 
     @Test

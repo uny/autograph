@@ -12,6 +12,7 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
 
@@ -153,8 +154,9 @@ internal fun reportTapIfResolvable(
         // The element's own scope goes in as enrich's argument, i.e. the slot an explicit call site's
         // properties occupy, which lands it exactly where it belongs in that precedence: it refines
         // the ambient scope (the tapped element is more specific than the screen it sits on) while
-        // the reserved screen/section keys still win over it.
-        val properties = ctx.enrich(target.scope)
+        // the reserved screen/section keys still win over it. Being a scope, it never supplies event
+        // metadata, so its entry under the reserved key is left out before it takes that slot.
+        val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY)
         tracker.track(config.eventName, properties, target.identifier)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.
