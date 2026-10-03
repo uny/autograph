@@ -20,7 +20,9 @@ extension XCTestCase {
     ) {
         // Read once first: the predicate expectation polls on a ~1 s cadence, so going straight to it
         // costs about a second even when the label is already right (measured: +20 s over 23 tests).
-        if element.label == expected { return }
+        // `exists` first: reading `label` off an element with no match fails the test on the spot,
+        // where the predicate below would have waited for it to appear.
+        if element.exists, element.label == expected { return }
         let seen = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label == %@", expected), object: element)
         if XCTWaiter().wait(for: [seen], timeout: 15) != .completed {
             XCTFail("expected \(expected), last saw \(element.label). \(message)", file: file, line: line)
