@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.clickable
@@ -9,8 +11,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import androidx.compose.ui.layout.onVisibilityChanged
 import androidx.compose.ui.semantics.semantics
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.withEventMetadata
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -30,6 +35,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * saving one — a tappable element that also reported an impression produced no click event at all,
  * on either platform ([#158](https://github.com/uny/autograph/issues/158)). An element that should
  * report neither is what [autographIgnore] is for.
+ *
+ * The event carries `kind` `impression` and both thresholds in its envelope metadata (see
+ * [dev.ynagai.autograph.EventMetadata]), so a dashboard can tell which definition of "seen" it counts.
  */
 public fun Modifier.trackImpression(
     name: String,
@@ -44,7 +52,12 @@ public fun Modifier.trackImpression(
     onVisibilityChanged(minDurationMs = minDurationMs, minFractionVisible = minFractionVisible) { visible ->
         if (visible && !fired) {
             fired = true
-            tracker.track(name, withScreenContext(properties, screenContext), target)
+            val tagged = withScreenContext(properties, screenContext).withEventMetadata(
+                EventKinds.IMPRESSION,
+                impressionMinDurationMs = minDurationMs,
+                impressionMinFractionVisible = minFractionVisible.toDecimalDouble(),
+            )
+            tracker.track(name, tagged, target)
         }
     }
 }
@@ -52,7 +65,7 @@ public fun Modifier.trackImpression(
 /**
  * Fires [name] on click, then invokes [onClick]. Screen/section from the ambient [ScreenContext]
  * (see [TrackedScreen]) are merged into [properties] automatically when this element is nested
- * inside one.
+ * inside one. The event carries `kind` `click` in its envelope metadata.
  */
 public fun Modifier.trackClick(
     name: String,
@@ -64,7 +77,7 @@ public fun Modifier.trackClick(
     val screenContext = LocalScreenContext.current
     val claims = LocalAutocaptureClaims.current
     clickable {
-        tracker.track(name, withScreenContext(properties, screenContext), target)
+        tracker.track(name, withScreenContext(properties, screenContext).withEventMetadata(EventKinds.CLICK), target)
         // After the explicit event is recorded and before the caller's handler, because the mark's
         // whole meaning is "this tap already produced an event, so autocapture must not add one".
         // If `track` throws there is no explicit event, the mark never happens, and autocapture
@@ -88,3 +101,11 @@ internal fun withScreenContext(properties: JsonObject, context: ScreenContext?):
     val withScreen = JsonObject(properties + ("screen" to JsonPrimitive(context.screen)))
     return context.section?.let { JsonObject(withScreen + ("section" to JsonPrimitive(it))) } ?: withScreen
 }
+
+/**
+ * This threshold through its string form: `0.3f` becomes `0.3`, where [Float.toDouble] gives
+ * `0.30000001192092896`. `Float.toString` prints the shortest decimal that reads back as the same
+ * float, so a threshold written with few digits comes out as written. Measured on the JVM and on
+ * Kotlin/Native by this module's tests.
+ */
+internal fun Float.toDecimalDouble(): Double = toString().toDouble()

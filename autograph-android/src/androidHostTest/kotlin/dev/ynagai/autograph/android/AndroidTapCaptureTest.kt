@@ -12,9 +12,12 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EventKinds
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -51,9 +54,11 @@ class AndroidTapCaptureTest {
     private val appOwnedId = androidx.fragment.R.id.fragment_container_view_tag
 
     private val recorded = mutableListOf<Pair<String, String?>>()
+    private val recordedProperties = mutableListOf<Map<String, JsonElement>>()
     private val tracker = object : Tracker {
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
             recorded += name to target
+            recordedProperties += properties
         }
 
         override fun screen(name: String, properties: Map<String, JsonElement>) = Unit
@@ -63,6 +68,7 @@ class AndroidTapCaptureTest {
     @Before
     fun reset() {
         recorded.clear()
+        recordedProperties.clear()
         warnedATapResolvedToNothing = false
     }
 
@@ -268,6 +274,20 @@ class AndroidTapCaptureTest {
         activity.window.callback!!.dispatchTouchEvent(touchUp())
 
         assertEquals(listOf("Element Clicked" to "fragment_container_view_tag"), recorded)
+        capture.uninstall()
+    }
+
+    @Test
+    fun `a reported tap is marked as a click`() {
+        val (activity, capture) = install()
+        pressedButton(activity)
+
+        activity.window.callback!!.dispatchTouchEvent(touchUp())
+
+        assertEquals(
+            JsonPrimitive("""{"kind":"${EventKinds.CLICK}"}"""),
+            recordedProperties.single()[RESERVED_METADATA_KEY],
+        )
         capture.uninstall()
     }
 

@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
@@ -12,9 +14,12 @@ import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
+import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.withEventMetadata
 
 /**
  * Observes taps app-wide in [PointerEventPass.Final] — after any child `clickable` had a chance
@@ -156,7 +161,7 @@ internal fun reportTapIfResolvable(
         // the ambient scope (the tapped element is more specific than the screen it sits on) while
         // the reserved screen/section keys still win over it. Being a scope, it never supplies event
         // metadata, so its entry under the reserved key is left out before it takes that slot.
-        val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY)
+        val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY).withEventMetadata(EventKinds.CLICK)
         tracker.track(config.eventName, properties, target.identifier)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.

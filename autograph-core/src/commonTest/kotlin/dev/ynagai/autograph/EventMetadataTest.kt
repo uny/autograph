@@ -398,4 +398,66 @@ class EventMetadataTest {
 
         assertEquals(setOf("kind"), json.keys)
     }
+
+    // ---- withEventMetadata: the builder the emit sites use ----
+
+    @OptIn(AutographInternalApi::class)
+    @Test
+    fun withEventMetadataRoundTripsThroughTheTrackerIntoTheEnvelope() {
+        val transport = PlainTransport(stampsInPipeline = false)
+
+        tracker(transport).track(
+            "Hero Seen",
+            props("slot" to JsonPrimitive("top"))
+                .withEventMetadata(EventKinds.IMPRESSION, impressionMinDurationMs = 750, impressionMinFractionVisible = 0.3),
+        )
+
+        val event = transport.tracked.single()
+        assertEquals(props("slot" to JsonPrimitive("top")), event.properties)
+        assertEquals(
+            EventMetadata(kind = EventKinds.IMPRESSION, impressionMinDurationMs = 750, impressionMinFractionVisible = 0.3),
+            event.envelope?.metadata,
+        )
+    }
+
+    @OptIn(AutographInternalApi::class)
+    @Test
+    fun withEventMetadataReplacesWhateverWasUnderTheKey() {
+        val properties = props(RESERVED_METADATA_KEY to impressionMetadata).withEventMetadata(EventKinds.CLICK)
+
+        assertEquals(JsonPrimitive("""{"kind":"click"}"""), properties[RESERVED_METADATA_KEY])
+    }
+
+    // The emit sites write the value as a string so it survives the Kotlin/Native bridge into a Swift
+    // Tracker; the tracker must read that string as it reads the object.
+    @Test
+    fun metadataEncodedAsAStringIsReadLikeTheObject() {
+        val transport = PlainTransport(stampsInPipeline = false)
+
+        tracker(transport).track("Hero Seen", props(RESERVED_METADATA_KEY to JsonPrimitive(impressionMetadata.toString())))
+
+        val event = transport.tracked.single()
+        assertEquals(props(), event.properties)
+        assertEquals(
+            EventMetadata(kind = EventKinds.IMPRESSION, impressionMinDurationMs = 500, impressionMinFractionVisible = 0.5),
+            event.envelope?.metadata,
+        )
+    }
+
+    @Test
+    fun aStringThatIsNotAJsonObjectIsRemovedAndCarriesNothing() {
+        val tooDeep = """{"kind":"click","x":""" + "[".repeat(10_000) + "]".repeat(10_000) + "}"
+        val tooLong = """{"kind":"click","x":"""" + "a".repeat(2_000) + "\"}"
+        // Each of these three parses to a valid `click` without its bound, so they fail if a bound goes.
+        val tooManyBrackets = """{"kind":"click","x":[[[[[[[[]]]]]]]]}"""
+        for (raw in listOf("click", "{not json", "[1,2]", "\"click\"", "", tooDeep, tooLong, tooManyBrackets)) {
+            val transport = PlainTransport(stampsInPipeline = false)
+
+            tracker(transport).track("Hero Seen", props(RESERVED_METADATA_KEY to JsonPrimitive(raw)))
+
+            val event = transport.tracked.single()
+            assertEquals(props(), event.properties, "for ${raw.take(40)}")
+            assertNull(event.envelope?.metadata, "for ${raw.take(40)}")
+        }
+    }
 }

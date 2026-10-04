@@ -9,6 +9,7 @@
 final class dev.ynagai.autograph.uikit/AutographElementCapture { // dev.ynagai.autograph.uikit/AutographElementCapture|null[0]
     constructor <init>(dev.ynagai.autograph/Tracker, dev.ynagai.autograph.context/ScopeStack) // dev.ynagai.autograph.uikit/AutographElementCapture.<init>|<init>(dev.ynagai.autograph.Tracker;dev.ynagai.autograph.context.ScopeStack){}[0]
 
+    final fun buttonClicked(kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin/String? = ...) // dev.ynagai.autograph.uikit/AutographElementCapture.buttonClicked|buttonClicked(kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.String?){}[0]
     final fun clicked(kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin/String? = ...) // dev.ynagai.autograph.uikit/AutographElementCapture.clicked|clicked(kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.String?){}[0]
     final fun clickedJson(kotlin/String, kotlin/String, kotlin.collections/Map<kotlin/String, kotlin/String> = ..., kotlin/String? = ...) // dev.ynagai.autograph.uikit/AutographElementCapture.clickedJson|clickedJson(kotlin.String;kotlin.String;kotlin.collections.Map<kotlin.String,kotlin.String>;kotlin.String?){}[0]
 }

@@ -1,6 +1,8 @@
 package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventKinds
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.asJsonObject
@@ -16,6 +18,7 @@ import kotlin.test.assertTrue
 import kotlinx.cinterop.ExperimentalForeignApi
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import platform.CoreGraphics.CGRectMake
 import platform.UIKit.UIAccessibilityTraitButton
 import platform.UIKit.UIButton
@@ -362,13 +365,14 @@ class NativeTapCaptureTest {
         capture.report(AxPoint(15f, 15f), root)
 
         assertEquals(listOf<String?>("share_button"), tracker.targets)
-        // The event name and the scope enrichment ride the same call, and nothing else covers them on
-        // this path — see [RecordingTracker].
+        // The event name, the scope enrichment and the click kind (#287) ride the same call, and nothing
+        // else covers them on this path — see [RecordingTracker].
         assertEquals(listOf("Element Clicked"), tracker.names, "the configured event name must be used")
+        val clickKind = JsonPrimitive("""{"kind":"${EventKinds.CLICK}"}""")
         assertEquals(
-            listOf(scopeStack.current().enrich(EmptyJsonObject)),
+            listOf(JsonObject(scopeStack.current().enrich(EmptyJsonObject) + (RESERVED_METADATA_KEY to clickKind))),
             tracker.properties,
-            "a resolved tap must carry the shared scope stack's context, not bare empty properties",
+            "a resolved tap must carry the shared scope stack's context and the click kind",
         )
         assertNotEquals(
             listOf(EmptyJsonObject),

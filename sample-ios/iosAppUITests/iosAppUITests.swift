@@ -856,6 +856,13 @@ final class SwiftUIExplicitUITests: XCTestCase {
             lastProps(app).contains("\"surface\":\"list\""),
             "AutographButton's call-site properties did not reach the event: \(lastProps(app))"
         )
+        // #287: only a real tap reaches the button's action, so this is the one place that sees
+        // `AutographButton.body` call the click-marking path rather than plain `track`. The tracker on
+        // this screen is written in Swift and reads every value, which a nested object would trap.
+        XCTAssertTrue(
+            lastProps(app).contains(#""__autograph":"{\"kind\":\"click\"}""#),
+            "AutographButton did not mark the event as a click: \(lastProps(app))"
+        )
     }
 
     /// **The invariant this API exists for.** A disabled `AutographButton` records nothing, because the
@@ -923,6 +930,11 @@ final class SwiftUIExplicitUITests: XCTestCase {
         XCTAssertTrue(
             lastProps(app).contains("\"plan\":\"pro\""),
             "call-site properties missing: \(lastProps(app))"
+        )
+        // #287: `autograph.track` can be called from anywhere, so it claims no kind.
+        XCTAssertFalse(
+            lastProps(app).contains("__autograph"),
+            "plain autograph.track must not mark its event: \(lastProps(app))"
         )
     }
 

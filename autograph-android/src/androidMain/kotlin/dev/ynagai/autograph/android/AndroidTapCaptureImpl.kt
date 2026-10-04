@@ -10,8 +10,10 @@ import android.view.MotionEvent
 import android.view.Window
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.withEventMetadata
 
 /**
  * The engine behind [installAutographNativeTapCapture]: it keeps one [TapWindowCallback] of its own
@@ -147,7 +149,7 @@ internal class AndroidTapCapture(
                     // mask it raised itself — never a sibling surface's, whatever was pushed last.
                     // Ambient when nothing has claimed the view tree, which is the pre-#216 answer.
                     val context = resolution.origin?.let(scopeStack::current) ?: scopeStack.current()
-                    tracker.track(eventName, context.enrich(EmptyJsonObject), resolution.identifier)
+                    tracker.track(eventName, context.enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK), resolution.identifier)
                     return true
                 }
                 // Neither spends the gesture, for the same reason a touch-up that resolved to nothing
