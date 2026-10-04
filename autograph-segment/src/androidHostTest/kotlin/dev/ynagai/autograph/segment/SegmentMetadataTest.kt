@@ -48,12 +48,15 @@ class SegmentMetadataTest {
     fun metadataExtendsTheStampedInstrumentationBlock() {
         val stamped = AutographPlugin(source).execute(event())
 
-        val result = stamped.withMetadata(testEventMetadata(kind = "impression", impressionMinFractionVisible = 0.5))
+        val result = stamped.withMetadata(
+            testEventMetadata(kind = "impression", impressionMinFractionVisible = 0.5, screenViewId = "visit-1"),
+        )
 
         val instrumentation = result.context["instrumentation"]!!.jsonObject
         assertEquals("evt-123", instrumentation["event_id"]?.jsonPrimitive?.content, "the envelope is kept")
         assertEquals("impression", instrumentation["kind"]?.jsonPrimitive?.content)
         assertEquals("0.5", instrumentation["impression"]!!.jsonObject["min_fraction_visible"]?.jsonPrimitive?.content)
+        assertEquals("visit-1", instrumentation["screen_view_id"]?.jsonPrimitive?.content)
     }
 
     /**

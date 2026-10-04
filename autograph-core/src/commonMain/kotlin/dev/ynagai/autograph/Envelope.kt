@@ -53,8 +53,8 @@ public data class Envelope internal constructor(
     val schemaVersion: String? = null,
     /**
      * How the event was produced — its kind, for an impression its visibility thresholds, and the
-     * screen visit it belongs to — or null for an event that carries none, such as a plain `track` call. Serialized into this same
-     * block, not under a key of its own. See [EventMetadata].
+     * screen visit it belongs to — or null for an event that carries none, such as a plain `track`
+     * call. Serialized into this same block, not under a key of its own. See [EventMetadata].
      */
     val metadata: EventMetadata? = null,
 ) {

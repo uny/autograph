@@ -38,8 +38,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     `MetadataAwareTransport` interface, which the core checks with `is` (ADR 0001 §2c). It has a
     `track` and a `screen` member, and its member set is frozen once it ships. `SegmentTransport` on
     Android implements it and adds the fields to `context.instrumentation` through Segment's
-    per-event enrichment closure, for track events and screen views alike. A pipeline transport that does not implement it
-    still receives the event, without the metadata, and the tracker logs that once.
+    per-event enrichment closure, for track events and screen views alike. A pipeline transport
+    that does not implement it still receives the event, without the metadata, and the tracker
+    logs that once.
   - `DebugTransport` implements `MetadataAwareTransport` too. It forwards the metadata when its
     delegate does, so wrapping `SegmentTransport` loses nothing. Over a delegate that does not, the
     tracker treats the pair like the delegate alone: one warning through the logger.

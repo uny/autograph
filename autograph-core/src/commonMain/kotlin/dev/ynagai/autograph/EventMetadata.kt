@@ -76,7 +76,8 @@ public data class EventMetadata internal constructor(
      * The visit of a screen this event belongs to (#242): one id per `Screen Viewed` the library emits,
      * carried by that screen view and by the events that happen during the visit it starts. Null when
      * the event cannot be tied to one visit. It comes from the configured [EventIdGenerator], so it is
-     * not necessarily a UUIDv7, and an id that would not fit in [RESERVED_METADATA_KEY]'s bound is lost.
+     * not necessarily a UUIDv7. An id long enough to push the encoded value past
+     * [RESERVED_METADATA_KEY]'s bound loses the event's whole metadata, not just the id.
      */
     val screenViewId: String?,
 ) {
@@ -149,8 +150,8 @@ private fun parseMetadata(raw: JsonElement): EventMetadata? {
 
 /**
  * The longest encoded metadata string the tracker parses. The library's own value is under 200
- * characters with a UUID screen view id; the bound exists so that an arbitrary string under the reserved key cannot make
- * `track` do unbounded work.
+ * characters with a UUID screen view id; the bound exists so that an arbitrary string under the
+ * reserved key cannot make `track` do unbounded work.
  */
 private const val MAX_ENCODED_METADATA_LENGTH = 1024
 
