@@ -73,6 +73,17 @@ public class DebugTransport(
         delegate.screen(name, props, envelope)
     }
 
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
+        val props = properties.asJsonObject()
+        logEvent("screen", name, props, envelope, metadata)
+        if (delegate is MetadataAwareTransport) {
+            delegate.screen(name, props, envelope, metadata)
+        } else {
+            // As for [track]: the tracker does not route here for such a delegate.
+            delegate.screen(name, props, envelope)
+        }
+    }
+
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         val props = traits.asJsonObject()
         logEvent("identify", userId, props, envelope)

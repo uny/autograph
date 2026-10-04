@@ -3,6 +3,7 @@ package dev.ynagai.autograph.segment
 import com.segment.analytics.kotlin.core.Analytics
 import com.segment.analytics.kotlin.core.BaseEvent
 import com.segment.analytics.kotlin.core.Configuration
+import com.segment.analytics.kotlin.core.ScreenEvent
 import com.segment.analytics.kotlin.core.TrackEvent
 import com.segment.analytics.kotlin.core.platform.Plugin
 import com.segment.analytics.kotlin.core.utilities.InMemoryStorageProvider
@@ -68,13 +69,8 @@ class SegmentMetadataTest {
         assertEquals("evt-123", stamped.messageId)
     }
 
-    /**
-     * End to end through a real `Analytics`: the enrichment closure must run after [AutographPlugin]
-     * (Segment documents and implements Before → Enrichment → closure → Destination), and the reserved
-     * key must be gone from the serialized `properties`.
-     */
-    @Test
-    fun throughARealAnalyticsTheKindLandsInInstrumentationAndNotInProperties() {
+    /** A real `Analytics` that talks to nothing, with every event it delivers collected into [captured]. */
+    private fun analytics(captured: MutableList<BaseEvent>): Analytics {
         val analytics = Analytics(
             Configuration(
                 writeKey = "autograph-test",
@@ -85,7 +81,6 @@ class SegmentMetadataTest {
                 cdnHost = "127.0.0.1:9/v1",
             ),
         )
-        val captured = CopyOnWriteArrayList<BaseEvent>()
         analytics.add(
             object : Plugin {
                 override val type = Plugin.Type.After
@@ -93,6 +88,18 @@ class SegmentMetadataTest {
                 override fun execute(event: BaseEvent): BaseEvent = event.also { captured += it }
             },
         )
+        return analytics
+    }
+
+    /**
+     * End to end through a real `Analytics`: the enrichment closure must run after [AutographPlugin]
+     * (Segment documents and implements Before → Enrichment → closure → Destination), and the reserved
+     * key must be gone from the serialized `properties`.
+     */
+    @Test
+    fun throughARealAnalyticsTheKindLandsInInstrumentationAndNotInProperties() {
+        val captured = CopyOnWriteArrayList<BaseEvent>()
+        val analytics = analytics(captured)
         val logs = CopyOnWriteArrayList<String>()
         val tracker = Autograph {
             transport(SegmentTransport(analytics))
@@ -131,5 +138,41 @@ class SegmentMetadataTest {
         val plainInstrumentation = plain.context["instrumentation"]!!.jsonObject
         assertFalse("kind" in plainInstrumentation, "a plain track carries no kind")
         assertEquals(emptyList(), logs.toList(), "SegmentTransport is capable, so nothing is dropped")
+    }
+
+    /** #242: a screen view's id reaches `context.instrumentation` through `screen`'s enrichment closure. */
+    @Test
+    fun throughARealAnalyticsAScreenViewIdLandsInInstrumentationAndNotInProperties() {
+        val captured = CopyOnWriteArrayList<BaseEvent>()
+        val logs = CopyOnWriteArrayList<String>()
+        val tracker = Autograph {
+            transport(SegmentTransport(analytics(captured)))
+            store = InMemorySeqStore()
+            logger = AutographLogger { logs += it }
+        }
+
+        tracker.screen(
+            "Home",
+            buildJsonObject {
+                put("tab", "recipes")
+                put(RESERVED_METADATA_KEY, """{"screen_view_id":"visit-1"}""")
+            },
+        )
+        tracker.screen("Settings")
+
+        val deadline = System.currentTimeMillis() + 15_000
+        while (captured.count { it is ScreenEvent } < 2 && System.currentTimeMillis() < deadline) Thread.sleep(20)
+        val screens = captured.filterIsInstance<ScreenEvent>().associateBy { it.name }
+        assertEquals(setOf("Home", "Settings"), screens.keys, "both screen views reach the After plugin")
+        val home = screens.getValue("Home")
+
+        val serialized = EncodeDefaultsJson.encodeToJsonElement(ScreenEvent.serializer(), home).jsonObject
+        assertEquals(JsonObject(mapOf("tab" to JsonPrimitive("recipes"))), serialized["properties"])
+        val instrumentation = serialized["context"]!!.jsonObject["instrumentation"]!!.jsonObject
+        assertEquals("visit-1", instrumentation["screen_view_id"]?.jsonPrimitive?.content)
+        assertEquals(home.messageId, instrumentation["event_id"]?.jsonPrimitive?.content, "stamped before the closure ran")
+
+        assertFalse("screen_view_id" in screens.getValue("Settings").context["instrumentation"]!!.jsonObject)
+        assertEquals(emptyList(), logs.toList())
     }
 }

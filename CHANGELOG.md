@@ -22,9 +22,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     (`RESERVED_METADATA_KEY`), as a JSON object encoded as a string. A string, because Kotlin/Native
     hands a nested object to Swift as a dictionary, and a `Tracker` implemented in Swift crashes
     when it reads one. The tracker also accepts the object unencoded. It always removes the key
-    before `EventValidator` runs, even when its value is malformed. It reads only `kind` and `impression.min_duration_ms` /
-    `impression.min_fraction_visible` from the value, and those fields cannot overwrite
-    `event_id`, the sequence numbers or the session.
+    before `EventValidator` runs, even when its value is malformed. It reads only `kind`,
+    `impression.min_duration_ms` / `impression.min_fraction_visible` and `screen_view_id` from the
+    value, and those fields cannot overwrite `event_id`, the sequence numbers or the session.
+    `screen` reads the key as `track` does, so a screen view can carry metadata too.
   - The metadata is read from the call site only. The tracker discards a `DefaultProperties`
     entry under the key, and every scope merge discards a scope entry under it: `AutographScope`,
     a `ScopeStack` frame, an element's autocapture scope, and a SwiftUI `.autographScope`.
@@ -34,13 +35,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     also changes what `Envelope`'s `equals`, `hashCode` and `toString` cover, which matters only to
     code that keys a map on an envelope (ADR 0001 §2a).
   - A transport that stamps in its own pipeline gets the metadata through the new
-    `MetadataAwareTransport` interface, which the core checks with `is` (ADR 0001 §2c).
-    `SegmentTransport` on Android implements it and adds the fields to `context.instrumentation`
-    through Segment's per-event enrichment closure. A pipeline transport that does not implement it
+    `MetadataAwareTransport` interface, which the core checks with `is` (ADR 0001 §2c). It has a
+    `track` and a `screen` member, and its member set is frozen once it ships. `SegmentTransport` on
+    Android implements it and adds the fields to `context.instrumentation` through Segment's
+    per-event enrichment closure, for track events and screen views alike. A pipeline transport that does not implement it
     still receives the event, without the metadata, and the tracker logs that once.
   - `DebugTransport` implements `MetadataAwareTransport` too. It forwards the metadata when its
     delegate does, so wrapping `SegmentTransport` loses nothing. Over a delegate that does not, the
     tracker treats the pair like the delegate alone: one warning through the logger.
+  - `EventMetadata.screenViewId` (`screen_view_id` in `context.instrumentation`) carries the screen
+    visit id of [#242].
   - `autograph-test` adds `testEventMetadata(...)` and a `metadata` parameter on `testEnvelope(...)`.
 
   The key is a convention, not proof that the library produced an event: an app can put the same
@@ -1706,6 +1710,7 @@ Initial release.
 [#237]: https://github.com/uny/autograph/issues/237
 [#238]: https://github.com/uny/autograph/issues/238
 [#240]: https://github.com/uny/autograph/issues/240
+[#242]: https://github.com/uny/autograph/issues/242
 [#243]: https://github.com/uny/autograph/issues/243
 [#253]: https://github.com/uny/autograph/issues/253
 [#254]: https://github.com/uny/autograph/issues/254

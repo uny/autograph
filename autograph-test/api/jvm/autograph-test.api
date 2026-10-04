@@ -59,7 +59,7 @@ public final class dev/ynagai/autograph/test/InMemoryTestTransport$RecordedEvent
 public final class dev/ynagai/autograph/test/TestEnvelopeKt {
 	public static final fun testEnvelope (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/EventMetadata;)Ldev/ynagai/autograph/Envelope;
 	public static synthetic fun testEnvelope$default (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/EventMetadata;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
-	public static final fun testEventMetadata (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;)Ldev/ynagai/autograph/EventMetadata;
-	public static synthetic fun testEventMetadata$default (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;ILjava/lang/Object;)Ldev/ynagai/autograph/EventMetadata;
+	public static final fun testEventMetadata (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/String;)Ldev/ynagai/autograph/EventMetadata;
+	public static synthetic fun testEventMetadata$default (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/EventMetadata;
 }
 

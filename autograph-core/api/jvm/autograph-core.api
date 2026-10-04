@@ -44,6 +44,7 @@ public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/Me
 	public fun identify (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 	public fun reset ()V
 	public fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
+	public fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;Ldev/ynagai/autograph/EventMetadata;)V
 	public fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;)V
 	public fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;Ldev/ynagai/autograph/EventMetadata;)V
 }
@@ -83,8 +84,8 @@ public final class dev/ynagai/autograph/Envelope {
 public final class dev/ynagai/autograph/EnvelopeKt {
 	public static final fun createEnvelope (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/EventMetadata;)Ldev/ynagai/autograph/Envelope;
 	public static synthetic fun createEnvelope$default (Ljava/lang/String;Ljava/lang/String;JLjava/lang/Long;Ljava/lang/Long;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/EventMetadata;ILjava/lang/Object;)Ldev/ynagai/autograph/Envelope;
-	public static final fun createEventMetadata (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;)Ldev/ynagai/autograph/EventMetadata;
-	public static synthetic fun createEventMetadata$default (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;ILjava/lang/Object;)Ldev/ynagai/autograph/EventMetadata;
+	public static final fun createEventMetadata (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/String;)Ldev/ynagai/autograph/EventMetadata;
+	public static synthetic fun createEventMetadata$default (Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/String;ILjava/lang/Object;)Ldev/ynagai/autograph/EventMetadata;
 }
 
 public abstract interface class dev/ynagai/autograph/EnvelopeSource {
@@ -117,10 +118,12 @@ public final class dev/ynagai/autograph/EventMetadata {
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/Long;
 	public final fun component3 ()Ljava/lang/Double;
+	public final fun component4 ()Ljava/lang/String;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getImpressionMinDurationMs ()Ljava/lang/Long;
 	public final fun getImpressionMinFractionVisible ()Ljava/lang/Double;
 	public final fun getKind ()Ljava/lang/String;
+	public final fun getScreenViewId ()Ljava/lang/String;
 	public fun hashCode ()I
 	public final fun toJson ()Lkotlinx/serialization/json/JsonObject;
 	public fun toString ()Ljava/lang/String;
@@ -128,8 +131,8 @@ public final class dev/ynagai/autograph/EventMetadata {
 
 public final class dev/ynagai/autograph/EventMetadataKt {
 	public static final field RESERVED_METADATA_KEY Ljava/lang/String;
-	public static final fun withEventMetadata (Ljava/util/Map;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;)Lkotlinx/serialization/json/JsonObject;
-	public static synthetic fun withEventMetadata$default (Ljava/util/Map;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;ILjava/lang/Object;)Lkotlinx/serialization/json/JsonObject;
+	public static final fun withEventMetadata (Ljava/util/Map;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/String;)Lkotlinx/serialization/json/JsonObject;
+	public static synthetic fun withEventMetadata$default (Ljava/util/Map;Ljava/lang/String;Ljava/lang/Long;Ljava/lang/Double;Ljava/lang/String;ILjava/lang/Object;)Lkotlinx/serialization/json/JsonObject;
 }
 
 public abstract interface class dev/ynagai/autograph/EventValidator {
@@ -147,6 +150,7 @@ public final class dev/ynagai/autograph/InMemorySeqStore : dev/ynagai/autograph/
 }
 
 public abstract interface class dev/ynagai/autograph/MetadataAwareTransport {
+	public abstract fun screen (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;Ldev/ynagai/autograph/EventMetadata;)V
 	public abstract fun track (Ljava/lang/String;Ljava/util/Map;Ldev/ynagai/autograph/Envelope;Ldev/ynagai/autograph/EventMetadata;)V
 }
 
