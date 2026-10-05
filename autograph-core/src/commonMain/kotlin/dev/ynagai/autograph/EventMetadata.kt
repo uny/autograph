@@ -56,7 +56,7 @@ public object EventKinds {
 
 /**
  * What the library knows about how an event was produced, beyond its name and properties (#287,
- * #243). It is carried in the envelope ([Envelope.metadata]) and serialized into the same
+ * #243, #242). It is carried in the envelope ([Envelope.metadata]) and serialized into the same
  * `context.instrumentation` block, never into `properties`.
  *
  * **Produced by the library, never constructed by callers** (ADR 0001 §2a), so it can gain fields as
@@ -72,6 +72,14 @@ public data class EventMetadata internal constructor(
     val impressionMinDurationMs: Long?,
     /** For an impression, the fraction of the element (0 to 1) that had to be visible. */
     val impressionMinFractionVisible: Double?,
+    /**
+     * The visit of a screen this event belongs to (#242): one id per `Screen Viewed` the library emits,
+     * carried by that screen view and by the events that happen during the visit it starts. Null when
+     * the event cannot be tied to one visit. It comes from the configured [EventIdGenerator], so it is
+     * not necessarily a UUIDv7. An id long enough to push the encoded value past
+     * [RESERVED_METADATA_KEY]'s bound loses the event's whole metadata, not just the id.
+     */
+    val screenViewId: String?,
 ) {
     /**
      * The fields this metadata adds to the `context.instrumentation` block. A field that is null is
@@ -79,6 +87,7 @@ public data class EventMetadata internal constructor(
      */
     public fun toJson(): JsonObject = buildJsonObject {
         kind?.let { put("kind", it) }
+        screenViewId?.let { put("screen_view_id", it) }
         if (impressionMinDurationMs != null || impressionMinFractionVisible != null) {
             putJsonObject("impression") {
                 impressionMinDurationMs?.let { put("min_duration_ms", it) }
@@ -93,16 +102,15 @@ public data class EventMetadata internal constructor(
  * event's [EventMetadata] to the envelope it stamps there (ADR 0001 §2c: a capability the core probes
  * with `is`, because [Transport]'s own member set is frozen).
  *
- * The core calls [track] here instead of [Transport.track] only for an event that carries metadata;
- * every other event still goes through [Transport.track]. A transport the core stamps for never needs
- * this: the core puts the metadata on the [Envelope] it passes in.
+ * The core calls [track] / [screen] here instead of [Transport.track] / [Transport.screen] only for an
+ * event that carries metadata; every other event still goes through [Transport]. A transport the core
+ * stamps for never needs this: the core puts the metadata on the [Envelope] it passes in.
  *
- * A pipeline transport that does not implement it still receives the event, through
- * [Transport.track], without the metadata, and the tracker logs that once through
- * [AutographConfig.logger].
+ * A pipeline transport that does not implement it still receives the event, through [Transport],
+ * without the metadata, and the tracker logs that once through [AutographConfig.logger].
  *
- * There is no `screen` counterpart: a screen view carries no metadata. If one ever does, it gets a
- * second capability interface, since this one's member set is frozen once it ships (ADR 0001 §2c).
+ * Its member set is frozen once it ships (ADR 0001 §2c): a later event type that carries metadata gets
+ * a second capability interface.
  */
 public interface MetadataAwareTransport {
     /**
@@ -110,6 +118,12 @@ public interface MetadataAwareTransport {
      * transport stamps for this event. [properties] no longer contain [RESERVED_METADATA_KEY].
      */
     public fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata)
+
+    /**
+     * Delivers a screen view exactly as [Transport.screen] would, and adds [metadata] to the envelope
+     * the transport stamps for it. [properties] no longer contain [RESERVED_METADATA_KEY].
+     */
+    public fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata)
 }
 
 /**
@@ -129,14 +143,15 @@ private fun parseMetadata(raw: JsonElement): EventMetadata? {
     val minDurationMs = impression?.get("min_duration_ms").numberOrNull()?.longOrNull?.takeIf { it >= 0 }
     val minFractionVisible = impression?.get("min_fraction_visible").numberOrNull()?.doubleOrNull
         ?.takeIf { it in 0.0..1.0 }
-    if (kind == null && minDurationMs == null && minFractionVisible == null) return null
-    return EventMetadata(kind, minDurationMs, minFractionVisible)
+    val screenViewId = obj["screen_view_id"].stringOrNull()?.takeIf { it.isNotEmpty() }
+    if (kind == null && minDurationMs == null && minFractionVisible == null && screenViewId == null) return null
+    return EventMetadata(kind, minDurationMs, minFractionVisible, screenViewId)
 }
 
 /**
- * The longest encoded metadata string the tracker parses. The library's own value is under 150
- * characters; the bound exists so that an arbitrary string under the reserved key cannot make
- * `track` do unbounded work.
+ * The longest encoded metadata string the tracker parses. The library's own value is under 200
+ * characters with a UUID screen view id; the bound exists so that an arbitrary string under the
+ * reserved key cannot make `track` do unbounded work.
  */
 private const val MAX_ENCODED_METADATA_LENGTH = 1024
 
@@ -173,12 +188,15 @@ private fun JsonElement?.numberOrNull(): JsonPrimitive? = (this as? JsonPrimitiv
  */
 @AutographInternalApi
 public fun Map<String, JsonElement>.withEventMetadata(
-    kind: String,
+    kind: String?,
     impressionMinDurationMs: Long? = null,
     impressionMinFractionVisible: Double? = null,
+    screenViewId: String? = null,
 ): JsonObject = JsonObject(
     this + (
         RESERVED_METADATA_KEY to
-            JsonPrimitive(EventMetadata(kind, impressionMinDurationMs, impressionMinFractionVisible).toJson().toString())
+            JsonPrimitive(
+                EventMetadata(kind, impressionMinDurationMs, impressionMinFractionVisible, screenViewId).toJson().toString(),
+            )
         ),
 )

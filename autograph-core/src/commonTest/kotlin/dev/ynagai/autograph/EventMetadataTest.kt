@@ -42,6 +42,10 @@ class EventMetadataTest {
         override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
             tracked += Delivered(name, properties.asJsonObject(), envelope, metadata)
         }
+
+        override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
+            screened += Delivered(name, properties.asJsonObject(), envelope, metadata)
+        }
     }
 
     private fun tracker(
@@ -64,6 +68,8 @@ class EventMetadataTest {
         }
     }
 
+    private val screenViewMetadata = buildJsonObject { put("screen_view_id", "visit-1") }
+
     private fun props(vararg entries: Pair<String, JsonElement>): JsonObject = JsonObject(mapOf(*entries))
 
     // ---- core-stamped transports: the metadata rides on the envelope ----
@@ -79,7 +85,7 @@ class EventMetadataTest {
 
         val event = transport.tracked.single()
         assertEquals(props("slot" to JsonPrimitive("top")), event.properties)
-        assertEquals(EventMetadata("impression", 500L, 0.5), event.envelope?.metadata)
+        assertEquals(EventMetadata("impression", 500L, 0.5, null), event.envelope?.metadata)
         val json = event.envelope!!.toJson()
         assertEquals("impression", json["kind"]?.jsonPrimitive?.content)
         assertEquals(
@@ -124,15 +130,32 @@ class EventMetadataTest {
         assertEquals("click", transport.tracked.single().envelope?.metadata?.kind)
     }
 
+    // #242: a screen view carries its visit's id, so the reserved key is read on `screen` as on `track`.
     @Test
-    fun aScreenViewDropsTheReservedKeyAndCarriesNoMetadata() {
+    fun aScreenViewCarriesItsMetadataOnTheEnvelope() {
         val transport = PlainTransport(stampsInPipeline = false)
+        val tracker = tracker(transport)
 
-        tracker(transport).screen("Home", props(RESERVED_METADATA_KEY to impressionMetadata))
+        tracker.screen("Home", props("tab" to JsonPrimitive("recipes"), RESERVED_METADATA_KEY to screenViewMetadata))
+        tracker.screen("Settings")
 
-        val event = transport.screened.single()
-        assertEquals(JsonObject(emptyMap()), event.properties)
-        assertNull(event.envelope?.metadata)
+        val (home, settings) = transport.screened
+        assertEquals(props("tab" to JsonPrimitive("recipes")), home.properties)
+        assertEquals(EventMetadata(null, null, null, "visit-1"), home.envelope?.metadata)
+        assertEquals("visit-1", home.envelope!!.toJson()["screen_view_id"]?.jsonPrimitive?.content)
+        assertNull(settings.envelope?.metadata, "a plain screen call carries none")
+    }
+
+    @Test
+    fun aScreenViewIdAloneIsMetadata() {
+        fun parse(value: JsonElement) = extractMetadata(props(RESERVED_METADATA_KEY to value)).second
+
+        assertEquals(EventMetadata(null, null, null, "visit-1"), parse(screenViewMetadata))
+        assertEquals(EventMetadata("click", null, null, "visit-1"), parse(buildJsonObject { put("kind", "click"); put("screen_view_id", "visit-1") }))
+        // An empty or non-string id is dropped on its own.
+        assertNull(parse(buildJsonObject { put("screen_view_id", "") }))
+        assertNull(parse(buildJsonObject { put("screen_view_id", 1) }))
+        assertEquals(EventMetadata("click", null, null, null), parse(buildJsonObject { put("kind", "click"); put("screen_view_id", 1) }))
     }
 
     @Test
@@ -162,7 +185,7 @@ class EventMetadataTest {
 
         // A bad threshold drops that threshold only.
         assertEquals(
-            EventMetadata("impression", null, 0.5),
+            EventMetadata("impression", null, 0.5, null),
             parse(
                 buildJsonObject {
                     put("kind", "impression")
@@ -189,7 +212,7 @@ class EventMetadataTest {
         assertNull(parse(buildJsonObject { putJsonObject("impression") { put("min_duration_ms", 1.5) } }))
         // A bad kind, a bad fraction, or a non-object impression drops only itself.
         assertEquals(
-            EventMetadata(null, 500L, null),
+            EventMetadata(null, 500L, null, null),
             parse(
                 buildJsonObject {
                     put("kind", 1)
@@ -201,7 +224,7 @@ class EventMetadataTest {
             ),
         )
         assertEquals(
-            EventMetadata("click", null, null),
+            EventMetadata("click", null, null, null),
             parse(buildJsonObject { put("kind", "click"); put("impression", "500") }),
         )
     }
@@ -219,8 +242,8 @@ class EventMetadataTest {
             ),
         ).second
 
-        assertEquals(EventMetadata(null, 0L, 0.0), parse(0L, 0.0))
-        assertEquals(EventMetadata(null, 0L, 1.0), parse(0L, 1.0))
+        assertEquals(EventMetadata(null, 0L, 0.0, null), parse(0L, 0.0))
+        assertEquals(EventMetadata(null, 0L, 1.0, null), parse(0L, 1.0))
     }
 
     @Test
@@ -293,10 +316,40 @@ class EventMetadataTest {
 
         val (withMetadata, plain) = transport.tracked
         assertEquals(props("slot" to JsonPrimitive("top")), withMetadata.properties)
-        assertEquals(EventMetadata("impression", 500L, 0.5), withMetadata.metadata)
+        assertEquals(EventMetadata("impression", 500L, 0.5, null), withMetadata.metadata)
         assertNull(withMetadata.envelope, "a pipeline transport stamps for itself")
         assertNull(plain.metadata, "an event without metadata goes through Transport.track")
         assertEquals(emptyList(), logs)
+    }
+
+    @Test
+    fun aCapablePipelineTransportReceivesAScreenViewsMetadata() {
+        val transport = CapableTransport(stampsInPipeline = true)
+        val logs = mutableListOf<String>()
+        val tracker = tracker(transport, logs)
+
+        tracker.screen("Home", props(RESERVED_METADATA_KEY to screenViewMetadata))
+        tracker.screen("Settings")
+
+        val (home, settings) = transport.screened
+        assertEquals(props(), home.properties)
+        assertEquals(EventMetadata(null, null, null, "visit-1"), home.metadata)
+        assertNull(settings.metadata, "a screen view without metadata goes through Transport.screen")
+        assertEquals(emptyList(), logs)
+    }
+
+    @Test
+    fun anIncapablePipelineTransportGetsTheScreenViewWithoutMetadataAndTheSameSingleWarning() {
+        val transport = PlainTransport(stampsInPipeline = true)
+        val logs = mutableListOf<String>()
+        val tracker = tracker(transport, logs)
+
+        tracker.screen("Home", props(RESERVED_METADATA_KEY to screenViewMetadata))
+        tracker.track("Button Tapped", props(RESERVED_METADATA_KEY to buildJsonObject { put("kind", "click") }))
+
+        assertEquals(props(), transport.screened.single().properties)
+        assertEquals(1, transport.tracked.size)
+        assertEquals(1, logs.size, "one warning for the tracker, whichever event type lost metadata first: $logs")
     }
 
     @Test
@@ -340,9 +393,29 @@ class EventMetadataTest {
         tracker(DebugTransport(delegate) { lines += it }, logs)
             .track("Hero Seen", props(RESERVED_METADATA_KEY to impressionMetadata))
 
-        assertEquals(EventMetadata("impression", 500L, 0.5), delegate.tracked.single().metadata)
+        assertEquals(EventMetadata("impression", 500L, 0.5, null), delegate.tracked.single().metadata)
         assertTrue(lines.single().contains("\"kind\":\"impression\""), lines.single())
         assertEquals(emptyList(), logs)
+    }
+
+    @Test
+    fun debugTransportForwardsAScreenViewsMetadataToACapableDelegate() {
+        val delegate = CapableTransport(stampsInPipeline = true)
+        val lines = mutableListOf<String>()
+
+        tracker(DebugTransport(delegate) { lines += it }).screen("Home", props(RESERVED_METADATA_KEY to screenViewMetadata))
+
+        assertEquals(EventMetadata(null, null, null, "visit-1"), delegate.screened.single().metadata)
+        assertTrue(lines.single().contains("\"screen_view_id\":\"visit-1\""), lines.single())
+    }
+
+    @Test
+    fun debugTransportCalledDirectlyWithAScreenViewOverAnIncapableDelegateStillDeliversIt() {
+        val delegate = PlainTransport(stampsInPipeline = true)
+
+        DebugTransport(delegate) {}.screen("Home", JsonObject(emptyMap()), null, EventMetadata(null, null, null, "visit-1"))
+
+        assertEquals("Home", delegate.screened.single().name)
     }
 
     @Test
@@ -366,7 +439,7 @@ class EventMetadataTest {
     fun debugTransportCalledDirectlyOverAnIncapableDelegateStillDeliversTheEvent() {
         val delegate = PlainTransport(stampsInPipeline = true)
 
-        DebugTransport(delegate) {}.track("Hero Seen", JsonObject(emptyMap()), null, EventMetadata("impression", 500L, 0.5))
+        DebugTransport(delegate) {}.track("Hero Seen", JsonObject(emptyMap()), null, EventMetadata("impression", 500L, 0.5, null))
 
         assertEquals("Hero Seen", delegate.tracked.single().name)
     }
@@ -386,7 +459,7 @@ class EventMetadataTest {
 
     @Test
     fun envelopeJsonNestsTheImpressionThresholds() {
-        val json = EventMetadata(kind = null, impressionMinDurationMs = 250L, impressionMinFractionVisible = null).toJson()
+        val json = EventMetadata(kind = null, impressionMinDurationMs = 250L, impressionMinFractionVisible = null, screenViewId = null).toJson()
 
         assertEquals(setOf("impression"), json.keys)
         assertEquals(setOf("min_duration_ms"), json["impression"]!!.jsonObject.keys)
@@ -394,7 +467,7 @@ class EventMetadataTest {
 
     @Test
     fun aKindWithoutThresholdsHasNoImpressionBlock() {
-        val json = EventMetadata(kind = EventKinds.CLICK, impressionMinDurationMs = null, impressionMinFractionVisible = null).toJson()
+        val json = EventMetadata(kind = EventKinds.CLICK, impressionMinDurationMs = null, impressionMinFractionVisible = null, screenViewId = null).toJson()
 
         assertEquals(setOf("kind"), json.keys)
     }
@@ -415,9 +488,20 @@ class EventMetadataTest {
         val event = transport.tracked.single()
         assertEquals(props("slot" to JsonPrimitive("top")), event.properties)
         assertEquals(
-            EventMetadata(kind = EventKinds.IMPRESSION, impressionMinDurationMs = 750, impressionMinFractionVisible = 0.3),
+            EventMetadata(kind = EventKinds.IMPRESSION, impressionMinDurationMs = 750, impressionMinFractionVisible = 0.3, screenViewId = null),
             event.envelope?.metadata,
         )
+    }
+
+    @OptIn(AutographInternalApi::class)
+    @Test
+    fun withEventMetadataCarriesAScreenViewIdWithoutAKind() {
+        val transport = PlainTransport(stampsInPipeline = false)
+
+        tracker(transport).screen("Home", props().withEventMetadata(kind = null, screenViewId = "visit-1"))
+
+        assertEquals(props(), transport.screened.single().properties)
+        assertEquals(EventMetadata(null, null, null, "visit-1"), transport.screened.single().envelope?.metadata)
     }
 
     @OptIn(AutographInternalApi::class)
@@ -439,7 +523,7 @@ class EventMetadataTest {
         val event = transport.tracked.single()
         assertEquals(props(), event.properties)
         assertEquals(
-            EventMetadata(kind = EventKinds.IMPRESSION, impressionMinDurationMs = 500, impressionMinFractionVisible = 0.5),
+            EventMetadata(kind = EventKinds.IMPRESSION, impressionMinDurationMs = 500, impressionMinFractionVisible = 0.5, screenViewId = null),
             event.envelope?.metadata,
         )
     }

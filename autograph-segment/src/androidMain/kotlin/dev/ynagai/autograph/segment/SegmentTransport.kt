@@ -30,7 +30,7 @@ import kotlin.time.Instant
  * `messageId`. [AutographPlugin.execute] is additionally idempotent (see its KDoc) as a
  * defensive guarantee for this same property, independent of that architectural argument.
  *
- * An event's [EventMetadata] (its kind, an impression's thresholds) is added to the same
+ * An event's [EventMetadata] (its kind, an impression's thresholds, its screen view id) is added to the same
  * `context.instrumentation` block through Segment's per-event enrichment closure, which runs after
  * every `Before` and `Enrichment` plugin — so after [AutographPlugin] has stamped the event.
  */
@@ -57,6 +57,10 @@ public class SegmentTransport(
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         analytics.screen(name, properties.asJsonObject())
+    }
+
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
+        analytics.screen(name, properties.asJsonObject(), enrichment = { event -> event?.withMetadata(metadata) })
     }
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {

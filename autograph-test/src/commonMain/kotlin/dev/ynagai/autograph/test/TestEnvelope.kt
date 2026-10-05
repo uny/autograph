@@ -58,4 +58,5 @@ public fun testEventMetadata(
     kind: String? = null,
     impressionMinDurationMs: Long? = null,
     impressionMinFractionVisible: Double? = null,
-): EventMetadata = createEventMetadata(kind, impressionMinDurationMs, impressionMinFractionVisible)
+    screenViewId: String? = null,
+): EventMetadata = createEventMetadata(kind, impressionMinDurationMs, impressionMinFractionVisible, screenViewId)

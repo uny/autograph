@@ -254,31 +254,49 @@ internal class AutographTracker(
         val (props, metadata) = extractMetadata(withDefaults(properties))
         if (!isValid(name, props)) return
         val delivered = withTarget(props, target)
+        deliverWithMetadata(
+            metadata,
+            plain = { transport.track(name, delivered, it) },
+            aware = { envelope, meta -> track(name, delivered, envelope, meta) },
+        )
+    }
+
+    override fun screen(name: String, properties: Map<String, JsonElement>) {
+        val (props, metadata) = extractMetadata(withDefaults(properties))
+        if (!isValid(name, props)) return
+        deliverWithMetadata(
+            metadata,
+            plain = { transport.screen(name, props, it) },
+            aware = { envelope, meta -> screen(name, props, envelope, meta) },
+        )
+    }
+
+    /**
+     * Delivers an event through [plain] — with [metadata] on the envelope when the core stamps it — or,
+     * for a pipeline transport, through [aware] on the transport's [MetadataAwareTransport] capability.
+     */
+    private fun deliverWithMetadata(
+        metadata: EventMetadata?,
+        plain: (Envelope?) -> Unit,
+        aware: MetadataAwareTransport.(Envelope?, EventMetadata) -> Unit,
+    ) {
         if (metadata == null) {
-            deliver { transport.track(name, delivered, it) }
+            deliver(plain)
         } else if (!transport.stampsInPipeline) {
-            deliver { transport.track(name, delivered, it?.copy(metadata = metadata)) }
+            deliver { plain(it?.copy(metadata = metadata)) }
         } else {
             val sink = transport.metadataSink()
             deliver {
                 if (sink != null) {
-                    sink.track(name, delivered, it, metadata)
+                    sink.aware(it, metadata)
                 } else {
                     // Warned from inside delivery, so an event refused because the tracker is closed
                     // does not claim to have been delivered without its metadata.
                     warnMetadataDroppedOnce()
-                    transport.track(name, delivered, it)
+                    plain(it)
                 }
             }
         }
-    }
-
-    override fun screen(name: String, properties: Map<String, JsonElement>) {
-        // A screen view carries no metadata today, but the reserved key is still removed: it must never
-        // reach a validator or a transport's properties.
-        val (props, _) = extractMetadata(withDefaults(properties))
-        if (!isValid(name, props)) return
-        deliver { transport.screen(name, props, it) }
     }
 
     /**
@@ -325,7 +343,7 @@ internal class AutographTracker(
             val dropping = (transport as? DebugTransport)?.innermostDelegate ?: transport
             report(
                 "Autograph: ${dropping::class.simpleName ?: "the transport"} stamps in its own pipeline but does not implement " +
-                    "MetadataAwareTransport; events are delivered without their kind and impression thresholds",
+                    "MetadataAwareTransport; events are delivered without their metadata (kind, impression thresholds, screen view id)",
             )
         }
     }
