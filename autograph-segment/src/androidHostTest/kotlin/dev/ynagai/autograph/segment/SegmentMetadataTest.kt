@@ -24,10 +24,12 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonObject
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
 
 /** #287: an event's metadata reaches Segment's `context.instrumentation`, never its `properties`. */
 class SegmentMetadataTest {
@@ -72,8 +74,17 @@ class SegmentMetadataTest {
         assertEquals("evt-123", stamped.messageId)
     }
 
-    /** A real `Analytics` that talks to nothing, with every event it delivers collected into [captured]. */
+    /**
+     * A real `Analytics` that talks to nothing, with every event it delivers collected into [captured].
+     * Returned only once it has started.
+     *
+     * Segment's `StartupQueue` checks its started flag and then enqueues the event as two separate
+     * steps, on a multi-threaded dispatcher. An event sent while startup completes can be enqueued
+     * just after the queue was replayed, and is then never delivered. So probe until one event gets
+     * through. That probe passed the queue after startup, and every later event will pass it too.
+     */
     private fun analytics(captured: MutableList<BaseEvent>): Analytics {
+        val started = AtomicBoolean(false)
         val analytics = Analytics(
             Configuration(
                 writeKey = "autograph-test",
@@ -88,9 +99,17 @@ class SegmentMetadataTest {
             object : Plugin {
                 override val type = Plugin.Type.After
                 override lateinit var analytics: Analytics
-                override fun execute(event: BaseEvent): BaseEvent = event.also { captured += it }
+                override fun execute(event: BaseEvent): BaseEvent = event.also {
+                    if (it is TrackEvent && it.event == STARTUP_PROBE) started.set(true) else captured += it
+                }
             },
         )
+        val deadline = System.currentTimeMillis() + 15_000
+        while (!started.get() && System.currentTimeMillis() < deadline) {
+            analytics.track(STARTUP_PROBE)
+            Thread.sleep(50)
+        }
+        assertTrue(started.get(), "Segment never started")
         return analytics
     }
 
@@ -177,5 +196,9 @@ class SegmentMetadataTest {
 
         assertFalse("screen_view_id" in screens.getValue("Settings").context["instrumentation"]!!.jsonObject)
         assertEquals(emptyList(), logs.toList())
+    }
+
+    private companion object {
+        const val STARTUP_PROBE = "Startup Probe"
     }
 }
