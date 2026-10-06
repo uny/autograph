@@ -134,7 +134,7 @@ public class AutographElementCapture(
             // The reserved metadata key is left out of the scope, as `mergeScope` does.
             val scoped = if (scope.isEmpty()) properties else JsonObject(scope.toJsonObject() - RESERVED_METADATA_KEY + properties)
             val context = scopeStack.current()
-            // Only screen/section from the stack — never its scope. See the class kdoc.
+            // Only screen/section and the visit id from the stack — never its scope. See the class kdoc.
             var result = scoped
             context.screen?.let { result = JsonObject(result + ("screen" to JsonPrimitive(it))) }
             context.section?.let { result = JsonObject(result + ("section" to JsonPrimitive(it))) }

@@ -611,6 +611,9 @@ public class ScopeStack {
      * a native iOS capture pushes is a root beside the screen it covers, exactly as a second window
      * would be, and refusing the id there would drop it from every tap on every sheet. Without a
      * surface the id follows the screen, and is wrong exactly when the screen is.
+     *
+     * "Names a screen" already covers a surface whose screen is declared inside it, so a Compose host
+     * beside a named fragment counts as soon as its `TrackedScreen` is on the stack.
      */
     private fun surfacesBranch(live: List<ScopeFrame>): Boolean {
         val onStack = frames.toHashSet()

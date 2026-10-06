@@ -495,6 +495,7 @@ Every event now carries — this shape is the stable envelope contract described
     "event_timestamp": "2026-07-11T09:12:03.456Z", // captured at call time, not the transport's own
     "schema_version": "2024-01", // your own tracking-plan version, if set — omitted otherwise
     "kind": "impression",        // what produced the event, for events the library emits — omitted otherwise
+    "screen_view_id": "0197c9a0-…", // the visit of a native screen: on its Screen Viewed and the taps captured during it — omitted when unknown
     "impression": {              // an impression's thresholds — present only on impressions
       "min_duration_ms": 500,
       "min_fraction_visible": 0.5
