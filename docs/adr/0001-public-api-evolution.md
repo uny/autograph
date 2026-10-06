@@ -90,7 +90,7 @@ exception.
 
 #### 2a. Library-produced value types — construction is frozen
 
-`Envelope`, `SessionInfo`, `EventMetadata`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
+`Envelope`, `SessionInfo`, `EventMetadata`, `CloseResult`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
 
 The library creates these; callers only read them. They are declared
 
@@ -170,7 +170,7 @@ to `AutographConfig`, not to `SessionConfig`.
 #### 2c. Caller-implemented SPIs — the member set is frozen for the major version
 
 `Transport`, `SeqStore`, `EventIdGenerator`, `EventValidator`, `SegmentBridge`, `AutographLogger`,
-`MetadataAwareTransport`.
+`MetadataAwareTransport`, `AwaitableCloseTracker`.
 
 No member is added to one of these within a major version, **including a member with a
 default body**. A new capability is added in one of two ways instead:
@@ -363,8 +363,8 @@ once 1.0 ships:
 - The one irreversible item — `Envelope`/`SessionInfo` construction — is settled before the
   freeze, and the type most likely to grow is the one that can now grow indefinitely.
 - Future API decisions become mechanical: identify which of 2a–2f the type falls under and
-  the answer follows. #52's timeout, revisited under this ADR, would be an
-  `AutographConfig` `var` (2b) if it is ever wanted publicly.
+  the answer follows. #52's timeout, revisited under this ADR, became an
+  `AutographConfig` `var` (2b), `closeDrainTimeoutMillis`, when #261 wanted it public.
 - Two things are deliberately harder than they were: adding an enum constant, and adding a
   parameter to a config `data class`. Both now cost a major bump, which is the accurate
   price rather than a hidden one.

@@ -635,6 +635,50 @@ Also included: `assertScreenFired` / `assertIdentifyFired`, `assertEventNotFired
 default (`exact = true` for an exact match), and accept plain Kotlin values or `JsonElement`
 directly.
 
+## Closing a tracker
+
+`tracker.close()` stops accepting events, waits for everything already accepted to reach the transport,
+asks the transport to flush, and returns. It blocks, tells you nothing about how that went, and returns
+at once on a second call. When you need to know — a CLI or desktop app exiting, a tracker being replaced
+on logout — use `closeAndAwait`, which suspends and returns a `CloseResult`:
+
+```kotlin
+val result = tracker.closeAndAwait()          // waits up to AutographConfig.closeDrainTimeoutMillis
+val result = tracker.closeAndAwait(2_000)     // or give up waiting after 2 s
+
+when {
+    result.isUnsupported -> {}                          // not a tracker you can close; nothing was closed
+    result.timedOut -> log("some events may not have reached the transport")
+    result.failedHandOffs > 0 -> log("${result.failedHandOffs} calls into the transport threw")
+}
+```
+
+The result separates what a single flag would blur, and promises only what the tracker can see:
+
+| Field | Means |
+|:--|:--|
+| `cutoffReached` | The tracker stopped accepting work. `isUnsupported` is its negation. |
+| `waitCompleted` / `timedOut` | Everything accepted before the cutoff was handed to the transport within the time allowed, or not. |
+| `failedHandOffs` | How many calls into the transport (or the stamping in front of it) threw. The tracker swallows and logs these, so `waitCompleted` alone never meant they all succeeded. |
+| `flushRequested` / `flushFailed` | Whether the tracker called `Transport.flush()`, and whether that call threw. |
+
+**Network delivery is not covered.** Nothing here says an event reached a server — only that the tracker
+handed it over and asked the transport to flush. With a transport that stamps in its own pipeline
+(Segment on Android) the wait covers the calls *into* the transport, not the pipeline's own queue.
+
+- **Only the tracker you created can be closed this way.** `closeAndAwait` is a capability
+  (`AwaitableCloseTracker`) the tracker from `Autograph { }` has, probed with `is`. A tracker without it,
+  such as the scoped view an `AutographScope` provides, gets `isUnsupported` and is **not** closed, so a
+  view can never shut down the root. It is a separate interface and not a `Tracker` member because a new
+  member would break every Swift class that conforms to `Tracker`.
+- **Concurrent and repeated calls wait on the same shutdown**, and a call after it finished returns the
+  final result at once. A `close()` already running on another thread is waited for, not repeated.
+- **The per-call timeout bounds your wait, not the shutdown.** A caller that times out leaves the shutdown
+  running (itself bounded by `closeDrainTimeoutMillis`, default 5 s), and a later call reports how it
+  ended. It is not a hard real-time limit: a synchronous `Transport.flush()` cannot be interrupted.
+- From Swift: `try await AwaitableCloseKt.closeAndAwait(tracker)` or
+  `closeAndAwait(tracker, timeoutMillis: 2000)`, returning `CloseResult`.
+
 ## Debugging
 
 `DebugTransport` wraps another transport and logs every outgoing event before delivering it — for

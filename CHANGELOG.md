@@ -53,6 +53,37 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   remove the key, so a fake standing in for the real tracker now sees `__autograph` in the
   properties of every event listed above.
 
+- **`closeAndAwait` closes a tracker without blocking and reports how the shutdown went** ([#261]).
+  `Tracker.close()` blocks, returns nothing, and returns at once on a second call. The suspending
+  `Tracker.closeAndAwait()` (or `closeAndAwait(timeoutMillis)`) returns a `CloseResult` instead:
+  - `cutoffReached`: the tracker stopped accepting work. `isUnsupported` is the negation.
+  - `waitCompleted` / `timedOut`: whether everything accepted before the cutoff was handed to the
+    transport within the time allowed.
+  - `failedHandOffs`: how many calls into the transport, or the stamping in front of it, threw. The
+    tracker swallows and logs those, so a completed wait never meant they all succeeded.
+  - `flushRequested` / `flushFailed`: whether the tracker called `Transport.flush()`, and whether
+    that call threw.
+
+  Network delivery is out of scope: nothing in the result says an event reached a server. With a
+  transport that stamps in its own pipeline (Segment on Android), the wait covers the calls into the
+  transport, not the pipeline's own queue.
+  - It is a separate capability, `AwaitableCloseTracker`, which the tracker from `Autograph { }`
+    implements and the helper probes with `is`, not a new `Tracker` member (a member would break
+    every Swift conformer, [#283]). A tracker without it, such as the scoped view `AutographScope`
+    provides, gets an unsupported result and is **not** closed: a view must not shut down the root.
+    Close the tracker you created.
+  - Concurrent and repeated calls all wait on the one shutdown, and a call after it finished returns
+    the final result. `close()` shares that shutdown, so one already running on another thread is
+    waited for rather than repeated.
+  - The per-call `timeoutMillis` bounds that caller's wait, not the shutdown. A caller that times out
+    leaves the shutdown running, and a later call reports its outcome. It is not a hard real-time
+    limit: a synchronous `Transport.flush()` cannot be interrupted.
+  - `AutographConfig.closeDrainTimeoutMillis` is now public (default 5000). It bounds the shutdown
+    for `close()` and `closeAndAwait` alike. A `timeoutMillis` of zero or less does not wait.
+  - From Swift the helper is `AwaitableCloseKt.closeAndAwait(tracker)` and
+    `AwaitableCloseKt.closeAndAwait(tracker, timeoutMillis:)`, both `async throws`, returning
+    `CloseResult`.
+
 ### Changed
 
 - **ADR 0001 freezes the member set of every interface a caller implements** ([#283]). §2c/§2d
@@ -62,6 +93,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   From 1.0, those member sets are frozen for the major version. A new capability is a separate
   interface the library checks with `is`, which was measured to work for Swift conformers, or a
   value object passed through an existing member.
+
+### Fixed
+
+- **`close()` no longer throws when the transport's `flush()` does** ([#261]). The exception left
+  `close()` before it released the tracker's scope. It is now logged, and `closeAndAwait` reports it
+  as `flushFailed`.
 
 ## [0.11.1] - 2026-09-30
 
@@ -1717,6 +1754,7 @@ Initial release.
 [#254]: https://github.com/uny/autograph/issues/254
 [#255]: https://github.com/uny/autograph/issues/255
 [#257]: https://github.com/uny/autograph/issues/257
+[#261]: https://github.com/uny/autograph/issues/261
 [#272]: https://github.com/uny/autograph/issues/272
 [#281]: https://github.com/uny/autograph/issues/281
 [#283]: https://github.com/uny/autograph/issues/283

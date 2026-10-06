@@ -35,6 +35,13 @@ abstract fun interface dev.ynagai.autograph/EventValidator { // dev.ynagai.autog
     abstract fun validate(kotlin/String, kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>): kotlin/String? // dev.ynagai.autograph/EventValidator.validate|validate(kotlin.String;kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
 }
 
+abstract interface dev.ynagai.autograph/AwaitableCloseTracker { // dev.ynagai.autograph/AwaitableCloseTracker|null[0]
+    abstract val closeTimeoutMillis // dev.ynagai.autograph/AwaitableCloseTracker.closeTimeoutMillis|{}closeTimeoutMillis[0]
+        abstract fun <get-closeTimeoutMillis>(): kotlin/Long // dev.ynagai.autograph/AwaitableCloseTracker.closeTimeoutMillis.<get-closeTimeoutMillis>|<get-closeTimeoutMillis>(){}[0]
+
+    abstract suspend fun closeAndAwait(kotlin/Long): dev.ynagai.autograph/CloseResult // dev.ynagai.autograph/AwaitableCloseTracker.closeAndAwait|closeAndAwait(kotlin.Long){}[0]
+}
+
 abstract interface dev.ynagai.autograph/EnvelopeSource { // dev.ynagai.autograph/EnvelopeSource|null[0]
     abstract fun reset() // dev.ynagai.autograph/EnvelopeSource.reset|reset(){}[0]
     abstract fun stamp(): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/EnvelopeSource.stamp|stamp(){}[0]
@@ -100,6 +107,9 @@ sealed interface dev.ynagai.autograph/SeqPersistence { // dev.ynagai.autograph/S
 }
 
 final class dev.ynagai.autograph/AutographConfig { // dev.ynagai.autograph/AutographConfig|null[0]
+    final var closeDrainTimeoutMillis // dev.ynagai.autograph/AutographConfig.closeDrainTimeoutMillis|{}closeDrainTimeoutMillis[0]
+        final fun <get-closeDrainTimeoutMillis>(): kotlin/Long // dev.ynagai.autograph/AutographConfig.closeDrainTimeoutMillis.<get-closeDrainTimeoutMillis>|<get-closeDrainTimeoutMillis>(){}[0]
+        final fun <set-closeDrainTimeoutMillis>(kotlin/Long) // dev.ynagai.autograph/AutographConfig.closeDrainTimeoutMillis.<set-closeDrainTimeoutMillis>|<set-closeDrainTimeoutMillis>(kotlin.Long){}[0]
     final var defaultProperties // dev.ynagai.autograph/AutographConfig.defaultProperties|{}defaultProperties[0]
         final fun <get-defaultProperties>(): dev.ynagai.autograph/DefaultProperties? // dev.ynagai.autograph/AutographConfig.defaultProperties.<get-defaultProperties>|<get-defaultProperties>(){}[0]
         final fun <set-defaultProperties>(dev.ynagai.autograph/DefaultProperties?) // dev.ynagai.autograph/AutographConfig.defaultProperties.<set-defaultProperties>|<set-defaultProperties>(dev.ynagai.autograph.DefaultProperties?){}[0]
@@ -135,6 +145,25 @@ final class dev.ynagai.autograph/AutographConfig { // dev.ynagai.autograph/Autog
         final fun <set-validator>(dev.ynagai.autograph/EventValidator?) // dev.ynagai.autograph/AutographConfig.validator.<set-validator>|<set-validator>(dev.ynagai.autograph.EventValidator?){}[0]
 
     final fun transport(dev.ynagai.autograph/Transport) // dev.ynagai.autograph/AutographConfig.transport|transport(dev.ynagai.autograph.Transport){}[0]
+}
+
+final class dev.ynagai.autograph/CloseResult { // dev.ynagai.autograph/CloseResult|null[0]
+    final val cutoffReached // dev.ynagai.autograph/CloseResult.cutoffReached|{}cutoffReached[0]
+        final fun <get-cutoffReached>(): kotlin/Boolean // dev.ynagai.autograph/CloseResult.cutoffReached.<get-cutoffReached>|<get-cutoffReached>(){}[0]
+    final val failedHandOffs // dev.ynagai.autograph/CloseResult.failedHandOffs|{}failedHandOffs[0]
+        final fun <get-failedHandOffs>(): kotlin/Int // dev.ynagai.autograph/CloseResult.failedHandOffs.<get-failedHandOffs>|<get-failedHandOffs>(){}[0]
+    final val flushFailed // dev.ynagai.autograph/CloseResult.flushFailed|{}flushFailed[0]
+        final fun <get-flushFailed>(): kotlin/Boolean // dev.ynagai.autograph/CloseResult.flushFailed.<get-flushFailed>|<get-flushFailed>(){}[0]
+    final val flushRequested // dev.ynagai.autograph/CloseResult.flushRequested|{}flushRequested[0]
+        final fun <get-flushRequested>(): kotlin/Boolean // dev.ynagai.autograph/CloseResult.flushRequested.<get-flushRequested>|<get-flushRequested>(){}[0]
+    final val isUnsupported // dev.ynagai.autograph/CloseResult.isUnsupported|{}isUnsupported[0]
+        final fun <get-isUnsupported>(): kotlin/Boolean // dev.ynagai.autograph/CloseResult.isUnsupported.<get-isUnsupported>|<get-isUnsupported>(){}[0]
+    final val timedOut // dev.ynagai.autograph/CloseResult.timedOut|{}timedOut[0]
+        final fun <get-timedOut>(): kotlin/Boolean // dev.ynagai.autograph/CloseResult.timedOut.<get-timedOut>|<get-timedOut>(){}[0]
+    final val waitCompleted // dev.ynagai.autograph/CloseResult.waitCompleted|{}waitCompleted[0]
+        final fun <get-waitCompleted>(): kotlin/Boolean // dev.ynagai.autograph/CloseResult.waitCompleted.<get-waitCompleted>|<get-waitCompleted>(){}[0]
+
+    final fun toString(): kotlin/String // dev.ynagai.autograph/CloseResult.toString|toString(){}[0]
 }
 
 final class dev.ynagai.autograph/DebugTransport : dev.ynagai.autograph/MetadataAwareTransport, dev.ynagai.autograph/Transport { // dev.ynagai.autograph/DebugTransport|null[0]
@@ -279,3 +308,5 @@ final fun dev.ynagai.autograph/Autograph(kotlin/Function1<dev.ynagai.autograph/A
 final fun dev.ynagai.autograph/createEnvelope(kotlin/String, kotlin/String, kotlin/Long, kotlin/Long?, kotlin/Long?, kotlin/String, kotlin/String, kotlin/String? = ..., dev.ynagai.autograph/EventMetadata? = ...): dev.ynagai.autograph/Envelope // dev.ynagai.autograph/createEnvelope|createEnvelope(kotlin.String;kotlin.String;kotlin.Long;kotlin.Long?;kotlin.Long?;kotlin.String;kotlin.String;kotlin.String?;dev.ynagai.autograph.EventMetadata?){}[0]
 final fun dev.ynagai.autograph/createEventMetadata(kotlin/String? = ..., kotlin/Long? = ..., kotlin/Double? = ..., kotlin/String? = ...): dev.ynagai.autograph/EventMetadata // dev.ynagai.autograph/createEventMetadata|createEventMetadata(kotlin.String?;kotlin.Long?;kotlin.Double?;kotlin.String?){}[0]
 final fun dev.ynagai.autograph/platformSeqStore(): dev.ynagai.autograph/SeqStore // dev.ynagai.autograph/platformSeqStore|platformSeqStore(){}[0]
+final suspend fun (dev.ynagai.autograph/Tracker).dev.ynagai.autograph/closeAndAwait(): dev.ynagai.autograph/CloseResult // dev.ynagai.autograph/closeAndAwait|closeAndAwait@dev.ynagai.autograph.Tracker(){}[0]
+final suspend fun (dev.ynagai.autograph/Tracker).dev.ynagai.autograph/closeAndAwait(kotlin/Long): dev.ynagai.autograph/CloseResult // dev.ynagai.autograph/closeAndAwait|closeAndAwait@dev.ynagai.autograph.Tracker(kotlin.Long){}[0]
