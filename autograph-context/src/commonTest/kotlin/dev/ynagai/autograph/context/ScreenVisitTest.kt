@@ -288,6 +288,22 @@ class ScreenVisitTest {
     }
 
     @Test
+    fun a_sibling_surface_that_masks_the_screen_makes_it_ambiguous() {
+        // Masking is a declaration about the screen too. Pushed first, the mask does not win
+        // resolution, so only the branch check keeps the named side's id off an ambient read.
+        val stack = stack()
+        val activity = stack.pushSurface()
+        val masking = stack.pushSurface(parent = activity)
+        stack.setScreenMasked(masking, true)
+        val content = stack.pushSurface(parent = activity, screen = "Detail")
+        stack.emitScreenView(RecordingTracker(stack), "Detail", origin = content)
+
+        assertEquals("Detail", stack.current().screen)
+        assertNull(stack.current().screenViewId)
+        assertEquals("v1", stack.current(content).screenViewId)
+    }
+
+    @Test
     fun surfaces_nested_in_one_another_are_not_ambiguous() {
         // An Activity hosting a fragment: one chain, so the innermost screen's visit wins ambiently,
         // and a tap on the Activity's own view gets the Activity's.
