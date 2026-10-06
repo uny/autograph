@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.clickable
@@ -17,12 +19,15 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.v2.runComposeUiTest
 import androidx.compose.ui.unit.dp
+import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.context.emitScreenView
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -203,6 +208,21 @@ class ReportTapIfResolvableTest {
         // Pinning the constant alone (AutocaptureDefaultsTest) leaves that wiring untested.
         reportTapIfResolvable(tracker, ScopeStack(), Autocapture()) { AutocaptureTarget("share_button") }
         assertEquals(listOf<Pair<String, String?>>("Element Clicked" to "share_button"), tracker.tracked)
+    }
+
+    @Test
+    fun aTapOnANativeScreenCarriesTheVisitItsScreenViewStarted() {
+        // A hybrid app: a native screen capture emitted the screen view the composition sits in (#242).
+        val tracker = AutocaptureRecordingTracker()
+        val stack = ScopeStack().apply { screenViewIdGenerator = EventIdGenerator { "visit" } }
+        stack.emitScreenView(tracker, "Native", origin = stack.pushSurface(screen = "Native"))
+
+        reportTapIfResolvable(tracker, stack, Autocapture()) { AutocaptureTarget("share_button") }
+
+        assertEquals(
+            JsonPrimitive("""{"kind":"${EventKinds.CLICK}","screen_view_id":"visit"}"""),
+            tracker.trackedProps.single()[RESERVED_METADATA_KEY],
+        )
     }
 
     @Test

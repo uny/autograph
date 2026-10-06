@@ -593,25 +593,30 @@ public class ScopeStack {
     }
 
     /**
-     * Whether two of the surfaces taking part ([pushSurface] frames in [live]) branch away from each
-     * other — neither encloses the other — which makes the visit ambiguous (#242).
+     * Whether two surfaces on display each hold a declaration about the screen — a frame that names
+     * one or masks it, on the surface itself or inside it — and branch away from each other, neither
+     * enclosing the other. That makes the visit ambiguous (#242).
      *
-     * Two surfaces on display side by side (two Activities resumed at once in multi-window, two
-     * fragments shown beside each other) are each a visit of their own, and a read that cannot tell
-     * which one an event happened in must not hand it either one's id: the screen name it reports is
-     * already a guess, and a visit id is what a consumer joins on. The origin-taking [current] keeps
-     * only the origin's own surfaces, which form one chain, so this only ever bites an ambient read.
+     * Two surfaces side by side that both speak for the screen (two Activities resumed at once in
+     * multi-window, two named fragments shown beside each other, a named fragment beside a Compose
+     * host that names its own) are each a visit of their own, and a read that cannot tell which one
+     * an event happened in must not hand it either one's id: the screen name it reports is already a
+     * guess, and a visit id is what a consumer joins on. The origin-taking [current] keeps only the
+     * origin's own surfaces, which form one chain, so this only ever bites an ambient read.
      *
-     * Only surfaces count, not every frame that names a screen. Frames that are not surfaces cannot be
-     * localized by the pipeline pushing them, and a branch among them does not mean the user is
-     * looking at two screens: a sheet a native iOS capture pushes is a root beside the screen it
-     * covers, exactly as a second window would be, and refusing the id there would drop it from every
-     * tap on every sheet. Without a surface the id follows the screen, and is wrong exactly when the
-     * screen is.
+     * A surface that declares nothing does not count: a headless worker fragment, or an excluded one
+     * that names and masks nothing, beside the content the user is looking at is not a second visit.
+     * Nor does a declaration under no surface at all. Those frames cannot be localized by the pipeline
+     * pushing them, and a branch among them does not mean the user is looking at two screens: a sheet
+     * a native iOS capture pushes is a root beside the screen it covers, exactly as a second window
+     * would be, and refusing the id there would drop it from every tap on every sheet. Without a
+     * surface the id follows the screen, and is wrong exactly when the screen is.
      */
     private fun surfacesBranch(live: List<ScopeFrame>): Boolean {
-        val surfaces = live.filter { it.boundary }
-        return surfaces.any { a -> surfaces.any { b -> !a.encloses(b) && !b.encloses(a) } }
+        val onStack = frames.toHashSet()
+        val speaking = live.filter { it.screen != null || it.maskScreen }
+            .mapNotNullTo(HashSet()) { frame -> generateSequence(frame) { it.parent }.firstOrNull { it.boundary && it in onStack } }
+        return speaking.any { a -> speaking.any { b -> !a.encloses(b) && !b.encloses(a) } }
     }
 
     /**
@@ -749,8 +754,9 @@ public class AmbientContext internal constructor(
      *
      * Null when that frame has no visit (no `Screen Viewed` was emitted through this stack for it —
      * a Compose screen, for now, or a screen re-created by a configuration change), when [screen] is
-     * null, and when two surfaces on display branch away from each other so this context cannot tell
-     * which visit it is in. A null here never stops [screen] from being reported.
+     * null, and when two surfaces on display each name a screen and branch away from each other, so
+     * this context cannot tell which visit it is in. A null here never stops [screen] from being
+     * reported.
      *
      * Not written by [enrich]: it is event metadata, not a property.
      */

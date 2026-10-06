@@ -260,6 +260,34 @@ class ScreenVisitTest {
     }
 
     @Test
+    fun a_surface_beside_the_screen_that_declares_nothing_does_not_make_it_ambiguous() {
+        // A content fragment beside a headless worker fragment, or an excluded one that names and
+        // masks nothing: one screen is on display, and the empty sibling is not a visit of its own.
+        val stack = stack()
+        val activity = stack.pushSurface()
+        val content = stack.pushSurface(parent = activity, screen = "Detail")
+        stack.emitScreenView(RecordingTracker(stack), "Detail", origin = content)
+        stack.pushSurface(parent = activity)
+
+        assertEquals("v1", stack.current().screenViewId)
+    }
+
+    @Test
+    fun a_sibling_surface_whose_content_names_a_screen_makes_it_ambiguous() {
+        // The other side is a Compose host: the surface itself is empty, the screen is named inside it.
+        val stack = stack()
+        val activity = stack.pushSurface()
+        val composeHost = stack.pushSurface(parent = activity)
+        stack.push(parent = composeHost, screen = "Composed")
+        val content = stack.pushSurface(parent = activity, screen = "Detail")
+        stack.emitScreenView(RecordingTracker(stack), "Detail", origin = content)
+
+        assertEquals("Detail", stack.current().screen)
+        assertNull(stack.current().screenViewId)
+        assertEquals("v1", stack.current(content).screenViewId)
+    }
+
+    @Test
     fun surfaces_nested_in_one_another_are_not_ambiguous() {
         // An Activity hosting a fragment: one chain, so the innermost screen's visit wins ambiently,
         // and a tap on the Activity's own view gets the Activity's.

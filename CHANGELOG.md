@@ -66,11 +66,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     still emitted.
   - The stack answers it as the new `AmbientContext.screenViewId`. It comes from the frame that
     names the screen, so it is absent, never borrowed, when that frame has no visit: a Compose
-    `TrackedScreen` for now, and a screen re-created by a configuration change. It is also absent
-    when two surfaces on display side by side (two Activities in multi-window, fragments shown
-    beside each other) leave an ambient read unable to tell which visit it is in; the screen name
-    is still reported. iOS screens are not surfaces, so there the id follows the screen name, a
-    sheet included.
+    `TrackedScreen` for now, a screen re-created by a configuration change, and a screen whose name
+    changed after its screen view (`ScopeStack.update` with a different `screen` ends the visit,
+    which on Android includes a name the `fragmentScreenName` lambda only returns later). It is also
+    absent when two surfaces on display side by side each name a screen (two Activities in
+    multi-window, two named fragments beside each other) and an ambient read cannot tell which
+    visit it is in; the screen name is still reported, and a tap the capture localizes to one of
+    them gets that one's id. A surface that names nothing, such as a headless fragment, does not
+    count. iOS screens are not surfaces, so there the id follows the screen name, a sheet included.
   - The id is minted before the tracker is called and is not withdrawn if the tracker rejects or
     throws, so events can carry an id no `Screen Viewed` row has.
 
