@@ -387,6 +387,33 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
+    fun aPagerPageThatNeverResumedReportsItsFirstViewAfterARotation() {
+        // FragmentStateAdapter holds off-screen pages at STARTED. One rotated while off screen has
+        // had no view yet, so its first resume after the rotation is a first view, not a re-creation.
+        install()
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        val off = DetailFragment()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "f0")
+            .add(android.R.id.content, off, "f1")
+            .setMaxLifecycle(off, Lifecycle.State.STARTED)
+            .commitNow()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        controller.recreate()
+        shadowOf(Looper.getMainLooper()).idle()
+        val fm = controller.get().supportFragmentManager
+        val beforeSwipe = tracker.screens.size
+        val page = fm.findFragmentByTag("f1")!!
+        fm.beginTransaction().setMaxLifecycle(page, Lifecycle.State.RESUMED).commitNow()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(beforeSwipe + 1, tracker.screens.size)
+        assertTrue(tracker.screens.toString(), tracker.screens.last().startsWith("DetailFragment:"))
+        assertNotNull(tracker.screenViewIds.last())
+    }
+
+    @Test
     fun aFragmentEmitsAndTheHostingActivityDoesNot() {
         install()
         Robolectric.buildActivity(FragmentHostActivity::class.java).setup()

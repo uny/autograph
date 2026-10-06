@@ -487,7 +487,11 @@ internal class AndroidScreenCapture(
         override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
             if (!active) return
             // The host Activity is the leaving instance here, so its flag reports the rotation.
-            if (f.activity?.isChangingConfigurations == true) {
+            // Only a fragment whose view was in progress is re-created INTO that view. A pager page
+            // held at STARTED never resumed, so its first resume after the rotation is its first view,
+            // and a marker left for it would swallow that Screen Viewed — per instance, nothing else
+            // would ever consume it.
+            if (f.activity?.isChangingConfigurations == true && fragmentStates[f]?.emitted == true) {
                 pendingConfigChange.add(visitKey(f))
                 carryVisit(visitKey(f), fragmentStates[f])
             }
