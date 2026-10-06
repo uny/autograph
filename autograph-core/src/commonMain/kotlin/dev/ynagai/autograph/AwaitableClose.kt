@@ -12,15 +12,10 @@ package dev.ynagai.autograph
  * This is a separate interface, and not a member of [Tracker], because Kotlin/Native exports every
  * interface member to Swift as `@required`: a new `Tracker` member breaks every Swift conformer (ADR
  * 0001 §2d, #283). Its member set is frozen for the major version, like any other interface a caller
- * could implement.
+ * could implement. Only [Autograph] can really implement it: [CloseResult] has no public constructor, so
+ * another implementation can only forward to a tracker from [Autograph].
  */
 public interface AwaitableCloseTracker {
-
-    /**
-     * The tracker's configured shutdown bound, [AutographConfig.closeDrainTimeoutMillis]. It is the
-     * default wait of the no-argument [closeAndAwait].
-     */
-    public val closeTimeoutMillis: Long
 
     /**
      * Stops accepting work, waits up to [timeoutMillis] for work already accepted to be handed to the
@@ -33,10 +28,13 @@ public interface AwaitableCloseTracker {
      * on another thread is waited for, not repeated.
      *
      * [timeoutMillis] bounds *this caller's wait*, not the shutdown: a caller that times out (or is
-     * cancelled) leaves the shutdown running, bounded by [AutographConfig.closeDrainTimeoutMillis], and a
-     * later call reports its outcome. The wait is not a hard real-time limit either — a synchronous
-     * [Transport.flush] cannot be interrupted, so a transport whose flush blocks holds the shutdown, and
-     * therefore any wait that outlasts the bound, for as long as it blocks. The timer runs on real time
+     * cancelled) leaves the shutdown running, and a later call reports its outcome. The drain is bounded by
+     * [AutographConfig.closeDrainTimeoutMillis], but the [Transport.flush] that follows it is not, and a
+     * synchronous flush cannot be interrupted (#305). So **an explicit [timeoutMillis] at or above the
+     * drain bound still does not guarantee the final result**: the flush takes time after the drain, and a
+     * timer that fires meanwhile returns a snapshot with [CloseResult.waitCompleted] false. A caller that
+     * wants the final result calls the no-argument [closeAndAwait], which is `closeAndAwait(Long.MAX_VALUE)`:
+     * that value waits for the shutdown itself and has no timer to race it. The timer runs on real time
      * even when called from a virtual-time test dispatcher.
      *
      * A [timeoutMillis] of zero or less does not wait: it starts (or joins) the shutdown and reports its
@@ -97,7 +95,7 @@ public class CloseResult internal constructor(
      * True when the tracker does not offer an awaitable close — for example a scoped view of a tracker —
      * so nothing was closed and nothing else in this result means anything.
      */
-    public val isUnsupported: Boolean get() = !cutoffReached
+    public val isUnsupported: Boolean get() = !cutoffReached // `!cutoffReached` is the frozen encoding
 
     /** True when the shutdown ran but the wait was cut short: the tracker closed, but not everything accepted is known to be handed over. */
     public val timedOut: Boolean get() = cutoffReached && !waitCompleted
@@ -118,21 +116,30 @@ public class CloseResult internal constructor(
 }
 
 /**
- * Closes this tracker like [Tracker.close], but suspends instead of blocking and reports what happened.
- * Waits up to [AwaitableCloseTracker.closeTimeoutMillis] (the tracker's
- * [AutographConfig.closeDrainTimeoutMillis]).
+ * Closes this tracker like [Tracker.close], but suspends instead of blocking, **waits until the shutdown
+ * has finished** and returns its final result. That is the same exposure as [Tracker.close], which also
+ * returns only when the shutdown is done: the drain is bounded by [AutographConfig.closeDrainTimeoutMillis],
+ * but the [Transport.flush] after it is not, so a transport whose flush blocks holds this call for as long
+ * as it blocks (#305). The reason it has no timer of its own is not that the shutdown is bounded: a timer
+ * equal to the drain bound would race the shutdown (a drain ending just under the bound, plus a flush,
+ * would report a completed shutdown as timed out), and the result would not be deterministic. Use
+ * [closeAndAwait] with a timeout when you need to stop waiting.
  *
  * Returns a result with [CloseResult.isUnsupported] **without closing anything** when this tracker has
  * no [AwaitableCloseTracker] capability — a scoped view does not own the root tracker and must not be
  * able to shut it down. Close the tracker you created, not a view of it. See [AwaitableCloseTracker.closeAndAwait]
  * for how concurrent and repeated calls behave and what the timeout bounds.
+ *
+ * Encoding [CloseResult.isUnsupported] as `!cutoffReached` is intentional and frozen.
  */
-public suspend fun Tracker.closeAndAwait(): CloseResult {
-    val awaitable = this as? AwaitableCloseTracker ?: return CloseResult.Unsupported
-    return awaitable.closeAndAwait(awaitable.closeTimeoutMillis)
-}
+public suspend fun Tracker.closeAndAwait(): CloseResult = closeAndAwait(Long.MAX_VALUE)
 
-/** [closeAndAwait] with an explicit per-call [timeoutMillis] for the wait. */
+/**
+ * [closeAndAwait] with an explicit per-call [timeoutMillis] for the wait. It bounds this caller's wait
+ * only, and a value at or above the drain bound does not guarantee the final result; see
+ * [AwaitableCloseTracker.closeAndAwait]. [Long.MAX_VALUE] waits for the shutdown to finish, as the
+ * no-argument overload does.
+ */
 public suspend fun Tracker.closeAndAwait(timeoutMillis: Long): CloseResult {
     val awaitable = this as? AwaitableCloseTracker ?: return CloseResult.Unsupported
     return awaitable.closeAndAwait(timeoutMillis)

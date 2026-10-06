@@ -241,10 +241,36 @@ class AwaitableCloseTest {
     }
 
     @Test
-    fun theConfiguredBoundIsThePublicDefaultWait() = runBlocking {
-        val tracker = tracker(CountingTransport(stampsInPipeline = false)) { closeDrainTimeoutMillis = 1_234 }
+    fun theNoArgumentHelperWaitsForTheFinalResultEvenWhenTheFlushOutlastsTheDrainBound() = runBlocking {
+        // The drain finishes just inside its 400 ms bound (one 300 ms event), then the flush takes 300 ms
+        // more. A helper whose timer equalled the bound would fire during the flush and report a completed
+        // shutdown as timed out, with flushRequested depending on the race.
+        val transport = CountingTransport(perEventMillis = 300, flushMillis = 300, stampsInPipeline = false)
+        val tracker = tracker(transport) { closeDrainTimeoutMillis = 400 }
+        tracker.track("slow")
 
-        assertEquals(1_234, (tracker as AwaitableCloseTracker).closeTimeoutMillis)
+        val result = tracker.closeAndAwait()
+
+        assertTrue(result.waitCompleted, "the drain finished within its bound: $result")
+        assertFalse(result.timedOut)
+        assertTrue(result.flushRequested, "$result")
+        assertFalse(result.flushFailed)
+        assertEquals(1, transport.flushes)
+        assertSame(result, tracker.closeAndAwait(timeoutMillis = 0), "and it is the final result")
+    }
+
+    @Test
+    fun anExplicitTimeoutAtTheDrainBoundDoesNotGuaranteeTheFinalResult() = runBlocking {
+        val transport = CountingTransport(perEventMillis = 300, flushMillis = 300, stampsInPipeline = false)
+        val tracker = tracker(transport) { closeDrainTimeoutMillis = 400 }
+        tracker.track("slow")
+
+        val bounded = tracker.closeAndAwait(timeoutMillis = 400)
+
+        // Documented: the flush happens after the drain, so a timer at the drain bound can fire first.
+        assertTrue(bounded.timedOut, "$bounded")
+        // The shutdown still finishes, and the no-argument helper reports it.
+        assertTrue(tracker.closeAndAwait().waitCompleted)
     }
 }
 
@@ -266,6 +292,7 @@ private class CountingTransport(
     override val stampsInPipeline: Boolean,
     private val failTrackOf: Set<String> = emptySet(),
     private val failFlush: Boolean = false,
+    private val flushMillis: Int = 0,
 ) : Transport {
     @Volatile
     var tracked = 0
@@ -292,6 +319,10 @@ private class CountingTransport(
 
     override fun flush() {
         flushes++
+        val start = TimeSource.Monotonic.markNow()
+        @Suppress("ControlFlowWithEmptyBody")
+        while (start.elapsedNow().inWholeMilliseconds < flushMillis) {
+        }
         if (failFlush) throw IllegalStateException("flush boom")
     }
 

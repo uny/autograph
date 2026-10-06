@@ -643,7 +643,7 @@ at once on a second call. When you need to know — a CLI or desktop app exiting
 on logout — use `closeAndAwait`, which suspends and returns a `CloseResult`:
 
 ```kotlin
-val result = tracker.closeAndAwait()          // waits up to AutographConfig.closeDrainTimeoutMillis
+val result = tracker.closeAndAwait()          // waits until the shutdown finishes, like close()
 val result = tracker.closeAndAwait(2_000)     // or give up waiting after 2 s
 
 when {
@@ -673,9 +673,12 @@ handed it over and asked the transport to flush. With a transport that stamps in
   member would break every Swift class that conforms to `Tracker`.
 - **Concurrent and repeated calls wait on the same shutdown**, and a call after it finished returns the
   final result at once. A `close()` already running on another thread is waited for, not repeated.
+- **`closeAndAwait()` waits for the final result, like `close()`.** The drain is bounded by
+  `closeDrainTimeoutMillis` (default 5 s), but the `Transport.flush()` after it cannot be interrupted, so a
+  transport whose flush blocks holds both calls for as long as it blocks.
 - **The per-call timeout bounds your wait, not the shutdown.** A caller that times out leaves the shutdown
-  running (itself bounded by `closeDrainTimeoutMillis`, default 5 s), and a later call reports how it
-  ended. It is not a hard real-time limit: a synchronous `Transport.flush()` cannot be interrupted.
+  running, and a later call reports how it ended. A timeout at or above `closeDrainTimeoutMillis` still
+  does not guarantee the final result, since the flush runs after the drain: use the no-argument form for that.
 - From Swift: `try await AwaitableCloseKt.closeAndAwait(tracker)` or
   `closeAndAwait(tracker, timeoutMillis: 2000)`, returning `CloseResult`.
 

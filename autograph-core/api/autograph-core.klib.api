@@ -36,9 +36,6 @@ abstract fun interface dev.ynagai.autograph/EventValidator { // dev.ynagai.autog
 }
 
 abstract interface dev.ynagai.autograph/AwaitableCloseTracker { // dev.ynagai.autograph/AwaitableCloseTracker|null[0]
-    abstract val closeTimeoutMillis // dev.ynagai.autograph/AwaitableCloseTracker.closeTimeoutMillis|{}closeTimeoutMillis[0]
-        abstract fun <get-closeTimeoutMillis>(): kotlin/Long // dev.ynagai.autograph/AwaitableCloseTracker.closeTimeoutMillis.<get-closeTimeoutMillis>|<get-closeTimeoutMillis>(){}[0]
-
     abstract suspend fun closeAndAwait(kotlin/Long): dev.ynagai.autograph/CloseResult // dev.ynagai.autograph/AwaitableCloseTracker.closeAndAwait|closeAndAwait(kotlin.Long){}[0]
 }
 

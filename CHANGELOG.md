@@ -75,11 +75,20 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   - Concurrent and repeated calls all wait on the one shutdown, and a call after it finished returns
     the final result. `close()` shares that shutdown, so one already running on another thread is
     waited for rather than repeated.
-  - The per-call `timeoutMillis` bounds that caller's wait, not the shutdown. A caller that times out
-    leaves the shutdown running, and a later call reports its outcome. It is not a hard real-time
-    limit: a synchronous `Transport.flush()` cannot be interrupted.
-  - `AutographConfig.closeDrainTimeoutMillis` is now public (default 5000). It bounds the shutdown
+  - The no-argument `closeAndAwait()` waits until the shutdown finishes and returns its final
+    result: the same exposure as `close()`, which also returns only when the shutdown is done. It
+    has no timer of its own, so it cannot race the shutdown. This is not because the shutdown is
+    bounded: the drain is, but the `Transport.flush()` after it is not and cannot be interrupted
+    (#305), so a transport whose flush blocks holds `close()` and `closeAndAwait()` alike.
+  - `closeAndAwait(timeoutMillis)` bounds that caller's wait, not the shutdown. A caller that times
+    out leaves the shutdown running, and a later call reports its outcome. A timeout at or above
+    `closeDrainTimeoutMillis` still does not guarantee the final result, because the flush runs
+    after the drain; use the no-argument form for that. `Long.MAX_VALUE` means the same as no
+    argument.
+  - `AutographConfig.closeDrainTimeoutMillis` is now public (default 5000). It bounds the drain
     for `close()` and `closeAndAwait` alike. A `timeoutMillis` of zero or less does not wait.
+  - `AwaitableCloseTracker` has one member, `closeAndAwait(timeoutMillis)`; only `Autograph { }`
+    implements it for real, since `CloseResult` has no public constructor.
   - From Swift the helper is `AwaitableCloseKt.closeAndAwait(tracker)` and
     `AwaitableCloseKt.closeAndAwait(tracker, timeoutMillis:)`, both `async throws`, returning
     `CloseResult`.

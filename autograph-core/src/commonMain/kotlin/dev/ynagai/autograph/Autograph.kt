@@ -491,11 +491,11 @@ internal class AutographTracker(
      */
     override fun close() {
         val cutoff = cutOff() ?: return
-        // The shutdown bounds itself with the configured timeout, so this outer bound never fires first.
+        // Waits for the shutdown itself, with no timer of its own to race it. That is the same exposure as
+        // the no-argument Tracker.closeAndAwait(): the drain is bounded by closeDrainTimeoutMillis, but the
+        // Transport.flush() after it is not and cannot be interrupted (#305), so a blocking flush holds both.
         drainBlocking(Long.MAX_VALUE) { finishShutdown(cutoff) }
     }
-
-    override val closeTimeoutMillis: Long get() = closeDrainTimeoutMillis
 
     override suspend fun closeAndAwait(timeoutMillis: Long): CloseResult {
         val cutoff = cutOff()
@@ -505,6 +505,9 @@ internal class AutographTracker(
             CoroutineScope(Dispatchers.Default).launch { finishShutdown(cutoff) }
         }
         if (shutdown.isCompleted) return shutdown.await()
+        // Long.MAX_VALUE is "wait for the shutdown" (the no-argument helper): no timer, so none can race
+        // the shutdown's own bound plus its flush and report a finished shutdown as timed out.
+        if (timeoutMillis == Long.MAX_VALUE) return shutdown.await()
         // On a real-time dispatcher, not the caller's: a virtual-time test dispatcher would skip the
         // timeout past a shutdown that is still making progress on another thread.
         return withContext(Dispatchers.Default) { withTimeoutOrNull(timeoutMillis.coerceAtLeast(0)) { shutdown.await() } }

@@ -91,13 +91,77 @@ final class CloseAndAwaitTests: XCTestCase {
         XCTAssertTrue(result.cutoffReached)
     }
 
-    func testTheShutdownBoundIsAPublicConfigProperty() {
+    func testTheShutdownBoundIsAPublicSettableConfigProperty() {
+        var seen: [Int64] = []
+        _ = AutographKt.Autograph { config in
+            config.transport(transport: CountingTransport())
+            config.store = InMemorySeqStore()
+            seen.append(config.closeDrainTimeoutMillis)
+            config.closeDrainTimeoutMillis = 1_234
+            seen.append(config.closeDrainTimeoutMillis)
+        }
+
+        XCTAssertEqual(seen, [5_000, 1_234], "the default, then the value set")
+    }
+
+    /// A Swift class conforming to `AwaitableCloseTracker`, which has one `suspend` member. It can only
+    /// forward to a real tracker's capability (`CloseResult` has no public constructor).
+    final class ForwardingAwaitable: NSObject, AwaitableCloseTracker {
+        let real: AwaitableCloseTracker
+        var calls = 0
+        init(_ real: AwaitableCloseTracker) { self.real = real }
+
+        func closeAndAwait(timeoutMillis: Int64) async throws -> CloseResult {
+            calls += 1
+            return try await real.closeAndAwait(timeoutMillis: timeoutMillis)
+        }
+    }
+
+    func testASwiftClassCanConformToAwaitableCloseTrackerByForwarding() async throws {
         let tracker = AutographKt.Autograph { config in
             config.transport(transport: CountingTransport())
             config.store = InMemorySeqStore()
-            config.closeDrainTimeoutMillis = 1_234
         }
+        let forwarding = ForwardingAwaitable(tracker as! AwaitableCloseTracker)
 
-        XCTAssertEqual((tracker as? AwaitableCloseTracker)?.closeTimeoutMillis, 1_234)
+        let result = try await forwarding.closeAndAwait(timeoutMillis: 5_000)
+
+        XCTAssertEqual(forwarding.calls, 1)
+        XCTAssertTrue(result.waitCompleted)
+    }
+
+    /// A Swift class that is both a `Tracker` and an `AwaitableCloseTracker`, so the Kotlin helper
+    /// (`is`-probe, then a Kotlin-to-Swift call of the suspend member) reaches the Swift implementation.
+    final class ForwardingTracker: NSObject, Tracker, AwaitableCloseTracker {
+        let real: Tracker
+        var awaitCalls = 0
+        init(_ real: Tracker) { self.real = real }
+
+        func track(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement], target: String?) { real.track(name: name, properties: properties, target: target) }
+        func screen(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement]) {}
+        func identify(userId: String, traits: [String: Kotlinx_serialization_jsonJsonElement]) {}
+        func close() { real.close() }
+        func flush() {}
+        func reset() {}
+        func notifyForeground() {}
+        func notifyBackground() {}
+
+        func closeAndAwait(timeoutMillis: Int64) async throws -> CloseResult {
+            awaitCalls += 1
+            return try await AwaitableCloseKt.closeAndAwait(real, timeoutMillis: timeoutMillis)
+        }
+    }
+
+    func testTheKotlinHelperCallsASwiftConformersSuspendMember() async throws {
+        let real = AutographKt.Autograph { config in
+            config.transport(transport: CountingTransport())
+            config.store = InMemorySeqStore()
+        }
+        let tracker = ForwardingTracker(real)
+
+        let result = try await AwaitableCloseKt.closeAndAwait(tracker)
+
+        XCTAssertEqual(tracker.awaitCalls, 1)
+        XCTAssertTrue(result.waitCompleted)
     }
 }

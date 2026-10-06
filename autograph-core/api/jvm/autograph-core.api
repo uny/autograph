@@ -44,7 +44,6 @@ public final class dev/ynagai/autograph/AwaitableCloseKt {
 
 public abstract interface class dev/ynagai/autograph/AwaitableCloseTracker {
 	public abstract fun closeAndAwait (JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
-	public abstract fun getCloseTimeoutMillis ()J
 }
 
 public final class dev/ynagai/autograph/CloseResult {
