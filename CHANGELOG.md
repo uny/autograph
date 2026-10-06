@@ -59,7 +59,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `context.instrumentation`. A return to the same screen is a new visit with a new id. The events
   that happen during the visit do not carry the id yet, and neither do Compose screen views; both
   come in later changes. The id is minted before the tracker sees the screen view and is not taken
-  back if the validator rejects it.
+  back if the validator rejects it or the tracker throws, so a visit can have an id with no
+  `Screen Viewed` row. `reset()` does not change ids; join on the id together with `session_id`.
   - `ScopeStack` mints the ids, because the tracker's own `AutographConfig.eventId` sits behind the
     `Tracker` interface where the emit sites cannot reach it. `ScopeStack()` mints UUIDv7s; the new
     `ScopeStack(EventIdGenerator)` takes the generator you gave `Autograph { eventId = … }` if the

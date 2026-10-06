@@ -120,6 +120,19 @@ class ScreenEmitTest {
     }
 
     @Test
+    fun a_screen_view_from_a_removed_frame_is_still_emitted_without_metadata() {
+        val stack = ScopeStack()
+        val tracker = RecordingTracker()
+        val screen = stack.pushSurface(screen = "Gone")
+        stack.remove(screen)
+
+        stack.emitScreenView(tracker, "Gone", origin = screen)
+
+        assertEquals(listOf("Gone" to JsonObject(emptyMap())), tracker.screens)
+        assertEquals(listOf<JsonObject?>(null), tracker.metadata)
+    }
+
+    @Test
     fun an_update_keeps_the_visit_and_the_frame_keeps_the_id_it_was_given() {
         val stack = ScopeStack(sequentialIds())
         val screen = stack.pushSurface(screen = "List", section = "Tab A")

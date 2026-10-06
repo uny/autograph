@@ -369,6 +369,7 @@ class AndroidScreenCaptureTest {
         // "FragmentHostActivity" double-count.
         assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
         assertEquals("DetailFragment", scopeStack.current().screen)
+        assertNotNull("a fragment's screen view carries its visit id", tracker.screenViewIds.single())
     }
 
     @Test

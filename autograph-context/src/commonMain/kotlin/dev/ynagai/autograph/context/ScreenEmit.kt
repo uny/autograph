@@ -41,7 +41,7 @@ import kotlinx.serialization.json.JsonPrimitive
  * Each call starts a new visit of [origin]'s surface ([ScopeStack.beginScreenView]) and the event
  * carries its id as `screen_view_id` in the event metadata, written last so no scope entry can
  * replace it. The id is minted before [Tracker.screen] runs and is not taken back if the tracker's
- * validator rejects the event or the tracker throws, so an id can appear on later events with no
+ * validator rejects the event or the tracker throws, so a visit can have an id with no
  * `Screen Viewed` row of its own (#242).
  *
  * `@AutographInternalApi`: public only so Autograph's own native modules can share this across the module

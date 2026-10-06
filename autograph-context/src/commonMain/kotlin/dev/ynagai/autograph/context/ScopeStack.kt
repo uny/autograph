@@ -48,7 +48,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * of that surface, and the visit gets an id from [screenViewIds] (#242). The tracker's own
  * `AutographConfig.eventId` is out of reach here — it sits behind the `Tracker` interface — so a
  * stack built with the no-argument constructor mints UUIDv7s. Pass the generator you gave
- * `Autograph { eventId = … }` if the two ids should share a format.
+ * `Autograph { eventId = … }` if the two ids should share a format. The tracker drops an empty id,
+ * and an id long enough to push the event's encoded metadata past [RESERVED_METADATA_KEY]'s bound
+ * loses the event's whole metadata, so a custom generator should return short, non-empty ids.
  */
 public class ScopeStack(private val screenViewIds: EventIdGenerator) {
 
