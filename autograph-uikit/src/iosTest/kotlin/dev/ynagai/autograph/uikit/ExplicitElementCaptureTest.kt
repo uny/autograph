@@ -191,6 +191,57 @@ class ExplicitElementCaptureTest {
     }
 
     /**
+     * #242: a click on a SwiftUI screen carries the id of the screen's visit, on the envelope, from
+     * every entry point — `clickedJson` included, which claims no kind — and a click once the screen
+     * has gone carries none.
+     */
+    @Test
+    fun aClickCarriesTheVisitOfTheScreenItHappenedOn() {
+        val transport = EnvelopeRecordingTransport()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+        }
+        val stack = ScopeStack()
+        val capture = AutographElementCapture(tracker, stack)
+        val view = AutographScreenCapture(tracker, stack).appeared("Detail")
+
+        capture.buttonClicked(name = "save_tapped")
+        capture.clickedJson(name = "share_tapped", propertiesJson = "{}")
+        view.disappeared()
+        capture.clicked(name = "late_tapped")
+
+        val visit = transport.screens.single()?.metadata?.screenViewId
+        assertTrue(!visit.isNullOrEmpty(), "the screen view carries an id")
+        val (button, json, late) = transport.tracked.map { it.second?.metadata }
+        assertEquals(visit, button?.screenViewId)
+        assertEquals(EventKinds.CLICK, button?.kind)
+        assertEquals(visit, json?.screenViewId)
+        assertNull(json?.kind)
+        assertNull(late?.screenViewId)
+    }
+
+    /**
+     * Two SwiftUI screens on display side by side (an iPad split view): their frames are roots, so a
+     * click cannot be tied to either visit and carries none, though the name still resolves.
+     */
+    @Test
+    fun aClickBesideTwoVisibleScreensCarriesNoVisit() {
+        val tracker = RecordingElementTracker()
+        val stack = ScopeStack()
+        val screens = AutographScreenCapture(tracker, stack)
+        screens.appeared("Sidebar")
+        screens.appeared("Detail")
+
+        AutographElementCapture(tracker, stack).clickedJson(name = "save_tapped", propertiesJson = "{}")
+
+        val properties = tracker.properties.single()
+        assertEquals("Detail", properties["screen"]?.jsonPrimitive?.content)
+        assertFalse(RESERVED_METADATA_KEY in properties, properties.toString())
+    }
+
+    /**
      * A failing tracker must not unwind into Swift: a Kotlin exception crossing into a Swift caller
      * with no `@Throws` terminates the app, and an analytics event is never worth that.
      */
@@ -206,12 +257,15 @@ class ExplicitElementCaptureTest {
 
 private class EnvelopeRecordingTransport : Transport {
     val tracked = mutableListOf<Pair<JsonObject, Envelope?>>()
+    val screens = mutableListOf<Envelope?>()
 
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         tracked += properties.asJsonObject() to envelope
     }
 
-    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) = Unit
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        screens += envelope
+    }
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) = Unit
 }

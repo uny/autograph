@@ -56,9 +56,19 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 - **A native `Screen Viewed` carries a screen view id** ([#242]). Each screen view that the Android
   Activity/Fragment capture, the iOS UIKit capture or the explicit SwiftUI screen path emits starts
   a new visit of its surface, and the event carries the visit's id as `screen_view_id` in
-  `context.instrumentation`. A return to the same screen is a new visit with a new id. The events
-  that happen during the visit do not carry the id yet, and neither do Compose screen views; both
-  come in later changes. The id is minted before the tracker sees the screen view and is not taken
+  `context.instrumentation`. A return to the same screen is a new visit with a new id. The native
+  taps and SwiftUI clicks of the visit carry the same id: the Android and iOS native tap captures and
+  every `AutographElementCapture` entry point, `clickedJson` included. Compose screen views and the
+  events on a Compose screen do not carry one yet; that comes in a later change.
+  - The visit ends when the screen's view does: on Android at the Activity's or fragment's stop, or
+    when a fragment is moved down, detached or hidden; on iOS when the screen's frame is removed. A
+    pause under a dialog does not end it. An event outside any visit carries no id.
+  - An event that cannot be tied to one visit carries no id rather than another screen's: when two
+    surfaces that name a screen are on display side by side (two root view controllers on iOS, two
+    Activities in multi-window on Android for an event not localized to either), and on Android
+    after a rotation, until a later change carries the visit across the re-creation. The `screen`
+    name still resolves as before.
+  - `AmbientContext.screenViewId` reports the visit a `ScopeStack` read resolves to. The id is minted before the tracker sees the screen view and is not taken
   back if the validator rejects it or the tracker throws, so a visit can have an id with no
   `Screen Viewed` row. `reset()` does not change ids; join on the id together with `session_id`.
   - `ScopeStack` mints the ids, because the tracker's own `AutographConfig.eventId` sits behind the

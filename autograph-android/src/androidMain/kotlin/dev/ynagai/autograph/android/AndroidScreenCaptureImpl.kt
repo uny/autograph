@@ -241,7 +241,7 @@ internal class AndroidScreenCapture(
         if (!active) return
         if (activity.isChangingConfigurations) pendingConfigChange.add(activity.javaClass.name)
         activityStates[activity]?.let {
-            it.emitted = false
+            endView(it)
             // An Activity's frame keeps its position for life — its content view does, and its
             // fragments' frames sit above it and survive this stop, so replacing it here would jump
             // it over them. What it SAYS still has to be re-derived, though: an Activity that owned
@@ -354,7 +354,7 @@ internal class AndroidScreenCapture(
 
         /** Ends the in-progress view of every fragment of this Activity — see [endViewsOffDisplay]. */
         fun endViews() {
-            fragmentStates.values.forEach { it.emitted = false }
+            fragmentStates.values.forEach { endView(it) }
         }
 
         /**
@@ -397,7 +397,7 @@ internal class AndroidScreenCapture(
                 // a different surface, so this surface's view really did end. Clear the emit record so
                 // returning to it reports a fresh `Screen Viewed`. It is already deselected (its own
                 // pause did that), so attribution needs nothing here.
-                if (!fragment.isResumed) state.emitted = false
+                if (!fragment.isResumed) endView(state)
             }
         }
 
@@ -468,7 +468,7 @@ internal class AndroidScreenCapture(
                 // The host is still on display, so this surface lost the host's selection: a pager page
                 // moved down to STARTED, a fragment detached, a `hide()`. Its view of that screen has
                 // ended even though it never stopped, and coming back is a new view.
-                state.emitted = false
+                endView(state)
             } else {
                 // The host itself is going away (a permission prompt, another Activity). Whether that
                 // ends this surface's view cannot be told yet — see confirmDemotions.
@@ -482,7 +482,7 @@ internal class AndroidScreenCapture(
             // The host Activity is the leaving instance here, so its flag reports the rotation.
             if (f.activity?.isChangingConfigurations == true) pendingConfigChange.add(f.javaClass.name)
             fragmentStates[f]?.let {
-                it.emitted = false
+                endView(it)
                 it.pausedWithHost = false
                 deselect(it)
             }
@@ -700,6 +700,16 @@ internal class AndroidScreenCapture(
         emit(state, screen)
     }
 
+    /**
+     * The view of [state]'s screen is over: the next return to it is a new view, and until then the
+     * events its frame attributes carry no screen view id. Every site that ends a view goes through
+     * here, so none of them can leave an ended visit's id on a frame that stays on the stack (#242).
+     */
+    private fun endView(state: SurfaceState) {
+        state.emitted = false
+        scopeStack.endScreenView(state.handle)
+    }
+
     private fun emit(state: SurfaceState, screen: String) {
         state.emitted = true
         try {
@@ -729,7 +739,7 @@ internal class AndroidScreenCapture(
     private fun endViewsOffDisplay() {
         for ((activity, state) in activityStates) {
             if (activity in resumedActivities) continue
-            state.emitted = false
+            endView(state)
             fragmentRegistrations[activity]?.callbacks?.endViews()
         }
     }

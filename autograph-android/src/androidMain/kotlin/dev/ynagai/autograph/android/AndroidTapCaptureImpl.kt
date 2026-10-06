@@ -149,7 +149,7 @@ internal class AndroidTapCapture(
                     // mask it raised itself — never a sibling surface's, whatever was pushed last.
                     // Ambient when nothing has claimed the view tree, which is the pre-#216 answer.
                     val context = resolution.origin?.let(scopeStack::current) ?: scopeStack.current()
-                    tracker.track(eventName, context.enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK), resolution.identifier)
+                    tracker.track(eventName, context.enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK, screenViewId = context.screenViewId), resolution.identifier)
                     return true
                 }
                 // Neither spends the gesture, for the same reason a touch-up that resolved to nothing

@@ -14,12 +14,17 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -113,11 +118,14 @@ class MiniPlayerFragment : ButtonFragment() {
 class AndroidTapOriginTest {
 
     private val taps = mutableListOf<Map<String, JsonElement>>()
+    private val screenViewIds = mutableListOf<String?>()
     private val tracker = object : Tracker {
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
             taps += properties
         }
-        override fun screen(name: String, properties: Map<String, JsonElement>) = Unit
+        override fun screen(name: String, properties: Map<String, JsonElement>) {
+            screenViewIds += screenViewIdOf(properties)
+        }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
     private val scopeStack = ScopeStack()
@@ -321,7 +329,57 @@ class AndroidTapOriginTest {
         assertEquals("Manual", taps.single()["screen"]?.jsonPrimitive?.content)
     }
 
+    // --- #242: a tap carries the id of the visit it happened in ------------------------------------
+
+    @Test
+    fun aTapCarriesTheScreenViewIdOfTheViewItHappenedIn() {
+        val activity = launch()
+
+        tap(activity, activity.ownButton)
+
+        val visit = screenViewIds.single()
+        assertNotNull(visit)
+        assertEquals(visit, screenViewIdOf(taps.single()))
+    }
+
+    @Test
+    fun aTapAfterAReturnThroughAStopCarriesTheNewVisitsId() {
+        val activity = launch()
+        tap(activity, activity.ownButton)
+
+        controller.pause().stop().restart().resume()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        tap(activity, activity.ownButton)
+
+        val (first, second) = screenViewIds
+        assertNotEquals(first, second)
+        assertEquals(listOf(first, second), taps.map(::screenViewIdOf))
+    }
+
+    @Test
+    fun aTapAfterARotationCarriesNoScreenViewIdYet() {
+        // A rotation is one continuous view, so it emits no second Screen Viewed — and the re-created
+        // Activity's frame has started no visit. No id rather than a guessed one; carrying the visit
+        // across the re-creation is a later change (#242).
+        launch()
+        controller.recreate()
+        Robolectric.getForegroundThreadScheduler().advanceToLastPostedRunnable()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        val activity = controller.get()
+
+        tap(activity, activity.ownButton)
+
+        assertEquals(1, screenViewIds.size)
+        assertEquals("Main", taps.single()["screen"]?.jsonPrimitive?.content)
+        assertNull(screenViewIdOf(taps.single()))
+    }
+
     // --- helpers ----------------------------------------------------------------------------------
+
+    private fun screenViewIdOf(properties: Map<String, JsonElement>): String? =
+        properties[RESERVED_METADATA_KEY]?.let {
+            Json.parseToJsonElement(it.jsonPrimitive.content).jsonObject["screen_view_id"]?.jsonPrimitive?.content
+        }
 
     private fun install(fragmentScreenName: (Fragment) -> String? = { it.javaClass.simpleName }) {
         screens = installAutographNativeScreenCapture(

@@ -138,7 +138,7 @@ public class AutographElementCapture(
             var result = scoped
             context.screen?.let { result = JsonObject(result + ("screen" to JsonPrimitive(it))) }
             context.section?.let { result = JsonObject(result + ("section" to JsonPrimitive(it))) }
-            if (kind != null) result = result.withEventMetadata(kind)
+            if (kind != null || context.screenViewId != null) result = result.withEventMetadata(kind, screenViewId = context.screenViewId)
             tracker.track(name, result, target)
         } catch (_: Throwable) {
             // Never unwind into Swift. A dropped event is recoverable; a crash in someone's app

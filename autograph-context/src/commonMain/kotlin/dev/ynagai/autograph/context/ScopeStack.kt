@@ -343,8 +343,9 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
      * name, while [update] (a section change, a recomposition) keeps the current one. Returns null, and
      * mints nothing, if the handle was already removed or belongs to another stack.
      *
-     * The id stays on the frame until the next call or until the frame is removed. Nothing reads it
-     * back from [current] yet; the events of the visit pick it up in a later change (#242).
+     * The id stays on the frame until the next call, [endScreenView], or the frame's removal, and
+     * [current] reports it as [AmbientContext.screenViewId] while this frame is the one naming the
+     * screen.
      *
      * `@AutographInternalApi`: the screen-view emit sites in Autograph's own modules call this, right
      * before they emit the `Screen Viewed` that carries the id. Main thread only, like [update].
@@ -353,7 +354,29 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
     public fun beginScreenView(handle: ScopeHandle): String? {
         val frame = handle.frame
         if (frames.none { it === frame }) return null
-        return screenViewIds.next().also { frame.screenViewId = it }
+        val id = screenViewIds.next()
+        frame.screenViewId = id
+        snapshot = recompute()
+        return id
+    }
+
+    /**
+     * Ends the visit the frame [handle] refers to is in, without removing the frame: until the next
+     * [beginScreenView], the events it attributes carry no screen view id. For a pipeline whose
+     * surface stays on the stack after its view ends — an Android Activity or fragment that stopped,
+     * or was moved down, detached or hidden — so that its events are not tied to a visit that is over.
+     * A pause is not the end of a visit, and neither is [setActive]: a surface paused under a dialog
+     * and resumed again is still in the visit it started. A no-op if the frame has no visit, was
+     * already removed, or belongs to another stack.
+     *
+     * `@AutographInternalApi`, main thread only, like [beginScreenView].
+     */
+    @AutographInternalApi
+    public fun endScreenView(handle: ScopeHandle) {
+        val frame = handle.frame
+        if (frame.screenViewId == null || frames.none { it === frame }) return
+        frame.screenViewId = null
+        snapshot = recompute()
     }
 
     /**
@@ -540,6 +563,8 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
         if (live.isEmpty()) return AmbientContext.Empty
         var screen: String? = null
         var section: String? = null
+        // The frame [screen] came from: its visit is the one the event belongs to (#242).
+        var screenFrame: ScopeFrame? = null
         // A mask and an empty stack both leave [screen] null, but they say different things — see
         // [AmbientContext.screenMasked]. Tracked alongside screen because it is set and cleared by
         // exactly the frames that set and clear screen.
@@ -559,16 +584,35 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
             if (frame.maskScreen) {
                 screen = null
                 section = null
+                screenFrame = null
                 screenMasked = true
             } else if (frame.screen != null) {
                 screen = frame.screen
                 section = frame.section
+                screenFrame = frame
                 screenMasked = false
             } else if (frame.section != null) {
                 section = frame.section
             }
         }
-        return AmbientContext(resolveScope(live), screen, section, screenMasked)
+        return AmbientContext(resolveScope(live), screen, section, screenMasked, screenViewIdOf(screenFrame, live))
+    }
+
+    /**
+     * The visit [winner] is in, or null when the event cannot be tied to one: [winner] never started
+     * a visit (an ancestor's visit is not borrowed), or another candidate that names a screen is not on
+     * [winner]'s lineage. Two such frames are surfaces on display side by side — two root view
+     * controllers on iOS, whose frames are roots — and insertion order only decides which name the
+     * screen gets, not which visit the event happened in, so no id is better than the wrong one. The
+     * screen name still resolves as before.
+     */
+    private fun screenViewIdOf(winner: ScopeFrame?, live: List<ScopeFrame>): String? {
+        val id = winner?.screenViewId ?: return null
+        val sibling = live.any { frame ->
+            frame !== winner && frame.screen != null && !frame.maskScreen &&
+                !frame.encloses(winner) && !winner.encloses(frame)
+        }
+        return if (sibling) null else id
     }
 
     /**
@@ -699,6 +743,13 @@ public class AmbientContext internal constructor(
      * (`TrackedScreen`, a bare `TrackScreenView`, and `NavController.TrackScreenViews` all do).
      */
     public val screenMasked: Boolean,
+    /**
+     * The id of the visit of [screen] this context belongs to (#242): the id the `Screen Viewed` that
+     * started it carried. Null when there is no such visit — the frame naming the screen has not
+     * emitted one (Compose screens, for now), its view has ended, the screen is masked, or two
+     * surfaces naming a screen are on display side by side and the event cannot be tied to either.
+     */
+    public val screenViewId: String? = null,
 ) {
     /**
      * Returns [properties] enriched with this context: [scope] merged underneath (so an explicit
