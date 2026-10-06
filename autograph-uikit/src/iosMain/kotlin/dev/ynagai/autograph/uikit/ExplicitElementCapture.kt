@@ -45,6 +45,10 @@ import kotlinx.serialization.json.JsonPrimitive
  * from a tap. [clicked] and [clickedJson] serve `autograph.track(_:)`, which can be called from a
  * timer or a completion handler as easily as from a touch, so they claim no kind.
  *
+ * All three also carry the current visit's id
+ * ([dev.ynagai.autograph.context.AmbientContext.screenViewId]) in that metadata when the stack has
+ * one, so an event without a kind can still carry the reserved key.
+ *
  * **[scope] is passed in, not read from [scopeStack], and that is deliberate.**
  * `ScopeStack.resolveScope()` drops sibling frames that are neither's ancestor, because an
  * autocaptured tap carries no evidence of *which* sibling it hit. A list whose rows each own a scope
