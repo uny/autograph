@@ -48,6 +48,7 @@ public fun Modifier.trackImpression(
 ): Modifier = composed {
     val tracker = LocalTracker.current
     val screenContext = LocalScreenContext.current
+    val visit = LocalScreenVisit.current
     var fired by remember { mutableStateOf(false) }
     onVisibilityChanged(minDurationMs = minDurationMs, minFractionVisible = minFractionVisible) { visible ->
         if (visible && !fired) {
@@ -56,6 +57,7 @@ public fun Modifier.trackImpression(
                 EventKinds.IMPRESSION,
                 impressionMinDurationMs = minDurationMs,
                 impressionMinFractionVisible = minFractionVisible.toDecimalDouble(),
+                screenViewId = visit?.id,
             )
             tracker.track(name, tagged, target)
         }
@@ -75,9 +77,14 @@ public fun Modifier.trackClick(
 ): Modifier = composed {
     val tracker = LocalTracker.current
     val screenContext = LocalScreenContext.current
+    val visit = LocalScreenVisit.current
     val claims = LocalAutocaptureClaims.current
     clickable {
-        tracker.track(name, withScreenContext(properties, screenContext).withEventMetadata(EventKinds.CLICK), target)
+        tracker.track(
+            name,
+            withScreenContext(properties, screenContext).withEventMetadata(EventKinds.CLICK, screenViewId = visit?.id),
+            target,
+        )
         // After the explicit event is recorded and before the caller's handler, because the mark's
         // whole meaning is "this tap already produced an event, so autocapture must not add one".
         // If `track` throws there is no explicit event, the mark never happens, and autocapture

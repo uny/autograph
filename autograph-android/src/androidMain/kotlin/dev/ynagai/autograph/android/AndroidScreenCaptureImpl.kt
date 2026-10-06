@@ -93,8 +93,9 @@ internal class AndroidScreenCapture(
 
     // Screens whose next resume is a configuration-change re-creation, not a fresh view. Keyed by class
     // name because the leaving instance and the re-created one are different objects. Emit is skipped
-    // for them; the self-previous guard in emitScreenView separately keeps previous_screen clean.
-    private val pendingConfigChange = HashSet<String>()
+    // for them; the self-previous guard in emitScreenView separately keeps previous_screen clean. The
+    // value is the leaving instance's visit id, carried over to the re-created one's frame (#242).
+    private val pendingConfigChange = HashMap<String, String?>()
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -239,7 +240,9 @@ internal class AndroidScreenCapture(
 
     override fun onActivityStopped(activity: Activity) {
         if (!active) return
-        if (activity.isChangingConfigurations) pendingConfigChange.add(activity.javaClass.name)
+        if (activity.isChangingConfigurations) {
+            pendingConfigChange[activity.javaClass.name] = activityStates[activity]?.let { scopeStack.screenViewIdOf(it.handle) }
+        }
         activityStates[activity]?.let {
             endView(it)
             // An Activity's frame keeps its position for life — its content view does, and its
@@ -480,7 +483,9 @@ internal class AndroidScreenCapture(
         override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
             if (!active) return
             // The host Activity is the leaving instance here, so its flag reports the rotation.
-            if (f.activity?.isChangingConfigurations == true) pendingConfigChange.add(f.javaClass.name)
+            if (f.activity?.isChangingConfigurations == true) {
+                pendingConfigChange[f.javaClass.name] = fragmentStates[f]?.let { scopeStack.screenViewIdOf(it.handle) }
+            }
             fragmentStates[f]?.let {
                 endView(it)
                 it.pausedWithHost = false
@@ -676,7 +681,8 @@ internal class AndroidScreenCapture(
         // Consumed by the first genuinely fresh resume after the marker was left, capturable or not —
         // the re-created instance is the one it was left for, and leaving it behind would suppress a
         // later, real view of the same class.
-        val configChange = pendingConfigChange.remove(className)
+        val configChange = className in pendingConfigChange
+        val carriedVisit = pendingConfigChange.remove(className)
         if (screen == null) return
         // The frame keeps the settled name, but a surface that is right now neither its own screen
         // nor covering does not report itself: an Activity settled as a screen that has since taken
@@ -695,6 +701,7 @@ internal class AndroidScreenCapture(
         }
         if (configChange) {
             state.emitted = true
+            carriedVisit?.let { scopeStack.continueScreenView(state.handle, it) }
             return
         }
         emit(state, screen)

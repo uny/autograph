@@ -161,7 +161,7 @@ internal fun reportTapIfResolvable(
         // the ambient scope (the tapped element is more specific than the screen it sits on) while
         // the reserved screen/section keys still win over it. Being a scope, it never supplies event
         // metadata, so its entry under the reserved key is left out before it takes that slot.
-        val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY).withEventMetadata(EventKinds.CLICK)
+        val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY).withEventMetadata(EventKinds.CLICK, screenViewId = ctx.screenViewId)
         tracker.track(config.eventName, properties, target.identifier)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.

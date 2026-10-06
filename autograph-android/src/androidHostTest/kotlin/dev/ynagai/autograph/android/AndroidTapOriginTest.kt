@@ -357,10 +357,9 @@ class AndroidTapOriginTest {
     }
 
     @Test
-    fun aTapAfterARotationCarriesNoScreenViewIdYet() {
+    fun aTapAfterARotationStaysInTheVisitTheRotationInterrupted() {
         // A rotation is one continuous view, so it emits no second Screen Viewed — and the re-created
-        // Activity's frame has started no visit. No id rather than a guessed one; carrying the visit
-        // across the re-creation is a later change (#242).
+        // Activity's frame carries the visit over instead of starting none.
         launch()
         controller.recreate()
         Robolectric.getForegroundThreadScheduler().advanceToLastPostedRunnable()
@@ -369,9 +368,26 @@ class AndroidTapOriginTest {
 
         tap(activity, activity.ownButton)
 
-        assertEquals(1, screenViewIds.size)
+        val visit = screenViewIds.single()
+        assertNotNull(visit)
         assertEquals("Main", taps.single()["screen"]?.jsonPrimitive?.content)
-        assertNull(screenViewIdOf(taps.single()))
+        assertEquals(visit, screenViewIdOf(taps.single()))
+    }
+
+    @Test
+    fun aReturnAfterARotationIsStillANewVisit() {
+        val activity = launch()
+        controller.recreate()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+        controller.pause().stop().restart().resume()
+        Shadows.shadowOf(android.os.Looper.getMainLooper()).idle()
+
+        tap(controller.get(), controller.get().ownButton)
+
+        val (first, second) = screenViewIds
+        assertNotEquals(first, second)
+        assertEquals(second, screenViewIdOf(taps.single()))
+        check(activity !== controller.get())
     }
 
     // --- helpers ----------------------------------------------------------------------------------

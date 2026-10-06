@@ -58,8 +58,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   a new visit of its surface, and the event carries the visit's id as `screen_view_id` in
   `context.instrumentation`. A return to the same screen is a new visit with a new id. The native
   taps and SwiftUI clicks of the visit carry the same id: the Android and iOS native tap captures and
-  every `AutographElementCapture` entry point, `clickedJson` included. Compose screen views and the
-  events on a Compose screen do not carry one yet; that comes in a later change. The id is minted
+  every `AutographElementCapture` entry point, `clickedJson` included. Compose screen views carry one
+  too — `TrackedScreen`, `TrackScreenView` and `NavController.TrackScreenViews`, a new visit on every
+  destination change — and so do Compose autocaptured taps, and `trackClick` / `trackImpression`
+  inside a `TrackedScreen`. The id is minted
   before the tracker sees the screen view and is not taken back if the validator rejects it or the
   tracker throws, so a visit can have an id with no `Screen Viewed` row. `reset()` does not change
   ids; join on the id together with `session_id`.
@@ -71,9 +73,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     a second screen is on display that is neither the event's screen nor one enclosing or nested in
     it. On iOS, where native and SwiftUI screen frames are roots, that includes two root view
     controllers side by side and a presented screen whose presenter has not disappeared; on Android,
-    side-by-side fragments or Activities for an event not localized to one of them. Also on Android
-    after a rotation, until a later change carries the visit across the re-creation. The `screen`
-    name still resolves as before.
+    side-by-side fragments or Activities for an event not localized to one of them. In Compose, a
+    `TrackedScreen` inside a destination that `TrackScreenViews` also names is such a sibling, so
+    taps autocaptured there carry no id (the `TrackedScreen`'s own `trackClick` keeps its visit). The
+    `screen` name still resolves as before.
+  - A rotation on Android is one continuous view: it reports no second `Screen Viewed`, and the
+    re-created Activity or fragment stays in the visit it was in.
   - `AmbientContext.screenViewId` reports the visit a `ScopeStack` read resolves to.
   - `ScopeStack` mints the ids, because the tracker's own `AutographConfig.eventId` sits behind the
     `Tracker` interface where the emit sites cannot reach it. `ScopeStack()` mints UUIDv7s; the new

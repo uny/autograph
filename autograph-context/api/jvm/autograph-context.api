@@ -18,6 +18,7 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 	public fun <init> ()V
 	public fun <init> (Ldev/ynagai/autograph/EventIdGenerator;)V
 	public final fun beginScreenView (Ldev/ynagai/autograph/context/ScopeHandle;)Ljava/lang/String;
+	public final fun continueScreenView (Ldev/ynagai/autograph/context/ScopeHandle;Ljava/lang/String;)V
 	public final fun current ()Ldev/ynagai/autograph/context/AmbientContext;
 	public final fun current (Ldev/ynagai/autograph/context/ScopeHandle;)Ldev/ynagai/autograph/context/AmbientContext;
 	public final fun endScreenView (Ldev/ynagai/autograph/context/ScopeHandle;)V
@@ -28,6 +29,7 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 	public static synthetic fun pushSurface$default (Ldev/ynagai/autograph/context/ScopeStack;Ljava/util/Map;Ljava/lang/String;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;ILjava/lang/Object;)Ldev/ynagai/autograph/context/ScopeHandle;
 	public final fun remove (Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public final fun reparent (Ldev/ynagai/autograph/context/ScopeHandle;Ldev/ynagai/autograph/context/ScopeHandle;)V
+	public final fun screenViewIdOf (Ldev/ynagai/autograph/context/ScopeHandle;)Ljava/lang/String;
 	public final fun setActive (Ldev/ynagai/autograph/context/ScopeHandle;Z)V
 	public final fun setActive (Ljava/util/List;Z)V
 	public final fun setScreenMasked (Ldev/ynagai/autograph/context/ScopeHandle;Z)V

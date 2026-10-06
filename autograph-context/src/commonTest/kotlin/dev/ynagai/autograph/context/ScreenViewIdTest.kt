@@ -181,4 +181,22 @@ class ScreenViewIdTest {
         assertEquals("Checkout", stack.current().screen)
         assertNull(stack.current().screenViewId)
     }
+
+    @Test
+    fun a_visit_carried_to_a_new_frame_is_reported_from_it() {
+        // An Android re-creation: the leaving frame's visit, read while it is inactive, continues on
+        // the frame that replaces it, without a second Screen Viewed.
+        val stack = stack()
+        val leaving = stack.pushSurface(screen = "Detail")
+        stack.beginScreenView(leaving)
+        stack.setActive(leaving, false)
+        val carried = stack.screenViewIdOf(leaving)
+        stack.remove(leaving)
+        val recreated = stack.pushSurface(screen = "Detail")
+
+        stack.continueScreenView(recreated, carried!!)
+
+        assertEquals("id-1", stack.current().screenViewId)
+        assertNull(stack.screenViewIdOf(leaving), "a removed frame has no visit to read")
+    }
 }

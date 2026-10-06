@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
@@ -5,7 +7,11 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.staticCompositionLocalOf
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.withEventMetadata
 import dev.ynagai.autograph.context.ScreenHistory
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -58,19 +64,41 @@ public fun TrackScreenView(
 }
 
 /**
+ * The visit a [TrackedScreen] is in (#242), for the explicit `trackClick` / `trackImpression` inside
+ * it: they attribute lexically, like [LocalScreenContext], not through the ambient stack. Read when
+ * the event fires, not when it composes, so it is a holder rather than a value.
+ */
+internal class ScreenVisit {
+    var id: String? = null
+}
+
+internal val LocalScreenVisit: ProvidableCompositionLocal<ScreenVisit?> = staticCompositionLocalOf { null }
+
+/**
  * The reporting half of [TrackScreenView]: records history and emits, declaring nothing. Split out
  * so [TrackedScreen] — which pushes its own frame, with a section — does not push a second one.
+ *
+ * Called inside the frame's [MirrorAmbientFrame], so [LocalScopeParent] is that frame: each emit
+ * starts a new visit of it, and the `Screen Viewed` carries the visit's id (#242). The effect runs
+ * after the frame's `SideEffect` has written [name] into it, so a rename — which ends the old visit —
+ * cannot clear the id it mints. [visit] receives the id for the explicit events under the screen.
  */
 @Composable
 private fun EmitScreenView(
     name: String,
     properties: JsonObject,
+    visit: ScreenVisit? = null,
 ) {
     val tracker = LocalTracker.current
-    val history = currentScreenHistory
+    val stack = LocalScopeStack.current
+    val history = stack.screenHistory
+    val frame = LocalScopeParent.current
     LaunchedEffect(name) {
         val previous = history.record(name)
-        tracker.screen(name, withPreviousScreen(properties, previous))
+        val id = frame?.get(0)?.let(stack::beginScreenView)
+        visit?.id = id
+        val withPrevious = withPreviousScreen(properties, previous)
+        tracker.screen(name, if (id != null) withPrevious.withEventMetadata(kind = null, screenViewId = id) else withPrevious)
     }
 }
 
@@ -118,10 +146,12 @@ public fun TrackedScreen(
     // observer sits above this composable and can't read the CompositionLocal. Wrapping the content
     // also makes this screen frame the lineage parent of any scope nested inside it, so scopes under
     // one screen stay on a single chain (and merge) rather than reading as siblings.
+    val visit = remember { ScreenVisit() }
     MirrorAmbientFrame(LocalScopeStack.current, screen = name, section = section) {
-        EmitScreenView(name, properties)
+        EmitScreenView(name, properties, visit)
         CompositionLocalProvider(
             LocalScreenContext provides ScreenContext(name, section),
+            LocalScreenVisit provides visit,
             content = content,
         )
     }

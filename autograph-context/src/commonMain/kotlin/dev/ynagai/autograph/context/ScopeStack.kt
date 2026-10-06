@@ -364,6 +364,37 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
     }
 
     /**
+     * The id of the visit the frame [handle] refers to is in, whether or not anything reads it from
+     * [current] right now (an inactive or masked frame), or null if it has none, was removed, or
+     * belongs to another stack. For a pipeline that carries one visit over to a new frame — see
+     * [continueScreenView].
+     *
+     * `@AutographInternalApi`, main thread only, like [beginScreenView].
+     */
+    @AutographInternalApi
+    public fun screenViewIdOf(handle: ScopeHandle): String? {
+        val frame = handle.frame
+        return if (frames.any { it === frame }) frame.screenViewId else null
+    }
+
+    /**
+     * Puts the frame [handle] refers to in the visit [screenViewId] identifies, as if that visit had
+     * started on it, without minting a new one. For one view of a screen that moves to a new frame —
+     * an Android Activity or fragment re-created by a configuration change, which reports no second
+     * `Screen Viewed` — so the events after the move stay tied to the visit before it. A no-op if the
+     * handle was removed or belongs to another stack.
+     *
+     * `@AutographInternalApi`, main thread only, like [beginScreenView].
+     */
+    @AutographInternalApi
+    public fun continueScreenView(handle: ScopeHandle, screenViewId: String) {
+        val frame = handle.frame
+        if (frame.screenViewId == screenViewId || frames.none { it === frame }) return
+        frame.screenViewId = screenViewId
+        snapshot = recompute()
+    }
+
+    /**
      * Ends the visit the frame [handle] refers to is in, without removing the frame: until the next
      * [beginScreenView], the events it attributes carry no screen view id. For a pipeline whose
      * surface stays on the stack after its view ends — an Android Activity or fragment that stopped,
