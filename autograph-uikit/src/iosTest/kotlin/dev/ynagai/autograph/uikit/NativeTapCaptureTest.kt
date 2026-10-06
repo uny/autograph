@@ -354,7 +354,9 @@ class NativeTapCaptureTest {
         // A non-empty stack, which is what makes the properties assertion below mean anything: an empty
         // ScopeStack enriches to EmptyJsonObject, so asserting against it would pass just as well if
         // `report` stopped enriching at all — the exact regression the assertion exists to catch.
-        scopeStack.push(screen = "Feed", section = "Header")
+        val feed = scopeStack.push(screen = "Feed", section = "Header")
+        // The visit the screen's `Screen Viewed` would have started (#242): the tap carries its id.
+        val visit = scopeStack.beginScreenView(feed)
         val capture = AutographNativeTapCapture(tracker, scopeStack, "Element Clicked")
         val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
         root.addSubview(
@@ -365,10 +367,10 @@ class NativeTapCaptureTest {
         capture.report(AxPoint(15f, 15f), root)
 
         assertEquals(listOf<String?>("share_button"), tracker.targets)
-        // The event name, the scope enrichment and the click kind (#287) ride the same call, and nothing
-        // else covers them on this path — see [RecordingTracker].
+        // The event name, the scope enrichment, the click kind (#287) and the visit id (#242) ride the
+        // same call, and nothing else covers them on this path — see [RecordingTracker].
         assertEquals(listOf("Element Clicked"), tracker.names, "the configured event name must be used")
-        val clickKind = JsonPrimitive("""{"kind":"${EventKinds.CLICK}"}""")
+        val clickKind = JsonPrimitive("""{"kind":"${EventKinds.CLICK}","screen_view_id":"$visit"}""")
         assertEquals(
             listOf(JsonObject(scopeStack.current().enrich(EmptyJsonObject) + (RESERVED_METADATA_KEY to clickKind))),
             tracker.properties,

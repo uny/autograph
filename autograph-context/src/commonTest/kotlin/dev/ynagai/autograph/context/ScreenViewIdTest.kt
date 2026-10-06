@@ -124,13 +124,61 @@ class ScreenViewIdTest {
     }
 
     @Test
-    fun ending_a_visit_on_a_removed_frame_or_another_stacks_is_a_no_op() {
+    fun ending_a_visit_on_another_stacks_frame_is_a_no_op() {
         val stack = stack()
         val screen = stack.pushSurface(screen = "Detail")
         stack.beginScreenView(screen)
-        val other = stack()
-        other.endScreenView(screen)
+        stack().endScreenView(screen)
 
         assertEquals("id-1", stack.current().screenViewId)
+    }
+
+    @Test
+    fun ending_a_visit_on_a_removed_frame_is_a_no_op() {
+        val stack = stack()
+        val gone = stack.pushSurface(screen = "Gone")
+        stack.beginScreenView(gone)
+        stack.remove(gone)
+        val screen = stack.pushSurface(screen = "Detail")
+        stack.beginScreenView(screen)
+
+        stack.endScreenView(gone)
+
+        assertEquals("id-2", stack.current().screenViewId)
+    }
+
+    @Test
+    fun a_sibling_screen_with_no_visit_still_makes_the_event_ambiguous() {
+        // A Compose screen beside a native root: it names a screen the event may have happened on, so
+        // the root's visit is not the safe answer just because it is the only one with an id.
+        val stack = stack()
+        val native = stack.push(screen = "Native")
+        stack.beginScreenView(native)
+        stack.push(screen = "Compose")
+
+        assertNull(stack.current().screenViewId)
+    }
+
+    @Test
+    fun a_masked_sibling_does_not_make_the_event_ambiguous() {
+        // A mask says the surface on display names no screen, so it is no rival for the visit.
+        val stack = stack()
+        stack.push().also { stack.setScreenMasked(it, true) }
+        val screen = stack.push(screen = "Detail")
+        stack.beginScreenView(screen)
+
+        assertEquals("id-1", stack.current().screenViewId)
+    }
+
+    @Test
+    fun renaming_the_screen_ends_its_visit() {
+        val stack = stack()
+        val screen = stack.pushSurface(screen = "Cart")
+        stack.beginScreenView(screen)
+
+        stack.update(screen, screen = "Checkout")
+
+        assertEquals("Checkout", stack.current().screen)
+        assertNull(stack.current().screenViewId)
     }
 }

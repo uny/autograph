@@ -188,6 +188,9 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
         if (frames.none { it === frame }) return
         val newScope = scope.asJsonObject()
         if (frame.scope == newScope && frame.screen == screen && frame.section == section) return
+        // A visit is of the screen its `Screen Viewed` named: renaming the frame ends it, so the
+        // events under the new name are not tied to the old screen's visit (#242).
+        if (frame.screen != screen) frame.screenViewId = null
         frame.scope = newScope
         frame.screen = screen
         frame.section = section
@@ -340,7 +343,7 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
     /**
      * Starts a new visit of the surface whose frame [handle] refers to, and returns its id: a fresh one
      * from [screenViewIds] on every call, so re-entering a screen is a new visit even under the same
-     * name, while [update] (a section change, a recomposition) keeps the current one. Returns null, and
+     * name, while [update] keeps the current one unless it renames the screen. Returns null, and
      * mints nothing, if the handle was already removed or belongs to another stack.
      *
      * The id stays on the frame until the next call, [endScreenView], or the frame's removal, and
