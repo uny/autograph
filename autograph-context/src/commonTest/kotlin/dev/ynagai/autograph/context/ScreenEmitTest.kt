@@ -19,11 +19,13 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 class ScreenEmitTest {
 
+    // Records properties without the visit id the screen view now carries under the reserved key
+    // (#242) — that has its own tests, in ScreenVisitTest.
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<Pair<String, JsonObject>>()
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
         override fun screen(name: String, properties: Map<String, JsonElement>) {
-            screens += name to JsonObject(properties)
+            screens += name to JsonObject(properties - RESERVED_METADATA_KEY)
         }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }

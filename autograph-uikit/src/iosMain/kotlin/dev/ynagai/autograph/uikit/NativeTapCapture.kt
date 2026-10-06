@@ -224,7 +224,8 @@ public class AutographNativeTapCapture internal constructor(
     }
 
     private fun track(target: String) {
-        tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK), target)
+        val context = scopeStack.current()
+        tracker.track(eventName, context.enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK, screenViewId = context.screenViewId), target)
     }
 }
 
