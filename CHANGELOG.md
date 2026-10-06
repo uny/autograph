@@ -53,6 +53,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   remove the key, so a fake standing in for the real tracker now sees `__autograph` in the
   properties of every event listed above.
 
+- **A native `Screen Viewed` carries a screen view id** ([#242]). Each screen view that the Android
+  Activity/Fragment capture, the iOS UIKit capture or the explicit SwiftUI screen path emits starts
+  a new visit of its surface, and the event carries the visit's id as `screen_view_id` in
+  `context.instrumentation`. A return to the same screen is a new visit with a new id. The events
+  that happen during the visit do not carry the id yet, and neither do Compose screen views; both
+  come in later changes. The id is minted before the tracker sees the screen view and is not taken
+  back if the validator rejects it.
+  - `ScopeStack` mints the ids, because the tracker's own `AutographConfig.eventId` sits behind the
+    `Tracker` interface where the emit sites cannot reach it. `ScopeStack()` mints UUIDv7s; the new
+    `ScopeStack(EventIdGenerator)` takes the generator you gave `Autograph { eventId = … }` if the
+    two ids should share a format.
+
 ### Changed
 
 - **ADR 0001 freezes the member set of every interface a caller implements** ([#283]). §2c/§2d

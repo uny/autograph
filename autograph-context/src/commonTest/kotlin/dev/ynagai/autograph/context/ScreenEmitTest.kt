@@ -3,28 +3,40 @@
 package dev.ynagai.autograph.context
 
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
+import kotlin.test.assertNotNull
+import kotlin.test.assertNull
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * What a native `Screen Viewed` carries besides `previous_screen`: the scope resolved from the
  * emitting surface's own lineage (#238), the way a native tap resolves it — and nothing from a
- * sibling surface, which is the whole reason it reads from an origin rather than ambiently.
+ * sibling surface, which is the whole reason it reads from an origin rather than ambiently — and the
+ * id of the visit it starts (#242).
  */
 class ScreenEmitTest {
 
+    /** Records each screen view's properties without the metadata entry, and the metadata apart. */
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<Pair<String, JsonObject>>()
+        val metadata = mutableListOf<JsonObject?>()
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
         override fun screen(name: String, properties: Map<String, JsonElement>) {
-            screens += name to JsonObject(properties)
+            screens += name to JsonObject(properties - RESERVED_METADATA_KEY)
+            metadata += properties[RESERVED_METADATA_KEY]?.let { Json.parseToJsonElement(it.jsonPrimitive.content).jsonObject }
         }
+        val screenViewIds: List<String?> get() = metadata.map { it?.get("screen_view_id")?.jsonPrimitive?.content }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
 
@@ -45,14 +57,83 @@ class ScreenEmitTest {
 
     @Test
     fun a_scope_entry_under_the_reserved_metadata_key_does_not_reach_the_screen_view() {
-        val stack = ScopeStack()
+        val stack = ScopeStack(sequentialIds())
         val tracker = RecordingTracker()
-        val root = stack.push(scope = JsonObject(mapOf(RESERVED_METADATA_KEY to props("kind" to "click"), "tenant" to JsonPrimitive("acme"))))
+        val forged = props("kind" to "click", "screen_view_id" to "forged")
+        val root = stack.push(scope = JsonObject(mapOf(RESERVED_METADATA_KEY to forged, "tenant" to JsonPrimitive("acme"))))
         val screen = stack.pushSurface(parent = root, screen = "Detail")
 
         stack.emitScreenView(tracker, "Detail", origin = screen)
 
         assertEquals(listOf("Detail" to props("tenant" to "acme")), tracker.screens)
+        assertEquals(listOf<JsonObject?>(props("screen_view_id" to "id-1")), tracker.metadata, "only the emit site's metadata")
+    }
+
+    @Test
+    fun a_screen_view_carries_an_id_from_the_stacks_generator() {
+        val stack = ScopeStack(sequentialIds())
+        val tracker = RecordingTracker()
+        val screen = stack.pushSurface(screen = "Detail")
+
+        stack.emitScreenView(tracker, "Detail", origin = screen)
+
+        assertEquals(listOf<String?>("id-1"), tracker.screenViewIds)
+    }
+
+    @Test
+    fun the_no_argument_stack_mints_a_non_empty_id() {
+        val tracker = RecordingTracker()
+        val stack = ScopeStack()
+        val screen = stack.pushSurface(screen = "Detail")
+
+        stack.emitScreenView(tracker, "Detail", origin = screen)
+
+        val id = assertNotNull(tracker.screenViewIds.single())
+        assertFalse(id.isEmpty())
+    }
+
+    @Test
+    fun every_screen_view_starts_a_new_visit_even_on_the_same_frame_and_name() {
+        // A return to a screen whose frame stayed on the stack (an Activity coming back from a stop)
+        // is a second visit, not the first one resumed.
+        val stack = ScopeStack()
+        val tracker = RecordingTracker()
+        val screen = stack.pushSurface(screen = "List")
+
+        stack.emitScreenView(tracker, "List", origin = screen)
+        stack.emitScreenView(tracker, "List", origin = screen)
+
+        val (first, second) = tracker.screenViewIds
+        assertNotEquals(first, second)
+    }
+
+    @Test
+    fun beginning_a_screen_view_on_a_removed_frame_mints_nothing() {
+        var calls = 0
+        val stack = ScopeStack { "id-${++calls}" }
+        val screen = stack.pushSurface(screen = "Gone")
+        stack.remove(screen)
+
+        assertNull(stack.beginScreenView(screen))
+        assertNull(ScopeStack().beginScreenView(stack.pushSurface(screen = "Elsewhere")), "a handle from another stack")
+        assertEquals(0, calls)
+    }
+
+    @Test
+    fun an_update_keeps_the_visit_and_the_frame_keeps_the_id_it_was_given() {
+        val stack = ScopeStack(sequentialIds())
+        val screen = stack.pushSurface(screen = "List", section = "Tab A")
+        val id = stack.beginScreenView(screen)
+
+        stack.update(screen, screen = "List", section = "Tab B")
+
+        assertEquals("id-1", id)
+        assertEquals("id-1", screen.frame.screenViewId)
+    }
+
+    private fun sequentialIds(): EventIdGenerator {
+        var next = 0
+        return EventIdGenerator { "id-${++next}" }
     }
 
     @Test

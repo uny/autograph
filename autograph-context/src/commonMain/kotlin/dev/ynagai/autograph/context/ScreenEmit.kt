@@ -4,6 +4,7 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.withEventMetadata
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -37,6 +38,12 @@ import kotlinx.serialization.json.JsonPrimitive
  * the screen. The scope merges **under** `previous_screen`, a caller property that keeps winning a
  * key clash — the same shape as `autograph-compose`'s `mergeScope`.
  *
+ * Each call starts a new visit of [origin]'s surface ([ScopeStack.beginScreenView]) and the event
+ * carries its id as `screen_view_id` in the event metadata, written last so no scope entry can
+ * replace it. The id is minted before [Tracker.screen] runs and is not taken back if the tracker's
+ * validator rejects the event or the tracker throws, so an id can appear on later events with no
+ * `Screen Viewed` row of its own (#242).
+ *
  * `@AutographInternalApi`: public only so Autograph's own native modules can share this across the module
  * boundary — Kotlin `internal` would not reach them. Not a supported API for library users.
  */
@@ -45,7 +52,9 @@ public fun ScopeStack.emitScreenView(tracker: Tracker, name: String, origin: Sco
     val previous = screenHistory.record(name)?.takeIf { it != name }
     val scope = current(origin).scope
     val properties = withPreviousScreen(previous)
-    tracker.screen(name, if (scope.isEmpty()) properties else JsonObject(scope - RESERVED_METADATA_KEY + properties))
+    val merged = if (scope.isEmpty()) properties else JsonObject(scope - RESERVED_METADATA_KEY + properties)
+    val screenViewId = beginScreenView(origin)
+    tracker.screen(name, if (screenViewId != null) merged.withEventMetadata(kind = null, screenViewId = screenViewId) else merged)
 }
 
 /**

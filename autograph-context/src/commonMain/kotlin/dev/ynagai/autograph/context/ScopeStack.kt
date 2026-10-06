@@ -1,6 +1,9 @@
 package dev.ynagai.autograph.context
 
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventId
+import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.asJsonObject
 import kotlin.concurrent.Volatile
@@ -40,8 +43,17 @@ import kotlinx.serialization.json.JsonPrimitive
  * republished atomically on every mutation, so a background reader always sees a whole,
  * consistent context — never a half-applied one. The unit is the call: a change that takes two
  * calls publishes the snapshot in between (see [setScreenMasked] and [reparent]).
+ *
+ * **Screen view ids.** Each `Screen Viewed` a native pipeline emits through this stack starts a visit
+ * of that surface, and the visit gets an id from [screenViewIds] (#242). The tracker's own
+ * `AutographConfig.eventId` is out of reach here — it sits behind the `Tracker` interface — so a
+ * stack built with the no-argument constructor mints UUIDv7s. Pass the generator you gave
+ * `Autograph { eventId = … }` if the two ids should share a format.
  */
-public class ScopeStack {
+public class ScopeStack(private val screenViewIds: EventIdGenerator) {
+
+    /** A stack whose screen view ids are UUIDv7s ([EventId.UuidV7]). */
+    public constructor() : this(EventId.UuidV7)
 
     /**
      * The screen history that travels with this stack.
@@ -321,6 +333,25 @@ public class ScopeStack {
             changed = true
         }
         if (changed) snapshot = recompute()
+    }
+
+    /**
+     * Starts a new visit of the surface whose frame [handle] refers to, and returns its id: a fresh one
+     * from [screenViewIds] on every call, so re-entering a screen is a new visit even under the same
+     * name, while [update] (a section change, a recomposition) keeps the current one. Returns null, and
+     * mints nothing, if the handle was already removed or belongs to another stack.
+     *
+     * The id stays on the frame until the next call or until the frame is removed. Nothing reads it
+     * back from [current] yet; the events of the visit pick it up in a later change (#242).
+     *
+     * `@AutographInternalApi`: the screen-view emit sites in Autograph's own modules call this, right
+     * before they emit the `Screen Viewed` that carries the id. Main thread only, like [update].
+     */
+    @AutographInternalApi
+    public fun beginScreenView(handle: ScopeHandle): String? {
+        val frame = handle.frame
+        if (frames.none { it === frame }) return null
+        return screenViewIds.next().also { frame.screenViewId = it }
     }
 
     /**
@@ -619,6 +650,9 @@ internal class ScopeFrame(
     /** Which of [ScopeStack.push] / [ScopeStack.pushSurface] made it. */
     val kind: FrameKind = FrameKind.Declaration,
 ) {
+    /** The id of the visit this frame's surface is in, set by [ScopeStack.beginScreenView]. */
+    var screenViewId: String? = null
+
     /** See [ScopeStack.pushSurface]. */
     val boundary: Boolean get() = kind == FrameKind.Surface
 }

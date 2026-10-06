@@ -75,8 +75,9 @@ public data class EventMetadata internal constructor(
     /**
      * The visit of a screen this event belongs to (#242): one id per `Screen Viewed` the library emits,
      * carried by that screen view and by the events that happen during the visit it starts. Null when
-     * the event cannot be tied to one visit. It comes from the configured [EventIdGenerator], so it is
-     * not necessarily a UUIDv7. An id long enough to push the encoded value past
+     * the event cannot be tied to one visit. It comes from the [EventIdGenerator] the emitting
+     * `ScopeStack` was built with (UUIDv7 unless one was passed), not from `AutographConfig.eventId`,
+     * so its format can differ from `event_id`'s. An id long enough to push the encoded value past
      * [RESERVED_METADATA_KEY]'s bound loses the event's whole metadata, not just the id.
      */
     val screenViewId: String?,

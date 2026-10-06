@@ -18,13 +18,18 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.autographScopeOrigin
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -257,16 +262,21 @@ class AndroidScreenCaptureTest {
 
     /**
      * Records each `Screen Viewed` as "name:previous" (previous = "(none)" when absent), and keeps the
-     * full properties in [screenProperties] for the scope assertions (#238).
+     * properties in [screenProperties] for the scope assertions (#238) — without the metadata entry,
+     * whose `screen_view_id` goes to [screenViewIds] (#242).
      */
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<String>()
         val screenProperties = mutableListOf<JsonObject>()
+        val screenViewIds = mutableListOf<String?>()
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
         override fun screen(name: String, properties: Map<String, JsonElement>) {
             val previous = (properties.asJsonObject()["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
             screens += "$name:$previous"
-            screenProperties += properties.asJsonObject()
+            screenProperties += JsonObject(properties - RESERVED_METADATA_KEY)
+            screenViewIds += properties[RESERVED_METADATA_KEY]?.let {
+                Json.parseToJsonElement(it.jsonPrimitive.content).jsonObject["screen_view_id"]?.jsonPrimitive?.content
+            }
         }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
@@ -334,6 +344,20 @@ class AndroidScreenCaptureTest {
             listOf("PlainActivity:(none)", "PlainActivity:(none)"),
             tracker.screens,
         )
+    }
+
+    @Test
+    fun aReturnThroughAStopIsANewVisitWithItsOwnScreenViewId() {
+        install()
+        val controller = Robolectric.buildActivity(PlainActivity::class.java).setup()
+        // The same instance, so the same frame: the second Screen Viewed must still start a new visit.
+        controller.pause().stop().restart().resume()
+
+        assertEquals(listOf("PlainActivity:(none)", "PlainActivity:(none)"), tracker.screens)
+        val (first, second) = tracker.screenViewIds
+        assertNotNull(first)
+        assertNotNull(second)
+        assertNotEquals(first, second)
     }
 
     @Test

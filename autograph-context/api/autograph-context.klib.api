@@ -23,10 +23,12 @@ final class dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.con
 
 final class dev.ynagai.autograph.context/ScopeStack { // dev.ynagai.autograph.context/ScopeStack|null[0]
     constructor <init>() // dev.ynagai.autograph.context/ScopeStack.<init>|<init>(){}[0]
+    constructor <init>(dev.ynagai.autograph/EventIdGenerator) // dev.ynagai.autograph.context/ScopeStack.<init>|<init>(dev.ynagai.autograph.EventIdGenerator){}[0]
 
     final val screenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory|{}screenHistory[0]
         final fun <get-screenHistory>(): dev.ynagai.autograph.context/ScreenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory.<get-screenHistory>|<get-screenHistory>(){}[0]
 
+    final fun beginScreenView(dev.ynagai.autograph.context/ScopeHandle): kotlin/String? // dev.ynagai.autograph.context/ScopeStack.beginScreenView|beginScreenView(dev.ynagai.autograph.context.ScopeHandle){}[0]
     final fun current(): dev.ynagai.autograph.context/AmbientContext // dev.ynagai.autograph.context/ScopeStack.current|current(){}[0]
     final fun current(dev.ynagai.autograph.context/ScopeHandle): dev.ynagai.autograph.context/AmbientContext // dev.ynagai.autograph.context/ScopeStack.current|current(dev.ynagai.autograph.context.ScopeHandle){}[0]
     final fun push(kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> = ..., kotlin/String? = ..., kotlin/String? = ..., dev.ynagai.autograph.context/ScopeHandle? = ...): dev.ynagai.autograph.context/ScopeHandle // dev.ynagai.autograph.context/ScopeStack.push|push(kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>;kotlin.String?;kotlin.String?;dev.ynagai.autograph.context.ScopeHandle?){}[0]
