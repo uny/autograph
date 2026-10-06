@@ -69,7 +69,19 @@ public fun TrackScreenView(
  * the event fires, not when it composes, so it is a holder rather than a value.
  */
 internal class ScreenVisit {
-    var id: String? = null
+    private var screen: String? = null
+    private var id: String? = null
+
+    fun begin(screen: String, id: String?) {
+        this.screen = screen
+        this.id = id
+    }
+
+    /**
+     * The visit's id if it is of [screen], else null: in the frame between a rename and the effect
+     * that starts the new visit, the old id must not reach an event under the new name.
+     */
+    fun idFor(screen: String?): String? = id?.takeIf { screen == this.screen }
 }
 
 internal val LocalScreenVisit: ProvidableCompositionLocal<ScreenVisit?> = staticCompositionLocalOf { null }
@@ -81,7 +93,9 @@ internal val LocalScreenVisit: ProvidableCompositionLocal<ScreenVisit?> = static
  * Called inside the frame's [MirrorAmbientFrame], so [LocalScopeParent] is that frame: each emit
  * starts a new visit of it, and the `Screen Viewed` carries the visit's id (#242). The effect runs
  * after the frame's `SideEffect` has written [name] into it, so a rename — which ends the old visit —
- * cannot clear the id it mints. [visit] receives the id for the explicit events under the screen.
+ * cannot clear the id it mints: the visit is begun for [name] explicitly, so a revision to the same
+ * name, in whichever order the dispatcher runs the two, keeps it. [visit] receives the id for the
+ * explicit events under the screen.
  */
 @Composable
 private fun EmitScreenView(
@@ -95,8 +109,8 @@ private fun EmitScreenView(
     val frame = LocalScopeParent.current
     LaunchedEffect(name) {
         val previous = history.record(name)
-        val id = frame?.get(0)?.let(stack::beginScreenView)
-        visit?.id = id
+        val id = frame?.get(0)?.let { stack.beginScreenView(it, screen = name) }
+        visit?.begin(name, id)
         val withPrevious = withPreviousScreen(properties, previous)
         tracker.screen(name, if (id != null) withPrevious.withEventMetadata(kind = null, screenViewId = id) else withPrevious)
     }

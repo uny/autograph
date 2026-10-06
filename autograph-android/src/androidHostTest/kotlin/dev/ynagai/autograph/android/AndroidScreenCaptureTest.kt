@@ -361,6 +361,32 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
+    fun twoPagesOfOneFragmentClassEachKeepTheirOwnVisitAcrossARotation() {
+        // Two pages of one class, as a pager's FragmentStateAdapter adds them: told apart by their
+        // tags, so each re-created page continues its own visit rather than whichever stopped last.
+        install()
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "f0")
+            .add(android.R.id.content, DetailFragment(), "f1")
+            .commitNow()
+        shadowOf(Looper.getMainLooper()).idle()
+        fun visitOf(tag: String): String? {
+            val view = controller.get().supportFragmentManager.findFragmentByTag(tag)!!.requireView()
+            return view.autographScopeOrigin()?.let(scopeStack::screenViewIdOf)
+        }
+        val before = listOf(visitOf("f0"), visitOf("f1"))
+        assertNotNull(before[0])
+        assertNotNull(before[1])
+        assertNotEquals(before[0], before[1])
+
+        controller.recreate()
+        shadowOf(Looper.getMainLooper()).idle()
+
+        assertEquals(before, listOf(visitOf("f0"), visitOf("f1")))
+    }
+
+    @Test
     fun aFragmentEmitsAndTheHostingActivityDoesNot() {
         install()
         Robolectric.buildActivity(FragmentHostActivity::class.java).setup()

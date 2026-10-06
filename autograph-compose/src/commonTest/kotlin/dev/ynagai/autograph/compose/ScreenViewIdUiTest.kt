@@ -1,3 +1,5 @@
+@file:OptIn(dev.ynagai.autograph.AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.layout.Box
@@ -20,6 +22,7 @@ import androidx.navigation.compose.rememberNavController
 import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
@@ -187,5 +190,40 @@ class ScreenViewIdUiTest {
         val homeVisit = tracker.screens.single { it.first == "Home" }.second
         assertNotEquals(null, homeVisit)
         assertEquals(listOf("save_tapped" to homeVisit), tracker.tracks)
+    }
+
+    @Test
+    fun anImpressionInsideATrackedScreenCarriesItsVisit() = runComposeUiTest {
+        val tracker = VisitRecordingTracker()
+        val stack = sequentialStack()
+        setContent {
+            CompositionLocalProvider(LocalTracker provides tracker, LocalScopeStack provides stack) {
+                TrackedScreen("Feed") {
+                    Box(Modifier.size(10.dp).trackImpression("Item Viewed", minDurationMs = 100L))
+                }
+            }
+        }
+        waitForIdle()
+        mainClock.advanceTimeBy(200L)
+        waitForIdle()
+
+        assertEquals(visits("Feed" to "id-1"), tracker.screens)
+        assertEquals(visits("Item Viewed" to "id-1"), tracker.tracks)
+    }
+
+    @Test
+    fun anAutocapturedTapCarriesTheVisitOfTheScreenItLandedOn() {
+        // The JVM test host composes no tap observer, so the report is driven directly, as in
+        // AutocaptureObserverTest — from the composition's origin, the way the observer reports.
+        val tracker = VisitRecordingTracker()
+        val stack = sequentialStack()
+        val root = arrayOf<ScopeHandle?>(stack.push())
+        val screen = stack.push(screen = "Detail", parent = root[0])
+        val visit = stack.beginScreenView(screen)
+
+        reportTapIfResolvable(tracker, stack, Autocapture(), ProviderOrigin(root) { null }) { AutocaptureTarget("share") }
+
+        assertEquals("id-1", visit)
+        assertEquals(visits("Element Clicked" to "id-1"), tracker.tracks)
     }
 }

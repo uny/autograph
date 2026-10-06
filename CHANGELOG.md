@@ -78,7 +78,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     taps autocaptured there carry no id (the `TrackedScreen`'s own `trackClick` keeps its visit). The
     `screen` name still resolves as before.
   - A rotation on Android is one continuous view: it reports no second `Screen Viewed`, and the
-    re-created Activity or fragment stays in the visit it was in.
+    re-created Activity or fragment stays in the visit it was in. That now holds for each of several
+    fragments of one class rotating together, such as a pager's pages, told apart by container and
+    tag; before, only the first of them to resume was recognized as re-created and the others
+    reported a second `Screen Viewed`.
   - `AmbientContext.screenViewId` reports the visit a `ScopeStack` read resolves to.
   - `ScopeStack` mints the ids, because the tracker's own `AutographConfig.eventId` sits behind the
     `Tracker` interface where the emit sites cannot reach it. `ScopeStack()` mints UUIDv7s; the new

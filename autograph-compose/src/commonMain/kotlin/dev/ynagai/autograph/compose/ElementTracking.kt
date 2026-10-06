@@ -57,7 +57,7 @@ public fun Modifier.trackImpression(
                 EventKinds.IMPRESSION,
                 impressionMinDurationMs = minDurationMs,
                 impressionMinFractionVisible = minFractionVisible.toDecimalDouble(),
-                screenViewId = visit?.id,
+                screenViewId = visit?.idFor(screenContext?.screen),
             )
             tracker.track(name, tagged, target)
         }
@@ -82,7 +82,7 @@ public fun Modifier.trackClick(
     clickable {
         tracker.track(
             name,
-            withScreenContext(properties, screenContext).withEventMetadata(EventKinds.CLICK, screenViewId = visit?.id),
+            withScreenContext(properties, screenContext).withEventMetadata(EventKinds.CLICK, screenViewId = visit?.idFor(screenContext?.screen)),
             target,
         )
         // After the explicit event is recorded and before the caller's handler, because the mark's

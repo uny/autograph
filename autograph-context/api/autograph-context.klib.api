@@ -30,7 +30,7 @@ final class dev.ynagai.autograph.context/ScopeStack { // dev.ynagai.autograph.co
     final val screenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory|{}screenHistory[0]
         final fun <get-screenHistory>(): dev.ynagai.autograph.context/ScreenHistory // dev.ynagai.autograph.context/ScopeStack.screenHistory.<get-screenHistory>|<get-screenHistory>(){}[0]
 
-    final fun beginScreenView(dev.ynagai.autograph.context/ScopeHandle): kotlin/String? // dev.ynagai.autograph.context/ScopeStack.beginScreenView|beginScreenView(dev.ynagai.autograph.context.ScopeHandle){}[0]
+    final fun beginScreenView(dev.ynagai.autograph.context/ScopeHandle, kotlin/String? = ...): kotlin/String? // dev.ynagai.autograph.context/ScopeStack.beginScreenView|beginScreenView(dev.ynagai.autograph.context.ScopeHandle;kotlin.String?){}[0]
     final fun continueScreenView(dev.ynagai.autograph.context/ScopeHandle, kotlin/String) // dev.ynagai.autograph.context/ScopeStack.continueScreenView|continueScreenView(dev.ynagai.autograph.context.ScopeHandle;kotlin.String){}[0]
     final fun current(): dev.ynagai.autograph.context/AmbientContext // dev.ynagai.autograph.context/ScopeStack.current|current(){}[0]
     final fun current(dev.ynagai.autograph.context/ScopeHandle): dev.ynagai.autograph.context/AmbientContext // dev.ynagai.autograph.context/ScopeStack.current|current(dev.ynagai.autograph.context.ScopeHandle){}[0]

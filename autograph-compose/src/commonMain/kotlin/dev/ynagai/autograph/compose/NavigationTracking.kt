@@ -89,7 +89,7 @@ public fun NavController.TrackScreenViews(
                 if (name == null) return
                 val previous = history.record(name)
                 // Each destination change is a new visit of the route frame, renamed or not (#242).
-                val id = handle[0]?.let(stack::beginScreenView)
+                val id = handle[0]?.let { stack.beginScreenView(it, screen = name) }
                 val properties = withPreviousScreen(EmptyJsonObject, previous)
                 tracker.screen(name, if (id != null) properties.withEventMetadata(kind = null, screenViewId = id) else properties)
             }

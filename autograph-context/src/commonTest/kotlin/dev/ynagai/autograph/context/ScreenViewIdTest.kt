@@ -199,4 +199,31 @@ class ScreenViewIdTest {
         assertEquals("id-1", stack.current().screenViewId)
         assertNull(stack.screenViewIdOf(leaving), "a removed frame has no visit to read")
     }
+
+    @Test
+    fun a_visit_begun_for_a_name_survives_the_frame_being_revised_to_that_name_afterwards() {
+        // A Compose effect that runs before the frame's SideEffect has written the name.
+        val stack = stack()
+        val frame = stack.push()
+        stack.beginScreenView(frame, screen = "Detail")
+
+        stack.update(frame, screen = "Detail")
+        assertEquals("id-1", stack.current().screenViewId)
+
+        stack.update(frame, screen = "Other")
+        assertNull(stack.current().screenViewId, "a revision to any other name is still a rename")
+    }
+
+    @Test
+    fun continuing_a_visit_on_a_removed_or_foreign_frame_is_a_no_op() {
+        val stack = stack()
+        val gone = stack.pushSurface(screen = "Gone")
+        stack.remove(gone)
+        stack.continueScreenView(gone, "carried")
+        assertNull(stack.screenViewIdOf(gone))
+
+        val screen = stack.pushSurface(screen = "Detail")
+        stack().continueScreenView(screen, "carried")
+        assertNull(stack.current().screenViewId)
+    }
 }

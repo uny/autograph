@@ -17,7 +17,8 @@ public final class dev/ynagai/autograph/context/ScopeHandle {
 public final class dev/ynagai/autograph/context/ScopeStack {
 	public fun <init> ()V
 	public fun <init> (Ldev/ynagai/autograph/EventIdGenerator;)V
-	public final fun beginScreenView (Ldev/ynagai/autograph/context/ScopeHandle;)Ljava/lang/String;
+	public final fun beginScreenView (Ldev/ynagai/autograph/context/ScopeHandle;Ljava/lang/String;)Ljava/lang/String;
+	public static synthetic fun beginScreenView$default (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/context/ScopeHandle;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
 	public final fun continueScreenView (Ldev/ynagai/autograph/context/ScopeHandle;Ljava/lang/String;)V
 	public final fun current ()Ldev/ynagai/autograph/context/AmbientContext;
 	public final fun current (Ldev/ynagai/autograph/context/ScopeHandle;)Ldev/ynagai/autograph/context/AmbientContext;

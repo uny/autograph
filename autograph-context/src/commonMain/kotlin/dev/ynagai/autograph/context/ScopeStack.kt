@@ -188,9 +188,12 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
         if (frames.none { it === frame }) return
         val newScope = scope.asJsonObject()
         if (frame.scope == newScope && frame.screen == screen && frame.section == section) return
-        // A visit is of the screen its `Screen Viewed` named: renaming the frame ends it, so the
-        // events under the new name are not tied to the old screen's visit (#242).
-        if (frame.screen != screen) frame.screenViewId = null
+        // A visit is of the screen its `Screen Viewed` named: renaming the frame to anything else ends
+        // it, so the events under the new name are not tied to the old screen's visit (#242).
+        if (frame.screenViewId != null && screen != frame.visitScreen) {
+            frame.screenViewId = null
+            frame.visitScreen = null
+        }
         frame.scope = newScope
         frame.screen = screen
         frame.section = section
@@ -346,6 +349,11 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
      * name, while [update] keeps the current one unless it renames the screen. Returns null, and
      * mints nothing, if the handle was already removed or belongs to another stack.
      *
+     * [screen] is the name the visit is of: the frame's own by default. An emit site that may run
+     * before the frame is revised to its name — a Compose effect, whose ordering against the
+     * frame's `SideEffect` is up to the dispatcher — passes it, so the revision that follows is not
+     * taken for a rename.
+     *
      * The id stays on the frame until the next call, [endScreenView], or the frame's removal, and
      * [current] reports it as [AmbientContext.screenViewId] while this frame is the one naming the
      * screen.
@@ -354,11 +362,12 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
      * before they emit the `Screen Viewed` that carries the id. Main thread only, like [update].
      */
     @AutographInternalApi
-    public fun beginScreenView(handle: ScopeHandle): String? {
+    public fun beginScreenView(handle: ScopeHandle, screen: String? = null): String? {
         val frame = handle.frame
         if (frames.none { it === frame }) return null
         val id = screenViewIds.next()
         frame.screenViewId = id
+        frame.visitScreen = screen ?: frame.screen
         snapshot = recompute()
         return id
     }
@@ -391,6 +400,7 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
         val frame = handle.frame
         if (frame.screenViewId == screenViewId || frames.none { it === frame }) return
         frame.screenViewId = screenViewId
+        frame.visitScreen = frame.screen
         snapshot = recompute()
     }
 
@@ -410,6 +420,7 @@ public class ScopeStack(private val screenViewIds: EventIdGenerator) {
         val frame = handle.frame
         if (frame.screenViewId == null || frames.none { it === frame }) return
         frame.screenViewId = null
+        frame.visitScreen = null
         snapshot = recompute()
     }
 
@@ -732,6 +743,9 @@ internal class ScopeFrame(
 ) {
     /** The id of the visit this frame's surface is in, set by [ScopeStack.beginScreenView]. */
     var screenViewId: String? = null
+
+    /** The screen [screenViewId]'s visit is of; a rename to any other name ends the visit. */
+    var visitScreen: String? = null
 
     /** See [ScopeStack.pushSurface]. */
     val boundary: Boolean get() = kind == FrameKind.Surface
