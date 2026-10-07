@@ -167,6 +167,33 @@ class ScreenVisitTest {
     }
 
     @Test
+    fun a_pending_visit_survives_an_update_that_does_not_rename_the_frame() {
+        // Started for Detail while the frame still names List: a revision of anything else under the
+        // same name must not end it, and once the frame names Detail it is reported.
+        val stack = stack()
+        val frame = stack.push(screen = "List", section = "A")
+        stack.startScreenVisit(frame, screen = "Detail")
+
+        stack.update(frame, screen = "List", section = "B")
+        assertNull(stack.current().screenViewId)
+
+        stack.update(frame, screen = "Detail")
+        assertEquals("v1", stack.current().screenViewId)
+    }
+
+    @Test
+    fun a_pending_visit_ends_when_the_frame_is_renamed_to_a_third_name() {
+        val stack = stack()
+        val frame = stack.push(screen = "List")
+        stack.startScreenVisit(frame, screen = "Detail")
+
+        stack.update(frame, screen = "Settings")
+        stack.update(frame, screen = "Detail")
+
+        assertNull(stack.current().screenViewId)
+    }
+
+    @Test
     fun a_visit_started_after_the_frame_already_names_it_is_reported_at_once() {
         val stack = stack()
         val frame = stack.push(screen = "Detail")

@@ -194,10 +194,11 @@ public class ScopeStack {
         if (frame.scope == newScope && frame.screen == screen && frame.section == section) return
         frame.scope = newScope
         // A visit is a visit of the screen its `Screen Viewed` named; a frame that now names another
-        // screen is no longer in it, whether or not anything will report the new name. Compared with
-        // the name the visit was started for, not the frame's previous one, so a visit started just
-        // before the frame is revised to its name (a Compose effect, see [startVisit]) survives it.
-        if (frame.screenViewId != null && screen != frame.visitScreen) {
+        // screen is no longer in it, whether or not anything will report the new name. Only an actual
+        // rename ends it, and only to a name other than the one the visit was started for: a visit
+        // started just before the frame is revised to its name (a Compose effect, see [startVisit])
+        // survives that revision, and survives a revision of anything else in the meantime.
+        if (frame.screenViewId != null && screen != frame.screen && screen != frame.visitScreen) {
             frame.screenViewId = null
             frame.visitScreen = null
         }
