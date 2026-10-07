@@ -57,8 +57,9 @@ public class ScopeStack {
     public val screenHistory: ScreenHistory = ScreenHistory()
 
     /**
-     * Produces the [AmbientContext.screenViewId] of each `Screen Viewed` that Autograph's native
-     * screen captures emit through this stack (#242). Called on the main thread, once per screen
+     * Produces the [AmbientContext.screenViewId] of each `Screen Viewed` that Autograph's screen
+     * tracking emits through this stack (#242): the native screen captures and `autograph-compose`'s
+     * screen trackers alike. Called on the main thread, once per screen
      * view; an id it fails to produce (it throws, or returns an empty string) leaves that visit
      * without one rather than failing the screen view.
      *
@@ -193,8 +194,14 @@ public class ScopeStack {
         if (frame.scope == newScope && frame.screen == screen && frame.section == section) return
         frame.scope = newScope
         // A visit is a visit of the screen its `Screen Viewed` named; a frame that now names another
-        // screen is no longer in it, whether or not anything will report the new name.
-        if (frame.screen != screen) frame.screenViewId = null
+        // screen is no longer in it, whether or not anything will report the new name. Only an actual
+        // rename ends it, and only to a name other than the one the visit was started for: a visit
+        // started just before the frame is revised to its name (a Compose effect, see [startVisit])
+        // survives that revision, and survives a revision of anything else in the meantime.
+        if (frame.screenViewId != null && screen != frame.screen && screen != frame.visitScreen) {
+            frame.screenViewId = null
+            frame.visitScreen = null
+        }
         frame.screen = screen
         frame.section = section
         snapshot = recompute()
@@ -344,11 +351,17 @@ public class ScopeStack {
     }
 
     /**
-     * Starts a new visit of the screen the frame [handle] refers to names: stores a fresh id from
+     * Starts a new visit of [screen] on the frame [handle] refers to: stores a fresh id from
      * [screenViewIdGenerator] on the frame, republishes, and returns it — or null, storing null, when
      * the generator fails or the frame is not on this stack. Main thread only. See [emitScreenView].
+     *
+     * [screen] is the name the visit is of, the frame's own by default. An emit site that can run
+     * before the frame is revised to that name — a Compose effect, whose order against the frame's
+     * `SideEffect` is the dispatcher's — passes it, so the revision is not taken for a rename. Until
+     * the frame names [screen], the visit is not reported (see [resolve]): the stack never answers
+     * one screen's name with another's visit.
      */
-    internal fun startVisit(handle: ScopeHandle): String? {
+    internal fun startVisit(handle: ScopeHandle, screen: String? = null): String? {
         val frame = handle.frame
         if (frames.none { it === frame }) return null
         val id = try {
@@ -357,6 +370,7 @@ public class ScopeStack {
             null
         }
         frame.screenViewId = id
+        frame.visitScreen = if (id != null) screen ?: frame.screen else null
         snapshot = recompute()
         return id
     }
@@ -369,6 +383,7 @@ public class ScopeStack {
         val frame = handle.frame
         if (frame.screenViewId == null || frames.none { it === frame }) return
         frame.screenViewId = null
+        frame.visitScreen = null
         snapshot = recompute()
     }
 
@@ -588,7 +603,8 @@ public class ScopeStack {
                 section = frame.section
             }
         }
-        val screenViewId = decider?.screenViewId?.takeIf { !surfacesBranch(live) }
+        // Only once the frame names the screen the visit was started for (see [startVisit]).
+        val screenViewId = decider?.takeIf { it.visitScreen == it.screen }?.screenViewId?.takeIf { !surfacesBranch(live) }
         return AmbientContext(resolveScope(live), screen, section, screenMasked, screenViewId)
     }
 
@@ -706,6 +722,9 @@ internal class ScopeFrame(
     /** The visit of [screen] this frame is in, if a `Screen Viewed` started one. See [ScopeStack.startVisit]. */
     var screenViewId: String? = null
 
+    /** The screen [screenViewId]'s visit is of. See [ScopeStack.startVisit]. */
+    var visitScreen: String? = null
+
     /** See [ScopeStack.pushSurface]. */
     val boundary: Boolean get() = kind == FrameKind.Surface
 }
@@ -756,7 +775,7 @@ public class AmbientContext internal constructor(
      * during it. It comes from the frame that names [screen], so it is never another screen's.
      *
      * Null when that frame has no visit (no `Screen Viewed` was emitted through this stack for it —
-     * a Compose screen, for now, or a screen re-created by a configuration change), when [screen] is
+     * an Android screen re-created by a configuration change, say), when [screen] is
      * null, and when two surfaces on display each name a screen and branch away from each other, so
      * this context cannot tell which visit it is in. A null here never stops [screen] from being
      * reported.

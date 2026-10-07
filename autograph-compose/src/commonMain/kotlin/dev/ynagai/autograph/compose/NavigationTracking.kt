@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
@@ -7,8 +9,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.navigation.NavController
 import androidx.navigation.NavDestination
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.context.ScopeHandle
+import dev.ynagai.autograph.context.startScreenVisit
+import dev.ynagai.autograph.withEventMetadata
 
 /**
  * Automatically records a `Screen Viewed` event for every destination change of this
@@ -84,7 +89,11 @@ public fun NavController.TrackScreenViews(
                 }
                 if (name == null) return
                 val previous = history.record(name)
-                tracker.screen(name, withPreviousScreen(EmptyJsonObject, previous))
+                // Every destination change is a new visit of the route frame, renamed or not (#242).
+                // The frame already names it: the update above ran first, on this same call.
+                val id = handle[0]?.let { stack.startScreenVisit(it) }
+                val properties = withPreviousScreen(EmptyJsonObject, previous)
+                tracker.screen(name, if (id != null) properties.withEventMetadata(kind = null, screenViewId = id) else properties)
             }
         }
         // The frame exists by now: the push effect above is declared first, and all DisposableEffects

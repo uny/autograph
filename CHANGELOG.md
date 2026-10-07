@@ -53,20 +53,27 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   remove the key, so a fake standing in for the real tracker now sees `__autograph` in the
   properties of every event listed above.
 
-- **Native screen views start a visit, and the taps made during it carry its id** ([#242]). Every
-  `Screen Viewed` the Android Activity/Fragment capture, the iOS UIKit capture and SwiftUI's
-  `AutographScreenCapture` emit carries a new `screen_view_id`, and so do the taps the native tap
-  captures, Compose autocapture and SwiftUI's `AutographElementCapture` record on that screen
-  until it is left. Coming back to a screen is a new visit, even under the same name; a dialog or
-  a permission prompt over it is not. It works like this:
+- **Screen views start a visit, and the events made during it carry its id** ([#242]). Every
+  `Screen Viewed` the Android Activity/Fragment capture, the iOS UIKit capture, SwiftUI's
+  `AutographScreenCapture`, `TrackedScreen`, `TrackScreenView` and `NavController.TrackScreenViews`
+  emit carries a new `screen_view_id`, and so do the taps the native tap captures, Compose
+  autocapture and SwiftUI's `AutographElementCapture` record on that screen until it is left.
+  `trackClick` and `trackImpression` carry the visit of the `TrackedScreen` they sit in, read
+  lexically like its `screen`; outside one, and under a bare `TrackScreenView`, they carry none.
+  Coming back to a screen is a new visit, even under the same name, when it emits another
+  `Screen Viewed`; a dialog or a permission prompt over it is not. A Compose screen emits one only
+  when it enters the composition or its name changes, so returning to an Activity whose composition
+  stayed alive keeps the visit it had. It works like this:
   - The id comes from the new `ScopeStack.screenViewIdGenerator`, `EventId.UuidV7` by default.
     `Autograph { }` never sees the stack, so a custom `AutographConfig.eventId` is not applied to
     it: set the same generator on the stack if you want both in one format. A generator that
     throws or returns an empty string leaves that visit without an id, and the screen view is
     still emitted.
   - The stack answers it as the new `AmbientContext.screenViewId`. It comes from the frame that
-    names the screen, so it is absent, never borrowed, when that frame has no visit: a Compose
-    `TrackedScreen` for now, a screen re-created by a configuration change, and a screen whose name
+    names the screen, so it is absent, never borrowed, when that frame has no visit: a screen
+    re-created by a configuration change (an Android Activity or fragment, which the native capture
+    does not report again), a screen whose `AutographProvider` tracker (and with it
+    the default stack) was replaced without the screen being reported again, and a screen whose name
     changed after its screen view (`ScopeStack.update` with a different `screen` ends the visit,
     which on Android includes a name the `fragmentScreenName` lambda only returns later). It is also
     absent when two surfaces on display side by side each name a screen (two Activities in

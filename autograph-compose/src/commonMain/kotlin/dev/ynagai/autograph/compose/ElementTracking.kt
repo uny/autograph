@@ -38,6 +38,7 @@ import kotlinx.serialization.json.JsonPrimitive
  *
  * The event carries `kind` `impression` and both thresholds in its envelope metadata (see
  * [dev.ynagai.autograph.EventMetadata]), so a dashboard can tell which definition of "seen" it counts.
+ * Inside a [TrackedScreen] it also carries the screen's visit id (#242).
  */
 public fun Modifier.trackImpression(
     name: String,
@@ -48,6 +49,7 @@ public fun Modifier.trackImpression(
 ): Modifier = composed {
     val tracker = LocalTracker.current
     val screenContext = LocalScreenContext.current
+    val visit = LocalScreenVisit.current
     var fired by remember { mutableStateOf(false) }
     onVisibilityChanged(minDurationMs = minDurationMs, minFractionVisible = minFractionVisible) { visible ->
         if (visible && !fired) {
@@ -56,6 +58,7 @@ public fun Modifier.trackImpression(
                 EventKinds.IMPRESSION,
                 impressionMinDurationMs = minDurationMs,
                 impressionMinFractionVisible = minFractionVisible.toDecimalDouble(),
+                screenViewId = visit?.idFor(screenContext?.screen),
             )
             tracker.track(name, tagged, target)
         }
@@ -65,7 +68,8 @@ public fun Modifier.trackImpression(
 /**
  * Fires [name] on click, then invokes [onClick]. Screen/section from the ambient [ScreenContext]
  * (see [TrackedScreen]) are merged into [properties] automatically when this element is nested
- * inside one. The event carries `kind` `click` in its envelope metadata.
+ * inside one. The event carries `kind` `click` in its envelope metadata, and inside a [TrackedScreen]
+ * the screen's visit id (#242).
  */
 public fun Modifier.trackClick(
     name: String,
@@ -75,9 +79,12 @@ public fun Modifier.trackClick(
 ): Modifier = composed {
     val tracker = LocalTracker.current
     val screenContext = LocalScreenContext.current
+    val visit = LocalScreenVisit.current
     val claims = LocalAutocaptureClaims.current
     clickable {
-        tracker.track(name, withScreenContext(properties, screenContext).withEventMetadata(EventKinds.CLICK), target)
+        val tagged = withScreenContext(properties, screenContext)
+            .withEventMetadata(EventKinds.CLICK, screenViewId = visit?.idFor(screenContext?.screen))
+        tracker.track(name, tagged, target)
         // After the explicit event is recorded and before the caller's handler, because the mark's
         // whole meaning is "this tap already produced an event, so autocapture must not add one".
         // If `track` throws there is no explicit event, the mark never happens, and autocapture
