@@ -193,8 +193,13 @@ public class ScopeStack {
         if (frame.scope == newScope && frame.screen == screen && frame.section == section) return
         frame.scope = newScope
         // A visit is a visit of the screen its `Screen Viewed` named; a frame that now names another
-        // screen is no longer in it, whether or not anything will report the new name.
-        if (frame.screen != screen) frame.screenViewId = null
+        // screen is no longer in it, whether or not anything will report the new name. Compared with
+        // the name the visit was started for, not the frame's previous one, so a visit started just
+        // before the frame is revised to its name (a Compose effect, see [startVisit]) survives it.
+        if (frame.screenViewId != null && screen != frame.visitScreen) {
+            frame.screenViewId = null
+            frame.visitScreen = null
+        }
         frame.screen = screen
         frame.section = section
         snapshot = recompute()
@@ -344,11 +349,17 @@ public class ScopeStack {
     }
 
     /**
-     * Starts a new visit of the screen the frame [handle] refers to names: stores a fresh id from
+     * Starts a new visit of [screen] on the frame [handle] refers to: stores a fresh id from
      * [screenViewIdGenerator] on the frame, republishes, and returns it — or null, storing null, when
      * the generator fails or the frame is not on this stack. Main thread only. See [emitScreenView].
+     *
+     * [screen] is the name the visit is of, the frame's own by default. An emit site that can run
+     * before the frame is revised to that name — a Compose effect, whose order against the frame's
+     * `SideEffect` is the dispatcher's — passes it, so the revision is not taken for a rename. Until
+     * the frame names [screen], the visit is not reported (see [resolve]): the stack never answers
+     * one screen's name with another's visit.
      */
-    internal fun startVisit(handle: ScopeHandle): String? {
+    internal fun startVisit(handle: ScopeHandle, screen: String? = null): String? {
         val frame = handle.frame
         if (frames.none { it === frame }) return null
         val id = try {
@@ -357,6 +368,7 @@ public class ScopeStack {
             null
         }
         frame.screenViewId = id
+        frame.visitScreen = if (id != null) screen ?: frame.screen else null
         snapshot = recompute()
         return id
     }
@@ -369,6 +381,7 @@ public class ScopeStack {
         val frame = handle.frame
         if (frame.screenViewId == null || frames.none { it === frame }) return
         frame.screenViewId = null
+        frame.visitScreen = null
         snapshot = recompute()
     }
 
@@ -588,7 +601,8 @@ public class ScopeStack {
                 section = frame.section
             }
         }
-        val screenViewId = decider?.screenViewId?.takeIf { !surfacesBranch(live) }
+        // Only once the frame names the screen the visit was started for (see [startVisit]).
+        val screenViewId = decider?.takeIf { it.visitScreen == it.screen }?.screenViewId?.takeIf { !surfacesBranch(live) }
         return AmbientContext(resolveScope(live), screen, section, screenMasked, screenViewId)
     }
 
@@ -705,6 +719,9 @@ internal class ScopeFrame(
 ) {
     /** The visit of [screen] this frame is in, if a `Screen Viewed` started one. See [ScopeStack.startVisit]. */
     var screenViewId: String? = null
+
+    /** The screen [screenViewId]'s visit is of. See [ScopeStack.startVisit]. */
+    var visitScreen: String? = null
 
     /** See [ScopeStack.pushSurface]. */
     val boundary: Boolean get() = kind == FrameKind.Surface

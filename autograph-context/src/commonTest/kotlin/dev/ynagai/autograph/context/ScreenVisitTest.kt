@@ -149,6 +149,35 @@ class ScreenVisitTest {
     }
 
     @Test
+    fun a_visit_started_for_a_name_the_frame_does_not_carry_yet_is_not_reported_until_it_does() {
+        // The Compose order: the emit effect can start the visit before the frame's SideEffect
+        // writes the new name. Until then the stack must not answer the old name with the new visit,
+        // and the revision that follows must not read as a rename and end it.
+        val stack = stack()
+        val frame = stack.push(screen = "List")
+
+        val id = stack.startScreenVisit(frame, screen = "Detail")
+        assertEquals("v1", id)
+        assertEquals("List", stack.current().screen)
+        assertNull(stack.current().screenViewId)
+
+        stack.update(frame, screen = "Detail")
+        assertEquals("Detail", stack.current().screen)
+        assertEquals("v1", stack.current().screenViewId)
+    }
+
+    @Test
+    fun a_visit_started_after_the_frame_already_names_it_is_reported_at_once() {
+        val stack = stack()
+        val frame = stack.push(screen = "Detail")
+
+        stack.startScreenVisit(frame, screen = "Detail")
+        stack.update(frame, screen = "Detail")
+
+        assertEquals("v1", stack.current().screenViewId)
+    }
+
+    @Test
     fun an_update_that_renames_the_screen_ends_the_visit() {
         val stack = stack()
         val screen = stack.push(screen = "Home")

@@ -62,6 +62,21 @@ public fun ScopeStack.emitScreenView(tracker: Tracker, name: String, origin: Sco
 }
 
 /**
+ * Starts a new visit of [screen] on [handle]'s frame (#242) and returns its id, or null when the
+ * generator fails or the frame is not on this stack — for an emit site outside this module that
+ * builds its own `Screen Viewed`, as `autograph-compose`'s screen trackers do. Put the returned id on
+ * that screen view directly rather than reading it back from the stack; [emitScreenView] is this plus
+ * the emit.
+ *
+ * [screen] is the name the visit is of, the frame's own by default: pass it when the frame may not
+ * have been revised to it yet. Main thread only.
+ *
+ * `@AutographInternalApi` for the same reason as [emitScreenView].
+ */
+@AutographInternalApi
+public fun ScopeStack.startScreenVisit(handle: ScopeHandle, screen: String? = null): String? = startVisit(handle, screen)
+
+/**
  * Ends the visit [handle]'s frame is in (#242), for a native screen capture whose surface stops being
  * viewed while its frame stays: the next view of it starts a new visit, and until then a tap resolved
  * from the frame must carry no visit id rather than the finished one's. A no-op when the frame holds

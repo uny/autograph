@@ -37,6 +37,8 @@ public final class dev/ynagai/autograph/context/ScopeStack {
 public final class dev/ynagai/autograph/context/ScreenEmitKt {
 	public static final fun emitScreenView (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/Tracker;Ljava/lang/String;Ldev/ynagai/autograph/context/ScopeHandle;)V
 	public static final fun endScreenVisit (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/context/ScopeHandle;)V
+	public static final fun startScreenVisit (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/context/ScopeHandle;Ljava/lang/String;)Ljava/lang/String;
+	public static synthetic fun startScreenVisit$default (Ldev/ynagai/autograph/context/ScopeStack;Ldev/ynagai/autograph/context/ScopeHandle;Ljava/lang/String;ILjava/lang/Object;)Ljava/lang/String;
 }
 
 public final class dev/ynagai/autograph/context/ScreenHistory {
