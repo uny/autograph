@@ -865,7 +865,7 @@ final class SwiftUIExplicitUITests: XCTestCase {
         )
         // #242: the screen's visit id rides in the same value, through the same Swift tracker.
         XCTAssertTrue(
-            lastProps(app).contains(#"\"screen_view_id\":\""#),
+            carriesVisitId(lastProps(app)),
             "AutographButton's event did not carry the screen's visit id: \(lastProps(app))"
         )
     }
@@ -943,9 +943,16 @@ final class SwiftUIExplicitUITests: XCTestCase {
             "plain autograph.track must not mark its event: \(lastProps(app))"
         )
         XCTAssertTrue(
-            lastProps(app).contains(#""__autograph":"{\"screen_view_id\":\""#),
+            lastProps(app).contains(#""__autograph":"{\"screen_view_id\":"#) && carriesVisitId(lastProps(app)),
             "plain autograph.track did not carry the screen's visit id: \(lastProps(app))"
         )
+    }
+
+    /// Whether [props] carries a non-empty `screen_view_id` (#242) inside the JSON-string value of
+    /// `__autograph`, where its quotes arrive escaped. The value itself is the generator's and changes
+    /// per run, so this checks it is there and not empty rather than what it is.
+    private func carriesVisitId(_ props: String) -> Bool {
+        props.range(of: #"\\"screen_view_id\\":\\"[^\\"]+\\""#, options: .regularExpression) != nil
     }
 
     /// Sibling rows each carrying their own `.autographScope` attribute exactly — the shape that made
