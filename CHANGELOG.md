@@ -97,6 +97,24 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   interface the library checks with `is`, which was measured to work for Swift conformers, or a
   value object passed through an existing member.
 
+### Fixed
+
+- **Two Android fragments of one class on display together no longer report a second
+  `Screen Viewed` after a rotation** ([#242]). A configuration change is one continuous view, so the
+  native capture skips the re-created fragment's resume. It recognised that resume by class, so when
+  two RESUMED fragments shared one (two panes, or `add` on top of the same class) the first to resume
+  after the rotation used up the skip and the other reported a view. Each fragment is now told apart
+  by its class, container and tag, as the re-created one is restored. Two untagged fragments of one
+  class in one container still look alike, and the second of them still reports a view. And when
+  the restored fragment goes away without resuming, a new one added later under the same class,
+  container and tag is taken for the re-created one, so its first view is not reported.
+- **An Android fragment that never resumed before a rotation reports its first view after it**
+  ([#242]). A pager's off-screen page, held at `STARTED`, left the same skip behind when the rotation
+  stopped it. When no resumed fragment shared its class to use the skip up, as with tabs of different
+  fragments, its first resume afterwards — the swipe to it — reported nothing. Only a fragment
+  whose view was reported leaves the skip now. The same holds for a resumed fragment whose screen
+  name was still null when the rotation stopped it: its first resume with a name now reports it.
+
 ## [0.11.1] - 2026-09-30
 
 ### Fixed

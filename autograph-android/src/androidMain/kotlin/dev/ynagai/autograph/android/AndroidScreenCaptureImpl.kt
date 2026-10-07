@@ -92,9 +92,11 @@ internal class AndroidScreenCapture(
     private val resumedActivities: MutableSet<Activity> =
         java.util.Collections.newSetFromMap(java.util.WeakHashMap())
 
-    // Screens whose next resume is a configuration-change re-creation, not a fresh view. Keyed by class
-    // name because the leaving instance and the re-created one are different objects. Emit is skipped
-    // for them; the self-previous guard in emitScreenView separately keeps previous_screen clean.
+    // Screens whose next resume is a configuration-change re-creation, not a fresh view. Keyed by
+    // [instanceKey] because the leaving instance and the re-created one are different objects — per
+    // instance rather than per class, since two fragments of one class can be RESUMED together and each
+    // is one continuous view across the rotation. Emit is skipped for them; the self-previous guard in
+    // emitScreenView separately keeps previous_screen clean.
     private val pendingConfigChange = HashSet<String>()
 
     private val handler = Handler(Looper.getMainLooper())
@@ -209,7 +211,7 @@ internal class AndroidScreenCapture(
         activity.decorView()?.let { claim(it, state) }
         onSurfaceResumed(
             state = state,
-            className = activity.javaClass.name,
+            key = instanceKey(activity),
             capturable = isCapturableActivity(activity),
             // An Activity covers its window — but only while it is the one Activity on display. Under
             // multi-resume (Android 10+ multi-window, split screen) two Activities are RESUMED at
@@ -240,7 +242,7 @@ internal class AndroidScreenCapture(
 
     override fun onActivityStopped(activity: Activity) {
         if (!active) return
-        if (activity.isChangingConfigurations) pendingConfigChange.add(activity.javaClass.name)
+        if (activity.isChangingConfigurations) pendingConfigChange.add(instanceKey(activity))
         activityStates[activity]?.let {
             it.emitted = false
             // An Activity's frame keeps its position for life — its content view does, and its
@@ -441,7 +443,7 @@ internal class AndroidScreenCapture(
             state.pausedWithHost = false
             onSurfaceResumed(
                 state = state,
-                className = f.javaClass.name,
+                key = instanceKey(f),
                 capturable = isCapturableFragment(f),
                 // Two things must hold before an unnamed surface may blank the screen underneath.
                 //  - It has a view. A headless / retained worker fragment (Glide's
@@ -480,8 +482,13 @@ internal class AndroidScreenCapture(
 
         override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
             if (!active) return
-            // The host Activity is the leaving instance here, so its flag reports the rotation.
-            if (f.activity?.isChangingConfigurations == true) pendingConfigChange.add(f.javaClass.name)
+            // The host Activity is the leaving instance here, so its flag reports the rotation. Only a
+            // fragment whose view was in progress is re-created INTO that view: a pager page held at
+            // STARTED never resumed, so its first resume after the rotation is its first view, and a
+            // marker left for it would swallow that Screen Viewed.
+            if (f.activity?.isChangingConfigurations == true && fragmentStates[f]?.emitted == true) {
+                pendingConfigChange.add(instanceKey(f))
+            }
             fragmentStates[f]?.let {
                 it.emitted = false
                 it.pausedWithHost = false
@@ -620,7 +627,7 @@ internal class AndroidScreenCapture(
      */
     private inline fun onSurfaceResumed(
         state: SurfaceState,
-        className: String,
+        key: String,
         capturable: Boolean,
         covers: Boolean,
         screenName: () -> String?,
@@ -682,8 +689,8 @@ internal class AndroidScreenCapture(
         if (state.emitted) return // a view of this screen is already in progress; this resume is a return
         // Consumed by the first genuinely fresh resume after the marker was left, capturable or not —
         // the re-created instance is the one it was left for, and leaving it behind would suppress a
-        // later, real view of the same class.
-        val configChange = pendingConfigChange.remove(className)
+        // later, real view of the same instance.
+        val configChange = pendingConfigChange.remove(key)
         if (screen == null) return
         // The frame keeps the settled name, but a surface that is right now neither its own screen
         // nor covering does not report itself: an Activity settled as a screen that has since taken
@@ -793,6 +800,19 @@ internal class AndroidScreenCapture(
         resumedActivities.clear()
         pendingConfigChange.clear()
     }
+
+    // What a re-created instance shares with the one it replaces. An Activity is one per class in the
+    // rotation that re-creates it; a fragment is restored into the same container under the same tag,
+    // which tells apart the pages of a pager (`FragmentStateAdapter` tags them by item id) and the same
+    // class in two containers. Two untagged fragments of one class in one container still share a key,
+    // so the second of them to resume after a rotation reports a view again. And a marker lives until
+    // an instance under its key resumes: if the restored instance goes away without resuming, a new one
+    // added later under the same key is taken for the re-creation, and its first view is not reported.
+    // Dropping the marker when a fresh instance is created instead re-emits for an app that rebuilds
+    // its content in onResume — measured — and no lifecycle point marks the end of a re-creation.
+    private fun instanceKey(activity: Activity): String = activity.javaClass.name
+
+    private fun instanceKey(fragment: Fragment): String = "${fragment.javaClass.name}#${fragment.id}#${fragment.tag}"
 
     // --- Static capturability filter (mirrors iOS isCapturableScreen; all decidable at resume) -------
 

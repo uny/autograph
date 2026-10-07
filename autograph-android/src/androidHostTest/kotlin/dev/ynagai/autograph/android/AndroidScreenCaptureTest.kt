@@ -48,6 +48,21 @@ class SecondPlainActivity : Activity()
 
 class EmptyFragmentActivity : FragmentActivity()
 
+/** Replaces its content in every onResume — the re-creation discards the restored fragment there. */
+class ReplaceOnEveryResumeActivity : FragmentActivity() {
+    override fun onResume() {
+        super.onResume()
+        supportFragmentManager.beginTransaction().replace(android.R.id.content, DetailFragment()).commitNow()
+    }
+}
+
+class ReplaceOnEveryCreateActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        supportFragmentManager.beginTransaction().replace(android.R.id.content, DetailFragment()).commitNow()
+    }
+}
+
 /** A fragment-based Compose app's Activity: its only content is a Compose-hosting fragment. */
 class ComposeFragmentShellActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -1069,6 +1084,76 @@ class AndroidScreenCaptureTest {
 
         assertEquals("DetailFragment", scopeStack.current().screen)
         assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun anActivityThatReplacesItsContentOnEveryResumeDoesNotReEmitAcrossARotation() {
+        // Fresh fragments created once the re-created host is already resumed still stand for the view
+        // the rotation interrupted — which is why a fresh instance cannot be what drops a marker.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryResumeActivity::class.java).setup()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before, tracker.screens)
+    }
+
+    @Test
+    fun anActivityThatReplacesItsContentOnEveryCreateDoesNotReEmitAcrossARotation() {
+        // Its re-created fragment is a fresh instance, not a restored one. It still stands for the view
+        // the rotation interrupted, so the marker has to survive its creation.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryCreateActivity::class.java).setup()
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun twoResumedFragmentsOfOneClassDoNotReEmitAcrossARotation() {
+        // Two panes of one class, both RESUMED, told apart by their tags. A marker per class was
+        // consumed by whichever re-created pane resumed first, and the other reported a second view.
+        install()
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "second")
+            .commitNow()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+        assertEquals(2, before.size)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before, tracker.screens)
+    }
+
+    @Test
+    fun aPageThatNeverResumedReportsItsFirstViewAfterARotation() {
+        // FragmentStateAdapter holds off-screen pages at STARTED. One rotated while off screen has had
+        // no view yet, so its first resume afterwards is a first view — but the marker its stop left
+        // outlived the rotation and swallowed it.
+        install()
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        val off = SecondFragment()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, off, "page")
+            .setMaxLifecycle(off, Lifecycle.State.STARTED)
+            .commitNow()
+        drainMainLooper()
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+
+        controller.recreate()
+        drainMainLooper()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().setMaxLifecycle(fm.findFragmentByTag("page")!!, Lifecycle.State.RESUMED).commitNow()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)", "SecondFragment:DetailFragment"), tracker.screens)
     }
 
     @Test
