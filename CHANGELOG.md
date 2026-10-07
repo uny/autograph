@@ -68,7 +68,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     still emitted.
   - The stack answers it as the new `AmbientContext.screenViewId`. It comes from the frame that
     names the screen, so it is absent, never borrowed, when that frame has no visit: a screen
-    re-created by a configuration change, a screen whose `AutographProvider` tracker (and with it
+    re-created by a configuration change (an Android Activity or fragment, which the native capture
+    does not report again), a screen whose `AutographProvider` tracker (and with it
     the default stack) was replaced without the screen being reported again, and a screen whose name
     changed after its screen view (`ScopeStack.update` with a different `screen` ends the visit,
     which on Android includes a name the `fragmentScreenName` lambda only returns later). It is also

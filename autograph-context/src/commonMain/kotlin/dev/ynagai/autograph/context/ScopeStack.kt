@@ -57,8 +57,9 @@ public class ScopeStack {
     public val screenHistory: ScreenHistory = ScreenHistory()
 
     /**
-     * Produces the [AmbientContext.screenViewId] of each `Screen Viewed` that Autograph's native
-     * screen captures emit through this stack (#242). Called on the main thread, once per screen
+     * Produces the [AmbientContext.screenViewId] of each `Screen Viewed` that Autograph's screen
+     * tracking emits through this stack (#242): the native screen captures and `autograph-compose`'s
+     * screen trackers alike. Called on the main thread, once per screen
      * view; an id it fails to produce (it throws, or returns an empty string) leaves that visit
      * without one rather than failing the screen view.
      *
@@ -773,7 +774,7 @@ public class AmbientContext internal constructor(
      * during it. It comes from the frame that names [screen], so it is never another screen's.
      *
      * Null when that frame has no visit (no `Screen Viewed` was emitted through this stack for it —
-     * a Compose screen, for now, or a screen re-created by a configuration change), when [screen] is
+     * an Android screen re-created by a configuration change, say), when [screen] is
      * null, and when two surfaces on display each name a screen and branch away from each other, so
      * this context cannot tell which visit it is in. A null here never stops [screen] from being
      * reported.

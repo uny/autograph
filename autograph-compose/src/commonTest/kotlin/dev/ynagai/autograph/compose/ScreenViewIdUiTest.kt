@@ -224,6 +224,33 @@ class ScreenViewIdUiTest {
     }
 
     @Test
+    fun aGeneratorThatFailsLeavesTheScreenAndItsClicksWithoutAVisit() = runComposeUiTest {
+        // The first view gets an id; the renamed screen's view fails to get one. Its click must carry
+        // none — not the earlier visit's.
+        val tracker = VisitRecordingTracker()
+        var fail = false
+        val stack = ScopeStack().apply { screenViewIdGenerator = EventIdGenerator { if (fail) error("no id") else "ok" } }
+        var name by mutableStateOf("List")
+        setContent {
+            CompositionLocalProvider(LocalTracker provides tracker, LocalScopeStack provides stack) {
+                TrackedScreen(name) {
+                    Box(Modifier.size(10.dp).testTag("open").trackClick("open_tapped") {})
+                }
+            }
+        }
+        waitForIdle()
+        fail = true
+        name = "Detail"
+        waitForIdle()
+        onNodeWithTag("open").performClick()
+        waitForIdle()
+
+        assertEquals(visits("List" to "ok", "Detail" to null), tracker.screens)
+        assertEquals(visits("open_tapped" to null), tracker.tracks)
+        assertNull(stack.current().screenViewId)
+    }
+
+    @Test
     fun anImpressionInsideATrackedScreenCarriesItsVisit() = runComposeUiTest {
         val tracker = VisitRecordingTracker()
         val stack = sequentialStack()
