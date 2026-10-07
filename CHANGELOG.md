@@ -60,8 +60,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   autocapture and SwiftUI's `AutographElementCapture` record on that screen until it is left.
   `trackClick` and `trackImpression` carry the visit of the `TrackedScreen` they sit in, read
   lexically like its `screen`; outside one, and under a bare `TrackScreenView`, they carry none.
-  Coming back to a screen is a new visit, even under the same name; a dialog or a permission prompt
-  over it is not. It works like this:
+  Coming back to a screen is a new visit, even under the same name, when it emits another
+  `Screen Viewed`; a dialog or a permission prompt over it is not. A Compose screen emits one only
+  when it enters the composition or its name changes, so returning to an Activity whose composition
+  stayed alive keeps the visit it had. It works like this:
   - The id comes from the new `ScopeStack.screenViewIdGenerator`, `EventId.UuidV7` by default.
     `Autograph { }` never sees the stack, so a custom `AutographConfig.eventId` is not applied to
     it: set the same generator on the stack if you want both in one format. A generator that
