@@ -1,6 +1,8 @@
 package dev.ynagai.autograph.context
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventId
+import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.asJsonObject
 import kotlin.concurrent.Volatile
@@ -53,6 +55,20 @@ public class ScopeStack {
      * discontinuous `previous_screen` rather than an error.
      */
     public val screenHistory: ScreenHistory = ScreenHistory()
+
+    /**
+     * Produces the [AmbientContext.screenViewId] of each `Screen Viewed` that Autograph's native
+     * screen captures emit through this stack (#242). Called on the main thread, once per screen
+     * view; an id it fails to produce (it throws, or returns an empty string) leaves that visit
+     * without one rather than failing the screen view.
+     *
+     * The tracker's [dev.ynagai.autograph.AutographConfig.eventId] is **not** applied here
+     * automatically: `Autograph { }` builds a tracker and never sees the stack, which the app creates
+     * and hands to the captures itself. The default is the same as the tracker's default,
+     * [EventId.UuidV7]; an app that configures a different `eventId` and wants visit ids in the same
+     * format sets the same generator here. Set it before the captures start; main thread only.
+     */
+    public var screenViewIdGenerator: EventIdGenerator = EventId.UuidV7
 
     // Insertion-ordered; "innermost wins" for screen/section means later frames override earlier.
     // For scope, precedence follows the frame LINEAGE (parent links) rather than insertion order —
@@ -149,7 +165,8 @@ public class ScopeStack {
      * it wrongly override inner frames that are still on the stack. A no-op (and no snapshot churn)
      * if the contents are unchanged, the handle was already removed, or it belongs to another stack.
      *
-     * The arguments are replaced, not merged: omitting one clears it.
+     * The arguments are replaced, not merged: omitting one clears it. Changing [screen] also ends the
+     * frame's visit ([AmbientContext.screenViewId]); an unchanged one, or a new [section], keeps it.
      *
      * This revises scope/screen/section only. It never changes the frame's parent link ([reparent]),
      * whether it is masked ([setScreenMasked]) or whether it is active ([setActive]) — a pipeline
@@ -175,6 +192,9 @@ public class ScopeStack {
         val newScope = scope.asJsonObject()
         if (frame.scope == newScope && frame.screen == screen && frame.section == section) return
         frame.scope = newScope
+        // A visit is a visit of the screen its `Screen Viewed` named; a frame that now names another
+        // screen is no longer in it, whether or not anything will report the new name.
+        if (frame.screen != screen) frame.screenViewId = null
         frame.screen = screen
         frame.section = section
         snapshot = recompute()
@@ -321,6 +341,35 @@ public class ScopeStack {
             changed = true
         }
         if (changed) snapshot = recompute()
+    }
+
+    /**
+     * Starts a new visit of the screen the frame [handle] refers to names: stores a fresh id from
+     * [screenViewIdGenerator] on the frame, republishes, and returns it — or null, storing null, when
+     * the generator fails or the frame is not on this stack. Main thread only. See [emitScreenView].
+     */
+    internal fun startVisit(handle: ScopeHandle): String? {
+        val frame = handle.frame
+        if (frames.none { it === frame }) return null
+        val id = try {
+            screenViewIdGenerator.next().takeIf { it.isNotEmpty() }
+        } catch (_: Throwable) {
+            null
+        }
+        frame.screenViewId = id
+        snapshot = recompute()
+        return id
+    }
+
+    /**
+     * Ends the visit the frame [handle] refers to holds, if any, keeping everything else about the
+     * frame. A no-op, republishing nothing, when there is none. See [endScreenVisit].
+     */
+    internal fun endVisit(handle: ScopeHandle) {
+        val frame = handle.frame
+        if (frame.screenViewId == null || frames.none { it === frame }) return
+        frame.screenViewId = null
+        snapshot = recompute()
     }
 
     /**
@@ -511,6 +560,8 @@ public class ScopeStack {
         // [AmbientContext.screenMasked]. Tracked alongside screen because it is set and cleared by
         // exactly the frames that set and clear screen.
         var screenMasked = false
+        // The frame whose screen won: a visit id is that frame's, never another's (see screenViewId).
+        var decider: ScopeFrame? = null
         for (frame in live) {
             // A frame that names a screen OWNS its section — it replaces both, so a section carried by
             // an outer screen cannot bleed onto an inner one that declared none (`push(screen = "X")`
@@ -527,15 +578,48 @@ public class ScopeStack {
                 screen = null
                 section = null
                 screenMasked = true
+                decider = null
             } else if (frame.screen != null) {
                 screen = frame.screen
                 section = frame.section
                 screenMasked = false
+                decider = frame
             } else if (frame.section != null) {
                 section = frame.section
             }
         }
-        return AmbientContext(resolveScope(live), screen, section, screenMasked)
+        val screenViewId = decider?.screenViewId?.takeIf { !surfacesBranch(live) }
+        return AmbientContext(resolveScope(live), screen, section, screenMasked, screenViewId)
+    }
+
+    /**
+     * Whether two surfaces on display each hold a declaration about the screen — a frame that names
+     * one or masks it, on the surface itself or inside it — and branch away from each other, neither
+     * enclosing the other. That makes the visit ambiguous (#242).
+     *
+     * Two surfaces side by side that both speak for the screen (two Activities resumed at once in
+     * multi-window, two named fragments shown beside each other, a named fragment beside a Compose
+     * host that names its own) are each a visit of their own, and a read that cannot tell which one
+     * an event happened in must not hand it either one's id: the screen name it reports is already a
+     * guess, and a visit id is what a consumer joins on. The origin-taking [current] keeps only the
+     * origin's own surfaces, which form one chain, so this only ever bites an ambient read.
+     *
+     * A surface that declares nothing does not count: a headless worker fragment, or an excluded one
+     * that names and masks nothing, beside the content the user is looking at is not a second visit.
+     * Nor does a declaration under no surface at all. Those frames cannot be localized by the pipeline
+     * pushing them, and a branch among them does not mean the user is looking at two screens: a sheet
+     * a native iOS capture pushes is a root beside the screen it covers, exactly as a second window
+     * would be, and refusing the id there would drop it from every tap on every sheet. Without a
+     * surface the id follows the screen, and is wrong exactly when the screen is.
+     *
+     * "Names a screen" already covers a surface whose screen is declared inside it, so a Compose host
+     * beside a named fragment counts as soon as its `TrackedScreen` is on the stack.
+     */
+    private fun surfacesBranch(live: List<ScopeFrame>): Boolean {
+        val onStack = frames.toHashSet()
+        val speaking = live.filter { it.screen != null || it.maskScreen }
+            .mapNotNullTo(HashSet()) { frame -> generateSequence(frame) { it.parent }.firstOrNull { it.boundary && it in onStack } }
+        return speaking.any { a -> speaking.any { b -> !a.encloses(b) && !b.encloses(a) } }
     }
 
     /**
@@ -619,6 +703,9 @@ internal class ScopeFrame(
     /** Which of [ScopeStack.push] / [ScopeStack.pushSurface] made it. */
     val kind: FrameKind = FrameKind.Declaration,
 ) {
+    /** The visit of [screen] this frame is in, if a `Screen Viewed` started one. See [ScopeStack.startVisit]. */
+    var screenViewId: String? = null
+
     /** See [ScopeStack.pushSurface]. */
     val boundary: Boolean get() = kind == FrameKind.Surface
 }
@@ -663,6 +750,20 @@ public class AmbientContext internal constructor(
      * (`TrackedScreen`, a bare `TrackScreenView`, and `NavController.TrackScreenViews` all do).
      */
     public val screenMasked: Boolean,
+    /**
+     * The visit of [screen] this context belongs to (#242): the id the `Screen Viewed` that started
+     * the visit carried, for Autograph's capture pipelines to attach to the events they capture
+     * during it. It comes from the frame that names [screen], so it is never another screen's.
+     *
+     * Null when that frame has no visit (no `Screen Viewed` was emitted through this stack for it —
+     * a Compose screen, for now, or a screen re-created by a configuration change), when [screen] is
+     * null, and when two surfaces on display each name a screen and branch away from each other, so
+     * this context cannot tell which visit it is in. A null here never stops [screen] from being
+     * reported.
+     *
+     * Not written by [enrich]: it is event metadata, not a property.
+     */
+    public val screenViewId: String?,
 ) {
     /**
      * Returns [properties] enriched with this context: [scope] merged underneath (so an explicit
@@ -679,6 +780,6 @@ public class AmbientContext internal constructor(
     }
 
     internal companion object {
-        val Empty: AmbientContext = AmbientContext(EmptyJsonObject, null, null, screenMasked = false)
+        val Empty: AmbientContext = AmbientContext(EmptyJsonObject, null, null, screenMasked = false, screenViewId = null)
     }
 }

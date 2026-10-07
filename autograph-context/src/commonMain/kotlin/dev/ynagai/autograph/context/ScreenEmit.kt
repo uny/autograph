@@ -4,6 +4,7 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.withEventMetadata
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -32,6 +33,10 @@ import kotlinx.serialization.json.JsonPrimitive
  * members as the ambient read (bar the inactive-frame exemptions [ScopeStack.current] documents) and
  * the scope ambiguity rule is what keeps sibling scopes apart — one scoped sibling still reaches the
  * event, two drop, exactly as for a native tap.
+ *
+ * The event carries the id of the visit it starts as its metadata ([AmbientContext.screenViewId]):
+ * a new one for every call, so coming back to a screen is a new visit even under the same name.
+ *
  * It is scope only, not [AmbientContext.enrich], because
  * `enrich` writes the reserved `screen` / `section` keys and for a screen event the name already *is*
  * the screen. The scope merges **under** `previous_screen`, a caller property that keeps winning a
@@ -43,9 +48,30 @@ import kotlinx.serialization.json.JsonPrimitive
 @AutographInternalApi
 public fun ScopeStack.emitScreenView(tracker: Tracker, name: String, origin: ScopeHandle) {
     val previous = screenHistory.record(name)?.takeIf { it != name }
+    // Started BEFORE the tracker is called, and handed to it directly (#242). The stack already
+    // answers with the new visit while the event is in flight, so an event the tracker's own code
+    // captures can join it; and the id is the one this frame now holds, which reading it back
+    // through `current(origin)` would not guarantee — a later frame there can name the screen.
+    // Not undone if the tracker rejects or throws: what the user sees is still this visit, so the
+    // events captured during it carry an id no `Screen Viewed` row may have.
+    val screenViewId = startVisit(origin)
     val scope = current(origin).scope
     val properties = withPreviousScreen(previous)
-    tracker.screen(name, if (scope.isEmpty()) properties else JsonObject(scope - RESERVED_METADATA_KEY + properties))
+    val scoped = if (scope.isEmpty()) properties else JsonObject(scope - RESERVED_METADATA_KEY + properties)
+    tracker.screen(name, if (screenViewId != null) scoped.withEventMetadata(kind = null, screenViewId = screenViewId) else scoped)
+}
+
+/**
+ * Ends the visit [handle]'s frame is in (#242), for a native screen capture whose surface stops being
+ * viewed while its frame stays: the next view of it starts a new visit, and until then a tap resolved
+ * from the frame must carry no visit id rather than the finished one's. A no-op when the frame holds
+ * none. Main thread only.
+ *
+ * `@AutographInternalApi` for the same reason as [emitScreenView].
+ */
+@AutographInternalApi
+public fun ScopeStack.endScreenVisit(handle: ScopeHandle) {
+    endVisit(handle)
 }
 
 /**

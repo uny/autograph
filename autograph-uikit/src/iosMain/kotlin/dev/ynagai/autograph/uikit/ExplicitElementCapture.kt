@@ -45,6 +45,10 @@ import kotlinx.serialization.json.JsonPrimitive
  * from a tap. [clicked] and [clickedJson] serve `autograph.track(_:)`, which can be called from a
  * timer or a completion handler as easily as from a touch, so they claim no kind.
  *
+ * All three also carry the current visit's id
+ * ([dev.ynagai.autograph.context.AmbientContext.screenViewId]) in that metadata when the stack has
+ * one, so an event without a kind can still carry the reserved key.
+ *
  * **[scope] is passed in, not read from [scopeStack], and that is deliberate.**
  * `ScopeStack.resolveScope()` drops sibling frames that are neither's ancestor, because an
  * autocaptured tap carries no evidence of *which* sibling it hit. A list whose rows each own a scope
@@ -134,11 +138,15 @@ public class AutographElementCapture(
             // The reserved metadata key is left out of the scope, as `mergeScope` does.
             val scoped = if (scope.isEmpty()) properties else JsonObject(scope.toJsonObject() - RESERVED_METADATA_KEY + properties)
             val context = scopeStack.current()
-            // Only screen/section from the stack — never its scope. See the class kdoc.
+            // Only screen/section and the visit id from the stack — never its scope. See the class kdoc.
             var result = scoped
             context.screen?.let { result = JsonObject(result + ("screen" to JsonPrimitive(it))) }
             context.section?.let { result = JsonObject(result + ("section" to JsonPrimitive(it))) }
-            if (kind != null) result = result.withEventMetadata(kind)
+            // Only when there is something to carry: a plain `track` outside any visit stays free of
+            // the reserved key.
+            if (kind != null || context.screenViewId != null) {
+                result = result.withEventMetadata(kind, screenViewId = context.screenViewId)
+            }
             tracker.track(name, result, target)
         } catch (_: Throwable) {
             // Never unwind into Swift. A dropped event is recoverable; a crash in someone's app

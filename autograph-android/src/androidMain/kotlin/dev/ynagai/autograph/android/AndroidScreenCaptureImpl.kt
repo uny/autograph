@@ -21,6 +21,7 @@ import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.autographScopeOwner
 import dev.ynagai.autograph.context.notifyAutographScopeOwnerChanged
 import dev.ynagai.autograph.context.emitScreenView
+import dev.ynagai.autograph.context.endScreenVisit
 
 /**
  * The engine behind [installAutographNativeScreenCapture]: an [Application.ActivityLifecycleCallbacks]
@@ -662,6 +663,12 @@ internal class AndroidScreenCapture(
         // (onFragmentViewCreated).
         scopeStack.update(state.handle, screen = screen)
         if (masks == false) scopeStack.setScreenMasked(state.handle, false)
+
+        // A view that has ended takes its visit id with it before the frame answers again (#242).
+        // Every path that ends a view does so while the surface is off display, and not every resume
+        // after one emits — a return yielded to a fragment, a surface that is not its own screen right
+        // now — so without this the frame would hand a finished visit's id to the taps made on it.
+        if (!state.emitted) scopeStack.endScreenVisit(state.handle)
 
         // Selected on every resume, whatever the frame says — including nothing. A resumed surface IS
         // on display, and that is the only question the bit answers; whether it names, masks or

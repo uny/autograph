@@ -53,6 +53,33 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   remove the key, so a fake standing in for the real tracker now sees `__autograph` in the
   properties of every event listed above.
 
+- **Native screen views start a visit, and the taps made during it carry its id** ([#242]). Every
+  `Screen Viewed` the Android Activity/Fragment capture, the iOS UIKit capture and SwiftUI's
+  `AutographScreenCapture` emit carries a new `screen_view_id`, and so do the taps the native tap
+  captures, Compose autocapture and SwiftUI's `AutographElementCapture` record on that screen
+  until it is left. Coming back to a screen is a new visit, even under the same name; a dialog or
+  a permission prompt over it is not. It works like this:
+  - The id comes from the new `ScopeStack.screenViewIdGenerator`, `EventId.UuidV7` by default.
+    `Autograph { }` never sees the stack, so a custom `AutographConfig.eventId` is not applied to
+    it: set the same generator on the stack if you want both in one format. A generator that
+    throws or returns an empty string leaves that visit without an id, and the screen view is
+    still emitted.
+  - The stack answers it as the new `AmbientContext.screenViewId`. It comes from the frame that
+    names the screen, so it is absent, never borrowed, when that frame has no visit: a Compose
+    `TrackedScreen` for now, a screen re-created by a configuration change, and a screen whose name
+    changed after its screen view (`ScopeStack.update` with a different `screen` ends the visit,
+    which on Android includes a name the `fragmentScreenName` lambda only returns later). It is also
+    absent when two surfaces on display side by side each name a screen (two Activities in
+    multi-window, two named fragments beside each other) and an ambient read cannot tell which
+    visit it is in; the screen name is still reported, and a tap the capture localizes to one of
+    them gets that one's id. A surface that names nothing, such as a headless fragment, does not
+    count. iOS screens are not surfaces, so there the id follows the screen name, a sheet included.
+  - The id is minted before the tracker is called and is not withdrawn if the tracker rejects or
+    throws, so events can carry an id no `Screen Viewed` row has.
+
+  A `Tracker` fake now sees `__autograph` in the properties of a native screen view, and in a
+  SwiftUI `autograph.track(_:)` call made on a screen with a visit.
+
 ### Changed
 
 - **ADR 0001 freezes the member set of every interface a caller implements** ([#283]). §2c/§2d

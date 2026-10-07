@@ -18,13 +18,16 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.autographScopeOrigin
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -257,16 +260,22 @@ class AndroidScreenCaptureTest {
 
     /**
      * Records each `Screen Viewed` as "name:previous" (previous = "(none)" when absent), and keeps the
-     * full properties in [screenProperties] for the scope assertions (#238).
+     * full properties in [screenProperties] for the scope assertions (#238) — without the visit id
+     * under the reserved key, which goes to [visits] (#242).
      */
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<String>()
         val screenProperties = mutableListOf<JsonObject>()
+        val visits = mutableListOf<String?>()
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
         override fun screen(name: String, properties: Map<String, JsonElement>) {
             val previous = (properties.asJsonObject()["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
             screens += "$name:$previous"
-            screenProperties += properties.asJsonObject()
+            screenProperties += JsonObject(properties - RESERVED_METADATA_KEY)
+            visits += properties[RESERVED_METADATA_KEY]?.let { raw ->
+                (Json.parseToJsonElement((raw as JsonPrimitive).content) as JsonObject)["screen_view_id"]
+                    ?.let { (it as JsonPrimitive).content }
+            }
         }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
@@ -1316,6 +1325,61 @@ class AndroidScreenCaptureTest {
             tracker.screens,
         )
     }
+
+    // --- The visit id (#242) -----------------------------------------------------------------------
+
+    @Test
+    fun aScreenViewsVisitIdIsWhatTheStackAnswersForItsSurface() {
+        install()
+        val activity = Robolectric.buildActivity(PlainActivity::class.java).setup().get()
+
+        val id = checkNotNull(tracker.visits.single())
+        assertEquals(id, scopeStack.current().screenViewId)
+        assertEquals(id, scopeStack.current(activity.contentOrigin()).screenViewId)
+    }
+
+    @Test
+    fun aPauseAndResumeWithoutANewViewKeepsTheVisit() {
+        install()
+        // A dialog or a permission prompt: no new view, so the same visit.
+        Robolectric.buildActivity(PlainActivity::class.java).setup().pause().resume()
+
+        assertEquals(tracker.visits.single(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aReturnAfterAnotherScreenIsANewVisitOnTheSameFrame() {
+        install()
+        val underneath = Robolectric.buildActivity(PlainActivity::class.java).setup().pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        underneath.resume()
+
+        assertEquals(3, tracker.visits.size)
+        assertEquals(3, tracker.visits.toSet().size)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun anActivityYieldingItsReturnToAFragmentDoesNotHandOutTheFinishedVisit() {
+        install()
+        // The return is the fragment's to report; the Activity's frame still names its settled
+        // screen and comes back on display without a screen view of its own. A tap on the Activity's
+        // own views must not carry the visit that ended when the other screen was reported.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "content").commitNow()
+        val activityVisit = tracker.visits.first()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        val onActivity = scopeStack.current(controller.get().contentOrigin())
+        assertEquals("EmptyFragmentActivity", onActivity.screen)
+        assertNotEquals(activityVisit, onActivity.screenViewId)
+        assertNull(onActivity.screenViewId)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    private fun Activity.contentOrigin() = checkNotNull(findViewById<View>(android.R.id.content).autographScopeOrigin())
 
     @Test
     fun anActivityWithAnExcludedFragmentBesideItsContentStillReportsItsReturn() {
