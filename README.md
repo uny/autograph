@@ -506,9 +506,10 @@ Every event now carries — this shape is the stable envelope contract described
 
 `screen_view_id` ties an event to one visit of a screen: a new id for every `Screen Viewed` the
 library emits, carried by that screen view and by the events the library records while the screen is
-on display — taps, clicks and impressions, and SwiftUI's `autograph.track(_:)`, which takes the visit
-current when it is called. A plain `Tracker.track` call carries none, and there is no API yet for
-keeping a visit and attaching it to an event you send later — content that loads after the user has
+on display — captured taps, `trackClick` and `trackImpression` inside a `TrackedScreen` (not beside
+a bare `TrackScreenView`, which gives them no screen either), and SwiftUI's `autograph.track(_:)`,
+which takes the visit current when it is called. A plain `Tracker.track` call carries none, and there
+is no API yet for keeping a visit and attaching it to an event you send later — content that loads after the user has
 moved on, say — so such events cannot be joined to their visit by this id; key them on what they are
 about instead. It is also absent whenever the library cannot tie an event to one visit, listed in the
 [changelog](CHANGELOG.md).

@@ -59,8 +59,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   emit carries a new `screen_view_id`, and so do the taps the native tap captures, Compose
   autocapture and SwiftUI's `AutographElementCapture` record on that screen until it is left.
   `trackClick` and `trackImpression` carry the visit of the `TrackedScreen` they sit in, read
-  lexically like its `screen`; outside one, and under a bare `TrackScreenView`, they carry none. Coming back to a screen is a new visit, even under the same name; a dialog or
-  a permission prompt over it is not. It works like this:
+  lexically like its `screen`; outside one, and under a bare `TrackScreenView`, they carry none.
+  Coming back to a screen is a new visit, even under the same name; a dialog or a permission prompt
+  over it is not. It works like this:
   - The id comes from the new `ScopeStack.screenViewIdGenerator`, `EventId.UuidV7` by default.
     `Autograph { }` never sees the stack, so a custom `AutographConfig.eventId` is not applied to
     it: set the same generator on the stack if you want both in one format. A generator that
