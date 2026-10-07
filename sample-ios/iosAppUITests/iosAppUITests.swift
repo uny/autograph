@@ -860,8 +860,13 @@ final class SwiftUIExplicitUITests: XCTestCase {
         // `AutographButton.body` call the click-marking path rather than plain `track`. The tracker on
         // this screen is written in Swift and reads every value, which a nested object would trap.
         XCTAssertTrue(
-            lastProps(app).contains(#""__autograph":"{\"kind\":\"click\"}""#),
+            lastProps(app).contains(#""__autograph":"{\"kind\":\"click\","#),
             "AutographButton did not mark the event as a click: \(lastProps(app))"
+        )
+        // #242: the screen's visit id rides in the same value, through the same Swift tracker.
+        XCTAssertTrue(
+            lastProps(app).contains(#"\"screen_view_id\":\""#),
+            "AutographButton's event did not carry the screen's visit id: \(lastProps(app))"
         )
     }
 
@@ -931,10 +936,15 @@ final class SwiftUIExplicitUITests: XCTestCase {
             lastProps(app).contains("\"plan\":\"pro\""),
             "call-site properties missing: \(lastProps(app))"
         )
-        // #287: `autograph.track` can be called from anywhere, so it claims no kind.
+        // #287: `autograph.track` can be called from anywhere, so it claims no kind. #242: it still
+        // carries the visit of the screen it was called on, which is all its metadata holds.
         XCTAssertFalse(
-            lastProps(app).contains("__autograph"),
+            lastProps(app).contains(#"\"kind\""#),
             "plain autograph.track must not mark its event: \(lastProps(app))"
+        )
+        XCTAssertTrue(
+            lastProps(app).contains(#""__autograph":"{\"screen_view_id\":\""#),
+            "plain autograph.track did not carry the screen's visit id: \(lastProps(app))"
         )
     }
 
