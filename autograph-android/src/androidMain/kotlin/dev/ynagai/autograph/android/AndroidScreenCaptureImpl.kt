@@ -93,9 +93,9 @@ internal class AndroidScreenCapture(
         java.util.Collections.newSetFromMap(java.util.WeakHashMap())
 
     // Screens whose next resume is a configuration-change re-creation, not a fresh view. Keyed by
-    // [instanceKey] because the leaving instance and the re-created one are different objects — per
-    // instance rather than per class, since two fragments of one class can be RESUMED together and each
-    // is one continuous view across the rotation. Emit is skipped for them; the self-previous guard in
+    // [instanceKey] because the leaving instance and the re-created one are different objects — by what
+    // they share rather than by class alone, since two fragments of one class can be RESUMED together
+    // and each is one continuous view across the rotation. Emit is skipped for them; the self-previous guard in
     // emitScreenView separately keeps previous_screen clean.
     private val pendingConfigChange = HashSet<String>()
 
@@ -689,7 +689,7 @@ internal class AndroidScreenCapture(
         if (state.emitted) return // a view of this screen is already in progress; this resume is a return
         // Consumed by the first genuinely fresh resume after the marker was left, capturable or not —
         // the re-created instance is the one it was left for, and leaving it behind would suppress a
-        // later, real view of the same instance.
+        // later, real view under the same key.
         val configChange = pendingConfigChange.remove(key)
         if (screen == null) return
         // The frame keeps the settled name, but a surface that is right now neither its own screen
@@ -802,9 +802,10 @@ internal class AndroidScreenCapture(
     }
 
     // What a re-created instance shares with the one it replaces. An Activity is one per class in the
-    // rotation that re-creates it; a fragment is restored into the same container under the same tag,
-    // which tells apart the pages of a pager (`FragmentStateAdapter` tags them by item id) and the same
-    // class in two containers. Two untagged fragments of one class in one container still share a key,
+    // rotation that re-creates it; a fragment is restored under the same parent, into the same container
+    // under the same tag, which tells apart the pages of a pager (`FragmentStateAdapter` tags them by
+    // item id), the same class in two containers, and the same child in two panes whose layouts reuse
+    // one container id. Two untagged fragments of one class in one container still share a key,
     // so the second of them to resume after a rotation reports a view again. And a marker lives until
     // an instance under its key resumes: if the restored instance goes away without resuming, a new one
     // added later under the same key is taken for the re-creation, and its first view is not reported.
@@ -812,7 +813,9 @@ internal class AndroidScreenCapture(
     // its content in onResume — measured — and no lifecycle point marks the end of a re-creation.
     private fun instanceKey(activity: Activity): String = activity.javaClass.name
 
-    private fun instanceKey(fragment: Fragment): String = "${fragment.javaClass.name}#${fragment.id}#${fragment.tag}"
+    private fun instanceKey(fragment: Fragment): String =
+        fragment.parentFragment?.let { instanceKey(it) + "/" }.orEmpty() +
+            "${fragment.javaClass.name}#${fragment.id}#${fragment.tag}"
 
     // --- Static capturability filter (mirrors iOS isCapturableScreen; all decidable at resume) -------
 

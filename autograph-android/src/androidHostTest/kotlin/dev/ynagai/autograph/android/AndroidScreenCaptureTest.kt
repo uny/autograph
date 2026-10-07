@@ -56,6 +56,45 @@ class ReplaceOnEveryResumeActivity : FragmentActivity() {
     }
 }
 
+/** A pane whose layout hosts a tagged [DetailFragment] in a container id that every pane reuses. */
+class DetailPaneFragment : Fragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = FrameLayout(requireContext()).apply { id = DETAIL_CONTAINER_ID }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        if (savedInstanceState != null) return
+        childFragmentManager.beginTransaction().add(DETAIL_CONTAINER_ID, DetailFragment(), "detail").commitNow()
+    }
+
+    private companion object { const val DETAIL_CONTAINER_ID = 4545 }
+}
+
+/** Two [DetailPaneFragment]s side by side, so their children share class, container id and tag. */
+class TwoPaneActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(
+            android.widget.LinearLayout(this).apply {
+                addView(FrameLayout(context).apply { id = START_PANE_ID })
+                addView(FrameLayout(context).apply { id = END_PANE_ID })
+            },
+        )
+        if (savedInstanceState != null) return
+        supportFragmentManager.beginTransaction()
+            .add(START_PANE_ID, DetailPaneFragment(), "start")
+            .add(END_PANE_ID, DetailPaneFragment(), "end")
+            .commitNow()
+    }
+
+    private companion object {
+        const val START_PANE_ID = 4601
+        const val END_PANE_ID = 4602
+    }
+}
+
 class ReplaceOnEveryCreateActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -1094,6 +1133,10 @@ class AndroidScreenCaptureTest {
         val controller = Robolectric.buildActivity(ReplaceOnEveryResumeActivity::class.java).setup()
         drainMainLooper()
         val before = tracker.screens.toList()
+        assertEquals(
+            listOf("ReplaceOnEveryResumeActivity:(none)", "DetailFragment:ReplaceOnEveryResumeActivity"),
+            before,
+        )
 
         controller.recreate()
         drainMainLooper()
@@ -1130,6 +1173,51 @@ class AndroidScreenCaptureTest {
         drainMainLooper()
 
         assertEquals(before, tracker.screens)
+    }
+
+    @Test
+    fun theSameChildInTwoPanesDoesNotReEmitAcrossARotation() {
+        // Each pane's layout reuses one container id and tags its child alike, so class, container and
+        // tag alone leave both children one marker, and the second to resume reported a view again.
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailPaneFragment) null else it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(TwoPaneActivity::class.java).setup()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+        assertEquals(2, before.size)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before, tracker.screens)
+    }
+
+    @Test
+    fun aFragmentNamedOnlyAfterARotationReportsItsFirstView() {
+        // Unnamed when the rotation stopped it, it had no view in progress — so the re-created one's
+        // first named resume is its first view, not a continuation to skip.
+        var title: String? = null
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailFragment) title else it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        drainMainLooper()
+        assertEquals(emptyList<String>(), tracker.screens)
+
+        title = "Detail"
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("Detail:(none)"), tracker.screens)
     }
 
     @Test
