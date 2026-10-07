@@ -270,6 +270,18 @@ class ScreenViewIdUiTest {
     }
 
     @Test
+    fun aVisitIsNotHandedToAnEventUnderAnotherScreensName() {
+        // Between a rename's recomposition and the effect that starts the renamed screen's visit, a
+        // click already reads the new name while the holder still has the old visit.
+        val visit = ScreenVisit()
+        visit.begin("List", "id-1")
+
+        assertEquals("id-1", visit.idFor("List"))
+        assertNull(visit.idFor("Detail"))
+        assertNull(visit.idFor(null))
+    }
+
+    @Test
     fun anAutocapturedTapCarriesTheVisitOfTheScreenItLandedOn() {
         // The JVM test host composes no tap observer, so the report is driven directly, as in
         // AutocaptureObserverTest — from the composition's origin, the way the observer reports.
