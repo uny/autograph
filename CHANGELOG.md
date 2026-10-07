@@ -104,10 +104,12 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   native capture skips the re-created fragment's resume. It recognised that resume by class, so when
   two RESUMED fragments shared one (two panes, or `add` on top of the same class) the first to resume
   after the rotation used up the skip and the other reported a view. Each fragment is now told apart
-  by its parent, class, container and tag, as the re-created one is restored. Two untagged fragments of one
-  class in one container still look alike, and the second of them still reports a view. And when
-  the restored fragment goes away without resuming, a new one added later under the same class,
-  container and tag is taken for the re-created one, so its first view is not reported.
+  by its parent, class, container and tag, as the re-created one is restored. Two untagged
+  fragments of one class in one container still look alike, and the second of them still reports a
+  view. And when the restored fragment goes away without resuming, a new one added later under the
+  same class, container and tag is taken for the re-created one, so its first view is not reported.
+  An app that discards the restored fragment and builds its replacement under another tag or
+  container, which the old class-wide skip covered, now reports a second view.
 - **An Android fragment that never resumed before a rotation reports its first view after it**
   ([#242]). A pager's off-screen page, held at `STARTED`, left the same skip behind when the rotation
   stopped it. When no resumed fragment shared its class to use the skip up, as with tabs of different

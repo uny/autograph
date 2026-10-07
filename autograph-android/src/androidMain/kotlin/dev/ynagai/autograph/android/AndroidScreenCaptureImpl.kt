@@ -811,6 +811,8 @@ internal class AndroidScreenCapture(
     // added later under the same key is taken for the re-creation, and its first view is not reported.
     // Dropping the marker when a fresh instance is created instead re-emits for an app that rebuilds
     // its content in onResume — measured — and no lifecycle point marks the end of a re-creation.
+    // The other way round, an app that discards the restored fragment and builds its replacement under
+    // another tag or container misses the marker and reports a second view.
     private fun instanceKey(activity: Activity): String = activity.javaClass.name
 
     private fun instanceKey(fragment: Fragment): String =
