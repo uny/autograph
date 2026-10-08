@@ -64,3 +64,10 @@ kotlin {
         }
     }
 }
+
+tasks.withType<Test>().configureEach {
+    // Robolectric 4.17 sets up ApplicationSharedMemory on SDK 36+, whose FileDescriptor interceptor
+    // reaches jdk.internal.access.SharedSecrets reflectively; JDK 17+ hides that package by default.
+    // See https://robolectric.org/getting-started/ (JDK 17+ flags) and robolectric/robolectric#11434.
+    jvmArgs("--add-opens", "java.base/jdk.internal.access=ALL-UNNAMED")
+}
