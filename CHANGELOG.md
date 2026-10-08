@@ -117,8 +117,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     provides, gets an unsupported result and is **not** closed: a view must not shut down the root.
     Close the tracker you created.
   - Concurrent and repeated calls all wait on the one shutdown, and a call after it finished returns
-    the final result. `close()` shares that shutdown, so one already running on another thread is
-    waited for rather than repeated.
+    the final result. A `close()` already running on another thread is waited for rather than
+    repeated; `close()` itself still returns at once when a shutdown has already started.
   - The no-argument `closeAndAwait()` waits until the shutdown finishes and returns its final
     result: the same exposure as `close()`, which also returns only when the shutdown is done. It
     has no timer of its own, so it cannot race the shutdown. This is not because the shutdown is
