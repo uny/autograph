@@ -70,9 +70,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     throws or returns an empty string leaves that visit without an id, and the screen view is
     still emitted.
   - The stack answers it as the new `AmbientContext.screenViewId`. It comes from the frame that
-    names the screen, so it is absent, never borrowed, when that frame has no visit: a screen
-    re-created by a configuration change (an Android Activity or fragment, which the native capture
-    does not report again), a screen whose `AutographProvider` tracker (and with it
+    names the screen, so it is absent, never borrowed, when that frame has no visit: a fragment an
+    app builds to replace the restored one while a configuration change re-creates its host (see
+    below), a screen whose `AutographProvider` tracker (and with it
     the default stack) was replaced without the screen being reported again, and a screen whose name
     changed after its screen view (`ScopeStack.update` with a different `screen` ends the visit,
     which on Android includes a name the `fragmentScreenName` lambda only returns later). It is also
@@ -83,6 +83,16 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     count. iOS screens are not surfaces, so there the id follows the screen name, a sheet included.
   - The id is minted before the tracker is called and is not withdrawn if the tracker rejects or
     throws, so events can carry an id no `Screen Viewed` row has.
+  - An Android Activity or fragment re-created by a configuration change is not reported again, and
+    it stays in the visit it was in. The capture matches each re-created surface to the one it
+    replaces: a fragment by the identity its `FragmentManager` restores (its `mWho`, read through
+    `putFragment`), an Activity by a token the capture saves in its instance state under
+    `dev.ynagai.autograph.android.identity`. A surface whose screen name changed across the
+    configuration change reports a new view instead. An app that discards the restored fragment in
+    `onCreate` or `onResume` (with `commitNow`) and builds a replacement of the same class under the
+    same parent is still not reported again, but the replacement does not get the visit: nothing
+    proves it replaced that fragment rather than sitting beside it, and no id is better than a
+    wrong one. Its events carry no id until its next view.
 
   A `Tracker` fake now sees `__autograph` in the properties of a native screen view, and in a
   SwiftUI `autograph.track(_:)` call made on a screen with a visit.
@@ -103,13 +113,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `Screen Viewed` after a rotation** ([#242]). A configuration change is one continuous view, so the
   native capture skips the re-created fragment's resume. It recognised that resume by class, so when
   two RESUMED fragments shared one (two panes, or `add` on top of the same class) the first to resume
-  after the rotation used up the skip and the other reported a view. Each fragment is now told apart
-  by its parent, class, container and tag, as the re-created one is restored. Two untagged
-  fragments of one class in one container still look alike, and the second of them still reports a
-  view. And when the restored fragment goes away without resuming, a new one added later under the
-  same class, container and tag is taken for the re-created one, so its first view is not reported.
-  An app that discards the restored fragment and builds its replacement under another tag or
-  container, which the old class-wide skip covered, now reports a second view.
+  after the rotation used up the skip and the other reported a view. Each surface is now matched to
+  the one it re-creates by instance (see the visit entry above), so two untagged fragments of one
+  class in one container are told apart too. The skip also ends with the surface it was left for: a
+  restored fragment that goes away without resuming, or the re-created Activity stopping or
+  finishing first, leaves nothing for a fragment added later, whose first view is reported. A
+  replacement the app builds in `onCreate` or `onResume` while the host is re-created is still taken
+  for the interrupted view, under any tag or container, when it has the restored fragment's class
+  and parent.
 - **An Android fragment that never resumed before a rotation reports its first view after it**
   ([#242]). A pager's off-screen page, held at `STARTED`, left the same skip behind when the rotation
   stopped it. When no resumed fragment shared its class to use the skip up, as with tabs of different
