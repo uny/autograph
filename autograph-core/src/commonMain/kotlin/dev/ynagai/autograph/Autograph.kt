@@ -161,10 +161,10 @@ internal class AutographTracker(
 ) : Tracker, AwaitableCloseTracker {
 
     // A failed analytics delivery must never crash the app, and one failure must not tear down the
-    // scope for the next event — hence SupervisorJob + a swallowing handler.
+    // scope for the next event — hence SupervisorJob + a swallowing handler. Event hand-offs catch and
+    // count their own failures in [deliver]; this handler sees what else runs here (a queued flush/reset).
     private val scope = CoroutineScope(
         SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, e ->
-            recordHandOffFailure()
             report("Autograph: event delivery failed: ${e.message}")
         },
     )
@@ -211,6 +211,12 @@ internal class AutographTracker(
      * Every [closeAndAwait] waits on this one shutdown, concurrent or repeated.
      */
     private val shutdown = CompletableDeferred<CloseResult>()
+
+    /**
+     * Set when a [closeAndAwait] that cut off from inside this tracker's own pipeline calls has returned:
+     * those calls are no longer waiting on the shutdown, so it must wait for them too. Guarded by [lock].
+     */
+    private var nestedReleased = false
 
     private fun recordHandOffFailure() {
         synchronized(lock) { failedHandOffs++ }
@@ -260,7 +266,16 @@ internal class AutographTracker(
             synchronized(lock) {
                 if (closed) return
                 val eventTimestampMillis = clock()
-                scope.launch { send(stamper.stamp(eventTimestampMillis)) }
+                scope.launch {
+                    // Caught here rather than by the scope's handler, which never sees a CancellationException
+                    // and cannot tell an event's hand-off from a queued flush/reset.
+                    try {
+                        send(stamper.stamp(eventTimestampMillis))
+                    } catch (e: Exception) {
+                        recordHandOffFailure()
+                        report("Autograph: event delivery failed: ${e.message}")
+                    }
+                }
             }
         }
     }
@@ -486,8 +501,9 @@ internal class AutographTracker(
      * Bounded by [AutographConfig.closeDrainTimeoutMillis] — see [drainBlocking] for why a bound, and for
      * the one configuration (closing from the tracker's own single-threaded dispatcher) that starves the
      * drain. A drain cut short by the bound is reported through the logger rather than returning silently.
-     * Idempotent: the first caller runs the shutdown, a later one returns at once. [closeAndAwait] is the
-     * variant that waits on a shutdown someone else started.
+     * Idempotent: the first caller runs the shutdown, a later one returns at once — even while a shutdown
+     * started by [closeAndAwait] is still running. [closeAndAwait] is the variant that waits on a shutdown
+     * someone else started.
      */
     override fun close() {
         val cutoff = cutOff() ?: return
@@ -501,17 +517,34 @@ internal class AutographTracker(
         val cutoff = cutOff()
         if (cutoff != null) {
             // Its own scope, not the caller's: the shutdown must outlive a caller that stops waiting
-            // (its timeout, or its cancellation), because other callers may be waiting on it too.
-            CoroutineScope(Dispatchers.Default).launch { finishShutdown(cutoff) }
+            // (its timeout, or its cancellation), because other callers may be waiting on it too. The
+            // handler keeps the never-crash contract for whatever escapes it there.
+            CoroutineScope(Dispatchers.Default + shutdownExceptionHandler).launch { finishShutdown(cutoff) }
         }
+        try {
+            return awaitShutdown(timeoutMillis)
+        } finally {
+            // A caller nested in this tracker's pipeline calls is excluded from the drain only while it waits
+            // here; once it returns, its call can finish and the drain must wait for it like any other.
+            if (cutoff != null && cutoff.nestedInFlight > 0) synchronized(lock) { nestedReleased = true }
+        }
+    }
+
+    private suspend fun awaitShutdown(timeoutMillis: Long): CloseResult {
         if (shutdown.isCompleted) return shutdown.await()
         // Long.MAX_VALUE is "wait for the shutdown" (the no-argument helper): no timer, so none can race
         // the shutdown's own bound plus its flush and report a finished shutdown as timed out.
         if (timeoutMillis == Long.MAX_VALUE) return shutdown.await()
+        // No dispatch for no wait, so a Default pool busy with blocked flushes cannot hold it.
+        if (timeoutMillis <= 0) return snapshot(waitCompleted = false)
         // On a real-time dispatcher, not the caller's: a virtual-time test dispatcher would skip the
         // timeout past a shutdown that is still making progress on another thread.
-        return withContext(Dispatchers.Default) { withTimeoutOrNull(timeoutMillis.coerceAtLeast(0)) { shutdown.await() } }
-            ?: snapshot(waitCompleted = false)
+        return withContext(Dispatchers.Default) { withTimeoutOrNull(timeoutMillis) { shutdown.await() } }
+            ?: if (shutdown.isCompleted) shutdown.await() else snapshot(waitCompleted = false)
+    }
+
+    private val shutdownExceptionHandler = CoroutineExceptionHandler { _, e ->
+        report("Autograph: close() failed: ${e.message}")
     }
 
     /** What [cutOff] fixed: the work the shutdown has to wait for. */
@@ -554,7 +587,7 @@ internal class AutographTracker(
                 // which owns its own queue — flush is the only thing we can ask of it. A close() made
                 // from inside one of those calls cannot wait for the calls it is nested in, so it waits
                 // for the other threads' only.
-                while (synchronized(lock) { inFlight } > cutoff.nestedInFlight) delay(1)
+                while (synchronized(lock) { inFlight - if (nestedReleased) 0 else cutoff.nestedInFlight } > 0) delay(1)
             } else {
                 cutoff.accepted.joinAll()
             }

@@ -67,11 +67,12 @@ public interface Tracker {
      * logout — not needed for a tracker that lives for the app's lifetime.
      *
      * **Blocks until everything already accepted has been stamped and handed to the transport, then
-     * flushes it.** The wait for the hand-off is bounded by [AutographConfig.closeDrainTimeoutMillis]; the
-     * flush that follows is a synchronous transport call, which nothing can interrupt. When the wait runs out it gives up and releases anyway rather than
-     * hold a shutdown open indefinitely. Events accepted before [close] are therefore delivered, not
-     * discarded; what the transport then does with them (network delivery, its own retry queue) is the
-     * transport's business and is not awaited beyond [flush].
+     * flushes it.** The wait for the hand-off is bounded by [AutographConfig.closeDrainTimeoutMillis]:
+     * when it runs out, [close] gives up and releases anyway rather than hold a shutdown open
+     * indefinitely. The flush that follows is a synchronous transport call, which nothing can interrupt.
+     * Events accepted before [close] are therefore delivered, not discarded; what the transport then does
+     * with them (network delivery, its own retry queue) is the transport's business and is not awaited
+     * beyond [flush].
      *
      * Do not point `AutographConfig.dispatcher` at the thread that calls [close]: blocking a
      * single-threaded dispatcher from inside itself starves the drain, which then delivers nothing and

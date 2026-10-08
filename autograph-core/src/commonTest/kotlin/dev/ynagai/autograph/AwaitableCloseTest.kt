@@ -1,5 +1,6 @@
 package dev.ynagai.autograph
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Runnable
@@ -96,14 +97,18 @@ class AwaitableCloseTest {
 
     @Test
     fun aPipelineDrainCutShortStillRequestsItsFlush() = runBlocking {
-        val transport = CountingTransport(perEventMillis = 400, stampsInPipeline = true)
+        val transport = CountingTransport(stampsInPipeline = true, holdTrackOf = setOf("stuck"))
         val tracker = tracker(transport) { closeDrainTimeoutMillis = 50 }
         val caller = async(Dispatchers.Default) { tracker.track("stuck") }
         transport.awaitEntered()
 
         // Waits longer than the shutdown's own 50 ms bound, so the result is the shutdown's and not a snapshot
-        // of a caller whose identical deadline fired first.
-        val result = tracker.closeAndAwait(timeoutMillis = 5_000)
+        // of a caller whose identical deadline fired first. The call stays inside the transport until released.
+        val result = try {
+            tracker.closeAndAwait(timeoutMillis = 5_000)
+        } finally {
+            transport.release()
+        }
         caller.await()
 
         assertTrue(result.timedOut)
@@ -200,6 +205,62 @@ class AwaitableCloseTest {
     }
 
     @Test
+    fun aHandOffThatThrewCancellationIsCountedToo() = runBlocking {
+        for (stampsInPipeline in listOf(false, true)) {
+            val transport = CountingTransport(stampsInPipeline = stampsInPipeline, cancelTrackOf = setOf("bad"))
+            val tracker = tracker(transport)
+
+            tracker.track("bad")
+            val result = tracker.closeAndAwait()
+
+            assertTrue(result.waitCompleted, "pipeline=$stampsInPipeline")
+            assertEquals(1, result.failedHandOffs, "a cancellation from the transport is not the tracker's own: pipeline=$stampsInPipeline")
+        }
+    }
+
+    @Test
+    fun aQueuedFlushThatThrewIsNotAFailedHandOff() = runBlocking {
+        val logs = mutableListOf<String>()
+        val transport = CountingTransport(stampsInPipeline = false, failFlush = true)
+        val tracker = tracker(transport, logs)
+
+        tracker.track("a")
+        tracker.flush() // queued on the tracker's scope, where it throws
+        val result = tracker.closeAndAwait()
+
+        assertEquals(0, result.failedHandOffs, "a control call is not an event hand-off: $result")
+        assertEquals(1, transport.tracked)
+        assertTrue(result.flushFailed, "the shutdown's own flush still reports")
+        assertTrue(logs.any { "flush boom" in it && "could not flush" !in it }, "the queued flush's failure is still logged: $logs")
+    }
+
+    @Test
+    fun aReentrantCloseAndAwaitThatReturnsDoesNotLetTheShutdownSkipAnotherThreadsCall() = runBlocking {
+        val transport = CountingTransport(stampsInPipeline = true, holdTrackOf = setOf("held"))
+        val tracker = tracker(transport)
+        transport.onTrack = { if (it == "reenter") runBlocking { tracker.closeAndAwait(timeoutMillis = 0) } }
+        val other = async(Dispatchers.Default) { tracker.track("held") }
+        transport.awaitEntered()
+
+        // Starts the shutdown from inside its own call, then returns: that call is no longer one the shutdown
+        // may skip, and the other thread's call is still inside the transport.
+        val (whileHeld, flushesWhileHeld) = try {
+            tracker.track("reenter")
+            tracker.closeAndAwait(timeoutMillis = 200) to transport.flushes
+        } finally {
+            transport.release() // even on failure: runBlocking would otherwise wait on the held call forever
+        }
+
+        assertTrue(whileHeld.timedOut, "the other thread's call has not been handed over: $whileHeld")
+        assertEquals(0, flushesWhileHeld, "no flush may overtake it")
+        other.await()
+        val final = tracker.closeAndAwait()
+        assertTrue(final.waitCompleted, "$final")
+        assertEquals(2, transport.tracked)
+        assertEquals(1, transport.flushes)
+    }
+
+    @Test
     fun aFlushThatThrewIsReportedAndDoesNotEscape() = runBlocking {
         for (stampsInPipeline in listOf(false, true)) {
             val logs = mutableListOf<String>()
@@ -229,23 +290,27 @@ class AwaitableCloseTest {
 
     @Test
     fun aNegativeTimeoutIsNoWaitRatherThanAnError() = runBlocking {
-        val tracker = tracker(CountingTransport(stampsInPipeline = false))
+        val transport = CountingTransport(stampsInPipeline = false, holdFlush = true)
+        val tracker = tracker(transport)
         val awaitable = tracker as AwaitableCloseTracker
 
         // It must not throw: from Swift an exception escaping this suspend function would abort the process.
+        // Nor wait: the shutdown it starts cannot finish until the flush is released.
         val result = awaitable.closeAndAwait(-1)
 
         assertTrue(result.cutoffReached, "the shutdown still started")
+        assertFalse(result.waitCompleted, "a negative timeout does not wait: $result")
         // And the shutdown it started finishes regardless.
+        transport.release()
         assertTrue(tracker.closeAndAwait().waitCompleted)
     }
 
     @Test
     fun theNoArgumentHelperWaitsForTheFinalResultEvenWhenTheFlushOutlastsTheDrainBound() = runBlocking {
-        // The drain finishes just inside its 400 ms bound (one 300 ms event), then the flush takes 300 ms
-        // more. A helper whose timer equalled the bound would fire during the flush and report a completed
-        // shutdown as timed out, with flushRequested depending on the race.
-        val transport = CountingTransport(perEventMillis = 300, flushMillis = 300, stampsInPipeline = false)
+        // The drain finishes well inside its 400 ms bound, then the flush takes 600 ms, past it. A helper whose
+        // timer equalled the bound would fire during the flush and report a completed shutdown as timed out,
+        // with flushRequested depending on the race; a flush inside the bounded wait would cut it short.
+        val transport = CountingTransport(flushMillis = 600, stampsInPipeline = false)
         val tracker = tracker(transport) { closeDrainTimeoutMillis = 400 }
         tracker.track("slow")
 
@@ -261,16 +326,20 @@ class AwaitableCloseTest {
 
     @Test
     fun anExplicitTimeoutAtTheDrainBoundDoesNotGuaranteeTheFinalResult() = runBlocking {
-        val transport = CountingTransport(perEventMillis = 300, flushMillis = 300, stampsInPipeline = false)
+        // The flush is held until the bounded call has returned, so its timer is the one that fires.
+        val transport = CountingTransport(holdFlush = true, stampsInPipeline = false)
         val tracker = tracker(transport) { closeDrainTimeoutMillis = 400 }
-        tracker.track("slow")
+        tracker.track("a")
 
         val bounded = tracker.closeAndAwait(timeoutMillis = 400)
 
         // Documented: the flush happens after the drain, so a timer at the drain bound can fire first.
         assertTrue(bounded.timedOut, "$bounded")
         // The shutdown still finishes, and the no-argument helper reports it.
-        assertTrue(tracker.closeAndAwait().waitCompleted)
+        transport.release()
+        val final = tracker.closeAndAwait()
+        assertTrue(final.waitCompleted, "$final")
+        assertTrue(final.flushRequested)
     }
 }
 
@@ -285,15 +354,36 @@ private class NonOwningView(private val delegate: Tracker) : Tracker by delegate
 
 /**
  * Counts what reaches it. [perEventMillis] busy-waits inside `track` (see AutographTrackerTest's
- * SlowRecordingTransport for why not a sleep); [failTrackOf] names events whose hand-off throws.
+ * SlowRecordingTransport for why not a sleep); [failTrackOf] names events whose hand-off throws, and
+ * [cancelTrackOf] ones whose hand-off throws a [CancellationException]. [holdTrackOf] and [holdFlush]
+ * keep those calls inside the transport until [release], for a test that must not race a clock.
  */
 private class CountingTransport(
     private val perEventMillis: Int = 0,
     override val stampsInPipeline: Boolean,
     private val failTrackOf: Set<String> = emptySet(),
+    private val cancelTrackOf: Set<String> = emptySet(),
     private val failFlush: Boolean = false,
     private val flushMillis: Int = 0,
+    private val holdTrackOf: Set<String> = emptySet(),
+    private val holdFlush: Boolean = false,
 ) : Transport {
+    /** Runs at the start of every `track`, on the calling thread. */
+    var onTrack: (String) -> Unit = {}
+
+    @Volatile
+    private var released = false
+
+    fun release() {
+        released = true
+    }
+
+    private fun holdUntilReleased() {
+        @Suppress("ControlFlowWithEmptyBody")
+        while (!released) {
+        }
+    }
+
     @Volatile
     var tracked = 0
 
@@ -304,12 +394,18 @@ private class CountingTransport(
     private var entered = false
 
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        onTrack(name)
+        if (name in holdTrackOf) {
+            entered = true
+            holdUntilReleased()
+        }
         entered = true
         val start = TimeSource.Monotonic.markNow()
         @Suppress("ControlFlowWithEmptyBody")
         while (start.elapsedNow().inWholeMilliseconds < perEventMillis) {
         }
         if (name in failTrackOf) throw IllegalStateException("boom $name")
+        if (name in cancelTrackOf) throw CancellationException("cancelled $name")
         tracked++
     }
 
@@ -319,6 +415,7 @@ private class CountingTransport(
 
     override fun flush() {
         flushes++
+        if (holdFlush) holdUntilReleased()
         val start = TimeSource.Monotonic.markNow()
         @Suppress("ControlFlowWithEmptyBody")
         while (start.elapsedNow().inWholeMilliseconds < flushMillis) {
