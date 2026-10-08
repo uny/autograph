@@ -90,6 +90,31 @@ public fun ScopeStack.endScreenVisit(handle: ScopeHandle) {
 }
 
 /**
+ * The id of the visit [handle]'s frame holds (#242), whether or not the stack reports it right now,
+ * or null when it holds none or is not on this stack — for a native screen capture that carries one
+ * view of a screen over to the frame of the surface re-creating it (see [continueScreenVisit]).
+ * Main thread only.
+ *
+ * `@AutographInternalApi` for the same reason as [emitScreenView].
+ */
+@AutographInternalApi
+public fun ScopeStack.screenViewIdOf(handle: ScopeHandle): String? = visitIdOf(handle)
+
+/**
+ * Puts [handle]'s frame in the visit [screenViewId] of [screen] (#242) without starting a new one and
+ * without a `Screen Viewed` — for a surface re-created into a view that is already in progress, such
+ * as an Android Activity or fragment after a configuration change, so the events after it stay in
+ * the visit before it. As for any visit, the stack reports it only while the frame names [screen].
+ * A no-op when the frame is not on this stack. Main thread only.
+ *
+ * `@AutographInternalApi` for the same reason as [emitScreenView].
+ */
+@AutographInternalApi
+public fun ScopeStack.continueScreenVisit(handle: ScopeHandle, screenViewId: String, screen: String) {
+    continueVisit(handle, screenViewId, screen)
+}
+
+/**
  * A native `Screen Viewed`'s `previous_screen`, or nothing when this is the first screen. Native screen
  * views carry no base properties, so there is no caller-supplied `previous_screen` to preserve — this is
  * the properties-free counterpart of `autograph-compose`'s `withPreviousScreen`.
