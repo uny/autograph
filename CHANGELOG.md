@@ -116,8 +116,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   after the rotation used up the skip and the other reported a view. Each surface is now matched to
   the one it re-creates by instance (see the visit entry above), so two untagged fragments of one
   class in one container are told apart too. The skip also ends with the surface it was left for: a
-  restored fragment that goes away without resuming, or the re-created Activity stopping or
-  finishing first, leaves nothing for a fragment added later, whose first view is reported. A
+  restored fragment that goes away without resuming, the re-created Activity stopping or finishing
+  first, or another screen being reported while that Activity is only paused, leaves nothing for a
+  fragment that resumes later, whose first view is reported. A
   replacement the app builds in `onCreate` or `onResume` while the host is re-created is still taken
   for the interrupted view, under any tag or container, when it has the restored fragment's class
   and parent.

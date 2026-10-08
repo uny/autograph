@@ -174,6 +174,40 @@ class SwapToHeldPageActivity : FragmentActivity() {
     }
 }
 
+/**
+ * [SwapToHeldPageActivity] whose held page is a retained instance: the same object comes back after a
+ * re-creation, without being restored from saved state.
+ */
+class SwapToRetainedPageActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val fm = supportFragmentManager
+        if (savedInstanceState == null) {
+            @Suppress("DEPRECATION")
+            val held = DetailFragment().apply { retainInstance = true }
+            fm.beginTransaction()
+                .add(android.R.id.content, DetailFragment(), "shown")
+                .add(android.R.id.content, held, "held")
+                .setMaxLifecycle(held, Lifecycle.State.STARTED)
+                .commitNow()
+        } else {
+            fm.beginTransaction()
+                .remove(fm.findFragmentByTag("shown")!!)
+                .setMaxLifecycle(fm.findFragmentByTag("held")!!, Lifecycle.State.RESUMED)
+                .commitNow()
+        }
+    }
+}
+
+/** Shows a [DetailFragment], and on re-creation discards the restored one for a [SecondFragment]. */
+class ReplaceWithAnotherScreenActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val content = if (savedInstanceState == null) DetailFragment() else SecondFragment()
+        supportFragmentManager.beginTransaction().replace(android.R.id.content, content).commitNow()
+    }
+}
+
 /** [HoldRestoredActivity] holding the restored fragment at CREATED, where it does not stop with its host. */
 class HoldRestoredCreatedActivity : HoldRestoredActivity(Lifecycle.State.CREATED)
 
@@ -1359,7 +1393,7 @@ class AndroidScreenCaptureTest {
         drainMainLooper()
         val before = tracker.screens.toList()
         val visits = controller.get().detailVisits()
-        assertEquals(2, visits.toSet().size)
+        assertEquals(2, visits.filterNotNull().toSet().size)
 
         controller.recreate()
         drainMainLooper()
@@ -1395,6 +1429,21 @@ class AndroidScreenCaptureTest {
 
         assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
         assertNull(scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aReplacementBuiltOnEveryCreateDoesNotReEmitAcrossASecondRotation() {
+        // The carry outlives the first re-creation in the replacement's place, so the second rotation
+        // re-opens the window a replacement can stand in during.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryCreateActivity::class.java).setup()
+
+        controller.recreate()
+        drainMainLooper()
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
     }
 
     @Test
@@ -1512,6 +1561,68 @@ class AndroidScreenCaptureTest {
 
         assertEquals(listOf("Before:(none)", "After:Before"), tracker.screens)
         assertEquals(2, tracker.visits.toSet().size)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aRetainedPageBroughtUpInPlaceOfTheRemovedOneReportsItsFirstView() {
+        // As for a restored page: a retained instance is not one the app built to replace the removed
+        // owner, so it does not stand for that owner's view.
+        install()
+        val controller = Robolectric.buildActivity(SwapToRetainedPageActivity::class.java).setup()
+        drainMainLooper()
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)", "DetailFragment:(none)"), tracker.screens)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aRestoredFragmentResumedOnlyAfterAnotherScreenWasViewedReportsANewView() {
+        // Its host only paused under the other screen, so it did not stop — but the other screen's
+        // view ended the one the rotation interrupted.
+        install()
+        val controller = Robolectric.buildActivity(HoldRestoredActivity::class.java).setup()
+        val visit = checkNotNull(tracker.visits.single())
+        controller.recreate()
+        drainMainLooper()
+
+        controller.pause()
+        val other = Robolectric.buildActivity(SecondPlainActivity::class.java).setup()
+        drainMainLooper()
+        other.pause()
+        controller.resume()
+        drainMainLooper()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().setMaxLifecycle(fm.fragments.single(), Lifecycle.State.RESUMED).commitNow()
+        drainMainLooper()
+
+        assertEquals("DetailFragment:SecondPlainActivity", tracker.screens.last())
+        assertNotEquals(visit, scopeStack.current().screenViewId)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aReplacementsWindowClosesAfterOneTurnOfTheMainLooper() {
+        // Nothing of the removed owner's class stood in for it during the re-creation, so one added
+        // after it has settled is the app moving on: a new view, not the interrupted one.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceWithAnotherScreenActivity::class.java).setup()
+        controller.recreate()
+        drainMainLooper()
+
+        controller.get().supportFragmentManager.beginTransaction()
+            .replace(android.R.id.content, DetailFragment())
+            .commitNow()
+        drainMainLooper()
+
+        assertEquals(
+            listOf("DetailFragment:(none)", "SecondFragment:DetailFragment", "DetailFragment:SecondFragment"),
+            tracker.screens,
+        )
         assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
     }
 

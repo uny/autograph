@@ -154,10 +154,11 @@ internal class AndroidScreenCapture(
         var identity: String? = null
 
         /**
-         * A fragment created from saved state — the instance a re-creation restored — rather than one
-         * the app built. Only one it built can stand in for an owner removed unresumed ([Orphan]).
+         * A fragment the app did not build: one a re-creation restored from saved state, or a retained
+         * instance, which comes back without being created again. Only one it built — created with no
+         * saved state — can stand in for an owner removed unresumed ([Orphan]).
          */
-        var restored = false
+        var restored = true
 
         /** An Activity's carries for surfaces that were never restored have been dropped. See [scheduleUnrestoredCarryDrop]. */
         var unrestoredDropped = false
@@ -193,8 +194,8 @@ internal class AndroidScreenCapture(
      * re-created surface, matched by [SurfaceState.identity] — never by class, container or tag, which
      * two live instances can share, and a shared key is how a carry once landed on an unrelated
      * fragment. Every carry ends at that surface's resume, or when its view is known to be over: the
-     * re-created host stopping or finishing, the owner stopping without resuming, the owner never being
-     * restored at all. There is no lifecycle point that marks the end of a re-creation, so nothing here
+     * re-created host stopping or finishing, another screen's view reported while the host is off
+     * display, the owner stopping without resuming, the owner never being restored at all. There is no lifecycle point that marks the end of a re-creation, so nothing here
      * expires on time — a restored pager page can resume well after its host does.
      */
     private class HostCarries {
@@ -954,6 +955,9 @@ internal class AndroidScreenCapture(
         for ((activity, state) in activityStates) {
             if (activity in resumedActivities) continue
             state.emitted = false
+            // A view a rotation interrupted and a restored surface still holds unresumed ends here too:
+            // its host only paused, so nothing else drops it, and resuming it later is a new view.
+            state.identity?.let(carries::remove)
             fragmentRegistrations[activity]?.callbacks?.endViews()
         }
     }
