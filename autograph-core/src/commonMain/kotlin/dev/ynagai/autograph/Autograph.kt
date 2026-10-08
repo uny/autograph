@@ -1,11 +1,15 @@
 package dev.ynagai.autograph
 
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.job
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.delay
@@ -88,9 +92,24 @@ public class AutographConfig internal constructor() {
      */
     public var dispatcher: CoroutineDispatcher = Dispatchers.Default.limitedParallelism(1)
 
+    /**
+     * How long, in milliseconds, [Tracker.close] and [closeAndAwait] wait for work the tracker already
+     * accepted to be stamped and handed to the transport before they give up and release anyway.
+     * Defaults to 5 seconds, sized for a shutdown path a user is waiting on: long enough for a queue of
+     * stamped events and one transport flush (both local), short enough that a wedged transport cannot
+     * hold an app's teardown. A drain cut short is reported through [logger].
+     *
+     * This bounds the *shutdown*, once, however many callers wait on it. The `timeoutMillis` of a
+     * [closeAndAwait] call bounds only that caller's wait and may be shorter. A value of zero or less
+     * does not wait at all.
+     *
+     * It is a bound, not a real-time guarantee: a synchronous [Transport.flush] cannot be interrupted,
+     * so a transport whose `flush` blocks holds the shutdown for as long as it blocks.
+     */
+    public var closeDrainTimeoutMillis: Long = CLOSE_DRAIN_TIMEOUT_MILLIS
+
     internal var transport: Transport? = null
     internal var clock: () -> Long = { Clock.System.now().toEpochMilliseconds() }
-    internal var closeDrainTimeoutMillis: Long = CLOSE_DRAIN_TIMEOUT_MILLIS
 
     /** Sets the transport that delivers events, e.g. `SegmentTransport` from `autograph-segment`. */
     public fun transport(transport: Transport) {
@@ -139,10 +158,11 @@ internal class AutographTracker(
     private val clock: () -> Long,
     private val logger: AutographLogger,
     private val closeDrainTimeoutMillis: Long,
-) : Tracker {
+) : Tracker, AwaitableCloseTracker {
 
     // A failed analytics delivery must never crash the app, and one failure must not tear down the
-    // scope for the next event — hence SupervisorJob + a swallowing handler.
+    // scope for the next event — hence SupervisorJob + a swallowing handler. Event hand-offs catch and
+    // count their own failures in [deliver]; this handler sees what else runs here (a queued flush/reset).
     private val scope = CoroutineScope(
         SupervisorJob() + dispatcher + CoroutineExceptionHandler { _, e ->
             report("Autograph: event delivery failed: ${e.message}")
@@ -174,6 +194,33 @@ internal class AutographTracker(
     private val lock = SynchronizedObject()
 
     private var closed = false
+
+    /**
+     * Calls into the transport (or the stamping in front of one) that threw, over this tracker's life.
+     * Counted where the exception is swallowed, so [CloseResult.failedHandOffs] can say what
+     * `joinAll()` completing cannot. Guarded by [lock].
+     */
+    private var failedHandOffs = 0
+
+    /** Whether the shutdown has called [Transport.flush], and whether that call threw. Guarded by [lock]. */
+    private var flushRequested = false
+    private var flushFailed = false
+
+    /**
+     * Completes, once, with the shutdown's result — whichever of [close] or [closeAndAwait] ran it.
+     * Every [closeAndAwait] waits on this one shutdown, concurrent or repeated.
+     */
+    private val shutdown = CompletableDeferred<CloseResult>()
+
+    /**
+     * Set when a [closeAndAwait] that cut off from inside this tracker's own pipeline calls has returned:
+     * those calls are no longer waiting on the shutdown, so it must wait for them too. Guarded by [lock].
+     */
+    private var nestedReleased = false
+
+    private fun recordHandOffFailure() {
+        synchronized(lock) { failedHandOffs++ }
+    }
 
     /**
      * Pipeline-mode calls accepted but still inside the transport. They run synchronously on the
@@ -211,6 +258,7 @@ internal class AutographTracker(
                 try {
                     send(null)
                 } catch (e: Exception) {
+                    recordHandOffFailure()
                     report("Autograph: event delivery failed: ${e.message}")
                 }
             }
@@ -218,7 +266,16 @@ internal class AutographTracker(
             synchronized(lock) {
                 if (closed) return
                 val eventTimestampMillis = clock()
-                scope.launch { send(stamper.stamp(eventTimestampMillis)) }
+                scope.launch {
+                    // Caught here rather than by the scope's handler, which never sees a CancellationException
+                    // and cannot tell an event's hand-off from a queued flush/reset.
+                    try {
+                        send(stamper.stamp(eventTimestampMillis))
+                    } catch (e: Exception) {
+                        recordHandOffFailure()
+                        report("Autograph: event delivery failed: ${e.message}")
+                    }
+                }
             }
         }
     }
@@ -441,44 +498,122 @@ internal class AutographTracker(
      * dispatcher is caller-configurable. Joining the children drains whatever is outstanding under any
      * dispatcher.
      *
-     * Bounded by [CLOSE_DRAIN_TIMEOUT_MILLIS] by default — see [drainBlocking] for why a bound, and for the one
-     * configuration (closing from the tracker's own single-threaded dispatcher) that starves the drain.
-     * A drain cut short by the bound is reported through the logger rather than returning silently.
-     * Idempotent.
+     * Bounded by [AutographConfig.closeDrainTimeoutMillis] — see [drainBlocking] for why a bound, and for
+     * the one configuration (closing from the tracker's own single-threaded dispatcher) that starves the
+     * drain. A drain cut short by the bound is reported through the logger rather than returning silently.
+     * Idempotent: the first caller runs the shutdown, a later one returns at once — even while a shutdown
+     * started by [closeAndAwait] is still running. [closeAndAwait] is the variant that waits on a shutdown
+     * someone else started.
      */
     override fun close() {
-        val accepted = synchronized(lock) {
-            if (closed) return
-            closed = true
-            // Snapshot under the lock: every launch that won the race is already a child, and none can
-            // be added after this point.
-            scope.coroutineContext.job.children.toList()
+        val cutoff = cutOff() ?: return
+        // Waits for the shutdown itself, with no timer of its own to race it. That is the same exposure as
+        // the no-argument Tracker.closeAndAwait(): the drain is bounded by closeDrainTimeoutMillis, but the
+        // Transport.flush() after it is not and cannot be interrupted (#305), so a blocking flush holds both.
+        drainBlocking(Long.MAX_VALUE) { finishShutdown(cutoff) }
+    }
+
+    override suspend fun closeAndAwait(timeoutMillis: Long): CloseResult {
+        val cutoff = cutOff()
+        if (cutoff != null) {
+            // Its own scope, not the caller's: the shutdown must outlive a caller that stops waiting
+            // (its timeout, or its cancellation), because other callers may be waiting on it too. The
+            // handler keeps the never-crash contract for whatever escapes it there.
+            CoroutineScope(Dispatchers.Default + shutdownExceptionHandler).launch { finishShutdown(cutoff) }
         }
-        val drained = if (transport.stampsInPipeline) {
-            // Nothing of ours is queued; wait only for accepted calls still entering the transport,
-            // which owns its own queue — flush is the only thing we can ask of it. A close() made from
-            // inside one of those calls cannot wait for the calls it is nested in, so it waits for the
-            // other threads' only. The flush runs even if the wait timed out: the transport's queue is
-            // already full of accepted events, and one stuck call must not cost them their flush.
-            val nested = ownInFlight.get()
-            drainBlocking(closeDrainTimeoutMillis) {
-                while (synchronized(lock) { inFlight } > nested) delay(1)
-            }.also { transport.flush() }
-        } else {
-            drainBlocking(closeDrainTimeoutMillis) {
-                accepted.joinAll()
-                transport.flush()
+        try {
+            return awaitShutdown(timeoutMillis)
+        } finally {
+            // A caller nested in this tracker's pipeline calls is excluded from the drain only while it waits
+            // here; once it returns, its call can finish and the drain must wait for it like any other.
+            if (cutoff != null && cutoff.nestedInFlight > 0) synchronized(lock) { nestedReleased = true }
+        }
+    }
+
+    private suspend fun awaitShutdown(timeoutMillis: Long): CloseResult {
+        if (shutdown.isCompleted) return shutdown.await()
+        // Long.MAX_VALUE is "wait for the shutdown" (the no-argument helper): no timer, so none can race
+        // the shutdown's own bound plus its flush and report a finished shutdown as timed out.
+        if (timeoutMillis == Long.MAX_VALUE) return shutdown.await()
+        // No dispatch for no wait, so a Default pool busy with blocked flushes cannot hold it.
+        if (timeoutMillis <= 0) return snapshot(waitCompleted = false)
+        // On a real-time dispatcher, not the caller's: a virtual-time test dispatcher would skip the
+        // timeout past a shutdown that is still making progress on another thread.
+        return withContext(Dispatchers.Default) { withTimeoutOrNull(timeoutMillis) { shutdown.await() } }
+            ?: if (shutdown.isCompleted) shutdown.await() else snapshot(waitCompleted = false)
+    }
+
+    private val shutdownExceptionHandler = CoroutineExceptionHandler { _, e ->
+        report("Autograph: close() failed: ${e.message}")
+    }
+
+    /** What [cutOff] fixed: the work the shutdown has to wait for. */
+    private class Cutoff(val accepted: List<Job>, val nestedInFlight: Int)
+
+    /** Stops admission and fixes the drain, or returns null if another caller already did. */
+    private fun cutOff(): Cutoff? = synchronized(lock) {
+        if (closed) return null
+        closed = true
+        // Snapshot under the lock: every launch that won the race is already a child, and none can be
+        // added after this point.
+        Cutoff(scope.coroutineContext.job.children.toList(), ownInFlight.get())
+    }
+
+    private fun snapshot(waitCompleted: Boolean): CloseResult = synchronized(lock) {
+        CloseResult(
+            cutoffReached = true,
+            waitCompleted = waitCompleted,
+            failedHandOffs = failedHandOffs,
+            flushRequested = flushRequested,
+            flushFailed = flushFailed,
+        )
+    }
+
+    /** Runs the shutdown and publishes its result; the scope is released and [shutdown] completed whatever happens. */
+    private suspend fun finishShutdown(cutoff: Cutoff) {
+        var result: CloseResult? = null
+        try {
+            result = runShutdown(cutoff)
+        } finally {
+            scope.cancel()
+            shutdown.complete(result ?: snapshot(waitCompleted = false))
+        }
+    }
+
+    private suspend fun runShutdown(cutoff: Cutoff): CloseResult {
+        val waited = withTimeoutOrNull(closeDrainTimeoutMillis) {
+            if (transport.stampsInPipeline) {
+                // Nothing of ours is queued; wait only for accepted calls still entering the transport,
+                // which owns its own queue — flush is the only thing we can ask of it. A close() made
+                // from inside one of those calls cannot wait for the calls it is nested in, so it waits
+                // for the other threads' only.
+                while (synchronized(lock) { inFlight - if (nestedReleased) 0 else cutoff.nestedInFlight } > 0) delay(1)
+            } else {
+                cutoff.accepted.joinAll()
             }
-        }
-        if (!drained) {
+        } != null
+        if (!waited) {
             report("Autograph: close() gave up after ${closeDrainTimeoutMillis}ms; events it accepted may not have reached the transport")
         }
-        scope.cancel()
+        // A pipeline transport's queue is already full of accepted events, and one stuck call must not
+        // cost them their flush. When the core stamps, a drain that did not finish has nothing safe to
+        // flush yet.
+        if (waited || transport.stampsInPipeline) {
+            synchronized(lock) { flushRequested = true }
+            try {
+                transport.flush()
+            } catch (e: Exception) {
+                synchronized(lock) { flushFailed = true }
+                report("Autograph: close() could not flush the transport: ${e.message}")
+            }
+        }
+        return snapshot(waitCompleted = waited)
     }
 }
 
 /**
- * How long [Tracker.close] waits for already-enqueued events to reach the transport.
+ * Default for [AutographConfig.closeDrainTimeoutMillis]: how long [Tracker.close] waits for
+ * already-enqueued events to reach the transport.
  *
  * Sized for a shutdown path a user is waiting on: long enough for a queue of stamped events and one
  * transport flush (both local operations — the transport's own network delivery is its business, not

@@ -357,6 +357,8 @@ internal class ScopedTracker(
 
     // A scoped view owns no resources of its own; disposing it must not tear down the real tracker.
     // Close the tracker you passed to AutographProvider instead.
+    // For the same reason it does not implement AwaitableCloseTracker: closeAndAwait() on a view is
+    // reported unsupported and closes nothing (#261).
     override fun close() {}
 }
 

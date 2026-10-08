@@ -1,4 +1,5 @@
 public final class dev/ynagai/autograph/AutographConfig {
+	public final fun getCloseDrainTimeoutMillis ()J
 	public final fun getDefaultProperties ()Ldev/ynagai/autograph/DefaultProperties;
 	public final fun getDispatcher ()Lkotlinx/coroutines/CoroutineDispatcher;
 	public final fun getEventId ()Ldev/ynagai/autograph/EventIdGenerator;
@@ -10,6 +11,7 @@ public final class dev/ynagai/autograph/AutographConfig {
 	public final fun getStore ()Ldev/ynagai/autograph/SeqStore;
 	public final fun getStrictValidation ()Z
 	public final fun getValidator ()Ldev/ynagai/autograph/EventValidator;
+	public final fun setCloseDrainTimeoutMillis (J)V
 	public final fun setDefaultProperties (Ldev/ynagai/autograph/DefaultProperties;)V
 	public final fun setDispatcher (Lkotlinx/coroutines/CoroutineDispatcher;)V
 	public final fun setEventId (Ldev/ynagai/autograph/EventIdGenerator;)V
@@ -33,6 +35,26 @@ public final class dev/ynagai/autograph/AutographKt {
 
 public abstract interface class dev/ynagai/autograph/AutographLogger {
 	public abstract fun log (Ljava/lang/String;)V
+}
+
+public final class dev/ynagai/autograph/AwaitableCloseKt {
+	public static final fun closeAndAwait (Ldev/ynagai/autograph/Tracker;JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static final fun closeAndAwait (Ldev/ynagai/autograph/Tracker;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class dev/ynagai/autograph/AwaitableCloseTracker {
+	public abstract fun closeAndAwait (JLkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class dev/ynagai/autograph/CloseResult {
+	public final fun getCutoffReached ()Z
+	public final fun getFailedHandOffs ()I
+	public final fun getFlushFailed ()Z
+	public final fun getFlushRequested ()Z
+	public final fun getTimedOut ()Z
+	public final fun getWaitCompleted ()Z
+	public final fun isUnsupported ()Z
+	public fun toString ()Ljava/lang/String;
 }
 
 public final class dev/ynagai/autograph/DebugTransport : dev/ynagai/autograph/MetadataAwareTransport, dev/ynagai/autograph/Transport {

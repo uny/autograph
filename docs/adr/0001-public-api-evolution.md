@@ -90,7 +90,7 @@ exception.
 
 #### 2a. Library-produced value types — construction is frozen
 
-`Envelope`, `SessionInfo`, `EventMetadata`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
+`Envelope`, `SessionInfo`, `EventMetadata`, `CloseResult`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
 
 The library creates these; callers only read them. They are declared
 
@@ -170,7 +170,7 @@ to `AutographConfig`, not to `SessionConfig`.
 #### 2c. Caller-implemented SPIs — the member set is frozen for the major version
 
 `Transport`, `SeqStore`, `EventIdGenerator`, `EventValidator`, `SegmentBridge`, `AutographLogger`,
-`MetadataAwareTransport`.
+`MetadataAwareTransport`, `AwaitableCloseTracker`.
 
 No member is added to one of these within a major version, **including a member with a
 default body**. A new capability is added in one of two ways instead:
@@ -187,6 +187,21 @@ default body**. A new capability is added in one of two ways instead:
 
 A capability interface is itself a caller-implemented interface under this section, so its
 member set is frozen once it ships. A second capability is a second interface.
+
+`AwaitableCloseTracker` has exactly one member, `suspend fun closeAndAwait(timeoutMillis: Long)`.
+It was kept to one so that the frozen surface is as small as it can be: the no-argument helper
+is the `Long.MAX_VALUE` case of that member, not a second member. Only `Autograph { }` can
+really implement it, because `CloseResult` has no public constructor (§2a), so any other
+implementation can only forward to a tracker from `Autograph { }`. Whether a Swift class can
+conform was measured (Xcode 26 / iOS 26.4 simulator, the `Autograph.xcframework` built from
+this repository, `CloseAndAwaitTests`). The generated header declares the member as a
+completion-handler method, and a Swift class that adopts `AwaitableCloseTracker` and writes
+it as `func closeAndAwait(timeoutMillis: Int64) async throws -> CloseResult` compiles. A
+Swift class that is both a `Tracker` and an `AwaitableCloseTracker` is probed with `is` by
+the Kotlin helper, and the Kotlin helper's call reaches its Swift `async` implementation and
+returns the forwarded result. Both are forwarding implementations; a Swift conformer that
+produces its own `CloseResult` is impossible. The `CloseResult.isUnsupported` property is
+encoded as `!cutoffReached`, and that encoding is intentionally frozen.
 
 **Why a default body is not enough.** A Kotlin default body keeps a Kotlin implementor
 compiling, and keeps an already-compiled one linking (§4). It does nothing for Swift.
@@ -363,8 +378,8 @@ once 1.0 ships:
 - The one irreversible item — `Envelope`/`SessionInfo` construction — is settled before the
   freeze, and the type most likely to grow is the one that can now grow indefinitely.
 - Future API decisions become mechanical: identify which of 2a–2f the type falls under and
-  the answer follows. #52's timeout, revisited under this ADR, would be an
-  `AutographConfig` `var` (2b) if it is ever wanted publicly.
+  the answer follows. #52's timeout, revisited under this ADR, became an
+  `AutographConfig` `var` (2b), `closeDrainTimeoutMillis`, when #261 wanted it public.
 - Two things are deliberately harder than they were: adding an enum constant, and adding a
   parameter to a config `data class`. Both now cost a major bump, which is the accurate
   price rather than a hidden one.
