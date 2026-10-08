@@ -195,8 +195,9 @@ internal class AndroidScreenCapture(
      * two live instances can share, and a shared key is how a carry once landed on an unrelated
      * fragment. Every carry ends at that surface's resume, or when its view is known to be over: the
      * re-created host stopping or finishing, another screen's view reported while the host is off
-     * display, the owner stopping without resuming, the owner never being restored at all. There is no lifecycle point that marks the end of a re-creation, so nothing here
-     * expires on time — a restored pager page can resume well after its host does.
+     * display, the owner stopping without resuming, the owner never being restored at all. There is no
+     * lifecycle point that marks the end of a re-creation, so nothing here expires on time — a
+     * restored pager page can resume well after its host does.
      */
     private class HostCarries {
         var activity: Carry? = null

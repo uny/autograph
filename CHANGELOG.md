@@ -118,10 +118,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   class in one container are told apart too. The skip also ends with the surface it was left for: a
   restored fragment that goes away without resuming, the re-created Activity stopping or finishing
   first, or another screen being reported while that Activity is only paused, leaves nothing for a
-  fragment that resumes later, whose first view is reported. A
-  replacement the app builds in `onCreate` or `onResume` while the host is re-created is still taken
-  for the interrupted view, under any tag or container, when it has the restored fragment's class
-  and parent.
+  fragment that resumes later, whose first view is reported. A replacement the app builds in
+  `onCreate` or `onResume` while the host is re-created is still taken for the interrupted view,
+  under any tag or container, when it has the restored fragment's class and parent.
 - **An Android fragment that never resumed before a rotation reports its first view after it**
   ([#242]). A pager's off-screen page, held at `STARTED`, left the same skip behind when the rotation
   stopped it. When no resumed fragment shared its class to use the skip up, as with tabs of different
