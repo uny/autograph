@@ -191,6 +191,40 @@ class ExplicitElementCaptureTest {
     }
 
     /**
+     * The visit a SwiftUI screen starts (#242) reaches the events recorded on it, through the tracker
+     * [Autograph] builds: the screen view and both kinds of element event carry one id, and a plain
+     * `clicked` outside any visit still carries no metadata at all.
+     */
+    @Test
+    fun eventsOnAScreenCarryTheVisitItsScreenViewStarted() {
+        val transport = EnvelopeRecordingTransport()
+        val tracker = Autograph {
+            transport(transport)
+            store = InMemorySeqStore()
+            dispatcher = Dispatchers.Unconfined
+        }
+        val stack = ScopeStack()
+        val capture = AutographElementCapture(tracker, stack)
+        capture.clicked(name = "before")
+
+        val view = AutographScreenCapture(tracker, stack).appeared("Home")
+        capture.clicked(name = "plain")
+        capture.buttonClicked(name = "button")
+        view.disappeared()
+        capture.clicked(name = "after")
+
+        val visit = transport.screens.single()?.metadata?.screenViewId
+        assertTrue(!visit.isNullOrEmpty(), "the screen view carries a visit id")
+        val (before, plain, button, after) = transport.tracked
+        assertNull(before.second?.metadata)
+        assertEquals(visit, plain.second?.metadata?.screenViewId)
+        assertNull(plain.second?.metadata?.kind)
+        assertEquals(visit, button.second?.metadata?.screenViewId)
+        assertEquals(EventKinds.CLICK, button.second?.metadata?.kind)
+        assertNull(after.second?.metadata)
+    }
+
+    /**
      * A failing tracker must not unwind into Swift: a Kotlin exception crossing into a Swift caller
      * with no `@Throws` terminates the app, and an analytics event is never worth that.
      */
@@ -211,7 +245,11 @@ private class EnvelopeRecordingTransport : Transport {
         tracked += properties.asJsonObject() to envelope
     }
 
-    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) = Unit
+    val screens = mutableListOf<Envelope?>()
+
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
+        screens += envelope
+    }
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) = Unit
 }

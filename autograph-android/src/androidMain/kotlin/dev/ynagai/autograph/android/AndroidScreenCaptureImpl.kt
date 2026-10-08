@@ -21,6 +21,9 @@ import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.autographScopeOwner
 import dev.ynagai.autograph.context.notifyAutographScopeOwnerChanged
 import dev.ynagai.autograph.context.emitScreenView
+import dev.ynagai.autograph.context.continueScreenVisit
+import dev.ynagai.autograph.context.endScreenVisit
+import dev.ynagai.autograph.context.screenViewIdOf
 
 /**
  * The engine behind [installAutographNativeScreenCapture]: an [Application.ActivityLifecycleCallbacks]
@@ -91,10 +94,12 @@ internal class AndroidScreenCapture(
     private val resumedActivities: MutableSet<Activity> =
         java.util.Collections.newSetFromMap(java.util.WeakHashMap())
 
-    // Screens whose next resume is a configuration-change re-creation, not a fresh view. Keyed by class
-    // name because the leaving instance and the re-created one are different objects. Emit is skipped
-    // for them; the self-previous guard in emitScreenView separately keeps previous_screen clean.
-    private val pendingConfigChange = HashSet<String>()
+    /**
+     * The views a configuration change interrupted, by the token of the Activity they were on display
+     * in ([SurfaceState.identity]) — the same token for every instance a chain of re-creations
+     * produces, which is what keeps one that re-rotates before it resumes. See [HostCarries].
+     */
+    private val carries = HashMap<String, HostCarries>()
 
     private val handler = Handler(Looper.getMainLooper())
 
@@ -137,6 +142,27 @@ internal class AndroidScreenCapture(
         /** A `Screen Viewed` stands for the view of this screen that is currently in progress. */
         var emitted = false
 
+        /** The screen that view is of, while [emitted]: what a configuration change carries over. */
+        var viewScreen: String? = null
+
+        /**
+         * What the instance re-creating this surface after a configuration change shares with it,
+         * read once when the surface is first seen: a fragment's `mWho`, which `FragmentState`
+         * restores into the re-created instance, or the token this capture saves in an Activity's
+         * instance state. Null when it could not be read, and then nothing is carried for it.
+         */
+        var identity: String? = null
+
+        /**
+         * A fragment the app did not build: one a re-creation restored from saved state, or a retained
+         * instance, which comes back without being created again. Only one it built — created with no
+         * saved state — can stand in for an owner removed unresumed ([Orphan]).
+         */
+        var restored = true
+
+        /** An Activity's carries for surfaces that were never restored have been dropped. See [scheduleUnrestoredCarryDrop]. */
+        var unrestoredDropped = false
+
         /**
          * This surface paused because its **host Activity** was interrupted, not because the host
          * moved to a different surface. Resolved after the host's next resume dispatch — see
@@ -156,13 +182,60 @@ internal class AndroidScreenCapture(
         val callbacks: FragmentCallbacks,
     )
 
+    /**
+     * One view of [screen] a configuration change interrupted (#242), waiting for the surface
+     * re-created into it: that surface reports no second `Screen Viewed` and continues the visit
+     * [screenViewId] (null when none was started), so its events stay tied to the view before it.
+     */
+    private class Carry(val screenViewId: String?, val screen: String)
+
+    /**
+     * What one Activity's re-creation chain has to hand over. Each carry belongs to exactly one
+     * re-created surface, matched by [SurfaceState.identity] — never by class, container or tag, which
+     * two live instances can share, and a shared key is how a carry once landed on an unrelated
+     * fragment. Every carry ends at that surface's resume, or when its view is known to be over: the
+     * re-created host stopping or finishing, another screen's view reported while the host is off
+     * display, the owner stopping without resuming, the owner never being restored at all. There is no
+     * lifecycle point that marks the end of a re-creation, so nothing here expires on time — a
+     * restored pager page can resume well after its host does.
+     */
+    private class HostCarries {
+        var activity: Carry? = null
+        val fragments = HashMap<String, Carry>()
+
+        /**
+         * Carries whose restored owner was removed before it resumed — an app that rebuilds its
+         * content in `onCreate`/`onResume` replaces it with a fresh instance. See [Orphan].
+         */
+        val orphans = ArrayList<Orphan>()
+
+        /**
+         * The re-created host has not finished its first resume dispatch: the only time a restored
+         * owner removed unresumed can have a replacement standing in for it. A removal after it is
+         * the app moving on — a navigation that happens to replace an owner still held unresumed —
+         * and ends the owner's view instead.
+         */
+        var restoring = true
+
+        fun isEmpty() = activity == null && fragments.isEmpty() && orphans.isEmpty()
+    }
+
+    /**
+     * A carry whose owner went away unresumed. A fresh fragment of the same class under the same
+     * parent that resumes before the posted deadline stands for that interrupted view and reports no
+     * second `Screen Viewed` — but it is **not** given the visit: nothing proves it is the replacement
+     * rather than an unrelated fragment added in the same turn, and a visit id is what a consumer joins
+     * on, so no id beats a wrong one.
+     */
+    private class Orphan(val fragmentClass: Class<*>, val parent: Fragment?, val carry: Carry)
+
     override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {
         if (!active) return
         // Dispatched from inside Activity.onCreate — so from super.onCreate(), before the subclass can
         // call setContentView or add a fragment. That is what puts this frame BELOW everything the
         // Activity's own content pushes, which is the whole reason positions are reserved this early
         // rather than at resume. See reserveFrame.
-        startTracking(activity)
+        startTracking(activity, savedInstanceState)
     }
 
     /**
@@ -170,13 +243,17 @@ internal class AndroidScreenCapture(
      * A no-op if it is already tracked. Idempotent because it runs from two places — see the call in
      * [onActivityResumed].
      */
-    private fun startTracking(activity: Activity) {
+    private fun startTracking(activity: Activity, savedInstanceState: Bundle? = null) {
         if (activityStates.containsKey(activity)) return
         val state = newSurface(parent = null)
+        // The token the instance this one re-creates saved, so the two are told apart from every other
+        // instance of the class (#242). A fresh one otherwise: one that already existed at install time
+        // has no saved token, and its own re-creation will carry this one.
+        state.identity = savedInstanceState?.getString(IDENTITY_KEY) ?: java.util.UUID.randomUUID().toString()
         activityStates[activity] = state
         if (activity is FragmentActivity) {
             val fragmentManager = activity.supportFragmentManager
-            val callbacks = FragmentCallbacks(host = state.handle)
+            val callbacks = FragmentCallbacks(host = state.handle, hostIdentity = state.identity!!)
             // recursive = true so a NavHostFragment's / ViewPager2's child FragmentManager is covered.
             fragmentManager.registerFragmentLifecycleCallbacks(callbacks, true)
             fragmentRegistrations[activity] = FragmentRegistration(fragmentManager, callbacks)
@@ -208,7 +285,7 @@ internal class AndroidScreenCapture(
         activity.decorView()?.let { claim(it, state) }
         onSurfaceResumed(
             state = state,
-            className = activity.javaClass.name,
+            takeCarry = { carries[state.identity]?.let { host -> host.activity.also { host.activity = null } } },
             capturable = isCapturableActivity(activity),
             // An Activity covers its window — but only while it is the one Activity on display. Under
             // multi-resume (Android 10+ multi-window, split screen) two Activities are RESUMED at
@@ -221,6 +298,7 @@ internal class AndroidScreenCapture(
             yieldsToFragment = fragmentRegistrations[activity]?.callbacks?.hasReturningContent() == true,
         )
         scheduleDemotionCheck(activity)
+        scheduleUnrestoredCarryDrop(activity, state)
     }
 
     override fun onActivityPaused(activity: Activity) {
@@ -239,8 +317,22 @@ internal class AndroidScreenCapture(
 
     override fun onActivityStopped(activity: Activity) {
         if (!active) return
-        if (activity.isChangingConfigurations) pendingConfigChange.add(activity.javaClass.name)
         activityStates[activity]?.let {
+            if (activity.isChangingConfigurations) {
+                // Kept, not overwritten, when this is a re-created instance rotating again before its
+                // first resume: it has no view in progress of its own, and the carry it inherited is
+                // still the one its own re-creation stands for.
+                val identity = it.identity
+                val carry = carryOf(it)
+                if (identity != null && carry != null) carriesFor(identity).activity = carry
+                identity?.let(carries::get)?.restoring = true
+            } else {
+                // The re-created host's view ended without a configuration change: whatever it still
+                // holds for surfaces that never resumed is over with it. Most of them stop with it and
+                // drop their own; one held at CREATED does not stop, and would otherwise take a view
+                // that has ended into its eventual resume.
+                it.identity?.let(carries::remove)
+            }
             it.emitted = false
             // An Activity's frame keeps its position for life — its content view does, and its
             // fragments' frames sit above it and survive this stop, so replacing it here would jump
@@ -258,7 +350,11 @@ internal class AndroidScreenCapture(
     override fun onActivityDestroyed(activity: Activity) {
         if (!active) return
         resumedActivities -= activity
-        activityStates.remove(activity)?.let { release(it, activity.decorView()) }
+        activityStates.remove(activity)?.let {
+            // Finished, not re-created: nothing will claim what it holds.
+            if (!activity.isChangingConfigurations) it.identity?.let(carries::remove)
+            release(it, activity.decorView())
+        }
         fragmentRegistrations.remove(activity)?.let {
             // Releasing here is load-bearing; the order relative to the unregister below is not (the
             // states are a field of the callbacks object, which unregistering does not touch). This
@@ -273,7 +369,44 @@ internal class AndroidScreenCapture(
     }
 
     override fun onActivityStarted(activity: Activity) = Unit
-    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) = Unit
+    override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {
+        if (!active) return
+        // An Activity's instance state is always kept when it is re-created (it holds the window's
+        // view state), so this token reaches the re-created instance's onActivityCreated — measured,
+        // across two rotations in a row. After process death it comes back too, but nothing in this
+        // process waits for it then, so it matches nothing.
+        activityStates[activity]?.identity?.let { outState.putString(IDENTITY_KEY, it) }
+    }
+
+    /** The view [state] has in progress, as what a configuration change carries over; null when none is. */
+    private fun carryOf(state: SurfaceState): Carry? {
+        if (!state.emitted) return null
+        val screen = state.viewScreen ?: return null
+        return Carry(scopeStack.screenViewIdOf(state.handle), screen)
+    }
+
+    private fun carriesFor(hostIdentity: String): HostCarries = carries.getOrPut(hostIdentity) { HostCarries() }
+
+    /**
+     * Drops, once per Activity instance and after its first resume dispatch, what it holds for
+     * fragments it never restored. Every fragment a re-created host restores is attached during its
+     * `super.onCreate` — before that resume — so one that is still unseen then never will be: it was
+     * not saved (a commit after the state was saved), and a carry left for it would wait for nothing.
+     * A restored one that has not resumed yet keeps its carry — a pager page can resume after this.
+     */
+    private fun scheduleUnrestoredCarryDrop(activity: Activity, state: SurfaceState) {
+        if (state.unrestoredDropped) return
+        state.unrestoredDropped = true
+        val identity = state.identity ?: return
+        val callbacks = fragmentRegistrations[activity]?.callbacks
+        handler.post {
+            if (!active) return@post
+            val host = carries[identity] ?: return@post
+            host.restoring = false
+            if (callbacks == null) host.fragments.clear() else callbacks.dropUnrestored(host)
+            if (host.isEmpty()) carries.remove(identity)
+        }
+    }
 
     /**
      * Posts the one piece of bookkeeping that cannot be decided from a callback: which of the
@@ -315,9 +448,13 @@ internal class AndroidScreenCapture(
         }
     }
 
-    /** [host] is the frame of the Activity these callbacks belong to — the root of its fragments' lineage. */
+    /**
+     * [host] is the frame of the Activity these callbacks belong to — the root of its fragments'
+     * lineage — and [hostIdentity] its [SurfaceState.identity], which its fragments' carries are filed under.
+     */
     private inner class FragmentCallbacks(
         private val host: ScopeHandle,
+        private val hostIdentity: String,
     ) : FragmentManager.FragmentLifecycleCallbacks() {
         /**
          * This Activity's fragment surfaces.
@@ -339,7 +476,7 @@ internal class AndroidScreenCapture(
                 // childFragmentManager then throws. It has not missed anything either — its own
                 // onFragmentPreAttached is still to come — so there is nothing to adopt.
                 if (fragment == null || !fragment.isAdded) continue
-                val state = fragmentStates.getOrPut(fragment) { newSurface(parentOf(fragment)) }
+                val state = fragmentStates.getOrPut(fragment) { newFragmentSurface(fragment) }
                 // A view that exists at install time is claimed here, since its viewCreated is past.
                 fragment.view?.let { claim(it, state) }
                 adoptAttached(fragment.childFragmentManager)
@@ -405,7 +542,12 @@ internal class AndroidScreenCapture(
             if (!active) return
             // `parentFragment` is already set here — measured — so the lineage goes in with the
             // position, and the parent has its own frame because it pre-attached before its child.
-            fragmentStates[f] = newSurface(parentOf(f))
+            fragmentStates[f] = newFragmentSurface(f)
+        }
+
+        override fun onFragmentCreated(fm: FragmentManager, f: Fragment, savedInstanceState: Bundle?) {
+            if (!active) return
+            fragmentStates[f]?.restored = savedInstanceState != null
         }
 
         override fun onFragmentViewCreated(fm: FragmentManager, f: Fragment, v: View, savedInstanceState: Bundle?) {
@@ -435,12 +577,12 @@ internal class AndroidScreenCapture(
             // while its host went on masking over it. It costs only a late position, which is what a
             // late install costs everywhere else too.
             val state = fragmentStates.getOrPut(f) {
-                newSurface(parentOf(f)).also { late -> f.view?.let { claim(it, late) } }
+                newFragmentSurface(f).also { late -> f.view?.let { claim(it, late) } }
             }
             state.pausedWithHost = false
             onSurfaceResumed(
                 state = state,
-                className = f.javaClass.name,
+                takeCarry = { takeCarry(f, state) },
                 capturable = isCapturableFragment(f),
                 // Two things must hold before an unnamed surface may blank the screen underneath.
                 //  - It has a view. A headless / retained worker fragment (Glide's
@@ -479,9 +621,23 @@ internal class AndroidScreenCapture(
 
         override fun onFragmentStopped(fm: FragmentManager, f: Fragment) {
             if (!active) return
-            // The host Activity is the leaving instance here, so its flag reports the rotation.
-            if (f.activity?.isChangingConfigurations == true) pendingConfigChange.add(f.javaClass.name)
+            // The host Activity is the leaving instance here, so its flag reports the rotation. Only a
+            // fragment whose view was in progress is re-created INTO that view: a pager page held at
+            // STARTED never resumed, so its first resume after the rotation is its first view, and a
+            // carry left for it would swallow that Screen Viewed.
             fragmentStates[f]?.let {
+                if (f.activity?.isChangingConfigurations == true) {
+                    // Kept rather than overwritten by a restored instance rotating again before its
+                    // first resume, which has no view in progress of its own.
+                    val identity = it.identity
+                    val carry = carryOf(it)
+                    if (identity != null && carry != null) carriesFor(hostIdentity).fragments[identity] = carry
+                } else {
+                    // Still holding a carry, this is a restored instance leaving before it resumed.
+                    // Removed, it may have a replacement standing for the view it was restored into;
+                    // otherwise that view is over.
+                    leftUnresumed(f, it)
+                }
                 it.emitted = false
                 it.pausedWithHost = false
                 deselect(it)
@@ -496,7 +652,66 @@ internal class AndroidScreenCapture(
 
         override fun onFragmentDetached(fm: FragmentManager, f: Fragment) {
             if (!active) return
-            fragmentStates.remove(f)?.let { release(it, f.view) }
+            fragmentStates.remove(f)?.let {
+                // A restored instance removed before it even started never stops — measured, a
+                // fragment replaced in its host's onCreate goes straight from created to detached.
+                leftUnresumed(f, it)
+                release(it, f.view)
+            }
+        }
+
+        private fun newFragmentSurface(f: Fragment): SurfaceState =
+            newSurface(parentOf(f)).also { it.identity = identityOf(f) }
+
+        /**
+         * What a restored instance waits for, if it is the re-creation of a view a configuration
+         * change interrupted: its own carry, matched by identity; else, while it is fresh, one whose
+         * owner was removed unresumed — given only to stand for that view, never with its visit
+         * ([Orphan]). Read at the resume that would report a new view.
+         */
+        private fun takeCarry(f: Fragment, state: SurfaceState): Carry? {
+            val host = carries[hostIdentity] ?: return null
+            state.identity?.let { identity -> host.fragments.remove(identity)?.let { return it } }
+            // A restored instance with no carry of its own had no view in progress, so whatever
+            // resumes it now is its first view, whoever else was removed beside it.
+            if (state.restored) return null
+            val orphan = host.orphans.firstOrNull { it.fragmentClass == f.javaClass && it.parent === f.parentFragment }
+            if (orphan != null) {
+                host.orphans.remove(orphan)
+                return Carry(screenViewId = null, screen = orphan.carry.screen)
+            }
+            // An owner whose removal has not finished yet — its exit can be held back by an animation —
+            // has not reached the callbacks that orphan it, but it is already as good as gone.
+            if (!host.restoring) return null
+            for ((owner, ownerState) in fragmentStates) {
+                if (owner === f || !owner.isRemoving || owner.isResumed) continue
+                if (owner.javaClass != f.javaClass || owner.parentFragment !== f.parentFragment) continue
+                val carry = ownerState.identity?.let(host.fragments::remove) ?: continue
+                return Carry(screenViewId = null, screen = carry.screen)
+            }
+            return null
+        }
+
+        /** See [onFragmentStopped] and [onFragmentDetached]. A no-op for a surface that holds no carry. */
+        private fun leftUnresumed(f: Fragment, state: SurfaceState) {
+            // The leaving instance of a re-creation is what left the carry, not something that ended it.
+            if (f.activity?.isChangingConfigurations == true) return
+            val host = carries[hostIdentity] ?: return
+            val carry = state.identity?.let(host.fragments::remove) ?: return
+            if (!f.isRemoving || !host.restoring) return
+            val orphan = Orphan(f.javaClass, f.parentFragment, carry)
+            host.orphans += orphan
+            // A replacement resumes in the same dispatch that removed the owner — the onCreate and
+            // onResume rebuilds both do, measured — so a turn of the main looper is the whole window.
+            // It is a bound on how long a suppression may wait, not a proof of which fragment is the
+            // replacement; that is why no visit goes with it.
+            handler.post { host.orphans.remove(orphan) }
+        }
+
+        /** See [scheduleUnrestoredCarryDrop]. */
+        fun dropUnrestored(host: HostCarries) {
+            val restored = fragmentStates.values.mapNotNullTo(HashSet()) { it.identity }
+            host.fragments.keys.retainAll(restored)
         }
     }
 
@@ -619,7 +834,7 @@ internal class AndroidScreenCapture(
      */
     private inline fun onSurfaceResumed(
         state: SurfaceState,
-        className: String,
+        takeCarry: () -> Carry?,
         capturable: Boolean,
         covers: Boolean,
         screenName: () -> String?,
@@ -663,6 +878,12 @@ internal class AndroidScreenCapture(
         scopeStack.update(state.handle, screen = screen)
         if (masks == false) scopeStack.setScreenMasked(state.handle, false)
 
+        // A view that has ended takes its visit id with it before the frame answers again (#242).
+        // Every path that ends a view does so while the surface is off display, and not every resume
+        // after one emits — a return yielded to a fragment, a surface that is not its own screen right
+        // now — so without this the frame would hand a finished visit's id to the taps made on it.
+        if (!state.emitted) scopeStack.endScreenVisit(state.handle)
+
         // Selected on every resume, whatever the frame says — including nothing. A resumed surface IS
         // on display, and that is the only question the bit answers; whether it names, masks or
         // declares nothing is settled above, in the frame's contents. The ambient read takes a
@@ -673,10 +894,12 @@ internal class AndroidScreenCapture(
         select(state)
 
         if (state.emitted) return // a view of this screen is already in progress; this resume is a return
-        // Consumed by the first genuinely fresh resume after the marker was left, capturable or not —
-        // the re-created instance is the one it was left for, and leaving it behind would suppress a
-        // later, real view of the same class.
-        val configChange = pendingConfigChange.remove(className)
+        // Taken by the first genuinely fresh resume of the surface it was left for, capturable or not —
+        // that resume is the re-creation, and a carry left behind would wait for a view that is over.
+        // It continues the interrupted view only while that is still a view of the same screen: one
+        // renamed across the change is a new view, and reports one.
+        val carry = takeCarry()
+        val continues = carry != null && carry.screen == screen
         if (screen == null) return
         // The frame keeps the settled name, but a surface that is right now neither its own screen
         // nor covering does not report itself: an Activity settled as a screen that has since taken
@@ -690,11 +913,13 @@ internal class AndroidScreenCapture(
         // scheduleDemotionCheck, since a fragment moved down while its host was paused never does.
         if (!capturable && !covers) return
         if (!capturable && yieldsToFragment) {
-            if (!configChange) state.yieldedReturn = screen
+            if (!continues) state.yieldedReturn = screen
             return
         }
-        if (configChange) {
+        if (continues) {
             state.emitted = true
+            state.viewScreen = screen
+            carry?.screenViewId?.let { scopeStack.continueScreenVisit(state.handle, it, screen) }
             return
         }
         emit(state, screen)
@@ -702,6 +927,7 @@ internal class AndroidScreenCapture(
 
     private fun emit(state: SurfaceState, screen: String) {
         state.emitted = true
+        state.viewScreen = screen
         try {
             scopeStack.emitScreenView(tracker, screen, origin = state.handle)
         } catch (_: Throwable) {
@@ -730,6 +956,9 @@ internal class AndroidScreenCapture(
         for ((activity, state) in activityStates) {
             if (activity in resumedActivities) continue
             state.emitted = false
+            // A view a rotation interrupted and a restored surface still holds unresumed ends here too:
+            // its host only paused, so nothing else drops it, and resuming it later is a new view.
+            state.identity?.let(carries::remove)
             fragmentRegistrations[activity]?.callbacks?.endViews()
         }
     }
@@ -784,8 +1013,21 @@ internal class AndroidScreenCapture(
         }
         fragmentRegistrations.clear()
         resumedActivities.clear()
-        pendingConfigChange.clear()
+        carries.clear()
     }
+
+    /**
+     * A fragment's `mWho`: the id its `FragmentManager` gives it, which `FragmentState` saves and writes
+     * back into the instance that re-creates it, and which no other live fragment shares — measured
+     * across two rotations in a row for two untagged siblings of one class, a child fragment and the
+     * pages of a `ViewPager2`. `putFragment` is the public route to it (`FragmentStateAdapter` reads
+     * page identity the same way). Through the fragment's own manager: in a recursive callback the
+     * `fm` passed in is the outer one, and putting a child fragment there throws. Null when the
+     * fragment has no manager yet, and then nothing is carried for it.
+     */
+    private fun identityOf(fragment: Fragment): String? = runCatching {
+        Bundle().also { fragment.parentFragmentManager.putFragment(it, IDENTITY_KEY, fragment) }.getString(IDENTITY_KEY)
+    }.getOrNull()
 
     // --- Static capturability filter (mirrors iOS isCapturableScreen; all decidable at resume) -------
 
@@ -842,5 +1084,8 @@ internal class AndroidScreenCapture(
             runCatching { Class.forName("androidx.compose.ui.platform.AbstractComposeView") }.getOrNull()
         private val navHostFragmentClass: Class<*>? =
             runCatching { Class.forName("androidx.navigation.fragment.NavHostFragment") }.getOrNull()
+
+        /** The key of the token in an Activity's saved state, and of the scratch entry [identityOf] reads. */
+        private const val IDENTITY_KEY = "dev.ynagai.autograph.android.identity"
     }
 }

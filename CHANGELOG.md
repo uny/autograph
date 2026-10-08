@@ -53,6 +53,50 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   remove the key, so a fake standing in for the real tracker now sees `__autograph` in the
   properties of every event listed above.
 
+- **Screen views start a visit, and the events made during it carry its id** ([#242]). Every
+  `Screen Viewed` the Android Activity/Fragment capture, the iOS UIKit capture, SwiftUI's
+  `AutographScreenCapture`, `TrackedScreen`, `TrackScreenView` and `NavController.TrackScreenViews`
+  emit carries a new `screen_view_id`, and so do the taps the native tap captures, Compose
+  autocapture and SwiftUI's `AutographElementCapture` record on that screen until it is left.
+  `trackClick` and `trackImpression` carry the visit of the `TrackedScreen` they sit in, read
+  lexically like its `screen`; outside one, and under a bare `TrackScreenView`, they carry none.
+  Coming back to a screen is a new visit, even under the same name, when it emits another
+  `Screen Viewed`; a dialog or a permission prompt over it is not. A Compose screen emits one only
+  when it enters the composition or its name changes, so returning to an Activity whose composition
+  stayed alive keeps the visit it had. It works like this:
+  - The id comes from the new `ScopeStack.screenViewIdGenerator`, `EventId.UuidV7` by default.
+    `Autograph { }` never sees the stack, so a custom `AutographConfig.eventId` is not applied to
+    it: set the same generator on the stack if you want both in one format. A generator that
+    throws or returns an empty string leaves that visit without an id, and the screen view is
+    still emitted.
+  - The stack answers it as the new `AmbientContext.screenViewId`. It comes from the frame that
+    names the screen, so it is absent, never borrowed, when that frame has no visit: a fragment an
+    app builds to replace the restored one while a configuration change re-creates its host (see
+    below), a screen whose `AutographProvider` tracker (and with it
+    the default stack) was replaced without the screen being reported again, and a screen whose name
+    changed after its screen view (`ScopeStack.update` with a different `screen` ends the visit,
+    which on Android includes a name the `fragmentScreenName` lambda only returns later). It is also
+    absent when two surfaces on display side by side each name a screen (two Activities in
+    multi-window, two named fragments beside each other) and an ambient read cannot tell which
+    visit it is in; the screen name is still reported, and a tap the capture localizes to one of
+    them gets that one's id. A surface that names nothing, such as a headless fragment, does not
+    count. iOS screens are not surfaces, so there the id follows the screen name, a sheet included.
+  - The id is minted before the tracker is called and is not withdrawn if the tracker rejects or
+    throws, so events can carry an id no `Screen Viewed` row has.
+  - An Android Activity or fragment re-created by a configuration change is not reported again, and
+    it stays in the visit it was in. The capture matches each re-created surface to the one it
+    replaces: a fragment by the identity its `FragmentManager` restores (its `mWho`, read through
+    `putFragment`), an Activity by a token the capture saves in its instance state under
+    `dev.ynagai.autograph.android.identity`. A surface whose screen name changed across the
+    configuration change reports a new view instead. An app that discards the restored fragment in
+    `onCreate` or `onResume` (with `commitNow`) and builds a replacement of the same class under the
+    same parent is still not reported again, but the replacement does not get the visit: nothing
+    proves it replaced that fragment rather than sitting beside it, and no id is better than a
+    wrong one. Its events carry no id until its next view.
+
+  A `Tracker` fake now sees `__autograph` in the properties of a native screen view, and in a
+  SwiftUI `autograph.track(_:)` call made on a screen with a visit.
+
 - **`closeAndAwait` closes a tracker without blocking and reports how the shutdown went** ([#261]).
   `Tracker.close()` blocks, returns nothing, and returns at once on a second call. The suspending
   `Tracker.closeAndAwait()` (or `closeAndAwait(timeoutMillis)`) returns a `CloseResult` instead:
@@ -105,6 +149,24 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Fixed
 
+- **Two Android fragments of one class on display together no longer report a second
+  `Screen Viewed` after a rotation** ([#242]). A configuration change is one continuous view, so the
+  native capture skips the re-created fragment's resume. It recognised that resume by class, so when
+  two RESUMED fragments shared one (two panes, or `add` on top of the same class) the first to resume
+  after the rotation used up the skip and the other reported a view. Each surface is now matched to
+  the one it re-creates by instance (see the visit entry above), so two untagged fragments of one
+  class in one container are told apart too. The skip also ends with the surface it was left for: a
+  restored fragment that goes away without resuming, the re-created Activity stopping or finishing
+  first, or another screen being reported while that Activity is only paused, leaves nothing for a
+  fragment that resumes later, whose first view is reported. A replacement the app builds in
+  `onCreate` or `onResume` while the host is re-created is still taken for the interrupted view,
+  under any tag or container, when it has the restored fragment's class and parent.
+- **An Android fragment that never resumed before a rotation reports its first view after it**
+  ([#242]). A pager's off-screen page, held at `STARTED`, left the same skip behind when the rotation
+  stopped it. When no resumed fragment shared its class to use the skip up, as with tabs of different
+  fragments, its first resume afterwards — the swipe to it — reported nothing. Only a fragment
+  whose view was reported leaves the skip now. The same holds for a resumed fragment whose screen
+  name was still null when the rotation stopped it: its first resume with a name now reports it.
 - **`close()` no longer throws when the transport's `flush()` does** ([#261]). The exception left
   `close()` before it released the tracker's scope. It is now logged, and `closeAndAwait` reports it
   as `flushFailed`.

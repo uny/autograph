@@ -132,9 +132,15 @@ import dev.ynagai.autograph.context.ScopeStack
  * A configuration change (rotation) destroys and re-creates the Activity. The self-previous guard in
  * `emitScreenView` already keeps a rotation from polluting `previous_screen` (the re-created screen's
  * previous would be itself, which is dropped), and this additionally **suppresses the duplicate
- * `Screen Viewed`**: an Activity leaving with `isChangingConfigurations` marks its re-creation, and
- * the re-created instance pushes its frame without re-emitting. A genuine process-death restore is
- * *not* a config change, so its screen view is still reported.
+ * `Screen Viewed`**: an Activity or fragment whose view is in progress when it leaves with
+ * `isChangingConfigurations` hands that view to the instance re-created into it, which pushes its
+ * frame without re-emitting and stays in the same visit (`screen_view_id`). The two are matched by
+ * instance — a fragment by the `mWho` its `FragmentManager` restores, an Activity by a token this
+ * capture saves in its instance state under `dev.ynagai.autograph.android.identity` — so two
+ * fragments of one class are never mistaken for each other. A screen renamed across the change
+ * reports a new view. A replacement the app builds for the restored fragment in `onCreate` or
+ * `onResume` does not re-emit either, but starts no visit and borrows none. A genuine process-death
+ * restore is *not* a config change, so its screen view is still reported.
  *
  * ## Lifecycle: what a surface says, and whether it is the one saying it
  *
