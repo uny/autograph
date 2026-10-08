@@ -432,4 +432,57 @@ class ScreenVisitTest {
         assertEquals("Overlay", stack.current().screen)
         assertNull(stack.current().screenViewId)
     }
+
+    @Test
+    fun a_continued_visit_is_the_one_the_previous_frame_was_in() {
+        // A configuration change: the leaving frame's visit is read before it goes, and the re-created
+        // surface's frame takes it over without a second Screen Viewed.
+        val stack = stack()
+        val tracker = RecordingTracker(stack)
+        val leaving = stack.pushSurface(screen = "Home")
+        stack.emitScreenView(tracker, "Home", origin = leaving)
+        val carried = assertNotNull(stack.screenViewIdOf(leaving))
+        stack.remove(leaving)
+
+        val recreated = stack.pushSurface(screen = "Home")
+        stack.continueScreenVisit(recreated, carried, screen = "Home")
+
+        assertEquals("v1", stack.current().screenViewId)
+        assertEquals(listOf<String?>("v1"), tracker.visits)
+    }
+
+    @Test
+    fun the_visit_id_of_a_frame_is_read_even_while_it_is_not_reported() {
+        val stack = stack()
+        val screen = stack.pushSurface(screen = "Home")
+        stack.emitScreenView(RecordingTracker(stack), "Home", origin = screen)
+
+        stack.setActive(screen, false)
+
+        assertNull(stack.current().screenViewId)
+        assertEquals("v1", stack.screenViewIdOf(screen))
+    }
+
+    @Test
+    fun a_removed_frame_has_no_visit_id_and_cannot_continue_one() {
+        val stack = stack()
+        val screen = stack.pushSurface(screen = "Home")
+        stack.emitScreenView(RecordingTracker(stack), "Home", origin = screen)
+        stack.remove(screen)
+
+        assertNull(stack.screenViewIdOf(screen))
+        stack.continueScreenVisit(screen, "v1", screen = "Home")
+        assertNull(stack.current().screenViewId)
+    }
+
+    @Test
+    fun a_continued_visit_of_another_name_is_not_reported() {
+        // The stack never answers one screen's name with another's visit, a continued one included.
+        val stack = stack()
+        val frame = stack.pushSurface(screen = "Detail")
+
+        stack.continueScreenVisit(frame, "v9", screen = "Home")
+
+        assertNull(stack.current().screenViewId)
+    }
 }

@@ -388,6 +388,30 @@ public class ScopeStack {
     }
 
     /**
+     * The id of the visit the frame [handle] refers to holds, whether or not [current] reports it
+     * right now (an inactive frame, or one not yet renamed to the visit's screen), or null when it
+     * holds none or is not on this stack. See [screenViewIdOf].
+     */
+    internal fun visitIdOf(handle: ScopeHandle): String? {
+        val frame = handle.frame
+        return if (frames.any { it === frame }) frame.screenViewId else null
+    }
+
+    /**
+     * Puts the frame [handle] refers to in the visit [screenViewId] of [screen] instead of starting a
+     * new one, and republishes. A no-op when the frame already holds it or is not on this stack. See
+     * [continueScreenVisit].
+     */
+    internal fun continueVisit(handle: ScopeHandle, screenViewId: String, screen: String) {
+        val frame = handle.frame
+        if (frames.none { it === frame }) return
+        if (frame.screenViewId == screenViewId && frame.visitScreen == screen) return
+        frame.screenViewId = screenViewId
+        frame.visitScreen = screen
+        snapshot = recompute()
+    }
+
+    /**
      * Removes the frame [handle] refers to, by identity and independent of position — screen
      * transitions (a Compose `Crossfade`, an iOS interactive-pop that the user cancels) do not
      * guarantee frames leave in push order, so a positional pop would remove the wrong one.
