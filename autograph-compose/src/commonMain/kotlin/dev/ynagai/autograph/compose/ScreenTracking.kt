@@ -74,7 +74,17 @@ internal class ScreenVisit {
     private var screen: String? = null
     private var id: String? = null
 
+    /**
+     * What the keyed `trackImpression` reported in this visit (#243). Bound to the visit, not to
+     * [id]: the id can be absent — before the first [begin], or when the generator fails — and
+     * de-duplication must hold all the same.
+     */
+    val impressions: ImpressionRegistry = ImpressionRegistry()
+
     fun begin(screen: String, id: String?) {
+        // Only a rename starts the registry over. The first begin follows composition, so an item
+        // reported in between belongs to this same visit and must stay reported.
+        if (this.screen != null && this.screen != screen) impressions.startOver()
         this.screen = screen
         this.id = id
     }
@@ -175,6 +185,7 @@ public fun TrackedScreen(
         CompositionLocalProvider(
             LocalScreenContext provides ScreenContext(name, section),
             LocalScreenVisit provides visit,
+            LocalImpressionRegistry provides visit.impressions,
             content = content,
         )
     }

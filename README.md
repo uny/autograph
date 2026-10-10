@@ -140,6 +140,15 @@ LocalTracker.current.track("Recipe Saved", target = "share_button")
 Text("Save", Modifier.trackClick("Recipe Saved") { save() })
 Card(Modifier.trackImpression("Recipe Viewed", target = "recipe_card")) { RecipeCard() }
 
+// In a lazy list, pass the item's key: an item scrolled out of view and back reports once per
+// visit of the enclosing TrackedScreen, not every time the list re-composes it. Without a
+// TrackedScreen around the list, wrap it in ImpressionScope { ... }.
+LazyColumn {
+    items(recipes, key = { it.id }) { recipe ->
+        RecipeRow(recipe, Modifier.trackImpression("Recipe Viewed", key = recipe.id))
+    }
+}
+
 // Opt-in: report every tap without instrumenting each element — pass AutocaptureConfig to
 // AutographProvider. Identification prefers testTag, then role, then the accessibility label;
 // displayed text is never collected. Exclude a subtree with Modifier.autographIgnore().

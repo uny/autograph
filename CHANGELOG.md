@@ -137,6 +137,29 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     `AwaitableCloseKt.closeAndAwait(tracker, timeoutMillis:)`, both `async throws`, returning
     `CloseResult`.
 
+- **`Modifier.trackImpression` can report each item once per screen visit, not once per
+  composable** ([#243]). A new overload takes a `key`, normally the value you pass to
+  `LazyColumn(key = …)`. An item scrolled out of view and back, which a lazy list disposes and
+  re-composes, then reports only once. The overload without a key is unchanged. It works like this:
+  - The unit is the enclosing `TrackedScreen`'s visit, the same unit its `screen_view_id` names.
+    Renaming the screen, or returning to it in a way that re-creates its composition, starts a new
+    visit, and its items report again. Changing the section does not.
+  - The new `ImpressionScope { … }` is a unit of its own, for content that has no `TrackedScreen`
+    around it, such as a destination tracked only by `NavController.TrackScreenViews`. Wrap the
+    list, not its items. The innermost unit wins, and inside a `TrackedScreen` the scope starts over
+    whenever the visit does.
+  - An impression is one definition applied to one item. Its name, both thresholds, its effective
+    target (the `target` argument, else `properties["target"]`) and its key identify it. The same
+    item in two lists with different names or targets reports in each list.
+  - When the unit starts over, or an element's key changes, its visibility measurement starts over
+    too. Time the element spent visible before does not count, and an element that stays on screen
+    reports again after a fresh dwell.
+  - Outside any unit, a keyed impression reports once per composable instance, like the overload
+    without a key, and prints a one-time console warning.
+  - The key is recorded once `track` returns. If `track` throws there is no event, and the element
+    tries again the next time it becomes visible. The key is held in memory, not reported: put
+    whatever identifies the item for analysis in `properties` as well.
+
 ### Changed
 
 - **ADR 0001 freezes the member set of every interface a caller implements** ([#283]). §2c/§2d
