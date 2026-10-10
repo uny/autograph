@@ -158,10 +158,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   - Outside any unit, a keyed impression reports once per composable instance, like the overload
     without a key, and prints a one-time console warning.
   - "Once" means once per emission attempt: the key is recorded after `track` returns, so it marks
-    an event handed to the tracker, not one delivered. A `track` that throws is not caught; the
-    exception leaves through Compose's layout pass, which runs visibility callbacks. The key is
-    held in memory, not reported: put whatever identifies the item for analysis in `properties` as
-    well.
+    an event handed to the tracker, not one delivered. A `track` that throws is not caught; it
+    fails the effect that times the dwell, as it would any `LaunchedEffect`. The key is held in
+    memory, not reported: put whatever identifies the item for analysis in `properties` as well.
 
 ### Changed
 

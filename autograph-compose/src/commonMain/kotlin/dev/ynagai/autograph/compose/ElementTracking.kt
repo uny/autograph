@@ -90,8 +90,7 @@ public fun Modifier.trackImpression(
  *
  * "Once" means once per emission attempt: the key is recorded after `track` returns, so it marks an
  * event handed to the tracker, not one delivered — delivery is not observable here. A `track` that
- * throws is not caught: the exception leaves through Compose's layout pass, which runs visibility
- * callbacks, as it would from any of them.
+ * throws is not caught: it fails the effect that times the dwell, as it would any `LaunchedEffect`.
  *
  * Not `rememberSaveable`: that would outlive the visit into the navigation back stack's saved state
  * and not report again on a revisit, and in a list without keys it is positional, so the record can
