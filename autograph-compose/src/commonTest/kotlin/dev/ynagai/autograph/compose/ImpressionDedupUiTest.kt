@@ -37,15 +37,16 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
-/** Records each impression as (name, target, screen_view_id). */
+/** Records each impression as (name, target, screen_view_id), and its fraction threshold alongside. */
 private class ImpressionRecordingTracker : Tracker {
     val tracked = mutableListOf<Triple<String, String?, String?>>()
+    val fractions = mutableListOf<String?>()
     val names: List<String> get() = tracked.map { it.first }
     override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
-        val visit = properties[RESERVED_METADATA_KEY]?.let {
-            Json.parseToJsonElement(it.jsonPrimitive.content).jsonObject["screen_view_id"]?.jsonPrimitive?.content
-        }
+        val metadata = properties[RESERVED_METADATA_KEY]?.let { Json.parseToJsonElement(it.jsonPrimitive.content).jsonObject }
+        val visit = metadata?.get("screen_view_id")?.jsonPrimitive?.content
         tracked += Triple(name, target ?: properties["target"]?.jsonPrimitive?.content, visit)
+        fractions += metadata?.get("impression")?.jsonObject?.get("min_fraction_visible")?.jsonPrimitive?.content
     }
     override fun screen(name: String, properties: Map<String, JsonElement>) {}
     override fun identify(userId: String, traits: Map<String, JsonElement>) {}
@@ -209,12 +210,17 @@ class ImpressionDedupUiTest {
         setContent {
             WithImpressionTracker(tracker) {
                 ImpressionScope {
-                    // Same item, four definitions: each reports.
+                    // Same item, six definitions: each reports.
                     Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = 1, minDurationMs = 0L))
                     Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = 1, minDurationMs = 0L, minFractionVisible = 0.9f))
+                    Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = 1, minDurationMs = 0L, minFractionVisible = 0f))
                     Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = 1, minDurationMs = 0L, target = "carousel"))
                     Box(Modifier.size(10.dp).trackImpression("Promo Viewed", key = 1, minDurationMs = 0L))
-                    // The same target given through properties is the same impression as the third.
+                    AutographScope("target" to "rail") {
+                        Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = 1, minDurationMs = 0L))
+                    }
+                    // The same definitions again, spelled differently: none reports.
+                    Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = 1, minDurationMs = 0L, minFractionVisible = -0f))
                     Box(
                         Modifier.size(10.dp).trackImpression(
                             "Card Viewed",
@@ -223,12 +229,27 @@ class ImpressionDedupUiTest {
                             minDurationMs = 0L,
                         ),
                     )
+                    AutographScope("target" to "carousel") {
+                        Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = 1, minDurationMs = 0L))
+                    }
                 }
             }
         }
         dwell()
 
-        assertEquals(4, tracker.tracked.size, "${tracker.tracked}")
+        assertEquals(
+            setOf(
+                "Card Viewed/null/0.5",
+                "Card Viewed/null/0.9",
+                "Card Viewed/null/0.0",
+                "Card Viewed/carousel/0.5",
+                "Promo Viewed/null/0.5",
+                "Card Viewed/rail/0.5",
+            ),
+            // Whichever of 0f and -0f reports first names the threshold; the count below says only one did.
+            tracker.tracked.zip(tracker.fractions) { (name, target, _), fraction -> "$name/$target/${fraction?.removePrefix("-")}" }.toSet(),
+        )
+        assertEquals(6, tracker.tracked.size, "${tracker.tracked}")
     }
 
     @Test

@@ -62,7 +62,7 @@ internal class ImpressionRegistry {
 /**
  * One impression definition applied to one item: two lists, or two thresholds, on the same item do
  * not collide. [target] is the effective one — what reaches the event — so the same target given as
- * the argument or as `properties["target"]` is the same impression.
+ * the argument, as `properties["target"]` or by an enclosing [AutographScope] is the same impression.
  */
 internal data class ImpressionKey(
     val name: String,

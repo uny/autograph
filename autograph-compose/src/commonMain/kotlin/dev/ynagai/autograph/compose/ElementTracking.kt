@@ -77,8 +77,9 @@ public fun Modifier.trackImpression(
  *   composition. A change of section keeps the visit and does not; to count per section, include it
  *   in [key] or [target].
  * - An impression is one definition applied to one item: [name], both thresholds, the effective
- *   target ([target], else `properties["target"]`) and [key]. The same item in two lists with
- *   different names or targets reports in each; instrumented identically twice, it reports once.
+ *   target ([target], else `properties["target"]`, else an enclosing [AutographScope]'s) and [key].
+ *   The same item in two lists with different names or targets reports in each; instrumented
+ *   identically twice, it reports once.
  * - When the unit starts over, or this element's [key] changes, its visibility measurement starts
  *   over too: time spent visible before does not count toward the new one.
  *
@@ -111,7 +112,7 @@ public fun Modifier.trackImpression(
         minDurationMs = minDurationMs,
         // -0f and 0f are one threshold; Float.equals tells them apart.
         minFractionVisible = if (minFractionVisible == 0f) 0f else minFractionVisible,
-        target = target ?: (properties["target"] as? JsonPrimitive)?.contentOrNull,
+        target = target ?: effectiveTarget(properties, tracker),
         key = key,
     )
     if (registry == null) NoImpressionUnit.warn()
@@ -139,6 +140,15 @@ public fun Modifier.trackImpression(
             }
         }
     }
+}
+
+/**
+ * The `"target"` the event will carry when the call passes no `target` argument: the call's own
+ * [properties] entry, else the one an enclosing [AutographScope] merges underneath it.
+ */
+private fun effectiveTarget(properties: JsonObject, tracker: Tracker): String? {
+    val entry = if ("target" in properties) properties["target"] else (tracker as? ScopedTracker)?.scope?.get("target")
+    return (entry as? JsonPrimitive)?.contentOrNull
 }
 
 /** Everything whose change must restart a keyed impression's visibility measurement. */

@@ -149,8 +149,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     list, not its items. The innermost unit wins, and inside a `TrackedScreen` the scope starts over
     whenever the visit does.
   - An impression is one definition applied to one item. Its name, both thresholds, its effective
-    target (the `target` argument, else `properties["target"]`) and its key identify it. The same
-    item in two lists with different names or targets reports in each list.
+    target (the `target` argument, else `properties["target"]`, else an enclosing
+    `AutographScope`'s) and its key identify it. The same item in two lists with different names
+    or targets reports in each list.
   - When the unit starts over, or an element's key changes, its visibility measurement starts over
     too. Time the element spent visible before does not count, and an element that stays on screen
     reports again after a fresh dwell.
