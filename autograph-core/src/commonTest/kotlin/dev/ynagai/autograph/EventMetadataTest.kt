@@ -373,12 +373,12 @@ class EventMetadataTest {
 
     // ---- caller-written wrappers (#302): the README's "Wrapping a transport" contract ----
 
-    /** The README's `RedactingTransport`, with the screen pair it leaves to the reader. */
+    /** The README's `RedactingTransport`. */
     private class RedactingTransport(private val delegate: Transport) : Transport, MetadataAwareTransport {
         override val stampsInPipeline: Boolean get() = delegate.stampsInPipeline
         override fun connect(envelopes: EnvelopeSource) = delegate.connect(envelopes)
         override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) =
-            delegate.identify(userId, traits, envelope)
+            delegate.identify(userId, redact(traits), envelope)
         override fun flush() = delegate.flush()
         override fun reset() = delegate.reset()
 
@@ -413,10 +413,11 @@ class EventMetadataTest {
 
         tracker.track("Recipe Saved", props(email))
         tracker.track("Button Tapped", props(email, RESERVED_METADATA_KEY to buildJsonObject { put("kind", "click") }))
+        tracker.screen("Settings", props(email))
         tracker.screen("Home", props(email, RESERVED_METADATA_KEY to screenViewMetadata))
 
         assertEquals(listOf(null, "click"), delegate.tracked.map { it.metadata?.kind })
-        assertEquals("visit-1", delegate.screened.single().metadata?.screenViewId)
+        assertEquals(listOf(null, "visit-1"), delegate.screened.map { it.metadata?.screenViewId })
         (delegate.tracked + delegate.screened).forEach { assertFalse("email" in it.properties, "redacted on every route") }
     }
 

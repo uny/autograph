@@ -723,8 +723,8 @@ release build (gate it behind a debug-build check, or supply a logger that redac
 Reach for the tracker's own hooks first. A key every event needs belongs in
 [`DefaultProperties`](#default-properties), and a rule about which events are allowed belongs in an
 [`EventValidator`](#validation). Both act on the event before the transport sees it. A transport
-wrapper runs after validation, and it has to forward every member by hand. If you do write one, for redaction, sampling
-or logging, these are the details that fail without a compile error:
+wrapper runs after validation, and it has to forward every member by hand. If you do write one,
+for redaction, sampling or logging, these are the details that fail without a compile error:
 
 - **Forward `stampsInPipeline` and `connect`.** A pipeline transport, such as `SegmentTransport` on
   Android, gets its `EnvelopeSource` in `connect` and stamps every event in its own pipeline. If
@@ -745,7 +745,7 @@ class RedactingTransport(private val delegate: Transport) : Transport, MetadataA
     override val stampsInPipeline: Boolean get() = delegate.stampsInPipeline
     override fun connect(envelopes: EnvelopeSource) = delegate.connect(envelopes)
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) =
-        delegate.identify(userId, traits, envelope)
+        delegate.identify(userId, redact(traits), envelope)
     override fun flush() = delegate.flush()
     override fun reset() = delegate.reset()
 
@@ -759,7 +759,15 @@ class RedactingTransport(private val delegate: Transport) : Transport, MetadataA
             delegate.track(name, redact(properties), envelope) // the metadata is lost: log that once
         }
 
-    // screen(...) and screen(..., metadata): the same pair.
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) =
+        delegate.screen(name, redact(properties), envelope)
+
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) =
+        if (delegate is MetadataAwareTransport) {
+            delegate.screen(name, redact(properties), envelope, metadata)
+        } else {
+            delegate.screen(name, redact(properties), envelope) // the metadata is lost: log that once
+        }
 
     private fun redact(properties: Map<String, JsonElement>) = properties - "email"
 }
