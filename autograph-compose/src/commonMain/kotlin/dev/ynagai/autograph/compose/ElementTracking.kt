@@ -129,6 +129,9 @@ public fun Modifier.trackImpression(
     LaunchedEffect(visible, registry, generation, impression) {
         if (!visible) return@LaunchedEffect
         delay(minDurationMs)
+        // Hidden during the last frame: the callback has run, but the recomposition that would cancel
+        // this dwell has not.
+        if (!visible) return@LaunchedEffect
         val (tracker, properties, target, screenContext, visit) = current
         if (registry != null) {
             // The unit started over during this dwell: the new one restarts it and reports instead.

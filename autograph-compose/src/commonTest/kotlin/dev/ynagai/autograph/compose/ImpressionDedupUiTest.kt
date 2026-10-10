@@ -4,6 +4,7 @@ package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListState
@@ -21,6 +22,7 @@ import androidx.compose.ui.test.ExperimentalTestApi
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performScrollToIndex
 import androidx.compose.ui.test.v2.runComposeUiTest
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
@@ -324,6 +326,33 @@ class ImpressionDedupUiTest {
         assertEquals(emptyList(), tracker.tracked, "the old dwell must not report: ${tracker.tracked}")
         dwell(600L)
         assertEquals(listOf("id-2"), tracker.tracked.map { it.third })
+    }
+
+    /** Hidden just before its dwell ends, an element does not report, though nothing has recomposed yet. */
+    @Test
+    fun anElementHiddenJustBeforeItsDwellEndsDoesNotReport() = runComposeUiTest {
+        val tracker = ImpressionRecordingTracker()
+        var offsetPx by mutableStateOf(0)
+        setContent {
+            WithImpressionTracker(tracker) {
+                ImpressionScope {
+                    Box(Modifier.fillMaxSize()) {
+                        Box(
+                            Modifier.offset { IntOffset(offsetPx, 0) }.size(10.dp)
+                                .trackImpression("Card Viewed", key = "card-1", minDurationMs = 500L),
+                        )
+                    }
+                }
+            }
+        }
+        waitForIdle()
+        mainClock.autoAdvance = false
+        // Whole frames, then layout-only hide (no recomposition of the element) close to the deadline.
+        mainClock.advanceTimeBy(480L)
+        offsetPx = 100_000
+        mainClock.advanceTimeByFrame()
+        mainClock.advanceTimeBy(40L)
+        assertEquals(emptyList(), tracker.tracked, "${tracker.tracked}")
     }
 
     /** Outside any unit: per composable instance, as without a key. */
