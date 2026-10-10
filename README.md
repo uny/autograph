@@ -727,9 +727,9 @@ wrapper runs after validation, and it has to forward every member by hand. If yo
 or logging, these are the details that fail without a compile error:
 
 - **Forward `stampsInPipeline` and `connect`.** A pipeline transport, such as `SegmentTransport` on
-  Android, gets its `EnvelopeSource` in `connect` and stamps every event there. If the wrapper keeps
-  the defaults (`false`, no-op), events go out with no envelope at all: no event id, no session, no
-  sequence. `SegmentTransport.reset()` then fails. The tracker cannot detect this.
+  Android, gets its `EnvelopeSource` in `connect` and stamps every event in its own pipeline. If
+  the wrapper keeps the defaults (`false`, no-op), events go out with no envelope at all: no event
+  id, no session, no sequence. `SegmentTransport.reset()` then fails. The tracker cannot detect this.
 - **Forward `identify`, `flush` and `reset`** as well.
 - **Implement `MetadataAwareTransport` when the delegate stamps in its own pipeline.** For such a
   transport, an event carrying metadata (its `kind`, an impression's thresholds, its
@@ -756,7 +756,7 @@ class RedactingTransport(private val delegate: Transport) : Transport, MetadataA
         if (delegate is MetadataAwareTransport) {
             delegate.track(name, redact(properties), envelope, metadata)
         } else {
-            delegate.track(name, redact(properties), envelope) // the metadata is lost: say so once
+            delegate.track(name, redact(properties), envelope) // the metadata is lost: log that once
         }
 
     // screen(...) and screen(..., metadata): the same pair.
@@ -768,7 +768,8 @@ class RedactingTransport(private val delegate: Transport) : Transport, MetadataA
 A wrapper that does not implement `MetadataAwareTransport` around a pipeline transport still
 delivers every event, without its metadata. The tracker logs this once and names the wrapper. A
 wrapper that declares the interface is trusted. The tracker cannot see whether the wrapper's
-delegate implements it too, so the fallback branch above has to report the loss itself.
+delegate implements it too, so the fallback branch above has to report the loss itself. A transport
+cannot reach `AutographConfig.logger`, so give the wrapper a logger of its own, or use `println`.
 (`DebugTransport` is the exception, because the tracker knows how it forwards.)
 
 Dropping an event in a wrapper (sampling) behaves differently on the two kinds of delegate. A pipeline
