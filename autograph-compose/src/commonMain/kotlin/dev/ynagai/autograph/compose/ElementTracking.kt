@@ -3,9 +3,11 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -16,8 +18,10 @@ import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.withEventMetadata
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
 
 /**
  * Fires [name] the first time this element becomes visible — at least [minFractionVisible] of its
@@ -39,6 +43,9 @@ import kotlinx.serialization.json.JsonPrimitive
  * The event carries `kind` `impression` and both thresholds in its envelope metadata (see
  * [dev.ynagai.autograph.EventMetadata]), so a dashboard can tell which definition of "seen" it counts.
  * Inside a [TrackedScreen] it also carries the screen's visit id (#242).
+ *
+ * In a lazy list, "this composable instance" is the wrong unit: an item scrolled out of view is
+ * disposed and reports again when it scrolls back. Use the overload that takes a `key` there.
  */
 public fun Modifier.trackImpression(
     name: String,
@@ -54,15 +61,142 @@ public fun Modifier.trackImpression(
     onVisibilityChanged(minDurationMs = minDurationMs, minFractionVisible = minFractionVisible) { visible ->
         if (visible && !fired) {
             fired = true
-            val tagged = withScreenContext(properties, screenContext).withEventMetadata(
-                EventKinds.IMPRESSION,
-                impressionMinDurationMs = minDurationMs,
-                impressionMinFractionVisible = minFractionVisible.toDecimalDouble(),
-                screenViewId = visit?.idFor(screenContext?.screen),
-            )
-            tracker.track(name, tagged, target)
+            tracker.trackImpressionEvent(name, properties, target, minDurationMs, minFractionVisible, screenContext, visit)
         }
     }
+}
+
+/**
+ * [trackImpression], de-duplicated by [key] rather than by composable instance (#243): within one
+ * unit, an item reports at most once however often it is disposed and re-composed — which is what a
+ * lazy list does to an item scrolled out of view and back. Pass the same value as the list's own
+ * `key`. It must keep a stable `equals` / `hashCode` for as long as the unit lasts; it is held, not
+ * reported, so put whatever identifies the item for analysis in [properties] as well.
+ *
+ * The unit is the enclosing [TrackedScreen]'s visit — the same unit its `screen_view_id` names — or
+ * an [ImpressionScope], whichever is innermost:
+ * - A new visit reports again: a renamed screen, or a return that re-creates the screen's
+ *   composition. A change of section keeps the visit and does not; to count per section, include it
+ *   in [key] or [target].
+ * - An impression is one definition applied to one item: [name], both thresholds, the effective
+ *   target ([target], else `properties["target"]`, else an enclosing [AutographScope]'s) and [key].
+ *   The same item in two lists with different names or targets reports in each; instrumented
+ *   identically twice, it reports once.
+ * - When the unit starts over, or this element's [key] changes, its visibility measurement starts
+ *   over too: time spent visible before does not count toward the new one.
+ *
+ * Outside both, there is nothing to de-duplicate in. The element then behaves as the overload
+ * without a key — once per composable instance — and a one-time console warning says so.
+ *
+ * "Once" means once per emission attempt: the key is recorded after `track` returns, so it marks an
+ * event handed to the tracker, not one delivered — delivery is not observable here. A `track` that
+ * throws is not caught: it fails the effect that times the dwell, as it would any `LaunchedEffect`.
+ *
+ * Not `rememberSaveable`: that would outlive the visit into the navigation back stack's saved state
+ * and not report again on a revisit, and in a list without keys it is positional, so the record can
+ * move to a different item.
+ */
+public fun Modifier.trackImpression(
+    name: String,
+    key: Any,
+    properties: JsonObject = EmptyJsonObject,
+    target: String? = null,
+    minDurationMs: Long = 500L,
+    minFractionVisible: Float = 0.5f,
+): Modifier = composed {
+    val tracker = LocalTracker.current
+    val screenContext = LocalScreenContext.current
+    val visit = LocalScreenVisit.current
+    val registry = LocalImpressionRegistry.current
+    val impression = ImpressionKey(
+        name = name,
+        minDurationMs = minDurationMs,
+        // -0f and 0f are one threshold; Float.equals tells them apart.
+        minFractionVisible = if (minFractionVisible == 0f) 0f else minFractionVisible,
+        target = target ?: effectiveTarget(properties, tracker),
+        key = key,
+    )
+    if (registry == null) NoImpressionUnit.warn()
+    // Without a unit: today's per-instance behaviour, per key.
+    var firedHere by remember(impression) { mutableStateOf(false) }
+
+    // The node reports visibility only; the dwell is timed here, so that a new unit or key restarts
+    // it. `onVisibilityChanged` keeps its visible state and dwell timer across an update, and a fresh
+    // node cannot be forced: Compose reuses any other `onVisibilityChanged` in the chain for it.
+    var visible by remember { mutableStateOf(false) }
+    val generation = registry?.generation
+    val current by rememberUpdatedState(Emission(tracker, properties, target, screenContext, visit))
+    LaunchedEffect(visible, registry, generation, impression) {
+        if (!visible) return@LaunchedEffect
+        delay(minDurationMs)
+        // Hidden during the last frame: the callback has run, but the recomposition that would cancel
+        // this dwell has not.
+        if (!visible) return@LaunchedEffect
+        val (tracker, properties, target, screenContext, visit) = current
+        if (registry != null) {
+            // The unit started over during this dwell: the new one restarts it and reports instead.
+            if (registry.generation != generation || impression in registry) return@LaunchedEffect
+            tracker.trackImpressionEvent(name, properties, target, minDurationMs, minFractionVisible, screenContext, visit)
+            registry.record(impression)
+        } else if (!firedHere) {
+            tracker.trackImpressionEvent(name, properties, target, minDurationMs, minFractionVisible, screenContext, visit)
+            firedHere = true
+        }
+    }
+    onVisibilityChanged(minDurationMs = 0L, minFractionVisible = minFractionVisible) { visible = it }
+}
+
+/** What a keyed impression reads when its dwell ends, not when it began. */
+private data class Emission(
+    val tracker: Tracker,
+    val properties: JsonObject,
+    val target: String?,
+    val screenContext: ScreenContext?,
+    val visit: ScreenVisit?,
+)
+
+/**
+ * The `"target"` the event will carry when the call passes no `target` argument: the call's own
+ * [properties] entry, else the one an enclosing [AutographScope] merges underneath it.
+ */
+private fun effectiveTarget(properties: JsonObject, tracker: Tracker): String? {
+    val entry = if ("target" in properties) properties["target"] else (tracker as? ScopedTracker)?.scope?.get("target")
+    return (entry as? JsonPrimitive)?.contentOrNull
+}
+
+/** The one-time warning for a keyed impression with no unit to de-duplicate in. */
+private object NoImpressionUnit {
+    private var warned = false
+
+    fun warn() {
+        if (!warned) {
+            warned = true
+            // The console, as MissingTracker does: Compose has no route to AutographConfig.logger.
+            println(
+                "Autograph: Modifier.trackImpression(key = ...) is outside any TrackedScreen or " +
+                    "ImpressionScope, so it reports once per composable instance and a lazy list re-reports " +
+                    "items scrolled back into view. Wrap the list in ImpressionScope { ... }.",
+            )
+        }
+    }
+}
+
+private fun Tracker.trackImpressionEvent(
+    name: String,
+    properties: JsonObject,
+    target: String?,
+    minDurationMs: Long,
+    minFractionVisible: Float,
+    screenContext: ScreenContext?,
+    visit: ScreenVisit?,
+) {
+    val tagged = withScreenContext(properties, screenContext).withEventMetadata(
+        EventKinds.IMPRESSION,
+        impressionMinDurationMs = minDurationMs,
+        impressionMinFractionVisible = minFractionVisible.toDecimalDouble(),
+        screenViewId = visit?.idFor(screenContext?.screen),
+    )
+    track(name, tagged, target)
 }
 
 /**

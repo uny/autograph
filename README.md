@@ -140,6 +140,15 @@ LocalTracker.current.track("Recipe Saved", target = "share_button")
 Text("Save", Modifier.trackClick("Recipe Saved") { save() })
 Card(Modifier.trackImpression("Recipe Viewed", target = "recipe_card")) { RecipeCard() }
 
+// In a lazy list, pass the item's key: an item scrolled out of view and back reports once per
+// visit of the enclosing TrackedScreen, not every time the list re-composes it. Without a
+// TrackedScreen around the list, wrap it in ImpressionScope { ... }.
+LazyColumn {
+    items(recipes, key = { it.id }) { recipe ->
+        RecipeRow(recipe, Modifier.trackImpression("Recipe Viewed", key = recipe.id))
+    }
+}
+
 // Opt-in: report every tap without instrumenting each element — pass AutocaptureConfig to
 // AutographProvider. Identification prefers testTag, then role, then the accessibility label;
 // displayed text is never collected. Exclude a subtree with Modifier.autographIgnore().
@@ -150,9 +159,10 @@ AutographProvider(tracker, autocapture = Autocapture()) {
 
 ## Samples
 
-`sample-shared`'s demo composables exercise every snippet above for real — `AutographProvider`,
+`sample-shared`'s demo composables exercise the snippets above for real — `AutographProvider`,
 `Modifier.trackClick`/`trackImpression`, and opt-in `AutocaptureConfig` autocapture — against a
-`LoggingTracker` that prints each event so you can watch them fire as you tap:
+`LoggingTracker` that prints each event so you can watch them fire as you tap. The keyed
+`trackImpression` in a lazy list is the exception: `autograph-compose`'s own tests cover it.
 
 - **Android**: `sample-android`. Run `./gradlew :sample-android:installDebug` and launch it, or
   open the project in Android Studio.
