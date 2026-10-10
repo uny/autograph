@@ -271,6 +271,33 @@ class ImpressionDedupUiTest {
         assertEquals(2, tracker.tracked.size)
     }
 
+    /** Inside a TrackedScreen, an ImpressionScope starts over with the visit: never one item across two visits. */
+    @Test
+    fun anImpressionScopeInsideATrackedScreenStartsOverWhenTheVisitDoes() = runComposeUiTest {
+        val tracker = ImpressionRecordingTracker()
+        var screen by mutableStateOf("A")
+        var shown by mutableStateOf(true)
+        setContent {
+            WithImpressionTracker(tracker) {
+                TrackedScreen(screen) {
+                    ImpressionScope {
+                        if (shown) Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = "card-1", minDurationMs = 0L))
+                    }
+                }
+            }
+        }
+        dwell()
+        shown = false
+        dwell()
+        shown = true
+        dwell()
+        assertEquals(listOf("id-1"), tracker.tracked.map { it.third }, "the scope de-duplicates within the visit")
+
+        screen = "B"
+        dwell()
+        assertEquals(listOf("id-1", "id-2"), tracker.tracked.map { it.third })
+    }
+
     @Test
     fun aScreenVisitStartsItsImpressionsOverOnlyOnARename() {
         val visit = ScreenVisit()

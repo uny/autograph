@@ -159,9 +159,10 @@ AutographProvider(tracker, autocapture = Autocapture()) {
 
 ## Samples
 
-`sample-shared`'s demo composables exercise every snippet above for real — `AutographProvider`,
+`sample-shared`'s demo composables exercise the snippets above for real — `AutographProvider`,
 `Modifier.trackClick`/`trackImpression`, and opt-in `AutocaptureConfig` autocapture — against a
-`LoggingTracker` that prints each event so you can watch them fire as you tap:
+`LoggingTracker` that prints each event so you can watch them fire as you tap. The keyed
+`trackImpression` in a lazy list is the exception: `autograph-compose`'s own tests cover it.
 
 - **Android**: `sample-android`. Run `./gradlew :sample-android:installDebug` and launch it, or
   open the project in Android Studio.
