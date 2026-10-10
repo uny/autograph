@@ -368,6 +368,77 @@ class EventMetadataTest {
         transport.tracked.forEach { assertFalse(RESERVED_METADATA_KEY in it.properties) }
         assertEquals(1, logs.size, "the warning is per tracker, not per event: $logs")
         assertTrue(logs.single().contains("MetadataAwareTransport"), logs.single())
+        assertTrue(logs.single().contains("Wrapping a transport"), "points a wrapper's author at the README: ${logs.single()}")
+    }
+
+    // ---- caller-written wrappers (#302): the README's "Wrapping a transport" contract ----
+
+    /** The README's `RedactingTransport`, with the screen pair it leaves to the reader. */
+    private class RedactingTransport(private val delegate: Transport) : Transport, MetadataAwareTransport {
+        override val stampsInPipeline: Boolean get() = delegate.stampsInPipeline
+        override fun connect(envelopes: EnvelopeSource) = delegate.connect(envelopes)
+        override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) =
+            delegate.identify(userId, traits, envelope)
+        override fun flush() = delegate.flush()
+        override fun reset() = delegate.reset()
+
+        override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) =
+            delegate.track(name, redact(properties), envelope)
+
+        override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) =
+            if (delegate is MetadataAwareTransport) {
+                delegate.track(name, redact(properties), envelope, metadata)
+            } else {
+                delegate.track(name, redact(properties), envelope)
+            }
+
+        override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) =
+            delegate.screen(name, redact(properties), envelope)
+
+        override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) =
+            if (delegate is MetadataAwareTransport) {
+                delegate.screen(name, redact(properties), envelope, metadata)
+            } else {
+                delegate.screen(name, redact(properties), envelope)
+            }
+
+        private fun redact(properties: Map<String, JsonElement>) = properties - "email"
+    }
+
+    @Test
+    fun aReadmeWrapperOverAPipelineTransportRedactsBothRoutesAndKeepsTheMetadata() {
+        val delegate = CapableTransport(stampsInPipeline = true)
+        val tracker = tracker(RedactingTransport(delegate))
+        val email = "email" to JsonPrimitive("a@example.com")
+
+        tracker.track("Recipe Saved", props(email))
+        tracker.track("Button Tapped", props(email, RESERVED_METADATA_KEY to buildJsonObject { put("kind", "click") }))
+        tracker.screen("Home", props(email, RESERVED_METADATA_KEY to screenViewMetadata))
+
+        assertEquals(listOf(null, "click"), delegate.tracked.map { it.metadata?.kind })
+        assertEquals("visit-1", delegate.screened.single().metadata?.screenViewId)
+        (delegate.tracked + delegate.screened).forEach { assertFalse("email" in it.properties, "redacted on every route") }
+    }
+
+    @Test
+    fun aReadmeWrapperOverACoreStampedTransportKeepsTheMetadataOnTheEnvelope() {
+        val delegate = PlainTransport(stampsInPipeline = false)
+
+        tracker(RedactingTransport(delegate)).track("Button Tapped", props(RESERVED_METADATA_KEY to buildJsonObject { put("kind", "click") }))
+
+        assertEquals("click", delegate.tracked.single().envelope?.metadata?.kind)
+    }
+
+    @Test
+    fun aWrapperThatDeclaresTheCapabilityOverAnIncapableDelegateIsTrustedSoTheTrackerDoesNotWarn() {
+        // The README tells a wrapper's author to report the loss themselves; this is why.
+        val delegate = PlainTransport(stampsInPipeline = true)
+        val logs = mutableListOf<String>()
+
+        tracker(RedactingTransport(delegate), logs).track("Button Tapped", props(RESERVED_METADATA_KEY to buildJsonObject { put("kind", "click") }))
+
+        assertEquals("Button Tapped", delegate.tracked.single().name)
+        assertEquals(emptyList(), logs)
     }
 
     @Test

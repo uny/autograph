@@ -718,6 +718,63 @@ val tracker = Autograph {
 The default logger dumps full event properties — don't wrap a production transport with this in a
 release build (gate it behind a debug-build check, or supply a logger that redacts what it prints).
 
+## Wrapping a transport
+
+Reach for the tracker's own hooks first. A key every event needs belongs in
+[`DefaultProperties`](#default-properties), and a rule about which events are allowed belongs in an
+[`EventValidator`](#validation). Both act on the event before the transport sees it. A transport
+wrapper runs after validation, and it has to forward every member by hand. If you do write one, for redaction, sampling
+or logging, these are the details that fail without a compile error:
+
+- **Forward `stampsInPipeline` and `connect`.** A pipeline transport, such as `SegmentTransport` on
+  Android, gets its `EnvelopeSource` in `connect` and stamps every event there. If the wrapper keeps
+  the defaults (`false`, no-op), events go out with no envelope at all: no event id, no session, no
+  sequence. `SegmentTransport.reset()` then fails. The tracker cannot detect this.
+- **Forward `identify`, `flush` and `reset`** as well.
+- **Implement `MetadataAwareTransport` when the delegate stamps in its own pipeline.** For such a
+  transport, an event carrying metadata (its `kind`, an impression's thresholds, its
+  `screen_view_id`) arrives through `MetadataAwareTransport.track` / `screen`, not through
+  `Transport.track` / `screen`. Route both overloads through the same logic exactly once. If the
+  wrapper redacts in one overload and passes the other straight through, every click and impression
+  goes out unredacted.
+- **Pass the envelope through.** On a transport the core stamps for, such as `SegmentTransport` on
+  iOS, the metadata is already on `envelope.metadata`.
+
+```kotlin
+class RedactingTransport(private val delegate: Transport) : Transport, MetadataAwareTransport {
+    override val stampsInPipeline: Boolean get() = delegate.stampsInPipeline
+    override fun connect(envelopes: EnvelopeSource) = delegate.connect(envelopes)
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) =
+        delegate.identify(userId, traits, envelope)
+    override fun flush() = delegate.flush()
+    override fun reset() = delegate.reset()
+
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) =
+        delegate.track(name, redact(properties), envelope)
+
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) =
+        if (delegate is MetadataAwareTransport) {
+            delegate.track(name, redact(properties), envelope, metadata)
+        } else {
+            delegate.track(name, redact(properties), envelope) // the metadata is lost: say so once
+        }
+
+    // screen(...) and screen(..., metadata): the same pair.
+
+    private fun redact(properties: Map<String, JsonElement>) = properties - "email"
+}
+```
+
+A wrapper that does not implement `MetadataAwareTransport` around a pipeline transport still
+delivers every event, without its metadata. The tracker logs this once and names the wrapper. A
+wrapper that declares the interface is trusted. The tracker cannot see whether the wrapper's
+delegate implements it too, so the fallback branch above has to report the loss itself.
+(`DebugTransport` is the exception, because the tracker knows how it forwards.)
+
+Dropping an event in a wrapper (sampling) behaves differently on the two kinds of delegate. A pipeline
+transport has not stamped the event yet, so nothing is consumed. A transport the core stamps for
+receives an envelope that is already stamped, so a dropped event leaves a gap in the sequence numbers.
+
 ## Native surfaces: installing the captures
 
 Compose content is instrumented by `AutographProvider` and needs nothing here. A **native** surface —
