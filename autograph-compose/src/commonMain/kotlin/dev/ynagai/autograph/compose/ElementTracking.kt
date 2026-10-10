@@ -3,10 +3,11 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.clickable
-import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
@@ -17,6 +18,7 @@ import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.withEventMetadata
+import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -119,28 +121,37 @@ public fun Modifier.trackImpression(
     // Without a unit: today's per-instance behaviour, per key.
     var firedHere by remember(impression) { mutableStateOf(false) }
 
-    // `onVisibilityChanged` keeps its visible state and dwell timer across an update, so restarting
-    // the measurement takes a new node. Dropping the modifier for one frame detaches the old one; the
-    // effect then re-adds it, fresh. Initially the two are equal and the node is there at once.
-    val measurement = Measurement(registry, registry?.generation, impression)
-    var measuring by remember { mutableStateOf(measurement) }
-    if (measuring != measurement) {
-        SideEffect { measuring = measurement }
-        Modifier
-    } else {
-        onVisibilityChanged(minDurationMs = minDurationMs, minFractionVisible = minFractionVisible) { visible ->
-            if (!visible) return@onVisibilityChanged
-            if (registry != null) {
-                if (impression in registry) return@onVisibilityChanged
-                tracker.trackImpressionEvent(name, properties, target, minDurationMs, minFractionVisible, screenContext, visit)
-                registry.record(impression)
-            } else if (!firedHere) {
-                tracker.trackImpressionEvent(name, properties, target, minDurationMs, minFractionVisible, screenContext, visit)
-                firedHere = true
-            }
+    // The node reports visibility only; the dwell is timed here, so that a new unit or key restarts
+    // it. `onVisibilityChanged` keeps its visible state and dwell timer across an update, and a fresh
+    // node cannot be forced: Compose reuses any other `onVisibilityChanged` in the chain for it.
+    var visible by remember { mutableStateOf(false) }
+    val generation = registry?.generation
+    val current by rememberUpdatedState(Emission(tracker, properties, target, screenContext, visit))
+    LaunchedEffect(visible, registry, generation, impression) {
+        if (!visible) return@LaunchedEffect
+        delay(minDurationMs)
+        val (tracker, properties, target, screenContext, visit) = current
+        if (registry != null) {
+            // The unit started over during this dwell: the new one restarts it and reports instead.
+            if (registry.generation != generation || impression in registry) return@LaunchedEffect
+            tracker.trackImpressionEvent(name, properties, target, minDurationMs, minFractionVisible, screenContext, visit)
+            registry.record(impression)
+        } else if (!firedHere) {
+            tracker.trackImpressionEvent(name, properties, target, minDurationMs, minFractionVisible, screenContext, visit)
+            firedHere = true
         }
     }
+    onVisibilityChanged(minDurationMs = 0L, minFractionVisible = minFractionVisible) { visible = it }
 }
+
+/** What a keyed impression reads when its dwell ends, not when it began. */
+private data class Emission(
+    val tracker: Tracker,
+    val properties: JsonObject,
+    val target: String?,
+    val screenContext: ScreenContext?,
+    val visit: ScreenVisit?,
+)
 
 /**
  * The `"target"` the event will carry when the call passes no `target` argument: the call's own
@@ -150,9 +161,6 @@ private fun effectiveTarget(properties: JsonObject, tracker: Tracker): String? {
     val entry = if ("target" in properties) properties["target"] else (tracker as? ScopedTracker)?.scope?.get("target")
     return (entry as? JsonPrimitive)?.contentOrNull
 }
-
-/** Everything whose change must restart a keyed impression's visibility measurement. */
-private data class Measurement(val registry: ImpressionRegistry?, val generation: Int?, val impression: ImpressionKey)
 
 /** The one-time warning for a keyed impression with no unit to de-duplicate in. */
 private object NoImpressionUnit {

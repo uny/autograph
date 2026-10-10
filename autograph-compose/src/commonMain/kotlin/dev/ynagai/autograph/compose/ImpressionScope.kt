@@ -25,7 +25,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 @Composable
 public fun ImpressionScope(content: @Composable () -> Unit) {
     val outer = LocalImpressionRegistry.current
-    val registry = remember(outer, outer?.generation) { ImpressionRegistry() }
+    val registry = remember(outer) { ImpressionRegistry(parent = outer) }
     CompositionLocalProvider(LocalImpressionRegistry provides registry, content = content)
 }
 
@@ -33,29 +33,42 @@ public fun ImpressionScope(content: @Composable () -> Unit) {
  * What the keyed `trackImpression` overload has reported within one unit of de-duplication — a
  * [TrackedScreen]'s visit or an [ImpressionScope] — keyed by [ImpressionKey].
  *
- * [generation] advances when the unit starts over (a [TrackedScreen] renamed under the same
- * composition). It is snapshot state on purpose: an element reads it while composing, so a new
- * generation recomposes every keyed element under this registry and restarts its visibility
- * measurement — an element that never leaves the viewport would otherwise never report under the
- * new generation, because `onVisibilityChanged` only calls back on a transition.
+ * [generation] advances when the unit starts over: a [TrackedScreen] renamed under the same
+ * composition, or, for an [ImpressionScope], whatever unit encloses it ([parent]). It moves at once,
+ * inside the visit's `begin`, so a dwell that began under the old generation can tell before it
+ * reports. It is snapshot state on purpose: an element reads it while composing, so a new generation
+ * recomposes every keyed element under this registry and restarts its dwell — an element that never
+ * leaves the viewport would otherwise never report under the new generation.
  *
  * Main-thread only, like the composition and the visibility callbacks that use it.
  */
-internal class ImpressionRegistry {
-    var generation: Int by mutableIntStateOf(0)
-        private set
+internal class ImpressionRegistry(private val parent: ImpressionRegistry? = null) {
+    private var ownGeneration by mutableIntStateOf(0)
+
+    /** Only a [TrackedScreen]'s registry starts over by itself, so a sum moves whenever either does. */
+    val generation: Int get() = ownGeneration + (parent?.generation ?: 0)
 
     private val reported = mutableSetOf<ImpressionKey>()
+    private var reportedIn = generation
 
-    operator fun contains(impression: ImpressionKey): Boolean = impression in reported
+    operator fun contains(impression: ImpressionKey): Boolean = impression in current()
 
     fun record(impression: ImpressionKey) {
-        reported += impression
+        current() += impression
     }
 
     fun startOver() {
-        reported.clear()
-        generation++
+        ownGeneration++
+    }
+
+    /** [reported], emptied first if the unit started over since it was last touched. */
+    private fun current(): MutableSet<ImpressionKey> {
+        val now = generation
+        if (now != reportedIn) {
+            reported.clear()
+            reportedIn = now
+        }
+        return reported
     }
 }
 

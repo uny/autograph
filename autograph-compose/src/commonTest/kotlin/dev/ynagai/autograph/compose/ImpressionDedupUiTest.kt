@@ -271,6 +271,61 @@ class ImpressionDedupUiTest {
         assertEquals(listOf("a", "b"), tracker.tracked.map { it.second })
     }
 
+    @Test
+    fun aKeyChangeRestartsTheMeasurementBesideAnotherVisibilityModifier() = runComposeUiTest {
+        val tracker = ImpressionRecordingTracker()
+        var key by mutableStateOf("a")
+        setContent {
+            WithImpressionTracker(tracker) {
+                ImpressionScope {
+                    Box(
+                        Modifier.size(10.dp)
+                            .trackImpression("Card Viewed", key = key, target = key, minDurationMs = 100L)
+                            .trackImpression("Promo Viewed", key = "fixed", minDurationMs = 100L),
+                    )
+                }
+            }
+        }
+        dwell(150L)
+        key = "b"
+        dwell(150L)
+
+        // Compose reuses a node for any same-class modifier in the chain, so this pins that the
+        // restart does not depend on getting a fresh one.
+        assertEquals(
+            listOf("Card Viewed/a", "Card Viewed/b", "Promo Viewed/null"),
+            tracker.tracked.map { "${it.first}/${it.second}" }.sorted(),
+        )
+    }
+
+    /**
+     * A dwell under way when the visit starts over must not report into the new one: its element
+     * restarts and reports after a fresh dwell. The nested scope is the hard case, since its own
+     * registry never starts over by itself.
+     */
+    @Test
+    fun aDwellUnderWayAtARenameDoesNotReportIntoTheNewVisit() = runComposeUiTest {
+        val tracker = ImpressionRecordingTracker()
+        var screen by mutableStateOf("A")
+        setContent {
+            WithImpressionTracker(tracker) {
+                TrackedScreen(screen) {
+                    ImpressionScope {
+                        Box(Modifier.size(10.dp).trackImpression("Card Viewed", key = "card-1", minDurationMs = 500L))
+                    }
+                }
+            }
+        }
+        dwell(480L)
+        screen = "B"
+        // Recompose for the rename and run the visit's begin, but no further: the old dwell is due now.
+        mainClock.advanceTimeByFrame()
+        mainClock.advanceTimeBy(40L)
+        assertEquals(emptyList(), tracker.tracked, "the old dwell must not report: ${tracker.tracked}")
+        dwell(600L)
+        assertEquals(listOf("id-2"), tracker.tracked.map { it.third })
+    }
+
     /** Outside any unit: per composable instance, as without a key. */
     @Test
     fun withoutAUnitAKeyedImpressionFallsBackToOncePerInstance() = runComposeUiTest {
