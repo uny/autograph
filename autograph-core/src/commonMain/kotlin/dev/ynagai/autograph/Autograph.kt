@@ -400,7 +400,9 @@ internal class AutographTracker(
             val dropping = (transport as? DebugTransport)?.innermostDelegate ?: transport
             report(
                 "Autograph: ${dropping::class.simpleName ?: "the transport"} stamps in its own pipeline but does not implement " +
-                    "MetadataAwareTransport; events are delivered without their metadata (kind, impression thresholds, screen view id)",
+                    "MetadataAwareTransport; events are delivered without their metadata (kind, impression thresholds, screen view id). " +
+                    "A wrapper around a transport that implements it must implement it too and forward the metadata: " +
+                    "see \"Wrapping a transport\" in the README",
             )
         }
     }

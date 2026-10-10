@@ -44,6 +44,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   - `DebugTransport` implements `MetadataAwareTransport` too. It forwards the metadata when its
     delegate does, so wrapping `SegmentTransport` loses nothing. Over a delegate that does not, the
     tracker treats the pair like the delegate alone: one warning through the logger.
+  - **Migration for a `Transport` wrapper you wrote yourself** ([#302]). The wrapper keeps compiling,
+    but it hides the new capability. Around a pipeline transport (`SegmentTransport` on Android) it
+    delivers every event without the new metadata, and the tracker logs that once, naming the
+    wrapper. To carry the metadata, implement `MetadataAwareTransport` too, and route both overloads
+    of `track` and `screen` through the same logic, or the metadata route skips whatever the old
+    overloads do (redaction, for example). The README's new "Wrapping a transport" section has the
+    full list and an example. A wrapper around a transport the core stamps for (`SegmentTransport` on
+    iOS) needs no change, because the metadata is on the envelope it already forwards.
   - `EventMetadata.screenViewId` (`screen_view_id` in `context.instrumentation`) carries the screen
     visit id of [#242].
   - `autograph-test` adds `testEventMetadata(...)` and a `metadata` parameter on `testEnvelope(...)`.
@@ -1855,3 +1863,4 @@ Initial release.
 [#281]: https://github.com/uny/autograph/issues/281
 [#283]: https://github.com/uny/autograph/issues/283
 [#287]: https://github.com/uny/autograph/issues/287
+[#302]: https://github.com/uny/autograph/issues/302
