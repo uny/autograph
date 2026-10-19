@@ -184,7 +184,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 - **Built against Compose Multiplatform 1.12.1, up from 1.12.0** ([#291]). A patch release; a
   consumer on 1.12.0 resolves 1.12.1 through Gradle's highest-version rule. No floor moves: the
   androidx Compose 1.12.1 it resolves to still declares `minCompileSdk=37`, and the README's
-  1.12.0 requirement stands.
+  1.12.0 requirement stands. The cold-device tap check CONTRIBUTING requires for a CMP bump was run
+  on 1.12.1 before this release: on a fresh simulator, verified cold on every press, 4/4 taps
+  attributed correctly and the explicitly tracked one not double-reported.
 
 ### Fixed
 
