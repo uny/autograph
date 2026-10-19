@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-10-19
+
 ### Added
 
 - **Events carry their kind in the envelope instead of their properties** ([#287], [#243]).
@@ -131,7 +133,7 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
     result: the same exposure as `close()`, which also returns only when the shutdown is done. It
     has no timer of its own, so it cannot race the shutdown. This is not because the shutdown is
     bounded: the drain is, but the `Transport.flush()` after it is not and cannot be interrupted
-    (#305), so a transport whose flush blocks holds `close()` and `closeAndAwait()` alike.
+    ([#305]), so a transport whose flush blocks holds `close()` and `closeAndAwait()` alike.
   - `closeAndAwait(timeoutMillis)` bounds that caller's wait, not the shutdown. A caller that times
     out leaves the shutdown running, and a later call reports its outcome. A timeout at or above
     `closeDrainTimeoutMillis` still does not guarantee the final result, because the flush runs
@@ -179,6 +181,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   From 1.0, those member sets are frozen for the major version. A new capability is a separate
   interface the library checks with `is`, which was measured to work for Swift conformers, or a
   value object passed through an existing member.
+- **Built against Compose Multiplatform 1.12.1, up from 1.12.0** ([#291]). A patch release; a
+  consumer on 1.12.0 resolves 1.12.1 through Gradle's highest-version rule. No floor moves: the
+  androidx Compose 1.12.1 it resolves to still declares `minCompileSdk=37`, and the README's
+  1.12.0 requirement stands.
 
 ### Fixed
 
@@ -1755,7 +1761,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/uny/autograph/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/uny/autograph/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/uny/autograph/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/uny/autograph/compare/v0.9.1...v0.10.0
@@ -1863,4 +1870,6 @@ Initial release.
 [#281]: https://github.com/uny/autograph/issues/281
 [#283]: https://github.com/uny/autograph/issues/283
 [#287]: https://github.com/uny/autograph/issues/287
+[#291]: https://github.com/uny/autograph/pull/291
 [#302]: https://github.com/uny/autograph/issues/302
+[#305]: https://github.com/uny/autograph/issues/305
