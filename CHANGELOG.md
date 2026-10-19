@@ -18,6 +18,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `impression` with its `min_duration_ms` and `min_fraction_visible`; the float threshold arrives as
   the decimal you wrote, so `0.3f` is `0.3`. A plain `track` call carries no kind, and neither does
   SwiftUI's `autograph.track(_:)`, because it can be called from a timer as easily as from a touch.
+  The two values are exported as `EventKinds.CLICK` and `EventKinds.IMPRESSION`: string constants
+  rather than an enum, so a later kind is an addition (ADR 0001 §2e).
   `AutographElementCapture` gains `buttonClicked(...)`, the path `AutographButton` now uses. It
   works like this:
   - An emit site puts the metadata under the reserved properties key `__autograph`
@@ -181,10 +183,11 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   From 1.0, those member sets are frozen for the major version. A new capability is a separate
   interface the library checks with `is`, which was measured to work for Swift conformers, or a
   value object passed through an existing member.
-- **Built against Compose Multiplatform 1.12.1, up from 1.12.0** ([#291]). A patch release; a
-  consumer on 1.12.0 resolves 1.12.1 through Gradle's highest-version rule. No floor moves: the
-  androidx Compose 1.12.1 it resolves to still declares `minCompileSdk=37`, and the README's
-  1.12.0 requirement stands. The cold-device tap check CONTRIBUTING requires for a CMP bump was run
+- **Built against Compose Multiplatform 1.12.1, up from 1.12.0** ([#291]). A patch release.
+  The README's requirement stays at 1.12.0 as the version to build against, but Gradle's
+  highest-version rule resolves 1.12.1 for every consumer, so 1.12.1 is the version that runs; a
+  consumer that forces CMP back to 1.12.0 is on an untested combination. No `compileSdk` floor
+  moves: the androidx Compose 1.12.1 it resolves to still declares `minCompileSdk=37`. The cold-device tap check CONTRIBUTING requires for a CMP bump was run
   on 1.12.1 before this release: on a fresh simulator, verified cold on every press, 4/4 taps
   attributed correctly and the explicitly tracked one not double-reported.
 
