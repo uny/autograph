@@ -1,0 +1,45 @@
+diff --git a/sample-shared/src/iosMain/kotlin/dev/ynagai/autograph/sample/MainViewController.kt b/sample-shared/src/iosMain/kotlin/dev/ynagai/autograph/sample/MainViewController.kt
+index 16655f0..b82ead1 100644
+--- a/sample-shared/src/iosMain/kotlin/dev/ynagai/autograph/sample/MainViewController.kt
++++ b/sample-shared/src/iosMain/kotlin/dev/ynagai/autograph/sample/MainViewController.kt
+@@ -1,7 +1,16 @@
+ package dev.ynagai.autograph.sample
+ 
++import androidx.compose.foundation.layout.Box
++import androidx.compose.foundation.layout.fillMaxSize
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.input.pointer.PointerEventPass
++import androidx.compose.ui.input.pointer.pointerInput
++import androidx.compose.ui.uikit.LocalUIView
+ import androidx.compose.ui.window.ComposeUIViewController
++import kotlinx.cinterop.ExperimentalForeignApi
++import kotlinx.cinterop.useContents
+ import platform.UIKit.UIViewController
++import platform.UIKit.accessibilityFrame
+ 
+ /**
+  * Entry point called from `sample-ios/iosApp`'s SwiftUI shell (`ContentView.swift`) via
+@@ -10,5 +19,22 @@ import platform.UIKit.UIViewController
+  * on-device verification; Xcode's generated `Info.plist` shouldn't trigger it, but there's no
+  * reason to find out the hard way twice.
+  */
++// COLD-CHECK PROBE — never commit. Logs the Compose host view's accessibilityFrame on every pointer
++// event: 0.0x0.0 means no accessibility client has warmed the process, so the tap that follows
++// exercised the cold path. A real frame means the simulator is warm and the check proves nothing.
++@OptIn(ExperimentalForeignApi::class)
+ public fun MainViewController(): UIViewController =
+-    ComposeUIViewController(configure = { enforceStrictPlistSanityCheck = false }) { App() }
++    ComposeUIViewController(configure = { enforceStrictPlistSanityCheck = false }) {
++        val host = LocalUIView.current
++        Box(
++            Modifier.fillMaxSize().pointerInput(Unit) {
++                awaitPointerEventScope {
++                    while (true) {
++                        awaitPointerEvent(PointerEventPass.Initial)
++                        val frame = host.accessibilityFrame.useContents { "${size.width}x${size.height}" }
++                        sampleLog("probe hostAxFrame=$frame")
++                    }
++                }
++            },
++        ) { App() }
++    }
