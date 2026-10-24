@@ -197,7 +197,7 @@ private fun Tracker.trackImpressionEvent(
         impressionMinFractionVisible = minFractionVisible.toDecimalDouble(),
         screenViewId = visit?.idFor(screenContext?.screen),
     )
-    track(name, tagged, target)
+    track(name, tagged.deliverableTo(this), target)
 }
 
 /**
