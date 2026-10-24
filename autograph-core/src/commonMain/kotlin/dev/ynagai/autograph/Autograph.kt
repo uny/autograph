@@ -418,7 +418,7 @@ internal class AutographTracker(
      */
     private fun isValid(name: String, properties: JsonObject): Boolean {
         val reason = try {
-            validator?.validate(name, properties) ?: return true
+            validator?.let { it.validate(name, properties.deliverableTo(it)) } ?: return true
         } catch (e: Exception) {
             "validator threw: ${e.message}"
         }

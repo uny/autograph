@@ -40,12 +40,14 @@ final class NestedPropertiesBridgeTests: XCTestCase {
     class RecordingTransport: NSObject, Transport {
         let delivered: XCTestExpectation
         var properties: [String: String]?
+        var throughMetadataOverload: Bool?
         var stampsInPipeline: Bool { false }
 
         init(_ delivered: XCTestExpectation) { self.delivered = delivered }
 
-        func record(_ properties: [String: Kotlinx_serialization_jsonJsonElement]) {
+        func record(_ properties: [String: Kotlinx_serialization_jsonJsonElement], throughMetadataOverload: Bool = false) {
             self.properties = properties.mapValues { String(describing: $0) }
+            self.throughMetadataOverload = throughMetadataOverload
             delivered.fulfill()
         }
 
@@ -61,15 +63,25 @@ final class NestedPropertiesBridgeTests: XCTestCase {
         override var stampsInPipeline: Bool { true }
 
         func track(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement], envelope: Envelope?, metadata: EventMetadata) {
-            record(properties)
+            record(properties, throughMetadataOverload: true)
         }
 
         func screen(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement], envelope: Envelope?, metadata: EventMetadata) {}
     }
 
-    private func track(through tracker: Tracker) {
+    /// A Swift `EventValidator` that accepts everything and keeps what it was shown.
+    final class RecordingValidator: EventValidator {
+        var properties: [String: String]?
+
+        func validate(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement]) -> String? {
+            self.properties = properties.mapValues { String(describing: $0) }
+            return nil
+        }
+    }
+
+    private func track(through tracker: Tracker, on stack: ScopeStack = ScopeStack()) {
         var handle = AutographTracking()
-        handle.capture = AutographElementCapture(tracker: tracker, scopeStack: ScopeStack())
+        handle.capture = AutographElementCapture(tracker: tracker, scopeStack: stack)
         handle.track("nested", propertiesJson: Self.nestedJson)
     }
 
@@ -112,15 +124,36 @@ final class NestedPropertiesBridgeTests: XCTestCase {
         assertNestedValuesArrivedAsJson(transport.properties)
     }
 
+    /// The event must carry metadata to take the `MetadataAwareTransport` path: a screen on the stack
+    /// gives it a screen view id. Without one it would go through `Transport.track` like the row above.
     func testASwiftMetadataAwareTransportReceivesNestedValuesAsJsonText() {
         let transport = MetadataAwareRecordingTransport(expectation(description: "delivered"))
+        let tracker = AutographKt.Autograph { config in
+            config.transport(transport: transport)
+            config.store = InMemorySeqStore()
+        }
+        let stack = ScopeStack()
+        AutographScreenCapture(tracker: tracker, scopeStack: stack).appeared(name: "Detail")
+
+        track(through: tracker, on: stack)
+
+        wait(for: [transport.delivered], timeout: 5)
+        XCTAssertEqual(transport.throughMetadataOverload, true, "the event must reach the metadata overload")
+        assertNestedValuesArrivedAsJson(transport.properties)
+    }
+
+    func testASwiftValidatorSeesNestedValuesAsJsonTextAndTheEventIsDelivered() {
+        let transport = RecordingTransport(expectation(description: "delivered"))
+        let validator = RecordingValidator()
 
         track(through: AutographKt.Autograph { config in
             config.transport(transport: transport)
+            config.validator = validator
             config.store = InMemorySeqStore()
         })
 
         wait(for: [transport.delivered], timeout: 5)
+        assertNestedValuesArrivedAsJson(validator.properties)
         assertNestedValuesArrivedAsJson(transport.properties)
     }
 

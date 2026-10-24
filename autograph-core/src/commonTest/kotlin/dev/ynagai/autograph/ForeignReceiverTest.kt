@@ -82,6 +82,60 @@ class ForeignReceiverTest {
     }
 
     @Test
+    fun aKotlinTrackerIsCallableFromKotlinAsIs() {
+        val tracker = Autograph {
+            transport(RecordingTransport())
+            store = InMemorySeqStore()
+        }
+
+        assertSame(tracker, tracker.callableFromKotlin())
+    }
+
+    /** What `callableFromKotlin` returns for a Swift tracker; driven here with a Kotlin one underneath. */
+    @Test
+    fun aForeignTrackerForwardsEveryCallWithNestedValuesAsJsonText() {
+        val calls = mutableListOf<String>()
+        val received = mutableListOf<Map<String, JsonElement>>()
+        val delegate = object : Tracker {
+            override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
+                calls += "track:$name:$target"
+                received += properties
+            }
+            override fun screen(name: String, properties: Map<String, JsonElement>) {
+                calls += "screen:$name"
+                received += properties
+            }
+            override fun identify(userId: String, traits: Map<String, JsonElement>) {
+                calls += "identify:$userId"
+                received += traits
+            }
+            override fun notifyForeground() { calls += "foreground" }
+            override fun notifyBackground() { calls += "background" }
+            override fun flush() { calls += "flush" }
+            override fun reset() { calls += "reset" }
+            override fun close() { calls += "close" }
+        }
+        val foreign = ForeignTracker(delegate)
+
+        foreign.track("t", nested, "button")
+        foreign.screen("s", nested)
+        foreign.identify("u", nested)
+        foreign.notifyForeground()
+        foreign.notifyBackground()
+        foreign.flush()
+        foreign.reset()
+        foreign.close()
+
+        assertEquals(
+            listOf("track:t:button", "screen:s", "identify:u", "foreground", "background", "flush", "reset", "close"),
+            calls,
+        )
+        // The delegate here is Kotlin, so deliverableTo leaves the values alone: what this pins is that
+        // every properties-bearing call is routed through it, not the flattening (tested above).
+        assertEquals<List<Map<String, JsonElement>>>(List(3) { nested }, received)
+    }
+
+    @Test
     fun nestedValuesBecomeTheirJsonTextAndPrimitivesAreLeftAlone() {
         val flattened = nested.withNestedValuesAsJsonText()
 

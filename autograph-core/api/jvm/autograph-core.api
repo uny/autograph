@@ -162,6 +162,7 @@ public abstract interface class dev/ynagai/autograph/EventValidator {
 }
 
 public final class dev/ynagai/autograph/ForeignReceiverKt {
+	public static final fun callableFromKotlin (Ldev/ynagai/autograph/Tracker;)Ldev/ynagai/autograph/Tracker;
 	public static final fun deliverableTo (Ljava/util/Map;Ljava/lang/Object;)Ljava/util/Map;
 }
 

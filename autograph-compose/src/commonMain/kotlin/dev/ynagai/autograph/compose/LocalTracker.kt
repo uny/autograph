@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.foundation.layout.Box
@@ -11,7 +13,9 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.callableFromKotlin
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
 
@@ -83,8 +87,11 @@ public fun AutographProvider(
     // it, so replacing it here would strand the frames that pipeline reads. Such a caller takes on
     // the lifetime obligation above.
     val effectiveScopeStack = remember(tracker, scopeStack) { scopeStack ?: ScopeStack() }
+    // A Swift tracker cannot take a nested value from Kotlin (#299); this covers the adopter's own
+    // `LocalTracker.current` calls. A Kotlin tracker comes back as is.
+    val provided = remember(tracker) { tracker.callableFromKotlin() }
     CompositionLocalProvider(
-        LocalTracker provides tracker,
+        LocalTracker provides provided,
         LocalScopeStack provides effectiveScopeStack,
     ) {
         // Outside the autocapture branch, like the host registration above, and for a related
