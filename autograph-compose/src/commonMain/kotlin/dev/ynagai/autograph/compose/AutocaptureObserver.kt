@@ -19,6 +19,7 @@ import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.deliverableTo
 import dev.ynagai.autograph.withEventMetadata
 
 /**
@@ -163,7 +164,7 @@ internal fun reportTapIfResolvable(
         // metadata, so its entry under the reserved key is left out before it takes that slot.
         val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY)
             .withEventMetadata(EventKinds.CLICK, screenViewId = ctx.screenViewId)
-        tracker.track(config.eventName, properties, target.identifier)
+        tracker.track(config.eventName, properties.deliverableTo(tracker), target.identifier)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.
     }

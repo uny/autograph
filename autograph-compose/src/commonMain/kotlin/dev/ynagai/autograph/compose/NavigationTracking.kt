@@ -13,6 +13,7 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.startScreenVisit
+import dev.ynagai.autograph.deliverableTo
 import dev.ynagai.autograph.withEventMetadata
 
 /**
@@ -93,7 +94,7 @@ public fun NavController.TrackScreenViews(
                 // The frame already names it: the update above ran first, on this same call.
                 val id = handle[0]?.let { stack.startScreenVisit(it) }
                 val properties = withPreviousScreen(EmptyJsonObject, previous)
-                tracker.screen(name, if (id != null) properties.withEventMetadata(kind = null, screenViewId = id) else properties)
+                tracker.screen(name, (if (id != null) properties.withEventMetadata(kind = null, screenViewId = id) else properties).deliverableTo(tracker))
             }
         }
         // The frame exists by now: the push effect above is declared first, and all DisposableEffects

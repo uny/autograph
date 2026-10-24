@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph
 
 import kotlinx.serialization.json.JsonElement
@@ -44,18 +46,18 @@ public class DebugTransport(
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         val props = properties.asJsonObject()
         logEvent("track", name, props, envelope)
-        delegate.track(name, props, envelope)
+        delegate.track(name, props.deliverableTo(delegate), envelope)
     }
 
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
         val props = properties.asJsonObject()
         logEvent("track", name, props, envelope, metadata)
         if (delegate is MetadataAwareTransport) {
-            delegate.track(name, props, envelope, metadata)
+            delegate.track(name, props.deliverableTo(delegate), envelope, metadata)
         } else {
             // The tracker does not route here for such a delegate (see [metadataReachesDelegate]); a direct
             // caller gets the same outcome it would: the event, without the metadata.
-            delegate.track(name, props, envelope)
+            delegate.track(name, props.deliverableTo(delegate), envelope)
         }
     }
 
@@ -70,24 +72,24 @@ public class DebugTransport(
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         val props = properties.asJsonObject()
         logEvent("screen", name, props, envelope)
-        delegate.screen(name, props, envelope)
+        delegate.screen(name, props.deliverableTo(delegate), envelope)
     }
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
         val props = properties.asJsonObject()
         logEvent("screen", name, props, envelope, metadata)
         if (delegate is MetadataAwareTransport) {
-            delegate.screen(name, props, envelope, metadata)
+            delegate.screen(name, props.deliverableTo(delegate), envelope, metadata)
         } else {
             // As for [track]: the tracker does not route here for such a delegate.
-            delegate.screen(name, props, envelope)
+            delegate.screen(name, props.deliverableTo(delegate), envelope)
         }
     }
 
     override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) {
         val props = traits.asJsonObject()
         logEvent("identify", userId, props, envelope)
-        delegate.identify(userId, props, envelope)
+        delegate.identify(userId, props.deliverableTo(delegate), envelope)
     }
 
     override fun flush() {

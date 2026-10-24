@@ -161,6 +161,10 @@ public abstract interface class dev/ynagai/autograph/EventValidator {
 	public abstract fun validate (Ljava/lang/String;Ljava/util/Map;)Ljava/lang/String;
 }
 
+public final class dev/ynagai/autograph/ForeignReceiverKt {
+	public static final fun deliverableTo (Ljava/util/Map;Ljava/lang/Object;)Ljava/util/Map;
+}
+
 public final class dev/ynagai/autograph/InMemorySeqStore : dev/ynagai/autograph/SeqStore {
 	public fun <init> ()V
 	public fun flush ()V

@@ -8,6 +8,7 @@ import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.deliverableTo
 import dev.ynagai.autograph.withEventMetadata
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -147,7 +148,7 @@ public class AutographElementCapture(
             if (kind != null || context.screenViewId != null) {
                 result = result.withEventMetadata(kind, screenViewId = context.screenViewId)
             }
-            tracker.track(name, result, target)
+            tracker.track(name, result.deliverableTo(tracker), target)
         } catch (_: Throwable) {
             // Never unwind into Swift. A dropped event is recoverable; a crash in someone's app
             // because their analytics failed is not.

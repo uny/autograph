@@ -17,6 +17,7 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.Tracker
+import dev.ynagai.autograph.deliverableTo
 import dev.ynagai.autograph.withEventMetadata
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.JsonObject
@@ -218,7 +219,7 @@ public fun Modifier.trackClick(
     clickable {
         val tagged = withScreenContext(properties, screenContext)
             .withEventMetadata(EventKinds.CLICK, screenViewId = visit?.idFor(screenContext?.screen))
-        tracker.track(name, tagged, target)
+        tracker.track(name, tagged.deliverableTo(tracker), target)
         // After the explicit event is recorded and before the caller's handler, because the mark's
         // whole meaning is "this tap already produced an event, so autocapture must not add one".
         // If `track` throws there is no explicit event, the mark never happens, and autocapture

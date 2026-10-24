@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
@@ -10,6 +12,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
@@ -17,6 +20,7 @@ import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.AmbientContext
 import dev.ynagai.autograph.context.ScopeHandle
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.deliverableTo
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -341,14 +345,14 @@ internal class ScopedTracker(
 ) : Tracker {
 
     override fun track(name: String, properties: Map<String, JsonElement>, target: String?): Unit =
-        delegate.track(name, mergeScope(scope, properties), target)
+        delegate.track(name, mergeScope(scope, properties).deliverableTo(delegate), target)
 
     override fun screen(name: String, properties: Map<String, JsonElement>): Unit =
-        delegate.screen(name, mergeScope(scope, properties))
+        delegate.screen(name, mergeScope(scope, properties).deliverableTo(delegate))
 
     // Traits describe the user, not the screen — the scope is deliberately not applied.
     override fun identify(userId: String, traits: Map<String, JsonElement>): Unit =
-        delegate.identify(userId, traits)
+        delegate.identify(userId, traits.deliverableTo(delegate))
 
     override fun notifyForeground(): Unit = delegate.notifyForeground()
     override fun notifyBackground(): Unit = delegate.notifyBackground()
