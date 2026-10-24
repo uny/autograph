@@ -13,6 +13,7 @@ import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.context.ScreenHistory
 import dev.ynagai.autograph.context.startScreenVisit
+import dev.ynagai.autograph.deliverableTo
 import dev.ynagai.autograph.withEventMetadata
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -128,7 +129,7 @@ private fun EmitScreenView(
         val id = frame?.get(0)?.let { stack.startScreenVisit(it, screen = name) }
         visit?.begin(name, id)
         val withPrevious = withPreviousScreen(properties, previous)
-        tracker.screen(name, if (id != null) withPrevious.withEventMetadata(kind = null, screenViewId = id) else withPrevious)
+        tracker.screen(name, (if (id != null) withPrevious.withEventMetadata(kind = null, screenViewId = id) else withPrevious).deliverableTo(tracker))
     }
 }
 

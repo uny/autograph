@@ -8,6 +8,22 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A `Tracker` or `Transport` implemented in Swift no longer crashes on an event with a nested
+  object or array value** ([#299]). Kotlin/Native hands such a value to Swift as an `NSDictionary`
+  or `NSArray` instead of a `JsonElement`, and Swift casts every value as the call enters it, so the
+  process trapped before the conformer's body ran, whether or not it read the value. Autograph now
+  replaces each nested value with its JSON text when the receiver is written in Swift or
+  Objective-C: in the tracker's delivery to its transport (`DebugTransport` included) and to its
+  `EventValidator`, at every call the Compose, native and SwiftUI captures make on a tracker, and in
+  `LocalTracker.current`, which `AutographProvider` now provides as a Kotlin stand-in when it is
+  given a Swift tracker (it keeps `AwaitableCloseTracker` when the Swift tracker adopts it). A Swift
+  conformer can decode the text with `JSONSerialization`, but nothing marks it as encoded, so a string
+  value holding the same JSON text arrives identically. A Kotlin
+  tracker, transport or validator still receives the objects and arrays themselves. Other Kotlin
+  code that calls a Swift tracker or transport directly is not covered.
+
 ## [0.12.0] - 2026-10-19
 
 ### Added
@@ -1876,5 +1892,6 @@ Initial release.
 [#283]: https://github.com/uny/autograph/issues/283
 [#287]: https://github.com/uny/autograph/issues/287
 [#291]: https://github.com/uny/autograph/pull/291
+[#299]: https://github.com/uny/autograph/issues/299
 [#302]: https://github.com/uny/autograph/issues/302
 [#305]: https://github.com/uny/autograph/issues/305

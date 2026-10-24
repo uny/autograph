@@ -1,3 +1,5 @@
+@file:OptIn(AutographInternalApi::class)
+
 package dev.ynagai.autograph
 
 import kotlinx.coroutines.CompletableDeferred
@@ -313,8 +315,8 @@ internal class AutographTracker(
         val delivered = withTarget(props, target)
         deliverWithMetadata(
             metadata,
-            plain = { transport.track(name, delivered, it) },
-            aware = { envelope, meta -> track(name, delivered, envelope, meta) },
+            plain = { transport.track(name, delivered.deliverableTo(transport), it) },
+            aware = { envelope, meta -> track(name, delivered.deliverableTo(this), envelope, meta) },
         )
     }
 
@@ -323,8 +325,8 @@ internal class AutographTracker(
         if (!isValid(name, props)) return
         deliverWithMetadata(
             metadata,
-            plain = { transport.screen(name, props, it) },
-            aware = { envelope, meta -> screen(name, props, envelope, meta) },
+            plain = { transport.screen(name, props.deliverableTo(transport), it) },
+            aware = { envelope, meta -> screen(name, props.deliverableTo(this), envelope, meta) },
         )
     }
 
@@ -416,7 +418,7 @@ internal class AutographTracker(
      */
     private fun isValid(name: String, properties: JsonObject): Boolean {
         val reason = try {
-            validator?.validate(name, properties) ?: return true
+            validator?.let { it.validate(name, properties.deliverableTo(it)) } ?: return true
         } catch (e: Exception) {
             "validator threw: ${e.message}"
         }
@@ -432,7 +434,7 @@ internal class AutographTracker(
     // track/screen snapshot eagerly above for the same reason.
     override fun identify(userId: String, traits: Map<String, JsonElement>) {
         val snapshot = traits.asJsonObject()
-        deliver { transport.identify(userId, snapshot, it) }
+        deliver { transport.identify(userId, snapshot.deliverableTo(transport), it) }
     }
 
     // Lifecycle/control calls are infrequent (not per-event) and stay synchronous. notifyBackground

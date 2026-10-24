@@ -739,6 +739,11 @@ for redaction, sampling or logging, these are the details that fail without a co
   goes out unredacted.
 - **Pass the envelope through.** On a transport the core stamps for, such as `SegmentTransport` on
   iOS, the metadata is already on `envelope.metadata`.
+- **Do not forward nested values to a delegate written in Swift.** A transport or tracker
+  implemented in Swift cannot receive a nested object or array value: the call crashes before its
+  body runs. Autograph replaces each one with its JSON text before it calls a Swift transport, and
+  `DebugTransport` does the same for a Swift delegate, but your own Kotlin wrapper calls its delegate
+  directly. If that delegate can be a Swift object, encode nested values as strings in the wrapper.
 
 ```kotlin
 class RedactingTransport(private val delegate: Transport) : Transport, MetadataAwareTransport {
