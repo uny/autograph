@@ -18,7 +18,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Objective-C: in the tracker's delivery to its transport (`DebugTransport` included) and to its
   `EventValidator`, at every call the Compose, native and SwiftUI captures make on a tracker, and in
   `LocalTracker.current`, which `AutographProvider` now provides as a Kotlin stand-in when it is
-  given a Swift tracker. A Swift conformer can decode the text with `JSONSerialization`. A Kotlin
+  given a Swift tracker (it keeps `AwaitableCloseTracker` when the Swift tracker adopts it). A Swift
+  conformer can decode the text with `JSONSerialization`, but nothing marks it as encoded, so a string
+  value holding the same JSON text arrives identically. A Kotlin
   tracker, transport or validator still receives the objects and arrays themselves. Other Kotlin
   code that calls a Swift tracker or transport directly is not covered.
 

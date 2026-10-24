@@ -157,6 +157,54 @@ final class NestedPropertiesBridgeTests: XCTestCase {
         assertNestedValuesArrivedAsJson(transport.properties)
     }
 
+    /// A Swift tracker that also adopts `AwaitableCloseTracker`, by forwarding to an `Autograph { }`
+    /// tracker — the configuration ADR 0001 measured as supported.
+    final class AwaitableSwiftTracker: Tracker, AwaitableCloseTracker {
+        let real: Tracker
+
+        init(_ real: Tracker) { self.real = real }
+
+        func track(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement], target: String?) {}
+        func screen(name: String, properties: [String: Kotlinx_serialization_jsonJsonElement]) {}
+        func identify(userId: String, traits: [String: Kotlinx_serialization_jsonJsonElement]) {}
+        func close() {}
+        func flush() {}
+        func reset() {}
+        func notifyForeground() {}
+        func notifyBackground() {}
+
+        func closeAndAwait(timeoutMillis: Int64) async throws -> CloseResult {
+            try await (real as! AwaitableCloseTracker).closeAndAwait(timeoutMillis: timeoutMillis)
+        }
+    }
+
+    /// The stand-in `AutographProvider` puts in `LocalTracker` for a Swift tracker must not hide
+    /// `AwaitableCloseTracker`: `closeAndAwait` probes it with `is`, so losing it turns a working close
+    /// into `Unsupported`.
+    func testTheStandInForASwiftTrackerKeepsAwaitableClose() async throws {
+        let swift = AwaitableSwiftTracker(AutographKt.Autograph { config in
+            config.transport(transport: RecordingTransport(XCTestExpectation(description: "unused")))
+            config.store = InMemorySeqStore()
+        })
+
+        let standIn = ForeignReceiverKt.callableFromKotlin(swift)
+        let result = try await AwaitableCloseKt.closeAndAwait(standIn, timeoutMillis: 1_000)
+
+        XCTAssertFalse(standIn === swift, "a Swift tracker must be replaced by the Kotlin stand-in")
+        XCTAssertTrue(standIn is AwaitableCloseTracker)
+        XCTAssertFalse(result.isUnsupported, "closeAndAwait must reach the Swift tracker's implementation")
+    }
+
+    /// A Swift tracker without the capability gets a stand-in without it.
+    func testTheStandInForAPlainSwiftTrackerDoesNotClaimAwaitableClose() {
+        let swift = RecordingTracker()
+
+        let standIn = ForeignReceiverKt.callableFromKotlin(swift)
+
+        XCTAssertFalse(standIn === swift)
+        XCTAssertFalse(standIn is AwaitableCloseTracker)
+    }
+
     /// `DebugTransport` is Kotlin, so the core hands it real objects; it must flatten them itself before
     /// calling a Swift delegate.
     func testASwiftTransportUnderDebugTransportReceivesNestedValuesAsJsonText() {

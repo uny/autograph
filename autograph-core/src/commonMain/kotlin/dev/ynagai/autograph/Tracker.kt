@@ -21,8 +21,10 @@ import kotlinx.serialization.json.JsonObject
  * **A tracker implemented in Swift receives a nested object or array value as its JSON text** (#299).
  * Kotlin/Native cannot hand such a value to Swift as a `JsonElement`, and the call would crash, so
  * every call Autograph makes on a Swift tracker replaces it first, and so does `LocalTracker.current`
- * under `AutographProvider`; decode it with `JSONSerialization`. Other Kotlin code that calls a Swift
- * tracker directly gets no such replacement, so keep nested values out of those calls.
+ * under `AutographProvider`; decode it with `JSONSerialization`, but only for a key you know carries a
+ * nested value, because nothing marks the text as encoded: a string value holding the same JSON text
+ * arrives identically. Other Kotlin code that calls a Swift tracker directly gets no such
+ * replacement, so keep nested values out of those calls.
  */
 public interface Tracker {
 

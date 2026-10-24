@@ -1,6 +1,7 @@
 package dev.ynagai.autograph
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -14,6 +15,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
 import kotlin.test.assertSame
+import kotlin.test.assertTrue
 
 /**
  * The Kotlin half of #299: a receiver written in Kotlin keeps getting real nested objects and arrays,
@@ -133,6 +135,21 @@ class ForeignReceiverTest {
         // The delegate here is Kotlin, so deliverableTo leaves the values alone: what this pins is that
         // every properties-bearing call is routed through it, not the flattening (tested above).
         assertEquals<List<Map<String, JsonElement>>>(List(3) { nested }, received)
+    }
+
+    /** A stand-in for a delegate that adopts [AwaitableCloseTracker] must keep that capability. */
+    @Test
+    fun anAwaitableForeignTrackerForwardsCloseAndAwait() = runBlocking {
+        val real = Autograph {
+            transport(RecordingTransport())
+            store = InMemorySeqStore()
+        }
+        val standIn: Tracker = AwaitableForeignTracker(real, real as AwaitableCloseTracker)
+
+        val result = standIn.closeAndAwait(1_000)
+
+        assertFalse(result.isUnsupported, "closeAndAwait must reach the delegate, not report Unsupported")
+        assertTrue(result.waitCompleted)
     }
 
     @Test
