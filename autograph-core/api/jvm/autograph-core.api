@@ -302,7 +302,6 @@ public final class dev/ynagai/autograph/TransportEvent {
 	public final fun getName ()Ljava/lang/String;
 	public final fun getProperties ()Ljava/util/Map;
 	public final fun getType ()Ljava/lang/String;
-	public fun toString ()Ljava/lang/String;
 	public final fun withProperties (Ljava/util/Map;)Ldev/ynagai/autograph/TransportEvent;
 }
 

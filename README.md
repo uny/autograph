@@ -749,6 +749,11 @@ to the transport underneath. The transform runs after validation, on the caller'
 pipeline transport and on the tracker's dispatcher otherwise, so keep it thread-safe and fast. A
 transform that throws drops the event, and the tracker logs it like a failing transport.
 
+Two things it does not do. A wrapper your app wrote is not looked through, so `intercept` over one
+that does not implement `MetadataAwareTransport` cannot bring the metadata back. And a `track` event's
+properties already hold the reserved `target` key, so a transform that keeps only known keys has to
+keep `target` too.
+
 `intercept` is hidden from Swift, because a Swift closure would receive the properties as a
 `[String: JsonElement]` dictionary and crash on a nested value ([#299](https://github.com/uny/autograph/issues/299)).
 

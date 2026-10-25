@@ -22,8 +22,10 @@ import kotlin.native.HiddenFromObjC
  * [EventMetadata] is transformed like any other and keeps its metadata. It implements
  * [MetadataAwareTransport] exactly when this transport does (looking through [DebugTransport] and other
  * `intercept` layers), so the tracker warns about a lost capability once and names the transport that
- * loses it, as it does for this transport unwrapped. A delegate written in Swift receives nested values
- * as their JSON text, as it does from the tracker itself (#299).
+ * loses it, as it does for this transport unwrapped. A wrapper your app wrote is not looked through:
+ * over one that does not implement [MetadataAwareTransport], events lose their metadata as they did
+ * before. A delegate written in Swift receives nested values as their JSON text, as it does from the
+ * tracker itself (#299).
  *
  * Reach for the tracker's own hooks first: a key every event needs belongs in [DefaultProperties], and
  * a rule about which events are allowed belongs in [AutographConfig.validator]. Both run before this.
@@ -32,7 +34,9 @@ import kotlin.native.HiddenFromObjC
  * [TransportEvent]. Only the properties of the event [transform] returns are read: the type and name
  * (the user id, for `identify`) cannot change, and the [Envelope] and [EventMetadata] travel past
  * [transform] untouched. [transform] runs after [AutographConfig.validator], so what it returns is not
- * validated again.
+ * validated again. A `track` event's properties already hold the reserved `target` key the tracker adds
+ * for an element, so a transform that keeps only known keys has to keep `target` too. A
+ * [RESERVED_METADATA_KEY] in what it returns is removed, as the tracker removes it from every event.
  *
  * **Dropping an event.** On a transport the core stamps for (`stampsInPipeline == false`, such as
  * `SegmentTransport` on iOS) the envelope was stamped before [transform] runs, so a dropped event
@@ -71,8 +75,6 @@ public class TransportEvent internal constructor(
 ) {
     /** This event with [properties] in place of its own. */
     public fun withProperties(properties: Map<String, JsonElement>): TransportEvent = TransportEvent(type, name, properties)
-
-    override fun toString(): String = "TransportEvent(type=$type, name=$name, properties=$properties)"
 }
 
 /**
@@ -134,28 +136,30 @@ internal open class InterceptingTransport(
     /** The properties [transform] returns for this event, ready for [delegate], or null to drop it. */
     protected fun transformed(type: String, name: String, properties: Map<String, JsonElement>): Map<String, JsonElement>? {
         val event = transform(TransportEvent(type, name, properties.asJsonObject())) ?: return null
-        return event.properties.asJsonObject().deliverableTo(delegate)
+        return (event.properties.asJsonObject() - RESERVED_METADATA_KEY).asJsonObject().deliverableTo(delegate)
     }
 }
 
 /**
  * The [InterceptingTransport] for a delegate that can take an event's metadata. Chosen at construction,
- * because a wrapper chain is immutable: the capability is declared exactly when it is real.
+ * because a wrapper chain is immutable: the capability is declared exactly when it is real. [intercept]
+ * builds it only when [innermost] is metadata-aware, which every layer above it then is too
+ * ([DebugTransport] always, an `intercept` layer by this same rule), so [delegate] is one.
  */
 internal class MetadataAwareInterceptingTransport(
     delegate: Transport,
     transform: (TransportEvent) -> TransportEvent?,
 ) : InterceptingTransport(delegate, transform), MetadataAwareTransport {
 
+    private val aware = delegate as MetadataAwareTransport
+
     override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
         val props = transformed(TransportEventTypes.TRACK, name, properties) ?: return
-        val aware = delegate as? MetadataAwareTransport
-        if (aware != null) aware.track(name, props, envelope, metadata) else delegate.track(name, props, envelope)
+        aware.track(name, props, envelope, metadata)
     }
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) {
         val props = transformed(TransportEventTypes.SCREEN, name, properties) ?: return
-        val aware = delegate as? MetadataAwareTransport
-        if (aware != null) aware.screen(name, props, envelope, metadata) else delegate.screen(name, props, envelope)
+        aware.screen(name, props, envelope, metadata)
     }
 }

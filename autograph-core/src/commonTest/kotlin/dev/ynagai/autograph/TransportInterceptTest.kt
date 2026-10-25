@@ -239,6 +239,25 @@ class TransportInterceptTest {
     }
 
     @Test
+    fun aReservedMetadataKeyTheTransformAddsIsRemoved() {
+        val delegate = PlainTransport(stampsInPipeline = false)
+
+        tracker(delegate.intercept { it.withProperties(it.properties + click) }).track("Recipe Saved")
+
+        assertFalse(RESERVED_METADATA_KEY in delegate.tracked.single().properties)
+    }
+
+    @Test
+    fun aTrackEventsPropertiesIncludeTheReservedTarget() {
+        val delegate = PlainTransport(stampsInPipeline = false)
+        var seen: Map<String, JsonElement>? = null
+
+        tracker(delegate.intercept { seen = it.properties; it }).track("Button Tapped", props(), target = "save")
+
+        assertEquals(JsonPrimitive("save"), seen?.get("target"))
+    }
+
+    @Test
     fun aKotlinDelegateStillReceivesNestedValuesAsObjects() {
         val delegate = PlainTransport(stampsInPipeline = false)
         val nested = buildJsonObject { put("b", 1) }

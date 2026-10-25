@@ -287,7 +287,6 @@ final class dev.ynagai.autograph/TransportEvent { // dev.ynagai.autograph/Transp
     final val type // dev.ynagai.autograph/TransportEvent.type|{}type[0]
         final fun <get-type>(): kotlin/String // dev.ynagai.autograph/TransportEvent.type.<get-type>|<get-type>(){}[0]
 
-    final fun toString(): kotlin/String // dev.ynagai.autograph/TransportEvent.toString|toString(){}[0]
     final fun withProperties(kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>): dev.ynagai.autograph/TransportEvent // dev.ynagai.autograph/TransportEvent.withProperties|withProperties(kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
 }
 
