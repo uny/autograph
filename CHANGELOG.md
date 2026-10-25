@@ -23,7 +23,13 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   because a Swift closure would receive the properties as a `[String: JsonElement]` dictionary and
   crash on a nested value. A dropped event leaves a gap in `seq` on a transport the core stamps for
   (`SegmentTransport` on iOS), and none on a pipeline transport (`SegmentTransport` on Android).
-  The README's "Wrapping a transport" section now leads with it.
+  Through the tracker, an identity transform changes nothing a transport receives: a reserved
+  `__autograph` key the transform adds to a track or screen event is removed, and identify traits
+  are passed on as returned. A transform that throws counts in `CloseResult.failedHandOffs`; a
+  `null` drop does not. `DebugTransport(transport).intercept(...)` logs what is sent, and
+  `DebugTransport(transport.intercept(...))` logs it before the transform. ADR 0001 §2g records how a
+  declaration hidden from Swift is covered. The README's "Wrapping a transport" section now leads
+  with it.
 
 ### Fixed
 

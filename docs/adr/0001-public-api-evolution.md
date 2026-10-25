@@ -295,6 +295,18 @@ Stateless entry points — the `Autograph { }` builder function, `EventId`, `Emp
 function or `object` member beside them is additive; changing an existing signature is a
 break, with no rule beyond that.
 
+#### 2g. Declarations hidden from Swift
+
+`Transport.intercept`, `TransportEvent` and `TransportEventTypes` carry `@HiddenFromObjC`, the first
+use of it in this project. Kotlin-only for 0.13.0 was the owner's decision (2026-10-25, #302): a
+Swift closure would receive `TransportEvent.properties` as a `[String: JsonElement]` dictionary and
+trap on a nested value (#299). A hidden declaration is still in the JVM and klib dumps, so it is
+frozen for Kotlin/JVM and Kotlin/Native consumers exactly as its category above says. It is absent
+from the Objective-C header, so the Swift source-compatibility promise does not cover it. Swift
+support, if it comes, is a separate Swift-safe entry point added beside it, not the annotation
+removed: removing it would export the same trap. Revisit this when the 1.0 Swift protocol that
+#299 left open is designed.
+
 ### 3. The wire format is versioned separately from the ABI
 
 The JSON the envelope serializes to (`Envelope.toJson`) is a *downstream* contract —

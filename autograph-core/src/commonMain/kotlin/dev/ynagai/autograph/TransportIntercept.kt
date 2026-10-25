@@ -3,6 +3,7 @@
 package dev.ynagai.autograph
 
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
 import kotlin.experimental.ExperimentalObjCRefinement
 import kotlin.native.HiddenFromObjC
 
@@ -28,15 +29,20 @@ import kotlin.native.HiddenFromObjC
  * tracker itself (#299).
  *
  * Reach for the tracker's own hooks first: a key every event needs belongs in [DefaultProperties], and
- * a rule about which events are allowed belongs in [AutographConfig.validator]. Both run before this.
+ * a rule about which events are allowed belongs in [AutographConfig.validator]. Both run before this,
+ * for `track` and `screen` (the tracker applies neither to `identify`).
  *
- * **What [transform] sees and may change.** Each `track`, `screen` and `identify` call becomes one
- * [TransportEvent]. Only the properties of the event [transform] returns are read: the type and name
+ * **What [transform] sees and may change.** Each `track`, `screen` and `identify` call the tracker
+ * hands to this transport becomes one [TransportEvent]; an event the validator rejected, or one sent
+ * after the tracker closed, never reaches it. Only the properties of the event [transform] returns are read: the type and name
  * (the user id, for `identify`) cannot change, and the [Envelope] and [EventMetadata] travel past
  * [transform] untouched. [transform] runs after [AutographConfig.validator], so what it returns is not
  * validated again. A `track` event's properties already hold the reserved `target` key the tracker adds
  * for an element, so a transform that keeps only known keys has to keep `target` too. A
- * [RESERVED_METADATA_KEY] in what it returns is removed, as the tracker removes it from every event.
+ * [RESERVED_METADATA_KEY] the transform adds to a `track` or `screen` event is removed, because the
+ * tracker promises a transport those properties without it ([MetadataAwareTransport]); `identify`
+ * traits are handed on as returned, as the tracker hands them on unwrapped. Through the tracker, an
+ * identity transform (`intercept { it }`) changes nothing a transport receives.
  *
  * **Dropping an event.** On a transport the core stamps for (`stampsInPipeline == false`, such as
  * `SegmentTransport` on iOS) the envelope was stamped before [transform] runs, so a dropped event
@@ -44,10 +50,18 @@ import kotlin.native.HiddenFromObjC
  * for it, so it leaves none. A warehouse that reads `seq` gaps as loss counts sampled events as lost
  * on the first kind only.
  *
- * **Threading.** [transform] runs on the caller's thread for a pipeline transport and on the tracker's
- * serial dispatcher otherwise, so it must be thread-safe and fast. If it throws, the event is not
- * delivered and the tracker reports the failure through [AutographConfig.logger], as it does for a
- * transport that throws.
+ * **Logging.** [DebugTransport] logs what reaches it. To log what this transport sends, put it inside:
+ * `DebugTransport(delegate).intercept(redact)` logs the properties after [transform];
+ * `DebugTransport(delegate.intercept(redact))` logs them before, unredacted. The event name, the user id
+ * and the metadata are outside [transform]'s reach either way.
+ *
+ * **Threading and lifetime.** [transform] runs on the caller's thread for a pipeline transport and on
+ * the tracker's serial dispatcher otherwise, so it must be thread-safe and fast. The returned transport
+ * holds [transform], and everything it captures, for as long as the transport itself is held, which is
+ * usually the life of the process: do not capture an Activity or a view. If [transform] throws, the
+ * event is not delivered, and the tracker reports the failure through [AutographConfig.logger] and
+ * counts it in [CloseResult.failedHandOffs], as it does for a transport that throws. A `null` return is
+ * a deliberate drop and is not counted.
  *
  * Kotlin only: hidden from Swift and Objective-C. A Swift closure would receive [TransportEvent.properties]
  * as a `[String: JsonElement]` dictionary and trap on a nested value (#299).
@@ -136,7 +150,14 @@ internal open class InterceptingTransport(
     /** The properties [transform] returns for this event, ready for [delegate], or null to drop it. */
     protected fun transformed(type: String, name: String, properties: Map<String, JsonElement>): Map<String, JsonElement>? {
         val event = transform(TransportEvent(type, name, properties.asJsonObject())) ?: return null
-        return (event.properties.asJsonObject() - RESERVED_METADATA_KEY).asJsonObject().deliverableTo(delegate)
+        val returned = event.properties.asJsonObject()
+        // Keyed on the call's own type, never the returned event's, which is ignored.
+        val stripped = if (type != TransportEventTypes.IDENTIFY && RESERVED_METADATA_KEY in returned) {
+            JsonObject(returned - RESERVED_METADATA_KEY)
+        } else {
+            returned
+        }
+        return stripped.deliverableTo(delegate)
     }
 }
 

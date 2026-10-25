@@ -739,22 +739,32 @@ val tracker = Autograph {
 }
 ```
 
-Each `track`, `screen` and `identify` call reaches the transform once as a `TransportEvent`, with its
-`type`, its `name` (the user id, for `identify`) and its `properties`. Return the event with new
+Each `track`, `screen` and `identify` call the tracker delivers to the transport reaches the
+transform once as a `TransportEvent`, with its `type`, its `name` (the user id, for `identify`) and
+its `properties`. An event the validator rejected never reaches it. Return the event with new
 properties, or `null` to drop it. The type and name cannot change, and the envelope and the event's
 metadata (its `kind`, an impression's thresholds, its `screen_view_id`) pass by untouched. The
 returned transport forwards everything else. It keeps the metadata wherever the transport underneath
 can take it: on the envelope for a transport the core stamps for, and on both delivery routes for a
 pipeline transport that implements `MetadataAwareTransport`. Over a pipeline transport that does not,
 the metadata is lost as it is without `intercept`, and the tracker's one warning sees through to name
-that transport. A delegate written in Swift gets nested values as JSON text. The transform runs after validation, on the caller's thread for a
-pipeline transport and on the tracker's dispatcher otherwise, so keep it thread-safe and fast. A
-transform that throws drops the event, and the tracker logs it like a failing transport.
+that transport. A delegate written in Swift gets nested values as JSON text. The transform runs after
+validation, on the caller's thread for a pipeline transport and on the tracker's dispatcher
+otherwise, so keep it thread-safe and fast. The transport holds the transform, and whatever it
+captures, for as long as the transport is held (usually the life of the process), so do not capture
+an Activity or a view. A transform that throws drops the event, and the tracker logs it and counts
+it in `CloseResult.failedHandOffs`, like a failing transport. Returning `null` is not counted.
+
+To see what the transport is sent, put `DebugTransport` inside: `DebugTransport(transport).intercept(redact)`
+logs the properties after the transform. `DebugTransport(transport.intercept(redact))` logs them
+before it, unredacted. The event name, the user id and the metadata are logged either way.
 
 Two things it does not do. A wrapper your app wrote is not looked through, so `intercept` over one
 that does not implement `MetadataAwareTransport` cannot bring the metadata back. And a `track` event's
 properties already hold the reserved `target` key, so a transform that keeps only known keys has to
-keep `target` too.
+keep `target` too. A `__autograph` key the transform adds to a `track` or `screen` event is
+removed, as the tracker removes it. `identify` traits are passed on as returned, so an identity
+transform (`intercept { it }`) changes nothing the transport receives.
 
 `intercept` is hidden from Swift, because a Swift closure would receive the properties as a
 `[String: JsonElement]` dictionary and crash on a nested value ([#299](https://github.com/uny/autograph/issues/299)).

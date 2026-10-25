@@ -378,16 +378,14 @@ internal class AutographTracker(
 
     /**
      * This transport as the receiver of an event's metadata, or null when the metadata would not reach
-     * the transport that stamps it. A [DebugTransport] declares the capability so it never hides it, but
-     * forwards metadata only to a delegate that has it too; looking through it here keeps the wrapped
-     * and unwrapped configurations warning the same way, once, through [logger]. An [intercept] layer
-     * needs no case of its own: it declares the capability exactly when its delegate has it.
+     * the transport that stamps it. The question is asked of [innermost]: a [DebugTransport] declares the
+     * capability so it never hides it, but forwards metadata only to a delegate that has it too, and an
+     * [intercept] layer declares it exactly when the transport underneath has it. Looking through both
+     * keeps the wrapped and unwrapped configurations warning the same way, once, through [logger]. The
+     * event is still delivered to this outermost transport, so every wrapper sees it.
      */
-    private fun Transport.metadataSink(): MetadataAwareTransport? = when (this) {
-        is DebugTransport -> takeIf { metadataReachesDelegate }
-        is MetadataAwareTransport -> this
-        else -> null
-    }
+    private fun Transport.metadataSink(): MetadataAwareTransport? =
+        takeIf { innermost() is MetadataAwareTransport } as? MetadataAwareTransport
 
     /**
      * Logs, once per tracker, that a pipeline transport which is not a [MetadataAwareTransport] is

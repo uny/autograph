@@ -1,6 +1,7 @@
 package dev.ynagai.autograph
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -235,16 +236,76 @@ class TransportInterceptTest {
 
             assertEquals(emptyList(), delegate.tracked)
             assertTrue(logs.any { "boom" in it }, logs.toString())
+            assertEquals(1, runBlocking { tracker.closeAndAwait() }.failedHandOffs)
         }
     }
 
     @Test
-    fun aReservedMetadataKeyTheTransformAddsIsRemoved() {
-        val delegate = PlainTransport(stampsInPipeline = false)
+    fun aDeliberateDropIsNotAFailedHandOff() {
+        for (pipeline in listOf(false, true)) {
+            val tracker = tracker(PlainTransport(stampsInPipeline = pipeline).intercept { null })
 
-        tracker(delegate.intercept { it.withProperties(it.properties + click) }).track("Recipe Saved")
+            tracker.track("Recipe Saved")
+
+            assertEquals(0, runBlocking { tracker.closeAndAwait() }.failedHandOffs)
+        }
+    }
+
+    @Test
+    fun overACapableCoreStampedTransportTheEnvelopeRouteIsStillUsed() {
+        // The capability is only the pipeline route: a transport the core stamps for reads the envelope.
+        val delegate = CapableTransport(stampsInPipeline = false)
+        val transport = delegate.intercept(redact)
+
+        assertIs<MetadataAwareTransport>(transport)
+        tracker(transport).track("Button Tapped", props(email, click))
+
+        val event = delegate.tracked.single()
+        assertNull(event.metadata, "not delivered through the metadata overload")
+        assertEquals("click", event.envelope?.metadata?.kind)
+        assertFalse("email" in event.properties)
+    }
+
+    @Test
+    fun interceptAroundADebugTransportOverACapableTransportDeliversTheMetadata() {
+        val delegate = CapableTransport(stampsInPipeline = true)
+        val lines = mutableListOf<String>()
+        val logs = mutableListOf<String>()
+
+        tracker(DebugTransport(delegate) { lines += it }.intercept(redact), logs).track("Button Tapped", props(email, click))
+
+        assertEquals("click", delegate.tracked.single().metadata?.kind)
+        assertFalse("email" in delegate.tracked.single().properties)
+        assertFalse(lines.single().contains("email"), "inside intercept, DebugTransport logs what is sent: ${lines.single()}")
+        assertEquals(emptyList(), logs)
+    }
+
+    @Test
+    fun aReservedMetadataKeyTheTransformAddsToATrackOrScreenIsRemoved() {
+        val delegate = PlainTransport(stampsInPipeline = false)
+        val tracker = tracker(delegate.intercept { it.withProperties(it.properties + click) })
+
+        tracker.track("Recipe Saved")
+        tracker.screen("Home")
 
         assertFalse(RESERVED_METADATA_KEY in delegate.tracked.single().properties)
+        assertFalse(RESERVED_METADATA_KEY in delegate.screened.single().properties)
+    }
+
+    @Test
+    fun anIdentityTransformLeavesIdentifyTraitsAsTheTrackerHandsThemOn() {
+        // The tracker does not strip the reserved key from traits, so neither may intercept.
+        val traits = props(click, "o" to buildJsonObject { put("b", 1) }, "s" to JsonPrimitive("x"))
+        for (pipeline in listOf(false, true)) {
+            val bare = PlainTransport(stampsInPipeline = pipeline)
+            val wrapped = PlainTransport(stampsInPipeline = pipeline)
+
+            tracker(bare).identify("user-1", traits)
+            tracker(wrapped.intercept { it }).identify("user-1", traits)
+
+            assertEquals(bare.identified.single().properties, wrapped.identified.single().properties)
+            assertTrue(RESERVED_METADATA_KEY in wrapped.identified.single().properties)
+        }
     }
 
     @Test
