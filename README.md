@@ -743,9 +743,11 @@ Each `track`, `screen` and `identify` call reaches the transform once as a `Tran
 `type`, its `name` (the user id, for `identify`) and its `properties`. Return the event with new
 properties, or `null` to drop it. The type and name cannot change, and the envelope and the event's
 metadata (its `kind`, an impression's thresholds, its `screen_view_id`) pass by untouched. The
-returned transport forwards everything else, keeps the metadata on both delivery routes, hands a
-delegate written in Swift nested values as JSON text, and lets the tracker's warnings see through it
-to the transport underneath. The transform runs after validation, on the caller's thread for a
+returned transport forwards everything else. It keeps the metadata wherever the transport underneath
+can take it: on the envelope for a transport the core stamps for, and on both delivery routes for a
+pipeline transport that implements `MetadataAwareTransport`. Over a pipeline transport that does not,
+the metadata is lost as it is without `intercept`, and the tracker's one warning sees through to name
+that transport. A delegate written in Swift gets nested values as JSON text. The transform runs after validation, on the caller's thread for a
 pipeline transport and on the tracker's dispatcher otherwise, so keep it thread-safe and fast. A
 transform that throws drops the event, and the tracker logs it like a failing transport.
 

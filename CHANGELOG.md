@@ -15,8 +15,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   one of `TransportEventTypes`, its `name`, the user id for `identify`, and its `properties`), and
   returns it with new properties or `null` to drop it. The returned transport forwards
   `stampsInPipeline`, `connect`, `flush` and `reset`, transforms both delivery routes of an event
-  that carries metadata exactly once and keeps the metadata, implements `MetadataAwareTransport`
-  exactly when the transport underneath does, and hands a delegate written in Swift nested values as
+  that carries metadata exactly once, keeps the metadata wherever the transport underneath can take
+  it (a core-stamped transport, or a pipeline transport that implements `MetadataAwareTransport`),
+  implements `MetadataAwareTransport` exactly when the transport underneath does, and hands a delegate written in Swift nested values as
   JSON text ([#299]). The tracker's metadata warning looks through it and names the transport
   underneath, as it already did through `DebugTransport`. Kotlin only: it is hidden from Swift,
   because a Swift closure would receive the properties as a `[String: JsonElement]` dictionary and
