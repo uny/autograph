@@ -279,6 +279,18 @@ final class dev.ynagai.autograph/SessionInfo { // dev.ynagai.autograph/SessionIn
     final fun toString(): kotlin/String // dev.ynagai.autograph/SessionInfo.toString|toString(){}[0]
 }
 
+final class dev.ynagai.autograph/TransportEvent { // dev.ynagai.autograph/TransportEvent|null[0]
+    final val name // dev.ynagai.autograph/TransportEvent.name|{}name[0]
+        final fun <get-name>(): kotlin/String // dev.ynagai.autograph/TransportEvent.name.<get-name>|<get-name>(){}[0]
+    final val properties // dev.ynagai.autograph/TransportEvent.properties|{}properties[0]
+        final fun <get-properties>(): kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> // dev.ynagai.autograph/TransportEvent.properties.<get-properties>|<get-properties>(){}[0]
+    final val type // dev.ynagai.autograph/TransportEvent.type|{}type[0]
+        final fun <get-type>(): kotlin/String // dev.ynagai.autograph/TransportEvent.type.<get-type>|<get-type>(){}[0]
+
+    final fun toString(): kotlin/String // dev.ynagai.autograph/TransportEvent.toString|toString(){}[0]
+    final fun withProperties(kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>): dev.ynagai.autograph/TransportEvent // dev.ynagai.autograph/TransportEvent.withProperties|withProperties(kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>){}[0]
+}
+
 final object dev.ynagai.autograph/EventId { // dev.ynagai.autograph/EventId|null[0]
     final val UuidV4 // dev.ynagai.autograph/EventId.UuidV4|{}UuidV4[0]
         final fun <get-UuidV4>(): dev.ynagai.autograph/EventIdGenerator // dev.ynagai.autograph/EventId.UuidV4.<get-UuidV4>|<get-UuidV4>(){}[0]
@@ -293,6 +305,15 @@ final object dev.ynagai.autograph/EventKinds { // dev.ynagai.autograph/EventKind
         final fun <get-IMPRESSION>(): kotlin/String // dev.ynagai.autograph/EventKinds.IMPRESSION.<get-IMPRESSION>|<get-IMPRESSION>(){}[0]
 }
 
+final object dev.ynagai.autograph/TransportEventTypes { // dev.ynagai.autograph/TransportEventTypes|null[0]
+    final const val IDENTIFY // dev.ynagai.autograph/TransportEventTypes.IDENTIFY|{}IDENTIFY[0]
+        final fun <get-IDENTIFY>(): kotlin/String // dev.ynagai.autograph/TransportEventTypes.IDENTIFY.<get-IDENTIFY>|<get-IDENTIFY>(){}[0]
+    final const val SCREEN // dev.ynagai.autograph/TransportEventTypes.SCREEN|{}SCREEN[0]
+        final fun <get-SCREEN>(): kotlin/String // dev.ynagai.autograph/TransportEventTypes.SCREEN.<get-SCREEN>|<get-SCREEN>(){}[0]
+    final const val TRACK // dev.ynagai.autograph/TransportEventTypes.TRACK|{}TRACK[0]
+        final fun <get-TRACK>(): kotlin/String // dev.ynagai.autograph/TransportEventTypes.TRACK.<get-TRACK>|<get-TRACK>(){}[0]
+}
+
 final const val dev.ynagai.autograph/RESERVED_METADATA_KEY // dev.ynagai.autograph/RESERVED_METADATA_KEY|{}RESERVED_METADATA_KEY[0]
     final fun <get-RESERVED_METADATA_KEY>(): kotlin/String // dev.ynagai.autograph/RESERVED_METADATA_KEY.<get-RESERVED_METADATA_KEY>|<get-RESERVED_METADATA_KEY>(){}[0]
 
@@ -300,6 +321,7 @@ final val dev.ynagai.autograph/EmptyJsonObject // dev.ynagai.autograph/EmptyJson
     final fun <get-EmptyJsonObject>(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/EmptyJsonObject.<get-EmptyJsonObject>|<get-EmptyJsonObject>(){}[0]
 
 final fun (dev.ynagai.autograph/Tracker).dev.ynagai.autograph/callableFromKotlin(): dev.ynagai.autograph/Tracker // dev.ynagai.autograph/callableFromKotlin|callableFromKotlin@dev.ynagai.autograph.Tracker(){}[0]
+final fun (dev.ynagai.autograph/Transport).dev.ynagai.autograph/intercept(kotlin/Function1<dev.ynagai.autograph/TransportEvent, dev.ynagai.autograph/TransportEvent?>): dev.ynagai.autograph/Transport // dev.ynagai.autograph/intercept|intercept@dev.ynagai.autograph.Transport(kotlin.Function1<dev.ynagai.autograph.TransportEvent,dev.ynagai.autograph.TransportEvent?>){}[0]
 final fun (kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>).dev.ynagai.autograph/asJsonObject(): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/asJsonObject|asJsonObject@kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>(){}[0]
 final fun (kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>).dev.ynagai.autograph/deliverableTo(kotlin/Any): kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement> // dev.ynagai.autograph/deliverableTo|deliverableTo@kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>(kotlin.Any){}[0]
 final fun (kotlin.collections/Map<kotlin/String, kotlinx.serialization.json/JsonElement>).dev.ynagai.autograph/withEventMetadata(kotlin/String?, kotlin/Long? = ..., kotlin/Double? = ..., kotlin/String? = ...): kotlinx.serialization.json/JsonObject // dev.ynagai.autograph/withEventMetadata|withEventMetadata@kotlin.collections.Map<kotlin.String,kotlinx.serialization.json.JsonElement>(kotlin.String?;kotlin.Long?;kotlin.Double?;kotlin.String?){}[0]

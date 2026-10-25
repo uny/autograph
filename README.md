@@ -722,9 +722,41 @@ release build (gate it behind a debug-build check, or supply a logger that redac
 
 Reach for the tracker's own hooks first. A key every event needs belongs in
 [`DefaultProperties`](#default-properties), and a rule about which events are allowed belongs in an
-[`EventValidator`](#validation). Both act on the event before the transport sees it. A transport
-wrapper runs after validation, and it has to forward every member by hand. If you do write one,
-for redaction, sampling or logging, these are the details that fail without a compile error:
+[`EventValidator`](#validation). Both act on the event before the transport sees it.
+
+To redact, enrich or sample what one transport receives, use `intercept` (Kotlin only):
+
+```kotlin
+val tracker = Autograph {
+    transport(
+        SegmentTransport(analytics).intercept { event ->
+            when {
+                event.type == TransportEventTypes.TRACK && Random.nextDouble() > 0.1 -> null // keep 10% of tracks
+                else -> event.withProperties(event.properties - "email")
+            }
+        },
+    )
+}
+```
+
+Each `track`, `screen` and `identify` call reaches the transform once as a `TransportEvent`, with its
+`type`, its `name` (the user id, for `identify`) and its `properties`. Return the event with new
+properties, or `null` to drop it. The type and name cannot change, and the envelope and the event's
+metadata (its `kind`, an impression's thresholds, its `screen_view_id`) pass by untouched. The
+returned transport forwards everything else, keeps the metadata on both delivery routes, hands a
+delegate written in Swift nested values as JSON text, and lets the tracker's warnings see through it
+to the transport underneath. The transform runs after validation, on the caller's thread for a
+pipeline transport and on the tracker's dispatcher otherwise, so keep it thread-safe and fast. A
+transform that throws drops the event, and the tracker logs it like a failing transport.
+
+`intercept` is hidden from Swift, because a Swift closure would receive the properties as a
+`[String: JsonElement]` dictionary and crash on a nested value ([#299](https://github.com/uny/autograph/issues/299)).
+
+### Writing a wrapper by hand
+
+Reach for this only when `intercept` cannot express the wrapper, for example to route events
+between transports. A hand-written wrapper has to forward every member itself. These are the
+details that fail without a compile error:
 
 - **Forward `stampsInPipeline` and `connect`.** A pipeline transport, such as `SegmentTransport` on
   Android, gets its `EnvelopeSource` in `connect` and stamps every event in its own pipeline. If
@@ -785,9 +817,10 @@ delegate implements it too, so the fallback branch above has to report the loss 
 cannot reach `AutographConfig.logger`, so give the wrapper a logger of its own, or use `println`.
 (`DebugTransport` is the exception, because the tracker knows how it forwards.)
 
-Dropping an event in a wrapper (sampling) behaves differently on the two kinds of delegate. A pipeline
-transport has not stamped the event yet, so nothing is consumed. A transport the core stamps for
-receives an envelope that is already stamped, so a dropped event leaves a gap in the sequence numbers.
+Dropping an event, in `intercept` or in a hand-written wrapper, behaves differently on the two kinds
+of delegate. A pipeline transport has not stamped the event yet, so nothing is consumed. A transport
+the core stamps for receives an envelope that is already stamped, so a dropped event leaves a gap in
+the sequence numbers.
 
 ## Native surfaces: installing the captures
 

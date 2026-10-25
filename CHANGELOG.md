@@ -8,6 +8,22 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **`Transport.intercept { event -> … }` replaces a hand-written transport wrapper** ([#302]). The
+  transform sees each `track`, `screen` and `identify` call once as a `TransportEvent` (its `type`,
+  one of `TransportEventTypes`, its `name`, the user id for `identify`, and its `properties`), and
+  returns it with new properties or `null` to drop it. The returned transport forwards
+  `stampsInPipeline`, `connect`, `flush` and `reset`, transforms both delivery routes of an event
+  that carries metadata exactly once and keeps the metadata, implements `MetadataAwareTransport`
+  exactly when the transport underneath does, and hands a delegate written in Swift nested values as
+  JSON text ([#299]). The tracker's metadata warning looks through it and names the transport
+  underneath, as it already did through `DebugTransport`. Kotlin only: it is hidden from Swift,
+  because a Swift closure would receive the properties as a `[String: JsonElement]` dictionary and
+  crash on a nested value. A dropped event leaves a gap in `seq` on a transport the core stamps for
+  (`SegmentTransport` on iOS), and none on a pipeline transport (`SegmentTransport` on Android).
+  The README's "Wrapping a transport" section now leads with it.
+
 ### Fixed
 
 - **A `Tracker` or `Transport` implemented in Swift no longer crashes on an event with a nested

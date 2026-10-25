@@ -380,7 +380,8 @@ internal class AutographTracker(
      * This transport as the receiver of an event's metadata, or null when the metadata would not reach
      * the transport that stamps it. A [DebugTransport] declares the capability so it never hides it, but
      * forwards metadata only to a delegate that has it too; looking through it here keeps the wrapped
-     * and unwrapped configurations warning the same way, once, through [logger].
+     * and unwrapped configurations warning the same way, once, through [logger]. An [intercept] layer
+     * needs no case of its own: it declares the capability exactly when its delegate has it.
      */
     private fun Transport.metadataSink(): MetadataAwareTransport? = when (this) {
         is DebugTransport -> takeIf { metadataReachesDelegate }
@@ -398,8 +399,8 @@ internal class AutographTracker(
             if (warnedMetadataDropped) false else true.also { warnedMetadataDropped = true }
         }
         if (first) {
-            // Name the transport that loses the metadata, not a DebugTransport wrapped around it.
-            val dropping = (transport as? DebugTransport)?.innermostDelegate ?: transport
+            // Name the transport that loses the metadata, not a library wrapper around it.
+            val dropping = transport.innermost()
             report(
                 "Autograph: ${dropping::class.simpleName ?: "the transport"} stamps in its own pipeline but does not implement " +
                     "MetadataAwareTransport; events are delivered without their metadata (kind, impression thresholds, screen view id). " +

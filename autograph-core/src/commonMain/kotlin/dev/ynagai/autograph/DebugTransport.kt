@@ -63,11 +63,10 @@ public class DebugTransport(
 
     /** Whether metadata handed to this wrapper reaches a transport that can use it, through any nesting. */
     internal val metadataReachesDelegate: Boolean
-        get() = innermostDelegate is MetadataAwareTransport
+        get() = innermost() is MetadataAwareTransport
 
-    /** The first transport under this wrapper, through any nesting, that is not itself a [DebugTransport]. */
-    internal val innermostDelegate: Transport
-        get() = (delegate as? DebugTransport)?.innermostDelegate ?: delegate
+    /** The transport this one wraps, for [innermost]. */
+    internal val wrapped: Transport get() = delegate
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         val props = properties.asJsonObject()

@@ -90,7 +90,7 @@ exception.
 
 #### 2a. Library-produced value types — construction is frozen
 
-`Envelope`, `SessionInfo`, `EventMetadata`, `CloseResult`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
+`Envelope`, `SessionInfo`, `EventMetadata`, `CloseResult`, `TransportEvent`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
 
 The library creates these; callers only read them. They are declared
 
@@ -142,7 +142,7 @@ Four consequences we accept knowingly:
   behavior change without a compile error. New properties go at the end of the parameter
   list, and the changelog says so explicitly.
 
-`ScopeHandle` and `AmbientContext` are in this category by the same test — the library
+`ScopeHandle`, `AmbientContext` and `TransportEvent` are in this category by the same test — the library
 produces them, callers only read them — but are plain classes with an `internal`
 constructor rather than the `data class` shape above, so they never had `copy` or
 `componentN` to lose and gain properties freely. A library-produced type that does *not*
@@ -291,7 +291,7 @@ argument they may later need is therefore either given a default at a call site 
 controls, or moved onto `AutographConfig`.
 
 Stateless entry points — the `Autograph { }` builder function, `EventId`, `EmptyJsonObject`,
-`platformSeqStore()`, and the constants `RESERVED_METADATA_KEY` and `EventKinds` — carry no construction contract at all. Adding a new top-level
+`platformSeqStore()`, the `Transport.intercept` extension, and the constants `RESERVED_METADATA_KEY`, `EventKinds` and `TransportEventTypes` — carry no construction contract at all. Adding a new top-level
 function or `object` member beside them is additive; changing an existing signature is a
 break, with no rule beyond that.
 
