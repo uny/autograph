@@ -1,7 +1,7 @@
 package dev.ynagai.autograph.compose
 
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
 import dev.ynagai.autograph.Tracker
@@ -45,16 +45,21 @@ import dev.ynagai.autograph.context.ScopeStack
  * - in the provider's own window, where the provider's observer already sees every tap and a second
  *   one would report each of them twice. Apply it inside the alternate root's content lambda, not
  *   around the `Dialog` / `ModalBottomSheet` call.
+ *
+ * The provider it attaches for is the nearest one **with** autocapture. A provider without it nested
+ * inside one with it does not change that, so a sheet inside the inner provider's content reports
+ * through the outer one's tracker — as every other tap in that content already does.
  */
 public fun Modifier.autographAutocaptureRoot(): Modifier = composed {
     val root = LocalAutocaptureRoot.current
     when {
         !autocaptureRootSupported -> {
-            warnAutocaptureRootOnce("Modifier.autographAutocaptureRoot() is Android-only for now; it does nothing here.")
+            warnAutocaptureRootOnce(Misuse.Unsupported, "Modifier.autographAutocaptureRoot() is Android-only for now; it does nothing here.")
             Modifier
         }
         root == null -> {
             warnAutocaptureRootOnce(
+                Misuse.NoProvider,
                 "Modifier.autographAutocaptureRoot() found no enclosing AutographProvider with autocapture; " +
                     "taps in this root are not captured.",
             )
@@ -62,6 +67,7 @@ public fun Modifier.autographAutocaptureRoot(): Modifier = composed {
         }
         root.window != null && root.window == currentAutocaptureWindow() -> {
             warnAutocaptureRootOnce(
+                Misuse.OwnWindow,
                 "Modifier.autographAutocaptureRoot() is in the provider's own window, which the provider already " +
                     "observes; apply it inside the Dialog/Popup/ModalBottomSheet content instead.",
             )
@@ -84,7 +90,10 @@ internal class AutocaptureRoot(
     val window: Any?,
 )
 
-internal val LocalAutocaptureRoot = staticCompositionLocalOf<AutocaptureRoot?> { null }
+// Not static: `AutocaptureConfig` compares by identity, so `autocapture = Autocapture()` written
+// inline gives the provider a new root on every recomposition, and a static local would recompose
+// the provider's whole content each time. Only the modifier reads this.
+internal val LocalAutocaptureRoot = compositionLocalOf<AutocaptureRoot?> { null }
 
 /**
  * An identity for the window the calling composition draws into, compared by equality: the Android
@@ -97,18 +106,12 @@ internal expect fun currentAutocaptureWindow(): Any?
 /** Whether [autographAutocaptureRoot] does anything on this platform. */
 internal expect val autocaptureRootSupported: Boolean
 
-private var warnedAutocaptureRoot = false
+internal enum class Misuse { Unsupported, NoProvider, OwnWindow }
 
-/** One console line per process, for the first misuse; see `MissingTracker` for why not the logger. */
-private fun warnAutocaptureRootOnce(message: String) {
-    if (warnedAutocaptureRoot) return
-    warnedAutocaptureRoot = true
-    println("Autograph: $message")
+/** The misuses already warned about; each kind warns once, so a later, different one is not silent. */
+internal val autocaptureRootWarned = mutableSetOf<Misuse>()
+
+/** One console line per process per kind of misuse; see `MissingTracker` for why not the logger. */
+private fun warnAutocaptureRootOnce(kind: Misuse, message: String) {
+    if (autocaptureRootWarned.add(kind)) println("Autograph: $message")
 }
-
-/** Test hook: whether the one-time warning has been printed, and a way to re-arm it. */
-internal var autocaptureRootWarned: Boolean
-    get() = warnedAutocaptureRoot
-    set(value) {
-        warnedAutocaptureRoot = value
-    }

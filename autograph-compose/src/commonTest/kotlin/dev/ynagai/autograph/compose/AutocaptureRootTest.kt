@@ -27,7 +27,7 @@ class AutocaptureRootTest {
 
     @AfterTest
     fun reArm() {
-        autocaptureRootWarned = false
+        autocaptureRootWarned.clear()
     }
 
     @Test
@@ -41,7 +41,7 @@ class AutocaptureRootTest {
             override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
         }
         var clicked = false
-        autocaptureRootWarned = false
+        autocaptureRootWarned.clear()
         setContent {
             PlatformAutocaptureTestHost {
                 AutographProvider(tracker, autocapture = Autocapture()) {
@@ -55,7 +55,7 @@ class AutocaptureRootTest {
         waitForIdle()
 
         assertTrue(clicked)
-        assertTrue(autocaptureRootWarned)
+        assertEquals(setOf(Misuse.Unsupported), autocaptureRootWarned)
         // No second observer: whatever the provider's own observer reports, it reports once.
         assertTrue(tracked.size <= 1, "tracked: $tracked")
     }
