@@ -11,14 +11,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 ### Added
 
 - **`Modifier.autographAutocaptureRoot()` captures taps inside a `Dialog`, `Popup` or
-  `ModalBottomSheet` on Android** ([#210]). Their content composes into a window of its own, so
-  the provider's tap observer never saw it: every tap inside a bottom sheet went unreported, with
-  no warning. Applied to the outermost node of that content, the modifier attaches the enclosing
-  provider's observer there, with its tracker, config and scope stack, so the taps carry the screen,
-  section and scope declared around the sheet. It sizes nothing, unlike a nested `AutographProvider`,
-  which stretched a wrap-content sheet to the window. Outside a provider with autocapture, in the
-  provider's own window, and on iOS and the JVM it does nothing and prints one warning; iOS is not
-  measured yet.
+  `ModalBottomSheet`** ([#210]). Their content composes into a window of its own, so the provider's
+  tap observer never saw it: every tap inside a bottom sheet went unreported, with no warning.
+  Applied to the outermost node of that content, the modifier attaches the enclosing provider's
+  observer there, with its tracker, config and scope stack, so the taps carry the screen, section and
+  scope declared around the sheet. It sizes nothing, unlike a nested `AutographProvider`, which
+  stretched a wrap-content sheet to the window. Android and iOS (on iOS, like every Compose tap there,
+  once an accessibility client has touched the process). Outside a provider with autocapture, in the
+  provider's own window, and on the JVM it does nothing and prints one warning.
 
 ### Fixed
 

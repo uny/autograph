@@ -36,10 +36,10 @@ import dev.ynagai.autograph.context.ScopeStack
  * on the node this is applied to and its descendants are observed; put it on the outermost node of the
  * sheet's content.
  *
- * **Android only.** It is a no-op, with a one-time console warning, on iOS and the JVM: whether the
- * iOS resolver, which walks the UIKit accessibility tree from the provider's view, reaches the content
- * of a Compose `Dialog` there has not been measured, and an observer that resolves nothing would only
- * look like coverage. It is also a no-op, with the same warning:
+ * **Android and iOS.** On the JVM it is a no-op, with a one-time console warning, since desktop
+ * autocapture resolves nothing. On iOS it is subject to what every Compose tap pipeline there is: it
+ * resolves through the UIKit accessibility tree, which a process builds only once an accessibility
+ * client has touched it (#134). It is also a no-op, with the same warning:
  * - with no enclosing `AutographProvider`, or one without `autocapture`, since there is nothing to
  *   report to — and silently reporting nothing is exactly what this exists to end;
  * - in the provider's own window, where the provider's observer already sees every tap and a second
@@ -54,7 +54,7 @@ public fun Modifier.autographAutocaptureRoot(): Modifier = composed {
     val root = LocalAutocaptureRoot.current
     when {
         !autocaptureRootSupported -> {
-            warnAutocaptureRootOnce(Misuse.Unsupported, "Modifier.autographAutocaptureRoot() is Android-only for now; it does nothing here.")
+            warnAutocaptureRootOnce(Misuse.Unsupported, "Modifier.autographAutocaptureRoot() does nothing on this platform.")
             Modifier
         }
         root == null -> {
@@ -97,8 +97,8 @@ internal val LocalAutocaptureRoot = compositionLocalOf<AutocaptureRoot?> { null 
 
 /**
  * An identity for the window the calling composition draws into, compared by equality: the Android
- * `LocalView` (a `Dialog` or `Popup` has its own). Null where it cannot be told, which disables the
- * same-window guard.
+ * `LocalView`, the iOS `LocalUIView` (a `Dialog` or `Popup` has its own on both). Null where it cannot
+ * be told, which disables the same-window guard.
  */
 @Composable
 internal expect fun currentAutocaptureWindow(): Any?

@@ -18,9 +18,11 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 /**
- * [autographAutocaptureRoot] where it is not supported (the JVM and iOS targets this source set runs
- * on): a no-op that warns once and leaves the content's own clicks alone. Its Android behaviour is in
- * `sample-android`'s `AutocaptureRootTest`, which can host a real `Dialog`.
+ * [autographAutocaptureRoot] where it must not observe: on the JVM, where it is unsupported, and on
+ * iOS, in the provider's own window (the test host gives both the same `LocalUIView`). Either way a
+ * no-op that warns once and leaves the content's own clicks alone. Its real behaviour is pinned where
+ * a real `Dialog` can be hosted: `sample-android`'s `AutocaptureRootTest` and `sample-ios`'s
+ * `testTapsInsideADialogAreCapturedOnlyUnderTheModifier`.
  */
 @OptIn(ExperimentalTestApi::class)
 class AutocaptureRootTest {
@@ -31,7 +33,7 @@ class AutocaptureRootTest {
     }
 
     @Test
-    fun whereItIsNotSupportedItWarnsOnceAndLeavesClicksAlone() = runComposeUiTest {
+    fun whereItMustNotObserveItWarnsOnceAndLeavesClicksAlone() = runComposeUiTest {
         val tracked = mutableListOf<String?>()
         val tracker = object : Tracker {
             override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
@@ -55,7 +57,7 @@ class AutocaptureRootTest {
         waitForIdle()
 
         assertTrue(clicked)
-        assertEquals(setOf(Misuse.Unsupported), autocaptureRootWarned)
+        assertEquals(setOf(if (autocaptureRootSupported) Misuse.OwnWindow else Misuse.Unsupported), autocaptureRootWarned)
         // No second observer: whatever the provider's own observer reports, it reports once.
         assertTrue(tracked.size <= 1, "tracked: $tracked")
     }
