@@ -17,8 +17,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `Screen Viewed` for itself, from its first resume or the first resume after a stop. Mark the
   container the fragment is added into, or the fragment's root view, and the Activity stays a screen
   of its own. A Compose view inside a marked subtree also no longer makes the Activity, or a
-  fragment containing the mark, a Compose host. The marked fragment itself is unaffected: an
-  excluded one still masks its own taps. Without the mark nothing changes.
+  fragment containing the mark, a Compose host. The marked fragment itself is classified as
+  before: an excluded one beside an Activity still masks its own taps. Mark the slot, not a view
+  above the content, or the Activity's real content fragment counts as embedded too. Without the mark
+  nothing changes.
 
 ### Fixed
 

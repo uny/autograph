@@ -70,6 +70,19 @@ class NativeScreenWithMarkedComposeSlotFragment : ButtonFragment() {
         }
 }
 
+/** A native screen with a marked slot holding an excluded child fragment (a mini-player). */
+class NativeScreenWithMarkedSlotFragment : ButtonFragment() {
+    private val slot = View.generateViewId()
+    val child: MiniPlayerFragment? get() = childFragmentManager.findFragmentByTag("mini") as MiniPlayerFragment?
+    override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View =
+        (super.onCreateView(inflater, container, savedInstanceState) as FrameLayout).apply {
+            addView(FrameLayout(context).apply { id = slot; isAutographEmbedded = true })
+        }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        if (child == null) childFragmentManager.beginTransaction().add(slot, MiniPlayerFragment(), "mini").commitNow()
+    }
+}
+
 /**
  * [isAutographEmbedded] lifts #281 for the shapes the app marks. Every test here has an unmarked
  * twin pinned as a limit in [AndroidTapOriginTest] / [AndroidScreenCaptureTest], which stays as it
@@ -205,7 +218,10 @@ class AutographEmbeddedTest {
         controller.resume()
         drainMainLooper()
 
-        assertEquals("Main:SecondPlainActivity", screens[1])
+        assertEquals(
+            listOf("SecondPlainActivity:ButtonFragmentA", "Main:SecondPlainActivity", "ButtonFragmentA:Main"),
+            screens,
+        )
         tap(activity, activity.ownButton)
         assertEquals("Main", taps.single()["screen"]?.jsonPrimitive?.content)
     }
@@ -220,6 +236,21 @@ class AutographEmbeddedTest {
         assertEquals("NativeScreenWithMarkedComposeSlotFragment", screens.last().substringBefore(':'))
         tap(controller.get(), fragment.button)
         assertEquals("NativeScreenWithMarkedComposeSlotFragment", taps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun anExcludedFragmentInAMarkedSlotOfANamedFragmentIsASectionOfItAndDoesNotMask() {
+        // The mark turns the parent from a Compose host into a named screen, and an excluded fragment
+        // nested in a named one is a section of it: it does not mask, and its taps carry the
+        // parent's name. Unmarked, the parent is a Compose host that names nothing.
+        val controller = launch(EmptyFragmentActivity::class.java, screenName = { "Main" })
+        val parent = NativeScreenWithMarkedSlotFragment()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, parent).commitNow()
+        drainMainLooper()
+
+        tap(controller.get(), parent.child!!.button)
+        assertEquals("NativeScreenWithMarkedSlotFragment", taps.single()["screen"]?.jsonPrimitive?.content)
     }
 
     // --- helpers ----------------------------------------------------------------------------------

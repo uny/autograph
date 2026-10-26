@@ -67,7 +67,9 @@ import dev.ynagai.autograph.context.ScopeStack
  *   screens and the Activity is a shell; reporting both would double-count. An Activity that has an
  *   added Fragment with a view — a `DialogFragment` does not count, it covers rather than fills — is
  *   treated as a host, not a screen. Re-derived at every stop, not at every resume, so an Activity
- *   that becomes a host mid-session reports itself until it next stops.
+ *   that becomes a host mid-session reports itself until it next stops. A fragment whose view is
+ *   under a view marked [isAutographEmbedded] — a mini-player slot beside the content — does not
+ *   count (see the #281 paragraph below).
  * - **Container fragments are skipped** — a `NavHostFragment` hosts destinations that are themselves
  *   captured; it is not itself a screen. (Checked reflectively; navigation-fragment is not a
  *   dependency.)
