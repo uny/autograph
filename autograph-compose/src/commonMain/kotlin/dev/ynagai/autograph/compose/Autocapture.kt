@@ -15,7 +15,8 @@ import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
  * [AutographElementScope], on both platforms.
  *
  * Known gaps: `Popup`/`Dialog` content composes into a separate root, outside the single observer
- * `AutographProvider` installs, so taps inside them aren't captured. Hit-testing works on each
+ * `AutographProvider` installs, so taps inside them aren't captured unless that content applies
+ * [autographAutocaptureRoot] (Android only for now). Hit-testing works on each
  * element's bounding rectangle, so it cannot express a `Modifier.clip` that isn't rectangular: a tap
  * in the corner of a rounded or shaped clip can be attributed to an element it visually missed. It
  * also reads an element as clickable from its click *action*, which a bare `semantics { onClick { } }`
