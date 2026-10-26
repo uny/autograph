@@ -613,6 +613,14 @@ internal class AndroidScreenCapture(
                 newFragmentSurface(f).also { late -> f.view?.let { claim(it, late) } }
             }
             state.pausedWithHost = false
+            // A child resumes inside its parent's performResume, before the parent's own callback
+            // (measured), so a parent frame would still be off when the child reports its first
+            // `Screen Viewed`, and the scope the parent declares (#239) would be missing from it. The
+            // parent already reads `isResumed` here, so its frame is switched on now. Only the active
+            // bit: what the frame says is settled at the parent's own resume, which follows.
+            generateSequence(f.parentFragment) { it.parentFragment }
+                .filter { it.isResumed }
+                .forEach { ancestor -> fragmentStates[ancestor]?.let(this@AndroidScreenCapture::select) }
             onSurfaceResumed(
                 state = state,
                 owner = f,

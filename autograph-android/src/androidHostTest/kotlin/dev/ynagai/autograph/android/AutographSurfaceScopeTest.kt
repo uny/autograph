@@ -161,6 +161,20 @@ class AutographSurfaceScopeTest {
     }
 
     @Test
+    fun aChildsFirstScreenViewedCarriesItsParentFragmentsScope() {
+        // The child is committed in the parent's onViewCreated, so it resumes inside the parent's
+        // resume dispatch, before the capture has seen the parent resume.
+        val activity = launch(ScopedHostActivity::class.java).get()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, ScopedNestingFragment()).commitNow()
+
+        val (name, properties) = screens.first { it.first == "ScopedButtonFragment" }
+        assertEquals("ScopedButtonFragment", name)
+        assertEquals("42", properties.string("item_id"))
+        assertEquals("home", properties.string("list"))
+        assertEquals("b", properties.string("variant"))
+    }
+
+    @Test
     fun anUpdateFromABackgroundThreadIsAppliedOnTheMainThread() {
         val activity = launch(OwnHostActivity::class.java).get()
         val scoped = ScopedButtonFragment()
