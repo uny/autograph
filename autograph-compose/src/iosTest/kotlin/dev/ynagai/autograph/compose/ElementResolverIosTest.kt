@@ -472,6 +472,24 @@ class ElementResolverIosTest {
         assertNull(result)
     }
 
+    /**
+     * Ignored bounds are window-space, and a `Dialog` has a window of its own over the same
+     * coordinates: an element ignored on the screen behind it must not veto a tap in the dialog at the
+     * same position (#210). The dialog's own ignored elements still do.
+     */
+    @Test
+    fun resolveIosElementHonoursOnlyIgnoredBoundsFromItsOwnWindow() {
+        val (root, position) = buildRootWithButton()
+        val claims = AutocaptureClaims()
+        val behind = IgnoredBoundsKey(UIView())
+        claims.ignored[behind] = Rect(0f, 0f, 100f, 100f)
+
+        assertEquals("share_button", resolveIosElement(root, claims, position)?.identifier)
+
+        claims.ignored[IgnoredBoundsKey(root)] = Rect(0f, 0f, 100f, 100f)
+        assertNull(resolveIosElement(root, claims, position))
+    }
+
     @Test
     fun resolveIosElementIgnoresClaimsOutsideTheTapPosition() {
         val (root, position) = buildRootWithButton()

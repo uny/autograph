@@ -84,6 +84,9 @@ internal fun Modifier.autocaptureTaps(
                         // isn't necessarily changes[0].
                         val change = event.changes.firstOrNull { it.isConsumed } ?: continue
                         val positioned = rootCoordinates ?: continue
+                        // Nested autographAutocaptureRoot()s in one window all see this release; the
+                        // first to get here reports it (#210).
+                        if (claims != null && !claims.firstSightingOf(change)) continue
                         reportTapIfResolvable(tracker, scopeStack, config, origin) {
                             resolver.resolve(positioned, change.position)
                         }

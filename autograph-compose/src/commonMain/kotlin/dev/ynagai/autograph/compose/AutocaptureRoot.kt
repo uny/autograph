@@ -34,7 +34,8 @@ import dev.ynagai.autograph.context.ScopeStack
  * the sheet, exactly as a tap beside it does, and [autographIgnore], [trackClick] and
  * [AutographElementScope] inside the sheet behave as they do in the provider's own content. Only taps
  * on the node this is applied to and its descendants are observed; put it on the outermost node of the
- * sheet's content.
+ * sheet's content. One nested inside another — a reusable piece of sheet content that applies it
+ * itself — reports each tap once, not twice.
  *
  * **Android and iOS.** On the JVM it is a no-op, with a one-time console warning, since desktop
  * autocapture resolves nothing. On iOS it is subject to what every Compose tap pipeline there is: it

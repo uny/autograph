@@ -14,8 +14,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.AbstractComposeView
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.Dialog as ComposeDialog
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.compose.Autocapture
@@ -43,7 +45,9 @@ object RootFixtures {
     var autocapture = true
     var markDialog = true
     var markOwnWindow = false
+    var nestRoot = false
     var clicks = 0
+    var popupView: View? = null
 }
 
 /**
@@ -64,13 +68,40 @@ class DialogOverScreenActivity : ComponentActivity() {
                                 .clickable {},
                         )
                         ComposeDialog(onDismissRequest = {}) {
-                            Box(
-                                (if (RootFixtures.markDialog) Modifier.autographAutocaptureRoot() else Modifier)
-                                    .size(120.dp)
-                                    .testTag("chip")
-                                    .clickable { RootFixtures.clicks++ },
-                            )
+                            // A reusable piece of content that applies the modifier itself, inside
+                            // content that applies it too.
+                            Box(if (RootFixtures.nestRoot) Modifier.autographAutocaptureRoot() else Modifier) {
+                                Box(
+                                    (if (RootFixtures.markDialog) Modifier.autographAutocaptureRoot() else Modifier)
+                                        .size(120.dp)
+                                        .testTag("chip")
+                                        .clickable { RootFixtures.clicks++ },
+                                )
+                            }
                         }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/** A `Popup` over a screen: the other alternate root, composed into a `PopupLayout` view of its own. */
+class PopupOverScreenActivity : ComponentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContent {
+            AutographProvider(RootFixtures.tracker, Autocapture(), ScopeStack()) {
+                TrackedScreen("Main") {
+                    Box(Modifier.fillMaxSize())
+                    Popup {
+                        RootFixtures.popupView = LocalView.current
+                        Box(
+                            Modifier.autographAutocaptureRoot()
+                                .size(120.dp)
+                                .testTag("menu_item")
+                                .clickable { RootFixtures.clicks++ },
+                        )
                     }
                 }
             }
@@ -155,13 +186,39 @@ class AutocaptureRootTest {
         assertEquals(emptyList<Pair<String?, Map<String, JsonElement>>>(), taps)
     }
 
+    @Test
+    fun oneNestedInsideAnotherReportsEachTapOnce() {
+        // Both observers see the same release; without a guard each reported it.
+        launch(markDialog = true, nestRoot = true)
+
+        tap(dialogContent())
+        assertEquals(1, RootFixtures.clicks)
+        assertEquals(listOf<String?>("chip"), taps.map { it.first })
+    }
+
+    @Test
+    fun aTapInsideAPopupIsReportedWithTheScreenAroundIt() {
+        RootFixtures.tracker = tracker
+        RootFixtures.clicks = 0
+        RootFixtures.popupView = null
+        Robolectric.buildActivity(PopupOverScreenActivity::class.java).setup()
+        idle()
+
+        tap(checkNotNull(RootFixtures.popupView) { "the popup did not compose" })
+        assertEquals(1, RootFixtures.clicks)
+        val (target, properties) = taps.single()
+        assertEquals("menu_item", target)
+        assertEquals("Main", properties["screen"]?.jsonPrimitive?.content)
+    }
+
     // --- helpers ----------------------------------------------------------------------------------
 
-    private fun launch(markDialog: Boolean, markOwnWindow: Boolean = false, autocapture: Boolean = true): ComponentActivity {
+    private fun launch(markDialog: Boolean, markOwnWindow: Boolean = false, autocapture: Boolean = true, nestRoot: Boolean = false): ComponentActivity {
         RootFixtures.tracker = tracker
         RootFixtures.autocapture = autocapture
         RootFixtures.markDialog = markDialog
         RootFixtures.markOwnWindow = markOwnWindow
+        RootFixtures.nestRoot = nestRoot
         RootFixtures.clicks = 0
         val activity = Robolectric.buildActivity(DialogOverScreenActivity::class.java).setup().get()
         idle()

@@ -5,7 +5,8 @@ import androidx.compose.ui.uikit.LocalUIView
 
 // The view the resolver walks from (ElementResolver.ios.kt). A Compose Dialog's content gets a view
 // of its own; sample-ios's testTapsInsideADialogAreCapturedOnlyUnderTheModifier pins that, since the
-// modifier would otherwise be a silent no-op inside every dialog.
+// modifier would otherwise be a silent no-op inside every dialog. A Popup goes through the same scene
+// layer (ComposeSceneContext.createLayer), and material3's ModalBottomSheet is a Dialog on iOS.
 @Composable
 internal actual fun currentAutocaptureWindow(): Any? = LocalUIView.current
 

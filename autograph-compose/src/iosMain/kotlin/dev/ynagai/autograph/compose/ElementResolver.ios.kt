@@ -68,7 +68,8 @@ internal fun resolveIosElement(
     position: Offset,
 ): AutocaptureTarget? {
     if (claims != null) {
-        if (claims.ignored.values.any { it.contains(position) }) return null
+        // Only this window's: bounds measured in a window behind a Dialog share these coordinates.
+        if (claims.ignored.any { (key, bounds) -> ignoredBoundsApply(key, view) && bounds.contains(position) }) return null
         // Suppress whatever this dispatch would have resolved to, not just the element that ran.
         //
         // That is deliberately weaker than "the resolved element is the instrumented one", and the
