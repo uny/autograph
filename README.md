@@ -358,9 +358,10 @@ ModalBottomSheet(onDismissRequest = onDismiss) {
 It attaches the provider's observer to that node and nothing else, so the sheet keeps its own size
 (a second `AutographProvider` there would stretch it to the window), and its taps carry the screen,
 section and scope declared around the sheet. It warns once and does nothing outside a provider with
-autocapture, in the provider's own window (which is already observed), and on the JVM. On iOS it
-shares the condition every Compose tap there has: it resolves through the accessibility tree, which a
-process builds only once an accessibility client has touched it.
+autocapture, in the provider's own window (which is already observed), and on the JVM. On iOS a tap
+inside the root resolves through Compose Multiplatform's accessibility tree, like every Compose tap
+there, so it needs no accessibility client (see *What is and isn't captured* below). A dialog's tree
+has not yet been checked in a cold process.
 
 `trackImpression` deliberately does **not** suppress autocapture: it reports a visibility event and
 never a click, so a tap on the element it marks is one autocapture owns. Use `autographIgnore()` for

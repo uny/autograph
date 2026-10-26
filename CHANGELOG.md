@@ -16,8 +16,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   Applied to the outermost node of that content, the modifier attaches the enclosing provider's
   observer there, with its tracker, config and scope stack, so the taps carry the screen, section and
   scope declared around the sheet. It sizes nothing, unlike a nested `AutographProvider`, which
-  stretched a wrap-content sheet to the window. Android and iOS (on iOS, like every Compose tap there,
-  once an accessibility client has touched the process). Outside a provider with autocapture, in the
+  stretched a wrap-content sheet to the window. Android and iOS (on iOS through the accessibility tree
+  like every Compose tap there, which needs no accessibility client; a dialog's tree has not yet been
+  checked in a cold process). Outside a provider with autocapture, in the
   provider's own window, and on the JVM it does nothing and prints one warning.
 
 ### Fixed
