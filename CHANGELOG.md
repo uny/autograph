@@ -8,6 +8,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+### Added
+
+- **`View.isAutographEmbedded` lets an Activity keep its own screen while a fragment sits beside
+  its content** ([#281]). The Android native screen capture cannot tell a mini-player, banner or
+  widget fragment added beside an Activity's content from a fragment that replaces the content, so
+  it took the Activity for a fragment shell: its own taps carried no screen and it reported no
+  `Screen Viewed` for itself, from its first resume or the first resume after a stop. Mark the
+  container the fragment is added into, or the fragment's root view, and the Activity stays a screen
+  of its own. A Compose view inside a marked subtree also no longer makes the Activity, or a
+  fragment containing the mark, a Compose host. The marked fragment itself is unaffected: an
+  excluded one still masks its own taps. Without the mark nothing changes.
+
 ### Fixed
 
 - **A `Tracker` or `Transport` implemented in Swift no longer crashes on an event with a nested

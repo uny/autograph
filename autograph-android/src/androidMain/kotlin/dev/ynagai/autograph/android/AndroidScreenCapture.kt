@@ -112,7 +112,9 @@ import dev.ynagai.autograph.context.ScopeStack
  * it resumes after a stop, therefore makes the Activity a shell: its own taps carry no screen and it
  * reports no `Screen Viewed` for itself until it resumes after a stop with the fragment gone
  * ([#281](https://github.com/uny/autograph/issues/281)). Like the limits below, a screen goes
- * absent, never wrong.
+ * absent, never wrong. Only the app knows which shape it built, so it can say so: mark the
+ * container the fragment goes into, or the fragment's root view, with [isAutographEmbedded], and the
+ * Activity stays a screen of its own while the fragment is attached.
  *
  * The same scoping is what answers the opt-out's hardest case. A surface you opted out with a `null`
  * name does not mask, so `add`ed on top of a screen that is merely paused it used to lend that
