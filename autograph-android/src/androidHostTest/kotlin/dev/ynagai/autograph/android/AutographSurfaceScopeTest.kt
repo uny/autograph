@@ -209,6 +209,48 @@ class AutographSurfaceScopeTest {
     }
 
     @Test
+    fun aPostedUpdateThatALaterCallOvertookIsDropped() {
+        val activity = launch(OwnHostActivity::class.java).get()
+        val scoped = ScopedButtonFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, scoped).commitNow()
+
+        Thread { scoped.scope.update(mapOf("item_id" to "stale")) }.apply { start(); join() }
+        scoped.scope.update(mapOf("item_id" to "fresh"))
+        drainMainLooper()
+
+        tap(activity, scoped.button)
+        assertEquals("the last call wins", "fresh", taps.single().string("item_id"))
+    }
+
+    @Test
+    fun anUpdateWhileTheViewIsDestroyedReachesTheRebuiltView() {
+        val activity = launch(OwnHostActivity::class.java).get()
+        val scoped = ScopedButtonFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, scoped).commitNow()
+        activity.supportFragmentManager.beginTransaction().detach(scoped).commitNow()
+
+        scoped.scope.update(mapOf("item_id" to "7"))
+        activity.supportFragmentManager.beginTransaction().attach(scoped).commitNow()
+        drainMainLooper()
+
+        tap(activity, scoped.button)
+        assertEquals("7", taps.single().string("item_id"))
+    }
+
+    @Test
+    fun declaringOffTheMainThreadFailsBeforeAnythingIsDeclared() {
+        val activity = launch(OwnHostActivity::class.java).get()
+        val fragment = ButtonFragmentA()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, fragment).commitNow()
+
+        var failure: Throwable? = null
+        Thread { failure = runCatching { fragment.autographScope(scopeStack, mapOf("item_id" to "x")) }.exceptionOrNull() }
+            .apply { start(); join() }
+        assertTrue("threw: $failure", failure is IllegalStateException)
+        assertFalse(SurfaceScopes.hasDeclarations(fragment))
+    }
+
+    @Test
     fun aCompositionHostedInTheFragmentSeesItsScope() {
         // A Compose provider nests its root frame under the surface hosting it; a frame pushed by hand
         // with that parent stands in for it, so the lineage is what is asserted.

@@ -876,8 +876,9 @@ class DetailFragment : Fragment() {
 
 The properties go on the frame the screen capture keeps for that surface, so they reach the taps
 captured in it, in the Compose content and child fragments inside it (whose own scope wins a key
-clash), and its own `Screen Viewed` — never a sibling fragment's taps or the Activity's own. They are
-lowest precedence, autocapture only (an explicit `track` call does not see them), and bound to the
+clash), and its own `Screen Viewed` — never a sibling fragment's taps or the Activity's own. They rank
+above a default property and below everything else, feed autocapture only (an explicit `track` call
+does not see them, nor does a hosted composition's `TrackedScreen` or `trackClick`), and are bound to the
 surface's lifecycle: they survive a view re-creation and go away when the surface is destroyed. A
 second call replaces the properties rather than stacking a second scope. The screen capture must be
 installed on the same `ScopeStack`; without it the scope is absent, never app-wide. iOS has no

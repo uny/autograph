@@ -23,8 +23,10 @@ import java.lang.ref.WeakReference
  *
  * - taps the native tap capture resolves to a view inside the fragment, and taps in a Compose
  *   `AutographProvider` hosted inside it;
- * - surfaces nested inside it — a child fragment, the composition it hosts — whose own scope merges
- *   over it, the inner value winning a key clash, as nested `AutographScope`s do;
+ * - the same events of surfaces nested inside it — a child fragment's taps and `Screen Viewed`, the
+ *   autocaptured taps of the composition it hosts — whose own scope merges over it, the inner value
+ *   winning a key clash, as nested `AutographScope`s do. Not that composition's own events
+ *   (`TrackedScreen`, `trackClick`), which take scope from `AutographScope` only;
  * - its own `Screen Viewed`, when declared before the fragment resumes (in `onCreate`).
  *
  * Not a sibling fragment's taps, and not the taps on the Activity around it. Precedence is the same as
@@ -88,15 +90,17 @@ public class AutographScopeHandle internal constructor(internal val declaration:
      * keys are dropped, not kept. A no-op once the surface has been destroyed.
      *
      * Callable from any thread, since the value it carries often arrives on a background one: off
-     * the main thread the change is posted to it, in call order, and taps made before it runs carry
-     * the previous properties.
+     * the main thread the change is posted to it, and taps made before it runs carry the previous
+     * properties. The last call made wins, whichever thread made it: a posted change that a later
+     * call has already overtaken is dropped rather than applied over it.
      */
     public fun update(properties: Map<String, String>) {
         val scope = properties.toScope()
+        val call = declaration.nextCall()
         if (Looper.myLooper() === Looper.getMainLooper()) {
-            declaration.update(scope)
+            declaration.update(scope, call)
         } else {
-            mainHandler.post { declaration.update(scope) }
+            mainHandler.post { declaration.update(scope, call) }
         }
     }
 
@@ -131,14 +135,28 @@ internal object SurfaceScopes {
         /** False once the surface is destroyed (or was when declared): [update] is then a no-op. */
         var live = true
 
-        fun update(scope: JsonObject) {
-            if (!live || scope == this.scope) return
+        /** Numbers each change as it is made, on whichever thread; see [AutographScopeHandle.update]. */
+        private val calls = java.util.concurrent.atomic.AtomicLong()
+
+        /** The number of the change applied last. Main thread only, like [update]. */
+        private var applied = 0L
+
+        fun nextCall(): Long = calls.incrementAndGet()
+
+        /** Applies the change numbered [call], unless one made after it is already applied. */
+        fun update(scope: JsonObject, call: Long = nextCall()) {
+            if (!live || call < applied) return
+            applied = call
+            if (scope == this.scope) return
             this.scope = scope
             owner.get()?.let { notifyChanged(it, stack) }
         }
     }
 
     fun declare(owner: Any, lifecycle: Lifecycle, stack: ScopeStack, properties: Map<String, String>): AutographScopeHandle {
+        // Before anything is written: off the main thread the lifecycle observer below would throw
+        // only after the registry already held the declaration, which nothing would then remove.
+        check(Looper.myLooper() === Looper.getMainLooper()) { "autographScope must be called on the main thread" }
         val scope = properties.toScope()
         if (lifecycle.currentState == Lifecycle.State.DESTROYED) {
             return AutographScopeHandle(Declaration(owner, stack, scope).also { it.live = false })
