@@ -175,6 +175,24 @@ class AutographSurfaceScopeTest {
     }
 
     @Test
+    fun aChildsScreenViewedAfterARemountOfBothViewsStillCarriesItsParentFragmentsScope() {
+        // detach()+attach() replaces the parent's frame with an empty one (endMounting), and the
+        // parent's onCreate does not run again to re-declare; the child reports before the parent's
+        // own resume writes its scope back.
+        val activity = launch(ScopedHostActivity::class.java).get()
+        val parent = ScopedNestingFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, parent).commitNow()
+        activity.supportFragmentManager.beginTransaction().detach(parent).commitNow()
+        screens.clear()
+        activity.supportFragmentManager.beginTransaction().attach(parent).commitNow()
+        drainMainLooper()
+
+        val (_, properties) = screens.first { it.first == "ScopedButtonFragment" }
+        assertEquals("42", properties.string("item_id"))
+        assertEquals("home", properties.string("list"))
+    }
+
+    @Test
     fun anUpdateFromABackgroundThreadIsAppliedOnTheMainThread() {
         val activity = launch(OwnHostActivity::class.java).get()
         val scoped = ScopedButtonFragment()
