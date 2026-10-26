@@ -43,6 +43,23 @@ class ScopedButtonFragment : ButtonFragment() {
     }
 }
 
+/** A scoped fragment nesting a scoped child (with a button) in its own view. */
+class ScopedNestingFragment : ButtonFragment() {
+    private val childContainer = android.view.View.generateViewId()
+    val child: ScopedButtonFragment? get() = childFragmentManager.findFragmentByTag("child") as ScopedButtonFragment?
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        autographScope(fixtureStack, mapOf("list" to "home", "source" to "parent"))
+    }
+    override fun onCreateView(inflater: android.view.LayoutInflater, container: android.view.ViewGroup?, savedInstanceState: Bundle?): android.view.View =
+        (super.onCreateView(inflater, container, savedInstanceState) as android.widget.FrameLayout).apply {
+            addView(android.widget.FrameLayout(context).apply { id = childContainer })
+        }
+    override fun onViewCreated(view: android.view.View, savedInstanceState: Bundle?) {
+        if (child == null) childFragmentManager.beginTransaction().add(childContainer, ScopedButtonFragment(), "child").commitNow()
+    }
+}
+
 /** [OwnHostActivity] declaring a scope of its own. */
 class ScopedHostActivity : OwnHostActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -124,6 +141,39 @@ class AutographSurfaceScopeTest {
         tap(activity, plain.button)
         assertEquals("activity", taps.single().string("source"))
         assertNull(taps.single()["item_id"])
+    }
+
+    @Test
+    fun aChildFragmentsScopeMergesOverItsParentFragments() {
+        val activity = launch(OwnHostActivity::class.java).get()
+        val parent = ScopedNestingFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, parent).commitNow()
+
+        tap(activity, parent.child!!.button)
+        assertEquals("home", taps.single().string("list"))
+        assertEquals("the child wins", "fragment", taps.single().string("source"))
+        assertEquals("42", taps.single().string("item_id"))
+
+        taps.clear()
+        tap(activity, parent.button)
+        assertEquals("parent", taps.single().string("source"))
+        assertNull("the child's scope stays in the child", taps.single()["item_id"])
+    }
+
+    @Test
+    fun anUpdateFromABackgroundThreadIsAppliedOnTheMainThread() {
+        val activity = launch(OwnHostActivity::class.java).get()
+        val scoped = ScopedButtonFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, scoped).commitNow()
+
+        Thread { scoped.scope.update(mapOf("item_id" to "bg")) }.apply { start(); join() }
+        tap(activity, scoped.button)
+        assertEquals("not yet: it is posted", "42", taps.single().string("item_id"))
+
+        taps.clear()
+        drainMainLooper()
+        tap(activity, scoped.button)
+        assertEquals("bg", taps.single().string("item_id"))
     }
 
     @Test

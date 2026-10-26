@@ -1,5 +1,7 @@
 package dev.ynagai.autograph.android
 
+import android.os.Handler
+import android.os.Looper
 import androidx.activity.ComponentActivity
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.Lifecycle
@@ -25,10 +27,16 @@ import java.lang.ref.WeakReference
  *   over it, the inner value winning a key clash, as nested `AutographScope`s do;
  * - its own `Screen Viewed`, when declared before the fragment resumes (in `onCreate`).
  *
- * Not a sibling fragment's taps, and not the taps on the Activity around it. Precedence is the lowest
- * of any property, as for `AutographScope`: a property the capture sets itself, or the reserved
- * `screen` / `section`, wins. Explicit `Tracker.track` calls are untouched — this feeds autocapture
- * only.
+ * Not a sibling fragment's taps, and not the taps on the Activity around it. Precedence is the same as
+ * for `AutographScope`: above a [default property][dev.ynagai.autograph.DefaultProperties], below a
+ * property the capture sets itself and the reserved `screen` / `section`. Explicit `Tracker.track`
+ * calls are untouched — this feeds autocapture only.
+ *
+ * One read has no surface to go by: a tap on a window no surface claims — a `PopupWindow`, an
+ * `AlertDialog` the app builds itself — is resolved from the ambient `ScopeStack.current()`, which
+ * holds the scope of every resumed surface. Alone, a resumed fragment's scope reaches such a tap; two
+ * scoped siblings resumed at once are ambiguous there and both drop. A screen name behaves the same
+ * way. Show such a window as a `DialogFragment` to keep it to its own surface.
  *
  * ## Lifetime: the fragment's, not the call site's
  *
@@ -77,10 +85,23 @@ public class AutographScopeHandle internal constructor(internal val declaration:
 
     /**
      * Replaces the declared properties, in place: taps made from now on carry the new ones. Omitted
-     * keys are dropped, not kept. A no-op once the surface has been destroyed. Main thread only.
+     * keys are dropped, not kept. A no-op once the surface has been destroyed.
+     *
+     * Callable from any thread, since the value it carries often arrives on a background one: off
+     * the main thread the change is posted to it, in call order, and taps made before it runs carry
+     * the previous properties.
      */
     public fun update(properties: Map<String, String>) {
-        declaration.update(properties.toScope())
+        val scope = properties.toScope()
+        if (Looper.myLooper() === Looper.getMainLooper()) {
+            declaration.update(scope)
+        } else {
+            mainHandler.post { declaration.update(scope) }
+        }
+    }
+
+    private companion object {
+        private val mainHandler by lazy { Handler(Looper.getMainLooper()) }
     }
 }
 
