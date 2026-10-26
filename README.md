@@ -196,6 +196,7 @@ the rest:
 | A constant the ingest side can derive — which app or source, the endpoint | Stamped at ingest rather than sent as an event property, when it really is derivable there (the write key the client already sends identifies the source) |
 | App-wide context, or a key a tracking plan requires on every event — a tenant, an install id, an experiment assignment | A [default property](#default-properties) |
 | One screen's context — a route argument | `AutographScope` around the screen, below. Screen and section come from `TrackedScreen`, which hands them to `trackClick` / `trackImpression` and autocaptured taps but not to a plain `track` call |
+| One native screen's context on Android — a detail Fragment's item id | `Fragment.autographScope` / `ComponentActivity.autographScope`, in [Native surfaces](#android-scope-for-one-native-surface) — autocaptured taps and the surface's `Screen Viewed` only |
 | One element's context among simultaneously-mounted siblings — a list row's id | `AutographElementScope`, below — autocaptured taps only; `trackClick` / `trackImpression` / `track` inside it need `AutographScope` or their own `properties` |
 | One event's own detail | The call site's `properties` |
 
@@ -852,6 +853,36 @@ screen capture). Only the iOS screen capture replaces its predecessor (its sink 
 a single process-global slot, and the `viewDidAppear:` swizzle itself installs once and stays). If
 the install site can run more than once — a SwiftUI `.onAppear`, an Activity that re-creates — guard
 it yourself; the samples do.
+
+### Android: scope for one native surface
+
+`Fragment.autographScope` and `ComponentActivity.autographScope` are the native counterpart of
+`AutographScope` ([#239](https://github.com/uny/autograph/issues/239)). Call one from `onCreate`:
+
+```kotlin
+class DetailFragment : Fragment() {
+    private lateinit var scope: AutographScopeHandle
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        // The same ScopeStack the native captures were installed on.
+        scope = autographScope(scopeStack, mapOf("item_id" to requireArguments().getString("id")!!))
+    }
+
+    // Later, if a value only arrives with the data:
+    private fun onLoaded(item: Item) = scope.update(mapOf("item_id" to item.id, "variant" to item.variant))
+}
+```
+
+The properties go on the frame the screen capture keeps for that surface, so they reach the taps
+captured in it, in the Compose content and child fragments inside it (whose own scope wins a key
+clash), and its own `Screen Viewed` — never a sibling fragment's taps or the Activity's own. They are
+lowest precedence, autocapture only (an explicit `track` call does not see them), and bound to the
+surface's lifecycle: they survive a view re-creation and go away when the surface is destroyed. A
+second call replaces the properties rather than stacking a second scope. The screen capture must be
+installed on the same `ScopeStack`; without it the scope is absent, never app-wide. iOS has no
+counterpart yet: UIKit screen frames carry no boundary, so a scope there cannot be kept to one
+controller.
 
 What each capture does and does not reach is in
 [What is and isn't captured](#what-is-and-isnt-captured); the opt-outs are

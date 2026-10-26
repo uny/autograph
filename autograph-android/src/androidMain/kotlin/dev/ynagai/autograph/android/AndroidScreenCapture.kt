@@ -74,6 +74,10 @@ import dev.ynagai.autograph.context.ScopeStack
  * - **Headless fragments are skipped** (`view == null`) — retained worker fragments like Glide's
  *   `SupportRequestManagerFragment` are not screens.
  *
+ * A surface can also declare scope properties about itself — [Fragment.autographScope],
+ * [androidx.activity.ComponentActivity.autographScope] — which ride on its frame and so reach its
+ * own events and those of what is nested in it (#239).
+ *
  * Known limits, documented rather than silently mis-attributed (as iOS documents embedded-child /
  * split-pane): a Fragment attached *after* its host Activity has resumed can momentarily let the
  * Activity report before the Fragment is seen; old-style `show()`/`hide()` navigation leaves several
