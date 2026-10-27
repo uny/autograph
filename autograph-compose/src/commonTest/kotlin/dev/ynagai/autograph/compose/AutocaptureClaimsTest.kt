@@ -157,6 +157,21 @@ class AutocaptureClaimsGenerationTest {
         assertTrue(claims.firstSightingOf(release(id = 0, at = 200), screen), "the next gesture reuses the id")
         assertTrue(claims.firstSightingOf(release(id = 1, at = 200), screen), "a second finger released at once")
     }
+
+    /** The claims outlive a dismissed dialog; its view must not stay referenced as the last window. */
+    @Test
+    fun anObserverLeavingForgetsOnlyItsOwnWindow() {
+        val claims = AutocaptureClaims()
+        val screen = Any()
+        val dialog = Any()
+        claims.firstSightingOf(release(id = 0, at = 100), dialog)
+
+        claims.forgetSightingsIn(screen)
+        assertFalse(claims.firstSightingOf(release(id = 0, at = 100), dialog), "another window leaving keeps the record")
+
+        claims.forgetSightingsIn(dialog)
+        assertTrue(claims.firstSightingOf(release(id = 0, at = 100), dialog), "the record named the dialog")
+    }
 }
 
 private class NoopTracker : Tracker {

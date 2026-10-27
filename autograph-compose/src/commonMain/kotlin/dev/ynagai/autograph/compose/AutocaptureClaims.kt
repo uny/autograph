@@ -66,13 +66,25 @@ internal class AutocaptureClaims {
      * once, so only observers nested in one window ever get `false`.
      */
     fun firstSightingOf(change: PointerInputChange, window: Any?): Boolean {
-        if (window == lastReportedWindow && change.id == lastReportedPointer && change.uptimeMillis == lastReportedUptime) {
-            return false
-        }
+        val seen = window == lastReportedWindow && change.id == lastReportedPointer &&
+            change.uptimeMillis == lastReportedUptime
+        if (seen) return false
         lastReportedWindow = window
         lastReportedPointer = change.id
         lastReportedUptime = change.uptimeMillis
         return true
+    }
+
+    /**
+     * Drops the record of [window]'s last release, so that these claims, which live as long as the
+     * provider, do not hold a dismissed dialog's view. Called as an observer leaves; a nested root
+     * leaving clears its outer's record too, which costs nothing, since that release was reported.
+     */
+    fun forgetSightingsIn(window: Any?) {
+        if (window != lastReportedWindow) return
+        lastReportedWindow = null
+        lastReportedPointer = null
+        lastReportedUptime = 0L
     }
 
     // --- Execution-based deduplication (read only by ElementResolver.ios.kt) ---
