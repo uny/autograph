@@ -53,6 +53,7 @@ internal fun Modifier.autocaptureTaps(
 ): Modifier {
     val resolver = rememberElementResolver()
     val claims = LocalAutocaptureClaims.current
+    val window = currentAutocaptureWindow()
     // remember, not a bare local var: the pointerInput coroutine below is long-lived and only
     // restarts when tracker/config/resolver change identity, so a plain var reassigned by
     // onGloballyPositioned on every recomposition would go stale relative to it — this shared,
@@ -65,7 +66,7 @@ internal fun Modifier.autocaptureTaps(
         // attributing taps against the one nobody writes to any more. Same reasoning as the nav
         // listener's key in TrackScreenViews — the two sites capture the same thing and should not
         // disagree about it.
-        .pointerInput(tracker, scopeStack, config, resolver, claims, origin) {
+        .pointerInput(tracker, scopeStack, config, resolver, claims, origin, window) {
             awaitPointerEventScope {
                 while (true) {
                     // Two passes of the SAME dispatch. Initial resumes before any child handles the
@@ -86,7 +87,7 @@ internal fun Modifier.autocaptureTaps(
                         val positioned = rootCoordinates ?: continue
                         // Nested autographAutocaptureRoot()s in one window all see this release; the
                         // first to get here reports it (#210).
-                        if (claims != null && !claims.firstSightingOf(change)) continue
+                        if (claims != null && !claims.firstSightingOf(change, window)) continue
                         reportTapIfResolvable(tracker, scopeStack, config, origin) {
                             resolver.resolve(positioned, change.position)
                         }

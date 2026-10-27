@@ -45,27 +45,31 @@ import androidx.compose.ui.layout.onGloballyPositioned
  */
 internal class AutocaptureClaims {
     /**
-     * Window-space bounds of live [autographIgnore] subtrees, keyed per call-site instance. The keys
-     * [registerIgnoredBounds] makes are [IgnoredBoundsKey]s naming the window each subtree draws in;
-     * read them through [ignoredBoundsApply].
+     * Window-space bounds of live [autographIgnore] subtrees, keyed per call-site instance by an
+     * [IgnoredBoundsKey] naming the window each subtree draws in; read them through [ignoredBoundsApply].
      */
-    val ignored = mutableStateMapOf<Any, Rect>()
+    val ignored = mutableStateMapOf<IgnoredBoundsKey, Rect>()
 
     /**
      * The pointer release an observer last reported from, so that nested
-     * [autographAutocaptureRoot]s, which all see the same release, report it once (#210). Its id and
-     * time together: an id alone is reused by the next gesture.
+     * [autographAutocaptureRoot]s, which all see the same release, report it once (#210). Its window,
+     * id and time together: an id alone is reused by the next gesture, and each window numbers its
+     * pointers on its own, so the first taps in a dialog and in the screen behind it share an id.
      */
+    private var lastReportedWindow: Any? = null
     private var lastReportedPointer: PointerId? = null
     private var lastReportedUptime = 0L
 
     /**
-     * Whether [change] is the first sighting of its release by any observer sharing these claims, and
-     * records it. Observers of different windows never see the same release, and one observer sees each
-     * release once, so only observers nested in one window ever get `false`.
+     * Whether [change], released in [window] ([currentAutocaptureWindow]), is the first sighting of its
+     * release by any observer sharing these claims, and records it. One observer sees each release
+     * once, so only observers nested in one window ever get `false`.
      */
-    fun firstSightingOf(change: PointerInputChange): Boolean {
-        if (change.id == lastReportedPointer && change.uptimeMillis == lastReportedUptime) return false
+    fun firstSightingOf(change: PointerInputChange, window: Any?): Boolean {
+        if (window == lastReportedWindow && change.id == lastReportedPointer && change.uptimeMillis == lastReportedUptime) {
+            return false
+        }
+        lastReportedWindow = window
         lastReportedPointer = change.id
         lastReportedUptime = change.uptimeMillis
         return true
@@ -143,13 +147,10 @@ internal class IgnoredBoundsKey(val window: Any?)
 
 /**
  * Whether the [AutocaptureClaims.ignored] entry under [key] applies to a tap resolved in [window]:
- * when both name a window, only the same one. A key that names none applies everywhere, as every
- * entry did before windows were told apart.
+ * when both name a window, only the same one. A key that names none applies everywhere.
  */
-internal fun ignoredBoundsApply(key: Any, window: Any?): Boolean {
-    val own = (key as? IgnoredBoundsKey)?.window ?: return true
-    return window == null || own == window
-}
+internal fun ignoredBoundsApply(key: IgnoredBoundsKey, window: Any?): Boolean =
+    key.window == null || window == null || key.window == window
 
 /** The ambient [AutocaptureClaims], or null outside [AutographProvider] / when autocapture is disabled. */
 internal val LocalAutocaptureClaims = staticCompositionLocalOf<AutocaptureClaims?> { null }

@@ -39,8 +39,9 @@ import dev.ynagai.autograph.context.ScopeStack
  *
  * **Android and iOS.** On the JVM it is a no-op, with a one-time console warning, since desktop
  * autocapture resolves nothing. On iOS it resolves through Compose Multiplatform's accessibility
- * tree like every Compose tap there, which needs no accessibility client (#157); a dialog's tree has
- * not yet been checked in a cold process. It is also a no-op, with the same warning:
+ * tree like every Compose tap there, which needs no accessibility client (#157). Taps inside a `Dialog`
+ * and a `ModalBottomSheet` were reported in a cold process on a fresh simulator (iOS 26.4,
+ * CMP 1.12.1), not yet on a physical device. It is also a no-op, with the same warning:
  * - with no enclosing `AutographProvider`, or one without `autocapture`, since there is nothing to
  *   report to — and silently reporting nothing is exactly what this exists to end;
  * - in the provider's own window, where the provider's observer already sees every tap and a second

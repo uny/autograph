@@ -28,6 +28,7 @@ import dev.ynagai.autograph.compose.autographAutocaptureRoot
 import dev.ynagai.autograph.context.ScopeStack
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.jsonPrimitive
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -47,6 +48,8 @@ object RootFixtures {
     var markOwnWindow = false
     var nestRoot = false
     var clicks = 0
+
+    /** The popup's own view, for the test to tap; cleared after each test so no activity outlives it. */
     var popupView: View? = null
 }
 
@@ -126,6 +129,11 @@ class AutocaptureRootTest {
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
 
+    @After
+    fun releaseThePopupView() {
+        RootFixtures.popupView = null
+    }
+
     @Test
     fun withoutTheModifierATapInsideTheDialogLandsButIsNotReported() {
         // The control the issue insisted on: the tap is delivered and consumed (the click ran), and
@@ -197,6 +205,19 @@ class AutocaptureRootTest {
     }
 
     @Test
+    fun twoWindowsReleasingTheSamePointerIdAtTheSameTimeAreBothReported() {
+        // Each window's Compose view numbers its pointers from 0, so the first tap in the dialog and
+        // the first in the screen behind it carry the same id; under Robolectric's frozen clock they
+        // also share a time. They are two taps, and the once-per-release guard must see two windows.
+        val activity = launch(markDialog = true)
+        val downTime = SystemClock.uptimeMillis() + 1000L
+
+        tap(dialogContent(), downTime)
+        tap(ownContent(activity), downTime)
+        assertEquals(listOf<String?>("chip", "own"), taps.map { it.first })
+    }
+
+    @Test
     fun aTapInsideAPopupIsReportedWithTheScreenAroundIt() {
         RootFixtures.tracker = tracker
         RootFixtures.clicks = 0
@@ -244,9 +265,8 @@ class AutocaptureRootTest {
 
     private var gestures = 0
 
-    /** A down/up pair near the top-left of [view], as a distinct gesture each time. */
-    private fun tap(view: View) {
-        val downTime = SystemClock.uptimeMillis() + 1000L * ++gestures
+    /** A down/up pair near the top-left of [view], as a distinct gesture each time unless [downTime] is given. */
+    private fun tap(view: View, downTime: Long = SystemClock.uptimeMillis() + 1000L * ++gestures) {
         view.dispatchTouchEvent(MotionEvent.obtain(downTime, downTime, MotionEvent.ACTION_DOWN, 5f, 5f, 0))
         view.dispatchTouchEvent(MotionEvent.obtain(downTime, downTime + 10, MotionEvent.ACTION_UP, 5f, 5f, 0))
         idle()

@@ -348,7 +348,7 @@ class ElementResolverIosTest {
     fun resolveIosElementReturnsNullWhenThePositionIsInsideAnIgnoredClaim() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.ignored[Any()] = Rect(0f, 0f, 100f, 100f)
+        claims.ignored[IgnoredBoundsKey(root)] = Rect(0f, 0f, 100f, 100f)
 
         val result = resolveIosElement(root, claims, position)
 
@@ -464,7 +464,7 @@ class ElementResolverIosTest {
     fun resolveIosElementStillHonoursIgnoredBoundsWithNoExecutionRecorded() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.ignored[Any()] = Rect(0f, 0f, 100f, 100f)
+        claims.ignored[IgnoredBoundsKey(root)] = Rect(0f, 0f, 100f, 100f)
         claims.openTapGeneration()
 
         val result = resolveIosElement(root, claims, position)
@@ -494,7 +494,7 @@ class ElementResolverIosTest {
     fun resolveIosElementIgnoresClaimsOutsideTheTapPosition() {
         val (root, position) = buildRootWithButton()
         val claims = AutocaptureClaims()
-        claims.ignored[Any()] = Rect(500f, 500f, 600f, 600f)
+        claims.ignored[IgnoredBoundsKey(root)] = Rect(500f, 500f, 600f, 600f)
 
         val result = resolveIosElement(root, claims, position)
 
