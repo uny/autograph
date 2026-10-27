@@ -360,8 +360,9 @@ It attaches the provider's observer to that node and nothing else, so the sheet 
 section and scope declared around the sheet. It warns once and does nothing outside a provider with
 autocapture, in the provider's own window (which is already observed), and on the JVM. On iOS a tap
 inside the root resolves through Compose Multiplatform's accessibility tree, like every Compose tap
-there, so it needs no accessibility client (see *What is and isn't captured* below). A dialog's tree
-has not yet been checked in a cold process.
+there, so it needs no accessibility client (see *What is and isn't captured* below). Taps inside a
+`Dialog` and a `ModalBottomSheet` were reported in a cold process on a fresh iOS 26.4 simulator
+(CMP 1.12.1); that has not yet been checked on a physical device.
 
 `trackImpression` deliberately does **not** suppress autocapture: it reports a visibility event and
 never a click, so a tap on the element it marks is one autocapture owns. Use `autographIgnore()` for
