@@ -10,6 +10,27 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- **`Transport.intercept { event -> … }` replaces a hand-written transport wrapper** ([#302]). The
+  transform sees each `track`, `screen` and `identify` call once as a `TransportEvent` (its `type`,
+  one of `TransportEventTypes`, its `name`, the user id for `identify`, and its `properties`), and
+  returns it with new properties or `null` to drop it. The returned transport forwards
+  `stampsInPipeline`, `connect`, `flush` and `reset`, transforms both delivery routes of an event
+  that carries metadata exactly once, keeps the metadata wherever the transport underneath can take
+  it (a core-stamped transport, or a pipeline transport that implements `MetadataAwareTransport`),
+  implements `MetadataAwareTransport` exactly when the transport underneath does, and hands a delegate written in Swift nested values as
+  JSON text ([#299]). The tracker's metadata warning looks through it and names the transport
+  underneath, as it already did through `DebugTransport`. Kotlin only: it is hidden from Swift,
+  because a Swift closure would receive the properties as a `[String: JsonElement]` dictionary and
+  crash on a nested value. A dropped event leaves a gap in `seq` on a transport the core stamps for
+  (`SegmentTransport` on iOS), and none on a pipeline transport (`SegmentTransport` on Android).
+  Through the tracker, an identity transform changes nothing a transport receives: a reserved
+  `__autograph` key the transform adds to a track or screen event is removed, and identify traits
+  are passed on as returned. A transform that throws counts in `CloseResult.failedHandOffs`; a
+  `null` drop does not. `DebugTransport(transport).intercept(...)` logs what is sent, and
+  `DebugTransport(transport.intercept(...))` logs it before the transform. ADR 0001 §2g records how a
+  declaration hidden from Swift is covered. The README's "Wrapping a transport" section now leads
+  with it.
+
 - **`Modifier.autographAutocaptureRoot()` captures taps inside a `Dialog`, `Popup` or
   `ModalBottomSheet`** ([#210]). Their content composes into a window of its own, so the provider's
   tap observer never saw it: every tap inside a bottom sheet went unreported, with no warning.

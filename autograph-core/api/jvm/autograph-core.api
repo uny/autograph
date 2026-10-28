@@ -298,3 +298,21 @@ public final class dev/ynagai/autograph/Transport$DefaultImpls {
 	public static fun reset (Ldev/ynagai/autograph/Transport;)V
 }
 
+public final class dev/ynagai/autograph/TransportEvent {
+	public final fun getName ()Ljava/lang/String;
+	public final fun getProperties ()Ljava/util/Map;
+	public final fun getType ()Ljava/lang/String;
+	public final fun withProperties (Ljava/util/Map;)Ldev/ynagai/autograph/TransportEvent;
+}
+
+public final class dev/ynagai/autograph/TransportEventTypes {
+	public static final field IDENTIFY Ljava/lang/String;
+	public static final field INSTANCE Ldev/ynagai/autograph/TransportEventTypes;
+	public static final field SCREEN Ljava/lang/String;
+	public static final field TRACK Ljava/lang/String;
+}
+
+public final class dev/ynagai/autograph/TransportInterceptKt {
+	public static final fun intercept (Ldev/ynagai/autograph/Transport;Lkotlin/jvm/functions/Function1;)Ldev/ynagai/autograph/Transport;
+}
+
