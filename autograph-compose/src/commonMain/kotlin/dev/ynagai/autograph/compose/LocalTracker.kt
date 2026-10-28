@@ -104,7 +104,14 @@ public fun AutographProvider(
                 // autographIgnore() doesn't pay for position tracking otherwise, and trackClick()'s
                 // execution mark costs a null check.
                 val claims = remember { AutocaptureClaims() }
-                CompositionLocalProvider(LocalAutocaptureClaims provides claims) {
+                // What Modifier.autographAutocaptureRoot() inside a Dialog / Popup / sheet attaches
+                // with (#210). The raw tracker, not LocalTracker: inside an AutographScope that is the
+                // scope decorator, and the observer reads scope from the stack.
+                val window = currentAutocaptureWindow()
+                val root = remember(tracker, effectiveScopeStack, autocapture, origin, window) {
+                    AutocaptureRoot(tracker, effectiveScopeStack, autocapture, origin, window)
+                }
+                CompositionLocalProvider(LocalAutocaptureClaims provides claims, LocalAutocaptureRoot provides root) {
                     Box(Modifier.fillMaxSize().autocaptureTaps(tracker, effectiveScopeStack, autocapture, origin)) {
                         content()
                     }
