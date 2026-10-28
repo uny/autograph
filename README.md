@@ -1144,6 +1144,29 @@ any other library's tags are untouched. Resource ids merge by name across the wh
 though, so an app or a dependency that declares its own `autograph_ignore` id shares the key — the
 isolation is the name, not a namespace.
 
+## Android: a fragment beside an Activity's content
+
+`installAutographNativeScreenCapture` treats an Activity that holds a view-bearing fragment as a
+shell for its fragments, because in a fragment-based app the fragments are the screens. A
+mini-player, banner or widget fragment added *beside* an Activity's own content looks the same from
+the structure, so the Activity stopped naming itself: its own taps carried no screen and it reported
+no `Screen Viewed` ([#281](https://github.com/uny/autograph/issues/281)). Say which shape you built
+by marking the slot:
+
+```kotlin
+import dev.ynagai.autograph.android.isAutographEmbedded
+
+// In the Activity's onCreate, before the mini-player is added.
+findViewById<View>(R.id.mini_player_slot).isAutographEmbedded = true
+```
+
+Marking the container covers every fragment added into it later; marking a fragment's root view
+works too. The Activity then stays a screen of its own while the fragment is attached, and a Compose
+view inside the marked subtree no longer makes it a Compose host. The fragment itself is unaffected:
+an excluded one still masks its own taps, and a capturable one still reports itself. Do not mark a
+fragment that really is the Activity's content — the Activity would then report its own name over
+it.
+
 ## Requirements
 
 - Kotlin **2.3** or later — any `2.3.x`, not only the `2.3.21` this library is built with. A klib

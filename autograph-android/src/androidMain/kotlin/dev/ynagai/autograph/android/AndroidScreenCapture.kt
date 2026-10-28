@@ -67,7 +67,9 @@ import dev.ynagai.autograph.context.ScopeStack
  *   screens and the Activity is a shell; reporting both would double-count. An Activity that has an
  *   added Fragment with a view — a `DialogFragment` does not count, it covers rather than fills — is
  *   treated as a host, not a screen. Re-derived at every stop, not at every resume, so an Activity
- *   that becomes a host mid-session reports itself until it next stops.
+ *   that becomes a host mid-session reports itself until it next stops. A fragment whose view is
+ *   under a view marked [isAutographEmbedded] — a mini-player slot beside the content — does not
+ *   count (see the #281 paragraph below).
  * - **Container fragments are skipped** — a `NavHostFragment` hosts destinations that are themselves
  *   captured; it is not itself a screen. (Checked reflectively; navigation-fragment is not a
  *   dependency.)
@@ -112,7 +114,9 @@ import dev.ynagai.autograph.context.ScopeStack
  * it resumes after a stop, therefore makes the Activity a shell: its own taps carry no screen and it
  * reports no `Screen Viewed` for itself until it resumes after a stop with the fragment gone
  * ([#281](https://github.com/uny/autograph/issues/281)). Like the limits below, a screen goes
- * absent, never wrong.
+ * absent, never wrong. Only the app knows which shape it built, so it can say so: mark the
+ * container the fragment goes into, or the fragment's root view, with [isAutographEmbedded], and the
+ * Activity stays a screen of its own while the fragment is attached.
  *
  * The same scoping is what answers the opt-out's hardest case. A surface you opted out with a `null`
  * name does not mask, so `add`ed on top of a screen that is merely paused it used to lend that
