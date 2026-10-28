@@ -321,6 +321,51 @@ final class iosAppUITests: XCTestCase {
         XCTAssertEqual(lastEventLabel(app), beforeTap)
     }
 
+    /// A Compose `Dialog` is a root of its own, outside the provider's observer, so a tap inside it is
+    /// reported only under `Modifier.autographAutocaptureRoot()` (#210). The unobserved button is the
+    /// control: it is tapped between two observed taps, and the ordered log shows nothing between
+    /// them. The observed tap carries the screen, section and scope declared around the dialog.
+    ///
+    /// Also pins the premise of the modifier's same-window guard on iOS: if the dialog's content
+    /// shared the provider's `LocalUIView`, the guard would make the modifier a no-op here and
+    /// `dialog_observed` would never be reported.
+    func testTapsInsideADialogAreCapturedOnlyUnderTheModifier() {
+        let app = launchSettled()
+        app.buttons["open_dialog"].tap()
+        // Not a wait on `last_event_label`: while the dialog is up, the screen behind it is out of the
+        // accessibility tree, so that label cannot be read until the dialog closes.
+        XCTAssertTrue(app.buttons["dialog_observed"].waitForExistence(timeout: 15), "the dialog did not open")
+
+        app.buttons["dialog_observed"].tap()
+        app.buttons["dialog_unobserved"].tap()
+        app.buttons["dialog_close"].tap()
+        // The close tap is the last one the modifier observes, so waiting for it means every earlier
+        // tap has had its chance to be reported.
+        waitForLastEventTarget(app, "dialog_close")
+
+        let log = app.staticTexts["track_log_label"].label
+        XCTAssertTrue(
+            log.hasSuffix("Element Clicked:open_dialog|Element Clicked:dialog_observed|Element Clicked:dialog_close"),
+            "expected the observed taps and nothing from the unobserved one at the end of: \(log)"
+        )
+        XCTAssertFalse(log.contains("dialog_unobserved"), "a tap outside the modifier was reported: \(log)")
+    }
+
+    /// A Compose `Dialog`'s observed tap is attributed like any other: screen, section and scope.
+    func testATapInsideADialogCarriesTheScreenSectionAndScopeAroundIt() {
+        let app = launchSettled()
+        app.buttons["open_dialog"].tap()
+        XCTAssertTrue(app.buttons["dialog_observed"].waitForExistence(timeout: 15), "the dialog did not open")
+        app.buttons["dialog_observed"].tap()
+        app.buttons["dialog_close"].tap()
+        waitForLastEventTarget(app, "dialog_close")
+
+        let props = lastEventProps(app)
+        XCTAssertTrue(props.contains("\"screen\":\"Sample\""), "screen missing from props: \(props)")
+        XCTAssertTrue(props.contains("\"section\":\"Main\""), "section missing from props: \(props)")
+        XCTAssertTrue(props.contains("\"article_id\":\"42\""), "scope missing from props: \(props)")
+    }
+
     /// A disabled clickable swallows the tap and fires nothing, so reporting a click would invent an
     /// event (#134, the iOS counterpart of #128).
     ///
@@ -860,8 +905,13 @@ final class SwiftUIExplicitUITests: XCTestCase {
         // `AutographButton.body` call the click-marking path rather than plain `track`. The tracker on
         // this screen is written in Swift and reads every value, which a nested object would trap.
         XCTAssertTrue(
-            lastProps(app).contains(#""__autograph":"{\"kind\":\"click\"}""#),
+            lastProps(app).contains(#""__autograph":"{\"kind\":\"click\","#),
             "AutographButton did not mark the event as a click: \(lastProps(app))"
+        )
+        // #242: the screen's visit id rides in the same value, through the same Swift tracker.
+        XCTAssertTrue(
+            carriesVisitId(lastProps(app)),
+            "AutographButton's event did not carry the screen's visit id: \(lastProps(app))"
         )
     }
 
@@ -931,11 +981,23 @@ final class SwiftUIExplicitUITests: XCTestCase {
             lastProps(app).contains("\"plan\":\"pro\""),
             "call-site properties missing: \(lastProps(app))"
         )
-        // #287: `autograph.track` can be called from anywhere, so it claims no kind.
+        // #287: `autograph.track` can be called from anywhere, so it claims no kind. #242: it still
+        // carries the visit of the screen it was called on, which is all its metadata holds.
         XCTAssertFalse(
-            lastProps(app).contains("__autograph"),
+            lastProps(app).contains(#"\"kind\""#),
             "plain autograph.track must not mark its event: \(lastProps(app))"
         )
+        XCTAssertTrue(
+            lastProps(app).contains(#""__autograph":"{\"screen_view_id\":"#) && carriesVisitId(lastProps(app)),
+            "plain autograph.track did not carry the screen's visit id: \(lastProps(app))"
+        )
+    }
+
+    /// Whether [props] carries a non-empty `screen_view_id` (#242) inside the JSON-string value of
+    /// `__autograph`, where its quotes arrive escaped. The value itself is the generator's and changes
+    /// per run, so this checks it is there and not empty rather than what it is.
+    private func carriesVisitId(_ props: String) -> Bool {
+        props.range(of: #"\\"screen_view_id\\":\\"[^\\"]+\\""#, options: .regularExpression) != nil
     }
 
     /// Sibling rows each carrying their own `.autographScope` attribute exactly — the shape that made

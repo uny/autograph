@@ -1,12 +1,14 @@
 package dev.ynagai.autograph.uikit
 
 import dev.ynagai.autograph.EmptyJsonObject
+import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.context.emitScreenView
 import kotlin.test.AfterTest
 import kotlin.test.BeforeTest
 import kotlin.test.Test
@@ -382,6 +384,28 @@ class NativeTapCaptureTest {
         assertFalse(
             warnedANativeTapResolvedToNothing,
             "a tap the resolver named is not a miss and must not spend the warning",
+        )
+    }
+
+    /** A tap on a screen the UIKit capture reported carries the visit that screen view started (#242). */
+    @OptIn(AutographInternalApi::class)
+    @Test
+    fun aTapCarriesTheVisitOfTheScreenItLandsOn() {
+        val tracker = RecordingTracker()
+        val scopeStack = ScopeStack().apply { screenViewIdGenerator = EventIdGenerator { "visit" } }
+        scopeStack.emitScreenView(NoopTracker(), "Feed", origin = scopeStack.push(screen = "Feed"))
+        val capture = AutographNativeTapCapture(tracker, scopeStack, "Element Clicked")
+        val root = UIView(frame = CGRectMake(0.0, 0.0, 100.0, 100.0))
+        root.addSubview(
+            UIButton(frame = CGRectMake(10.0, 10.0, 20.0, 20.0))
+                .also { (it as NSObject).setValue("share_button", forKey = "accessibilityIdentifier") },
+        )
+
+        capture.report(AxPoint(15f, 15f), root)
+
+        assertEquals(
+            JsonPrimitive("""{"kind":"${EventKinds.CLICK}","screen_view_id":"visit"}"""),
+            tracker.properties.single()[RESERVED_METADATA_KEY],
         )
     }
 

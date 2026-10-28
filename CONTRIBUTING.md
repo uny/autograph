@@ -169,10 +169,12 @@ resolves to the highest request in the graph. So the catalog value changes nothi
 *above* what CMP asks for, which is exactly how the old 2.11.0 pin dragged the floor to 37. Check
 what CMP already requires before pinning it yourself.
 
-**A `composeMultiplatform` version bump in `gradle/libs.versions.toml` needs a manual cold-device
-check before merging — CI cannot catch a regression here.** iOS Compose autocapture depends on an
-undocumented CMP implementation detail: the accessibility-tree activation call site that autograph's
-tap-time walk relies on (see the kdoc in
+**A `composeMultiplatform` version bump in `gradle/libs.versions.toml` needs a cold-device check
+before merging — CI cannot catch a regression here.** That includes a dependabot PR: #291 (CMP
+1.12.0 → 1.12.1) merged without it, and the check was only run afterwards, in the 0.12.0 release
+prep (#318).
+iOS Compose autocapture depends on an undocumented CMP implementation detail: the
+accessibility-tree activation call site that autograph's tap-time walk relies on (see the kdoc in
 [`AccessibilityTree.kt`](autograph-uikit/src/iosMain/kotlin/dev/ynagai/autograph/uikit/AccessibilityTree.kt),
 and [`docs/design/135-ios-cold-accessibility.md`](docs/design/135-ios-cold-accessibility.md) for the
 names it depends on and the CMP version each was read on).
@@ -180,20 +182,58 @@ names it depends on and the CMP version each was read on).
 launch starts without — a CMP bump that silently breaks cold-start tap resolution would land fully
 green (see [#135](https://github.com/uny/autograph/issues/135)).
 
-Before merging a `composeMultiplatform` bump:
+[`.github/scripts/ios-cold-check.sh`](.github/scripts/ios-cold-check.sh) does everything but the
+taps. On a Mac with Xcode, from the PR's branch:
 
-1. Create a fresh simulator, not an existing one — `shutdown`+`boot` does not reset the accessibility
-   subsystem, only a genuinely new device does (`xcrun simctl create cold-check "iPhone 17 Pro"`, then
-   note the returned `<udid>`). Never attach VoiceOver, Voice Control, the Accessibility Inspector,
-   XCUITest, or any other accessibility client to it before the check below.
-2. Start log capture first so you don't race the tap: `xcrun simctl spawn <udid> log stream --style
-   compact --predicate 'eventMessage CONTAINS "AutographSample:"'`. Then build and install `sample-ios`
-   on the simulator, launch it, and tap an autocaptured element (e.g. the README quick-start sample) as
-   the very first interaction. Confirm the tap shows up in the log.
-3. Delete the simulator afterward (`xcrun simctl delete <udid>`) — once warmed, it no longer exercises
-   the cold path and cannot be reused for this check.
+```bash
+.github/scripts/ios-cold-check.sh prepare --probe
+```
 
-This is a manual step, not something a script in this repo currently automates.
+It creates and boots a new simulator, builds the local `Autograph.xcframework` and `sample-ios`
+against it, starts log capture, installs and launches the app, and fails unless the launch-time
+screen view and two impressions arrive. It then saves a screenshot and prints six elements to tap,
+in order, each with the log line it must produce and the one it must not. After the taps:
+
+```bash
+.github/scripts/ios-cold-check.sh verify
+```
+
+```bash
+.github/scripts/ios-cold-check.sh teardown
+```
+
+`verify` exits non-zero on a missing event, a double report, or a warm press. Paste its output into
+the PR. `teardown` deletes the simulator and reverts the probe.
+
+The facts the script is built on, all measured:
+
+- **Only a new simulator is cold.** `shutdown` + `boot` does not reset the accessibility subsystem,
+  and once a device has been warmed it cannot be reused for this check. So `prepare` always creates
+  one and `teardown` always deletes it.
+- **Nothing may touch it as an accessibility client before the taps:** not VoiceOver, Voice Control,
+  the Accessibility Inspector, or XCUITest.
+- **The Claude Code iOS Simulator MCP tool's tap does not warm accessibility**, so an agent can make
+  the taps, and neither does its live panel (`attach`) being open. `xcrun simctl io <udid> screenshot`
+  does not warm it either, which is how the tap
+  coordinates are found (MCP coordinates are points: screenshot pixels / 3 on an iPhone 17 Pro). A
+  human clicking in Simulator.app works too.
+- **The MCP tool asks for access once per device, and every check uses a new device.** `prepare`
+  boots the simulator before it builds and prints its UDID; grant access then (the tool's `attach`
+  action asks), so the prompt is answered while the build runs. An unanswered prompt held the
+  2026-10-19 check for about an hour after the build had finished.
+- **`--probe` is what proves the run was cold.** It applies
+  [`ios-cold-check-probe.patch`](.github/scripts/ios-cold-check-probe.patch) to the sample's
+  `MainViewController.kt`, which logs the Compose host view's `accessibilityFrame` on every pointer
+  event (down and up), so six taps log twelve lines.
+  `0.0x0.0` means cold; a real frame means something warmed the device and the run proves nothing,
+  and `verify` fails it. Without `--probe` a pass says the run is unproven. The patch is never
+  committed. If you edit it, keep `import platform.UIKit.accessibilityFrame`: `accessibilityFrame` is
+  a UIKit category property, and without that import the build fails with "Unresolved reference
+  'accessibilityFrame'".
+
+For a bump that changes the result, add a controlled arm on the old version (a second `prepare` on a
+checkout of `main`, with its own new simulator), as #224 did, so a difference can be attributed to
+CMP.
 
 ### The second iOS check: `trackClick` must run before the tap observer sees the release
 
@@ -219,7 +259,7 @@ Treat that shape as a correctness change, not a feature regression.
 
 Re-check it on device when any of these change:
 
-- the `composeMultiplatform` version (fold this into the cold-device check above — same session);
+- the `composeMultiplatform` version (the cold-device check above already includes these taps);
 - `Modifier.trackClick`'s own implementation, in particular replacing `clickable` with
   `combinedClickable`, `toggleable`, `selectable`, or a hand-written gesture detector;
 - `autocaptureTaps`'s pointer loop, which brackets each dispatch with the generation the mark
@@ -230,11 +270,11 @@ fail loudly. `AutocaptureClaimDisposalTest.trackClickMarksItsExecutionBetweenTra
 a real touch and reads the flag from inside the handler, so a handler that no longer runs inside its
 dispatch turns it red; `PointerEventIdentityTest` pins the `PointerEvent` identity the observer's
 attribution guard depends on. What neither can see is the on-device pipeline itself, which is what
-the manual check below is for.
+the check below is for.
 
-The check: with `AutographSample` running and log capture attached as above, tap
-`explicit_tracked_small`. The log must show `Recipe Saved` and no `Element Clicked` for it. Tap
-`clamped_inner_host`'s lower strip and confirm the opposite — an `Element Clicked` with no explicit
+The check is taps 5 and 6 of `ios-cold-check.sh`, so for a change to `trackClick` or the pointer
+loop run the same script. `explicit_tracked_small` must log `Recipe Saved` and no `Element Clicked`.
+`clamped_inner_host`'s lower strip must log the opposite — an `Element Clicked` with no explicit
 event — which is what proves the suppression is still discriminating rather than simply always on.
 
 ## Reporting bugs

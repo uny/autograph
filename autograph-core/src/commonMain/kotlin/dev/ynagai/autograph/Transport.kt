@@ -63,6 +63,8 @@ public interface Transport {
     // Properties are the `Map` interface rather than `JsonObject` deliberately, and implementations
     // must keep it that way: Kotlin/Native passes a Swift dictionary into a Map *subtype* unchecked,
     // and reading it there is a SIGSEGV, not a catchable failure (#193). Narrow with `asJsonObject()`.
+    // A transport implemented in Swift receives each nested object or array value as its JSON text,
+    // because Kotlin/Native cannot hand one over as a `JsonElement` (#299, see `Tracker`).
     public fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?)
 
     public fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?)

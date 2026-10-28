@@ -19,6 +19,7 @@ import dev.ynagai.autograph.EventKinds
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.deliverableTo
 import dev.ynagai.autograph.withEventMetadata
 
 /**
@@ -52,6 +53,7 @@ internal fun Modifier.autocaptureTaps(
 ): Modifier {
     val resolver = rememberElementResolver()
     val claims = LocalAutocaptureClaims.current
+    val window = currentAutocaptureWindow()
     // remember, not a bare local var: the pointerInput coroutine below is long-lived and only
     // restarts when tracker/config/resolver change identity, so a plain var reassigned by
     // onGloballyPositioned on every recomposition would go stale relative to it — this shared,
@@ -64,34 +66,41 @@ internal fun Modifier.autocaptureTaps(
         // attributing taps against the one nobody writes to any more. Same reasoning as the nav
         // listener's key in TrackScreenViews — the two sites capture the same thing and should not
         // disagree about it.
-        .pointerInput(tracker, scopeStack, config, resolver, claims, origin) {
-            awaitPointerEventScope {
-                while (true) {
-                    // Two passes of the SAME dispatch. Initial resumes before any child handles the
-                    // event, so the generation is already open when a trackClick's `clickable` runs
-                    // its handler on the Main pass in between; Final is where this observer decides
-                    // whether to report. Deliberately not filtered by type here — pairing every
-                    // Initial with its Final keeps the loop in step without assuming anything about
-                    // which event types reach it.
-                    val initial = awaitPointerEvent(PointerEventPass.Initial)
-                    val token = claims?.openTapGeneration()
-                    try {
-                        val event = awaitPointerEvent(PointerEventPass.Final)
-                        if (!executionEvidenceIsAttributable(initial, event)) claims?.clearTapExecution()
-                        if (event.type != PointerEventType.Release) continue
-                        // Filter directly by isConsumed: on a multi-touch Release the consumed pointer
-                        // isn't necessarily changes[0].
-                        val change = event.changes.firstOrNull { it.isConsumed } ?: continue
-                        val positioned = rootCoordinates ?: continue
-                        reportTapIfResolvable(tracker, scopeStack, config, origin) {
-                            resolver.resolve(positioned, change.position)
+        .pointerInput(tracker, scopeStack, config, resolver, claims, origin, window) {
+            try {
+                awaitPointerEventScope {
+                    while (true) {
+                        // Two passes of the SAME dispatch. Initial resumes before any child handles the
+                        // event, so the generation is already open when a trackClick's `clickable` runs
+                        // its handler on the Main pass in between; Final is where this observer decides
+                        // whether to report. Deliberately not filtered by type here — pairing every
+                        // Initial with its Final keeps the loop in step without assuming anything about
+                        // which event types reach it.
+                        val initial = awaitPointerEvent(PointerEventPass.Initial)
+                        val token = claims?.openTapGeneration()
+                        try {
+                            val event = awaitPointerEvent(PointerEventPass.Final)
+                            if (!executionEvidenceIsAttributable(initial, event)) claims?.clearTapExecution()
+                            if (event.type != PointerEventType.Release) continue
+                            // Filter directly by isConsumed: on a multi-touch Release the consumed pointer
+                            // isn't necessarily changes[0].
+                            val change = event.changes.firstOrNull { it.isConsumed } ?: continue
+                            val positioned = rootCoordinates ?: continue
+                            // Nested autographAutocaptureRoot()s in one window all see this release; the
+                            // first to get here reports it (#210).
+                            if (claims != null && !claims.firstSightingOf(change, window)) continue
+                            reportTapIfResolvable(tracker, scopeStack, config, origin) {
+                                resolver.resolve(positioned, change.position)
+                            }
+                        } finally {
+                            // Runs on `continue` and on cancellation alike, so evidence never outlives the
+                            // dispatch that produced it. Token-qualified: see AutocaptureClaims.generation.
+                            if (token != null) claims.closeTapGeneration(token)
                         }
-                    } finally {
-                        // Runs on `continue` and on cancellation alike, so evidence never outlives the
-                        // dispatch that produced it. Token-qualified: see AutocaptureClaims.generation.
-                        if (token != null) claims.closeTapGeneration(token)
                     }
                 }
+            } finally {
+                claims?.forgetSightingsIn(window)
             }
         }
 }
@@ -161,8 +170,9 @@ internal fun reportTapIfResolvable(
         // the ambient scope (the tapped element is more specific than the screen it sits on) while
         // the reserved screen/section keys still win over it. Being a scope, it never supplies event
         // metadata, so its entry under the reserved key is left out before it takes that slot.
-        val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY).withEventMetadata(EventKinds.CLICK)
-        tracker.track(config.eventName, properties, target.identifier)
+        val properties = ctx.enrich(target.scope - RESERVED_METADATA_KEY)
+            .withEventMetadata(EventKinds.CLICK, screenViewId = ctx.screenViewId)
+        tracker.track(config.eventName, properties.deliverableTo(tracker), target.identifier)
     } catch (e: Exception) {
         // Swallowed: see kdoc above.
     }

@@ -4,6 +4,8 @@ import dev.ynagai.autograph.EmptyJsonObject
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.asJsonObject
+import dev.ynagai.autograph.closeAndAwait
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -136,6 +138,19 @@ class ScopedContextTest {
         assertEquals(1, inner.foregrounded)
         assertEquals(1, inner.backgrounded)
         // A scoped view owns no resources; closing it must not tear down the real tracker.
+        assertEquals(0, inner.closed)
+    }
+
+    // #261: closeAndAwait() on a scoped view must report "unsupported" and must not fall back to close()
+    // on the view or reach the root tracker it wraps.
+    @Test
+    fun closeAndAwaitOnAScopedViewIsUnsupportedAndClosesNothing() = runBlocking {
+        val inner = ScopeRecordingTracker()
+        val scoped = ScopedTracker(inner, scope("article_id" to "42"))
+
+        val result = scoped.closeAndAwait()
+
+        assertTrue(result.isUnsupported)
         assertEquals(0, inner.closed)
     }
 

@@ -14,9 +14,12 @@ import androidx.compose.ui.platform.ComposeView
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.context.ScopeStack
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -113,11 +116,15 @@ class MiniPlayerFragment : ButtonFragment() {
 class AndroidTapOriginTest {
 
     private val taps = mutableListOf<Map<String, JsonElement>>()
+    /** Each screen view's visit id (#242), by screen name. */
+    private val visits = mutableMapOf<String, String?>()
     private val tracker = object : Tracker {
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) {
             taps += properties
         }
-        override fun screen(name: String, properties: Map<String, JsonElement>) = Unit
+        override fun screen(name: String, properties: Map<String, JsonElement>) {
+            visits[name] = properties.visitId()
+        }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
     private val scopeStack = ScopeStack()
@@ -199,6 +206,26 @@ class AndroidTapOriginTest {
         taps.clear()
         tap(activity, b.button)
         assertEquals("ButtonFragmentB", taps.single()["screen"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun aTapInEachOfTwoNamedSiblingFragmentsCarriesItsOwnVisit() {
+        val activity = launch()
+        val a = ButtonFragmentA()
+        val b = ButtonFragmentB()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, a).commitNow()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerB, b).commitNow()
+        val visitA = checkNotNull(visits["ButtonFragmentA"])
+        val visitB = checkNotNull(visits["ButtonFragmentB"])
+        // Ambiently the two branch, so there is no telling which visit an event is in.
+        assertNull(scopeStack.current().screenViewId)
+
+        tap(activity, a.button)
+        assertEquals(visitA, taps.single().visitId())
+
+        taps.clear()
+        tap(activity, b.button)
+        assertEquals(visitB, taps.single().visitId())
     }
 
     @Test
@@ -357,3 +384,7 @@ class AndroidTapOriginTest {
         assertTrue("the tap was reported", taps.isNotEmpty())
     }
 }
+
+/** The visit id (#242) these properties carry under the reserved key, if any. */
+private fun Map<String, JsonElement>.visitId(): String? =
+    this[RESERVED_METADATA_KEY]?.let { raw -> Json.parseToJsonElement(raw.jsonPrimitive.content).jsonObject["screen_view_id"]?.jsonPrimitive?.content }

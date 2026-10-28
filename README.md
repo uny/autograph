@@ -140,6 +140,15 @@ LocalTracker.current.track("Recipe Saved", target = "share_button")
 Text("Save", Modifier.trackClick("Recipe Saved") { save() })
 Card(Modifier.trackImpression("Recipe Viewed", target = "recipe_card")) { RecipeCard() }
 
+// In a lazy list, pass the item's key: an item scrolled out of view and back reports once per
+// visit of the enclosing TrackedScreen, not every time the list re-composes it. Without a
+// TrackedScreen around the list, wrap it in ImpressionScope { ... }.
+LazyColumn {
+    items(recipes, key = { it.id }) { recipe ->
+        RecipeRow(recipe, Modifier.trackImpression("Recipe Viewed", key = recipe.id))
+    }
+}
+
 // Opt-in: report every tap without instrumenting each element — pass AutocaptureConfig to
 // AutographProvider. Identification prefers testTag, then role, then the accessibility label;
 // displayed text is never collected. Exclude a subtree with Modifier.autographIgnore().
@@ -150,9 +159,10 @@ AutographProvider(tracker, autocapture = Autocapture()) {
 
 ## Samples
 
-`sample-shared`'s demo composables exercise every snippet above for real — `AutographProvider`,
+`sample-shared`'s demo composables exercise the snippets above for real — `AutographProvider`,
 `Modifier.trackClick`/`trackImpression`, and opt-in `AutocaptureConfig` autocapture — against a
-`LoggingTracker` that prints each event so you can watch them fire as you tap:
+`LoggingTracker` that prints each event so you can watch them fire as you tap. The keyed
+`trackImpression` in a lazy list is the exception: `autograph-compose`'s own tests cover it.
 
 - **Android**: `sample-android`. Run `./gradlew :sample-android:installDebug` and launch it, or
   open the project in Android Studio.
@@ -333,6 +343,27 @@ multi-touch exception, described below — `Modifier.autographIgnore()` excludes
 and [`AutographElementScope { … }`](#scoped-context) attaches per-element properties to the taps
 under it.
 
+**Dialogs, popups and bottom sheets are separate roots.** Their content composes into a window of its
+own, outside the observer `AutographProvider` installs, so a tap inside one is delivered and consumed
+but never seen — no event and no warning
+([#210](https://github.com/uny/autograph/issues/210)). Put `Modifier.autographAutocaptureRoot()` on
+the outermost node of the content, on Android and iOS:
+
+```kotlin
+ModalBottomSheet(onDismissRequest = onDismiss) {
+    Column(Modifier.autographAutocaptureRoot()) { FilterChips(...) }
+}
+```
+
+It attaches the provider's observer to that node and nothing else, so the sheet keeps its own size
+(a second `AutographProvider` there would stretch it to the window), and its taps carry the screen,
+section and scope declared around the sheet. It warns once and does nothing outside a provider with
+autocapture, in the provider's own window (which is already observed), and on the JVM. On iOS a tap
+inside the root resolves through Compose Multiplatform's accessibility tree, like every Compose tap
+there, so it needs no accessibility client (see *What is and isn't captured* below). Taps inside a
+`Dialog` and a `ModalBottomSheet` were reported in a cold process on a fresh iOS 26.4 simulator
+(CMP 1.12.1); that has not yet been checked on a physical device.
+
 `trackImpression` deliberately does **not** suppress autocapture: it reports a visibility event and
 never a click, so a tap on the element it marks is one autocapture owns. Use `autographIgnore()` for
 an element that should report neither.
@@ -364,8 +395,8 @@ table is the whole picture, because a gap here produces **no event at all** — 
 
 | Surface | Taps | Screen views |
 |:--|:--|:--|
-| Compose — Android | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
-| Compose — iOS | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
+| Compose — Android | ✅ `AutocaptureConfig`; **inside a `Dialog` / `Popup` / `ModalBottomSheet` only with `Modifier.autographAutocaptureRoot()`, see below** | ✅ `TrackedScreen` / navigation-compose |
+| Compose — iOS | ✅ `AutocaptureConfig`; **inside a `Dialog` / `Popup` / sheet only with `Modifier.autographAutocaptureRoot()`, see below** | ✅ `TrackedScreen` / navigation-compose |
 | Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
 | iOS native — UIKit | ✅ `installAutographNativeTapCapture` — for identified controls; **cell selection is not covered, see below** | ✅ `installAutographNativeScreenCapture` |
 | iOS native — SwiftUI | ❌ **not captured — instrument explicitly with [`AutographButton`](#ios-swiftui-clicks-with-autographbutton)** | ✅ [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) |
@@ -495,6 +526,7 @@ Every event now carries — this shape is the stable envelope contract described
     "event_timestamp": "2026-07-11T09:12:03.456Z", // captured at call time, not the transport's own
     "schema_version": "2024-01", // your own tracking-plan version, if set — omitted otherwise
     "kind": "impression",        // what produced the event, for events the library emits — omitted otherwise
+    "screen_view_id": "0197c9a0-…", // the screen visit: on its Screen Viewed and the events captured during it — omitted when unknown
     "impression": {              // an impression's thresholds — present only on impressions
       "min_duration_ms": 500,
       "min_fraction_visible": 0.5
@@ -502,6 +534,16 @@ Every event now carries — this shape is the stable envelope contract described
   }
 }
 ```
+
+`screen_view_id` ties an event to one visit of a screen: a new id for every `Screen Viewed` the
+library emits, carried by that screen view and by the events the library records while the screen is
+on display — captured taps, `trackClick` and `trackImpression` inside a `TrackedScreen` (not beside
+a bare `TrackScreenView`, which gives them no screen either), and SwiftUI's `autograph.track(_:)`,
+which takes the visit current when it is called. A plain `Tracker.track` call carries none, and there
+is no API yet for keeping a visit and attaching it to an event you send later — content that loads after the user has
+moved on, say — so such events cannot be joined to their visit by this id; key them on what they are
+about instead. It is also absent whenever the library cannot tie an event to one visit, listed in the
+[changelog](CHANGELOG.md).
 
 ## Default properties
 
@@ -635,6 +677,53 @@ Also included: `assertScreenFired` / `assertIdentifyFired`, `assertEventNotFired
 default (`exact = true` for an exact match), and accept plain Kotlin values or `JsonElement`
 directly.
 
+## Closing a tracker
+
+`tracker.close()` stops accepting events, waits for everything already accepted to reach the transport,
+asks the transport to flush, and returns. It blocks, tells you nothing about how that went, and returns
+at once on a second call. When you need to know — a CLI or desktop app exiting, a tracker being replaced
+on logout — use `closeAndAwait`, which suspends and returns a `CloseResult`:
+
+```kotlin
+val result = tracker.closeAndAwait()          // waits until the shutdown finishes, like close()
+val result = tracker.closeAndAwait(2_000)     // or give up waiting after 2 s
+
+when {
+    result.isUnsupported -> {}                          // not a tracker you can close; nothing was closed
+    result.timedOut -> log("some events may not have reached the transport")
+    result.failedHandOffs > 0 -> log("${result.failedHandOffs} calls into the transport threw")
+}
+```
+
+The result separates what a single flag would blur, and promises only what the tracker can see:
+
+| Field | Means |
+|:--|:--|
+| `cutoffReached` | The tracker stopped accepting work. `isUnsupported` is its negation. |
+| `waitCompleted` / `timedOut` | Everything accepted before the cutoff was handed to the transport within the time allowed, or not. |
+| `failedHandOffs` | How many calls into the transport (or the stamping in front of it) threw. The tracker swallows and logs these, so `waitCompleted` alone never meant they all succeeded. |
+| `flushRequested` / `flushFailed` | Whether the tracker called `Transport.flush()`, and whether that call threw. |
+
+**Network delivery is not covered.** Nothing here says an event reached a server — only that the tracker
+handed it over and asked the transport to flush. With a transport that stamps in its own pipeline
+(Segment on Android) the wait covers the calls *into* the transport, not the pipeline's own queue.
+
+- **Only the tracker you created can be closed this way.** `closeAndAwait` is a capability
+  (`AwaitableCloseTracker`) the tracker from `Autograph { }` has, probed with `is`. A tracker without it,
+  such as the scoped view an `AutographScope` provides, gets `isUnsupported` and is **not** closed, so a
+  view can never shut down the root. It is a separate interface and not a `Tracker` member because a new
+  member would break every Swift class that conforms to `Tracker`.
+- **Concurrent and repeated calls wait on the same shutdown**, and a call after it finished returns the
+  final result at once. A `close()` already running on another thread is waited for, not repeated.
+- **`closeAndAwait()` waits for the final result, like `close()`.** The drain is bounded by
+  `closeDrainTimeoutMillis` (default 5 s), but the `Transport.flush()` after it cannot be interrupted, so a
+  transport whose flush blocks holds both calls for as long as it blocks.
+- **The per-call timeout bounds your wait, not the shutdown.** A caller that times out leaves the shutdown
+  running, and a later call reports how it ended. A timeout at or above `closeDrainTimeoutMillis` still
+  does not guarantee the final result, since the flush runs after the drain: use the no-argument form for that.
+- From Swift: `try await AwaitableCloseKt.closeAndAwait(tracker)` or
+  `closeAndAwait(tracker, timeoutMillis: 2000)`, returning `CloseResult`.
+
 ## Debugging
 
 `DebugTransport` wraps another transport and logs every outgoing event before delivering it — for
@@ -649,6 +738,77 @@ val tracker = Autograph {
 
 The default logger dumps full event properties — don't wrap a production transport with this in a
 release build (gate it behind a debug-build check, or supply a logger that redacts what it prints).
+
+## Wrapping a transport
+
+Reach for the tracker's own hooks first. A key every event needs belongs in
+[`DefaultProperties`](#default-properties), and a rule about which events are allowed belongs in an
+[`EventValidator`](#validation). Both act on the event before the transport sees it. A transport
+wrapper runs after validation, and it has to forward every member by hand. If you do write one,
+for redaction, sampling or logging, these are the details that fail without a compile error:
+
+- **Forward `stampsInPipeline` and `connect`.** A pipeline transport, such as `SegmentTransport` on
+  Android, gets its `EnvelopeSource` in `connect` and stamps every event in its own pipeline. If
+  the wrapper keeps the defaults (`false`, no-op), events go out with no envelope at all: no event
+  id, no session, no sequence. `SegmentTransport.reset()` then fails. The tracker cannot detect this.
+- **Forward `identify`, `flush` and `reset`** as well.
+- **Implement `MetadataAwareTransport` when the delegate stamps in its own pipeline.** For such a
+  transport, an event carrying metadata (its `kind`, an impression's thresholds, its
+  `screen_view_id`) arrives through `MetadataAwareTransport.track` / `screen`, not through
+  `Transport.track` / `screen`. Route both overloads through the same logic exactly once. If the
+  wrapper redacts in one overload and passes the other straight through, every click and impression
+  goes out unredacted.
+- **Pass the envelope through.** On a transport the core stamps for, such as `SegmentTransport` on
+  iOS, the metadata is already on `envelope.metadata`.
+- **Do not forward nested values to a delegate written in Swift.** A transport or tracker
+  implemented in Swift cannot receive a nested object or array value: the call crashes before its
+  body runs. Autograph replaces each one with its JSON text before it calls a Swift transport, and
+  `DebugTransport` does the same for a Swift delegate, but your own Kotlin wrapper calls its delegate
+  directly. If that delegate can be a Swift object, encode nested values as strings in the wrapper.
+
+```kotlin
+class RedactingTransport(private val delegate: Transport) : Transport, MetadataAwareTransport {
+    override val stampsInPipeline: Boolean get() = delegate.stampsInPipeline
+    override fun connect(envelopes: EnvelopeSource) = delegate.connect(envelopes)
+    override fun identify(userId: String, traits: Map<String, JsonElement>, envelope: Envelope?) =
+        delegate.identify(userId, redact(traits), envelope)
+    override fun flush() = delegate.flush()
+    override fun reset() = delegate.reset()
+
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) =
+        delegate.track(name, redact(properties), envelope)
+
+    override fun track(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) =
+        if (delegate is MetadataAwareTransport) {
+            delegate.track(name, redact(properties), envelope, metadata)
+        } else {
+            delegate.track(name, redact(properties), envelope) // the metadata is lost: log that once
+        }
+
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) =
+        delegate.screen(name, redact(properties), envelope)
+
+    override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?, metadata: EventMetadata) =
+        if (delegate is MetadataAwareTransport) {
+            delegate.screen(name, redact(properties), envelope, metadata)
+        } else {
+            delegate.screen(name, redact(properties), envelope) // the metadata is lost: log that once
+        }
+
+    private fun redact(properties: Map<String, JsonElement>) = properties - "email"
+}
+```
+
+A wrapper that does not implement `MetadataAwareTransport` around a pipeline transport still
+delivers every event, without its metadata. The tracker logs this once and names the wrapper. A
+wrapper that declares the interface is trusted. The tracker cannot see whether the wrapper's
+delegate implements it too, so the fallback branch above has to report the loss itself. A transport
+cannot reach `AutographConfig.logger`, so give the wrapper a logger of its own, or use `println`.
+(`DebugTransport` is the exception, because the tracker knows how it forwards.)
+
+Dropping an event in a wrapper (sampling) behaves differently on the two kinds of delegate. A pipeline
+transport has not stamped the event yet, so nothing is consumed. A transport the core stamps for
+receives an envelope that is already stamped, so a dropped event leaves a gap in the sequence numbers.
 
 ## Native surfaces: installing the captures
 

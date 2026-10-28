@@ -8,6 +8,7 @@ import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
 import dev.ynagai.autograph.context.DEFAULT_AUTOCAPTURE_EVENT_NAME
 import dev.ynagai.autograph.context.ScopeStack
+import dev.ynagai.autograph.deliverableTo
 import dev.ynagai.autograph.withEventMetadata
 import platform.Foundation.NSHashTable
 import platform.Foundation.NSHashTableObjectPointerPersonality
@@ -224,7 +225,8 @@ public class AutographNativeTapCapture internal constructor(
     }
 
     private fun track(target: String) {
-        tracker.track(eventName, scopeStack.current().enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK), target)
+        val context = scopeStack.current()
+        tracker.track(eventName, context.enrich(EmptyJsonObject).withEventMetadata(EventKinds.CLICK, screenViewId = context.screenViewId).deliverableTo(tracker), target)
     }
 }
 

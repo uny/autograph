@@ -53,7 +53,7 @@ Three pipelines, three different answers.
    on — containment gates every node except it (#136). Below it, CMP's bridged elements are present
    and correct cold, because CMP builds them on an activation path that reading the tree is enough to
    trigger (fact 5). That is a dependency on a CMP implementation detail, not a guarantee, which is
-   why a CMP bump needs a manual cold-device check (#154, `CONTRIBUTING.md`).
+   why a CMP bump needs a cold-device check (#154, `CONTRIBUTING.md`).
 2. **UIKit: captured cold, through `hitTest`** (#189). `UIView.hitTest` never consults
    accessibility, and in a cold process it returns the real `UIButton` carrying its
    `accessibilityIdentifier` — the string reported as `target`. It is now the only native resolver.
@@ -258,7 +258,7 @@ hand-built trees that carry the cold shape.
 
 ## Re-verifying after a CMP bump
 
-Run `CONTRIBUTING.md`'s cold-device check: a simulator created fresh (`shutdown`/`boot` does not reset
+Run `CONTRIBUTING.md`'s cold-device check (`.github/scripts/ios-cold-check.sh`): a simulator created fresh (`shutdown`/`boot` does not reset
 the accessibility state, and a warmed device is spent), no client attached, one Compose tap as the very
 first interaction. Add a controlled arm on the old version and a non-vacuity probe of
 `LocalUIView.current`'s `accessibilityFrame`, as #224 did, so a null result is attributable. Then

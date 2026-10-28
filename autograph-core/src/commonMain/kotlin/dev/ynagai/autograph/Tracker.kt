@@ -17,6 +17,14 @@ import kotlinx.serialization.json.JsonObject
  * `JsonObject` is a subtype of that map, and Kotlin/Native hands a Swift dictionary into a Map
  * subtype unchecked — the call then dies with SIGSEGV instead of raising anything catchable (#193).
  * Narrow it with [asJsonObject] inside the implementation if you need a `JsonObject`.
+ *
+ * **A tracker implemented in Swift receives a nested object or array value as its JSON text** (#299).
+ * Kotlin/Native cannot hand such a value to Swift as a `JsonElement`, and the call would crash, so
+ * every call Autograph makes on a Swift tracker replaces it first, and so does `LocalTracker.current`
+ * under `AutographProvider`; decode it with `JSONSerialization`, but only for a key you know carries a
+ * nested value, because nothing marks the text as encoded: a string value holding the same JSON text
+ * arrives identically. Other Kotlin code that calls a Swift tracker directly gets no such
+ * replacement, so keep nested values out of those calls.
  */
 public interface Tracker {
 
@@ -67,14 +75,20 @@ public interface Tracker {
      * logout — not needed for a tracker that lives for the app's lifetime.
      *
      * **Blocks until everything already accepted has been stamped and handed to the transport, then
-     * flushes it** — up to an internal timeout, after which it gives up and releases anyway rather than
-     * hold a shutdown open indefinitely. Events accepted before [close] are therefore delivered, not
-     * discarded; what the transport then does with them (network delivery, its own retry queue) is the
-     * transport's business and is not awaited beyond [flush].
+     * flushes it.** The wait for the hand-off is bounded by [AutographConfig.closeDrainTimeoutMillis]:
+     * when it runs out, [close] gives up and releases anyway rather than hold a shutdown open
+     * indefinitely. The flush that follows is a synchronous transport call, which nothing can interrupt.
+     * Events accepted before [close] are therefore delivered, not discarded; what the transport then does
+     * with them (network delivery, its own retry queue) is the transport's business and is not awaited
+     * beyond [flush].
      *
      * Do not point `AutographConfig.dispatcher` at the thread that calls [close]: blocking a
      * single-threaded dispatcher from inside itself starves the drain, which then delivers nothing and
      * returns at the timeout.
+     *
+     * To suspend instead of block, and to learn whether the drain finished or a hand-off failed, use the
+     * [closeAndAwait] extension; it also tells a tracker that cannot be closed this way (a scoped view)
+     * from one that was.
      *
      * Idempotent. [track]/[screen]/[identify]/[flush]/[reset] calls made after [close] are dropped,
      * whichever transport is plugged in; a call racing [close] is either accepted and drained (within

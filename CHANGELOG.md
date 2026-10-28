@@ -10,12 +10,46 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- **`Modifier.autographAutocaptureRoot()` captures taps inside a `Dialog`, `Popup` or
+  `ModalBottomSheet`** ([#210]). Their content composes into a window of its own, so the provider's
+  tap observer never saw it: every tap inside a bottom sheet went unreported, with no warning.
+  Applied to the outermost node of that content, the modifier attaches the enclosing provider's
+  observer there, with its tracker, config and scope stack, so the taps carry the screen, section and
+  scope declared around the sheet. It sizes nothing, unlike a nested `AutographProvider`, which
+  stretched a wrap-content sheet to the window. Android and iOS (on iOS through the accessibility tree
+  like every Compose tap there, which needs no accessibility client; taps inside a `Dialog` and a
+  `ModalBottomSheet` were reported in a cold process on a fresh iOS 26.4 simulator, not yet checked on
+  a physical device). Outside a provider with autocapture, in the
+  provider's own window, and on the JVM it does nothing and prints one warning.
+
+### Fixed
+
+- **A `Tracker` or `Transport` implemented in Swift no longer crashes on an event with a nested
+  object or array value** ([#299]). Kotlin/Native hands such a value to Swift as an `NSDictionary`
+  or `NSArray` instead of a `JsonElement`, and Swift casts every value as the call enters it, so the
+  process trapped before the conformer's body ran, whether or not it read the value. Autograph now
+  replaces each nested value with its JSON text when the receiver is written in Swift or
+  Objective-C: in the tracker's delivery to its transport (`DebugTransport` included) and to its
+  `EventValidator`, at every call the Compose, native and SwiftUI captures make on a tracker, and in
+  `LocalTracker.current`, which `AutographProvider` now provides as a Kotlin stand-in when it is
+  given a Swift tracker (it keeps `AwaitableCloseTracker` when the Swift tracker adopts it). A Swift
+  conformer can decode the text with `JSONSerialization`, but nothing marks it as encoded, so a string
+  value holding the same JSON text arrives identically. A Kotlin
+  tracker, transport or validator still receives the objects and arrays themselves. Other Kotlin
+  code that calls a Swift tracker or transport directly is not covered.
+
+## [0.12.0] - 2026-10-19
+
+### Added
+
 - **Events carry their kind in the envelope instead of their properties** ([#287], [#243]).
   `Modifier.trackClick`, Compose autocapture, the Android and iOS native tap captures and SwiftUI's
   `AutographButton` mark their events `kind` `click`. `Modifier.trackImpression` marks its event
   `impression` with its `min_duration_ms` and `min_fraction_visible`; the float threshold arrives as
   the decimal you wrote, so `0.3f` is `0.3`. A plain `track` call carries no kind, and neither does
   SwiftUI's `autograph.track(_:)`, because it can be called from a timer as easily as from a touch.
+  The two values are exported as `EventKinds.CLICK` and `EventKinds.IMPRESSION`: string constants
+  rather than an enum, so a later kind is an addition (ADR 0001 §2e).
   `AutographElementCapture` gains `buttonClicked(...)`, the path `AutographButton` now uses. It
   works like this:
   - An emit site puts the metadata under the reserved properties key `__autograph`
@@ -44,6 +78,14 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   - `DebugTransport` implements `MetadataAwareTransport` too. It forwards the metadata when its
     delegate does, so wrapping `SegmentTransport` loses nothing. Over a delegate that does not, the
     tracker treats the pair like the delegate alone: one warning through the logger.
+  - **Migration for a `Transport` wrapper you wrote yourself** ([#302]). The wrapper keeps compiling,
+    but it hides the new capability. Around a pipeline transport (`SegmentTransport` on Android) it
+    delivers every event without the new metadata, and the tracker logs that once, naming the
+    wrapper. To carry the metadata, implement `MetadataAwareTransport` too, and route both overloads
+    of `track` and `screen` through the same logic, or the metadata route skips whatever the old
+    overloads do (redaction, for example). The README's new "Wrapping a transport" section has the
+    full list and an example. A wrapper around a transport the core stamps for (`SegmentTransport` on
+    iOS) needs no change, because the metadata is on the envelope it already forwards.
   - `EventMetadata.screenViewId` (`screen_view_id` in `context.instrumentation`) carries the screen
     visit id of [#242].
   - `autograph-test` adds `testEventMetadata(...)` and a `metadata` parameter on `testEnvelope(...)`.
@@ -52,6 +94,115 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   shape in its own properties. A `Tracker` you implement yourself, such as a test fake, does not
   remove the key, so a fake standing in for the real tracker now sees `__autograph` in the
   properties of every event listed above.
+
+- **Screen views start a visit, and the events made during it carry its id** ([#242]). Every
+  `Screen Viewed` the Android Activity/Fragment capture, the iOS UIKit capture, SwiftUI's
+  `AutographScreenCapture`, `TrackedScreen`, `TrackScreenView` and `NavController.TrackScreenViews`
+  emit carries a new `screen_view_id`, and so do the taps the native tap captures, Compose
+  autocapture and SwiftUI's `AutographElementCapture` record on that screen until it is left.
+  `trackClick` and `trackImpression` carry the visit of the `TrackedScreen` they sit in, read
+  lexically like its `screen`; outside one, and under a bare `TrackScreenView`, they carry none.
+  Coming back to a screen is a new visit, even under the same name, when it emits another
+  `Screen Viewed`; a dialog or a permission prompt over it is not. A Compose screen emits one only
+  when it enters the composition or its name changes, so returning to an Activity whose composition
+  stayed alive keeps the visit it had. It works like this:
+  - The id comes from the new `ScopeStack.screenViewIdGenerator`, `EventId.UuidV7` by default.
+    `Autograph { }` never sees the stack, so a custom `AutographConfig.eventId` is not applied to
+    it: set the same generator on the stack if you want both in one format. A generator that
+    throws or returns an empty string leaves that visit without an id, and the screen view is
+    still emitted.
+  - The stack answers it as the new `AmbientContext.screenViewId`. It comes from the frame that
+    names the screen, so it is absent, never borrowed, when that frame has no visit: a fragment an
+    app builds to replace the restored one while a configuration change re-creates its host (see
+    below), a screen whose `AutographProvider` tracker (and with it
+    the default stack) was replaced without the screen being reported again, and a screen whose name
+    changed after its screen view (`ScopeStack.update` with a different `screen` ends the visit,
+    which on Android includes a name the `fragmentScreenName` lambda only returns later). It is also
+    absent when two surfaces on display side by side each name a screen (two Activities in
+    multi-window, two named fragments beside each other) and an ambient read cannot tell which
+    visit it is in; the screen name is still reported, and a tap the capture localizes to one of
+    them gets that one's id. A surface that names nothing, such as a headless fragment, does not
+    count. iOS screens are not surfaces, so there the id follows the screen name, a sheet included.
+  - The id is minted before the tracker is called and is not withdrawn if the tracker rejects or
+    throws, so events can carry an id no `Screen Viewed` row has.
+  - An Android Activity or fragment re-created by a configuration change is not reported again, and
+    it stays in the visit it was in. The capture matches each re-created surface to the one it
+    replaces: a fragment by the identity its `FragmentManager` restores (its `mWho`, read through
+    `putFragment`), an Activity by a token the capture saves in its instance state under
+    `dev.ynagai.autograph.android.identity`. A surface whose screen name changed across the
+    configuration change reports a new view instead. An app that discards the restored fragment in
+    `onCreate` or `onResume` (with `commitNow`) and builds a replacement of the same class under the
+    same parent is still not reported again, but the replacement does not get the visit: nothing
+    proves it replaced that fragment rather than sitting beside it, and no id is better than a
+    wrong one. Its events carry no id until its next view.
+
+  A `Tracker` fake now sees `__autograph` in the properties of a native screen view, and in a
+  SwiftUI `autograph.track(_:)` call made on a screen with a visit.
+
+- **`closeAndAwait` closes a tracker without blocking and reports how the shutdown went** ([#261]).
+  `Tracker.close()` blocks, returns nothing, and returns at once on a second call. The suspending
+  `Tracker.closeAndAwait()` (or `closeAndAwait(timeoutMillis)`) returns a `CloseResult` instead:
+  - `cutoffReached`: the tracker stopped accepting work. `isUnsupported` is the negation.
+  - `waitCompleted` / `timedOut`: whether everything accepted before the cutoff was handed to the
+    transport within the time allowed.
+  - `failedHandOffs`: how many calls into the transport, or the stamping in front of it, threw. The
+    tracker swallows and logs those, so a completed wait never meant they all succeeded.
+  - `flushRequested` / `flushFailed`: whether the tracker called `Transport.flush()`, and whether
+    that call threw.
+
+  Network delivery is out of scope: nothing in the result says an event reached a server. With a
+  transport that stamps in its own pipeline (Segment on Android), the wait covers the calls into the
+  transport, not the pipeline's own queue.
+  - It is a separate capability, `AwaitableCloseTracker`, which the tracker from `Autograph { }`
+    implements and the helper probes with `is`, not a new `Tracker` member (a member would break
+    every Swift conformer, [#283]). A tracker without it, such as the scoped view `AutographScope`
+    provides, gets an unsupported result and is **not** closed: a view must not shut down the root.
+    Close the tracker you created.
+  - Concurrent and repeated calls all wait on the one shutdown, and a call after it finished returns
+    the final result. A `close()` already running on another thread is waited for rather than
+    repeated; `close()` itself still returns at once when a shutdown has already started.
+  - The no-argument `closeAndAwait()` waits until the shutdown finishes and returns its final
+    result: the same exposure as `close()`, which also returns only when the shutdown is done. It
+    has no timer of its own, so it cannot race the shutdown. This is not because the shutdown is
+    bounded: the drain is, but the `Transport.flush()` after it is not and cannot be interrupted
+    ([#305]), so a transport whose flush blocks holds `close()` and `closeAndAwait()` alike.
+  - `closeAndAwait(timeoutMillis)` bounds that caller's wait, not the shutdown. A caller that times
+    out leaves the shutdown running, and a later call reports its outcome. A timeout at or above
+    `closeDrainTimeoutMillis` still does not guarantee the final result, because the flush runs
+    after the drain; use the no-argument form for that. `Long.MAX_VALUE` means the same as no
+    argument.
+  - `AutographConfig.closeDrainTimeoutMillis` is now public (default 5000). It bounds the drain
+    for `close()` and `closeAndAwait` alike. A `timeoutMillis` of zero or less does not wait.
+  - `AwaitableCloseTracker` has one member, `closeAndAwait(timeoutMillis)`; only `Autograph { }`
+    implements it for real, since `CloseResult` has no public constructor.
+  - From Swift the helper is `AwaitableCloseKt.closeAndAwait(tracker)` and
+    `AwaitableCloseKt.closeAndAwait(tracker, timeoutMillis:)`, both `async throws`, returning
+    `CloseResult`.
+
+- **`Modifier.trackImpression` can report each item once per screen visit, not once per
+  composable** ([#243]). A new overload takes a `key`, normally the value you pass to
+  `LazyColumn(key = …)`. An item scrolled out of view and back, which a lazy list disposes and
+  re-composes, then reports only once. The overload without a key is unchanged. It works like this:
+  - The unit is the enclosing `TrackedScreen`'s visit, the same unit its `screen_view_id` names.
+    Renaming the screen, or returning to it in a way that re-creates its composition, starts a new
+    visit, and its items report again. Changing the section does not.
+  - The new `ImpressionScope { … }` is a unit of its own, for content that has no `TrackedScreen`
+    around it, such as a destination tracked only by `NavController.TrackScreenViews`. Wrap the
+    list, not its items. The innermost unit wins, and inside a `TrackedScreen` the scope starts over
+    whenever the visit does.
+  - An impression is one definition applied to one item. Its name, both thresholds, its effective
+    target (the `target` argument, else `properties["target"]`, else an enclosing
+    `AutographScope`'s) and its key identify it. The same item in two lists with different names
+    or targets reports in each list.
+  - When the unit starts over, or an element's key changes, its visibility measurement starts over
+    too. Time the element spent visible before does not count, and an element that stays on screen
+    reports again after a fresh dwell.
+  - Outside any unit, a keyed impression reports once per composable instance, like the overload
+    without a key, and prints a one-time console warning.
+  - "Once" means once per emission attempt: the key is recorded after `track` returns, so it marks
+    an event handed to the tracker, not one delivered. A `track` that throws is not caught; it
+    fails the effect that times the dwell, as it would any `LaunchedEffect`. The key is held in
+    memory, not reported: put whatever identifies the item for analysis in `properties` as well.
 
 ### Changed
 
@@ -62,6 +213,37 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   From 1.0, those member sets are frozen for the major version. A new capability is a separate
   interface the library checks with `is`, which was measured to work for Swift conformers, or a
   value object passed through an existing member.
+- **Built against Compose Multiplatform 1.12.1, up from 1.12.0** ([#291]). A patch release.
+  The README's requirement stays at 1.12.0 as the version to build against, but Gradle's
+  highest-version rule resolves 1.12.1 for every consumer, so 1.12.1 is the version that runs; a
+  consumer that forces CMP back to 1.12.0 is on an untested combination. No `compileSdk` floor
+  moves: the androidx Compose 1.12.1 it resolves to still declares `minCompileSdk=37`. The cold-device tap check CONTRIBUTING requires for a CMP bump was run
+  on 1.12.1 before this release: on a fresh simulator, verified cold on every press, 4/4 taps
+  attributed correctly and the explicitly tracked one not double-reported.
+
+### Fixed
+
+- **Two Android fragments of one class on display together no longer report a second
+  `Screen Viewed` after a rotation** ([#242]). A configuration change is one continuous view, so the
+  native capture skips the re-created fragment's resume. It recognised that resume by class, so when
+  two RESUMED fragments shared one (two panes, or `add` on top of the same class) the first to resume
+  after the rotation used up the skip and the other reported a view. Each surface is now matched to
+  the one it re-creates by instance (see the visit entry above), so two untagged fragments of one
+  class in one container are told apart too. The skip also ends with the surface it was left for: a
+  restored fragment that goes away without resuming, the re-created Activity stopping or finishing
+  first, or another screen being reported while that Activity is only paused, leaves nothing for a
+  fragment that resumes later, whose first view is reported. A replacement the app builds in
+  `onCreate` or `onResume` while the host is re-created is still taken for the interrupted view,
+  under any tag or container, when it has the restored fragment's class and parent.
+- **An Android fragment that never resumed before a rotation reports its first view after it**
+  ([#242]). A pager's off-screen page, held at `STARTED`, left the same skip behind when the rotation
+  stopped it. When no resumed fragment shared its class to use the skip up, as with tabs of different
+  fragments, its first resume afterwards — the swipe to it — reported nothing. Only a fragment
+  whose view was reported leaves the skip now. The same holds for a resumed fragment whose screen
+  name was still null when the rotation stopped it: its first resume with a name now reports it.
+- **`close()` no longer throws when the transport's `flush()` does** ([#261]). The exception left
+  `close()` before it released the tracker's scope. It is now logged, and `closeAndAwait` reports it
+  as `flushFailed`.
 
 ## [0.11.1] - 2026-09-30
 
@@ -1614,7 +1796,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.11.1...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.12.0...HEAD
+[0.12.0]: https://github.com/uny/autograph/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/uny/autograph/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/uny/autograph/compare/v0.10.0...v0.11.0
 [0.10.0]: https://github.com/uny/autograph/compare/v0.9.1...v0.10.0
@@ -1704,6 +1887,7 @@ Initial release.
 [#197]: https://github.com/uny/autograph/issues/197
 [#205]: https://github.com/uny/autograph/issues/205
 [#208]: https://github.com/uny/autograph/issues/208
+[#210]: https://github.com/uny/autograph/issues/210
 [#216]: https://github.com/uny/autograph/issues/216
 [#217]: https://github.com/uny/autograph/pull/217
 [#224]: https://github.com/uny/autograph/issues/224
@@ -1717,7 +1901,12 @@ Initial release.
 [#254]: https://github.com/uny/autograph/issues/254
 [#255]: https://github.com/uny/autograph/issues/255
 [#257]: https://github.com/uny/autograph/issues/257
+[#261]: https://github.com/uny/autograph/issues/261
 [#272]: https://github.com/uny/autograph/issues/272
 [#281]: https://github.com/uny/autograph/issues/281
 [#283]: https://github.com/uny/autograph/issues/283
 [#287]: https://github.com/uny/autograph/issues/287
+[#291]: https://github.com/uny/autograph/pull/291
+[#299]: https://github.com/uny/autograph/issues/299
+[#302]: https://github.com/uny/autograph/issues/302
+[#305]: https://github.com/uny/autograph/issues/305

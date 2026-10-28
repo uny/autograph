@@ -3,6 +3,7 @@
 package dev.ynagai.autograph.context
 
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.EventIdGenerator
 import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.Tracker
 import kotlin.test.Test
@@ -19,11 +20,16 @@ import kotlinx.serialization.json.JsonPrimitive
  */
 class ScreenEmitTest {
 
+    // Records properties without the visit id the screen view now carries under the reserved key
+    // (#242) — that has its own tests, in ScreenVisitTest.
+    // [raw] keeps them whole, for the test that the reserved key is the emit site's alone.
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<Pair<String, JsonObject>>()
+        val raw = mutableListOf<JsonObject>()
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
         override fun screen(name: String, properties: Map<String, JsonElement>) {
-            screens += name to JsonObject(properties)
+            screens += name to JsonObject(properties - RESERVED_METADATA_KEY)
+            raw += JsonObject(properties)
         }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
@@ -49,10 +55,18 @@ class ScreenEmitTest {
         val tracker = RecordingTracker()
         val root = stack.push(scope = JsonObject(mapOf(RESERVED_METADATA_KEY to props("kind" to "click"), "tenant" to JsonPrimitive("acme"))))
         val screen = stack.pushSurface(parent = root, screen = "Detail")
+        stack.screenViewIdGenerator = EventIdGenerator { "visit" }
 
         stack.emitScreenView(tracker, "Detail", origin = screen)
 
         assertEquals(listOf("Detail" to props("tenant" to "acme")), tracker.screens)
+        // The emit site's own metadata, and only that: the visit, no kind.
+        assertEquals(JsonPrimitive("""{"screen_view_id":"visit"}"""), tracker.raw.single()[RESERVED_METADATA_KEY])
+
+        // With no visit to carry, the scope's entry still does not reach the event.
+        stack.screenViewIdGenerator = EventIdGenerator { error("no id") }
+        stack.emitScreenView(tracker, "Detail", origin = screen)
+        assertFalse(RESERVED_METADATA_KEY in tracker.raw[1], tracker.raw[1].toString())
     }
 
     @Test

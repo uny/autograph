@@ -7,7 +7,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.testTag
@@ -125,7 +128,7 @@ class AutocaptureClaimsGenerationTest {
     @Test
     fun ignoredBoundsAreIndependentOfTheGeneration() {
         val claims = AutocaptureClaims()
-        val key = Any()
+        val key = IgnoredBoundsKey(window = null)
         val bounds = Rect(0f, 0f, 10f, 10f)
         claims.ignored[key] = bounds
 
@@ -134,6 +137,40 @@ class AutocaptureClaimsGenerationTest {
         claims.closeTapGeneration(token)
 
         assertEquals(bounds, claims.ignored[key], "autographIgnore has no execution to observe and must not ride on the generation")
+    }
+
+    /**
+     * The once-per-release guard (#210), on every platform: nested roots in one window share a release,
+     * and every other match of id and time is a different tap. Each window numbers its pointers on its
+     * own, so the first taps in a dialog and in the screen behind it carry the same id; with a frozen
+     * clock they share a time too (sample-android's AutocaptureRootTest drives that through real views).
+     */
+    @Test
+    fun aReleaseIsSightedOncePerWindow() {
+        val claims = AutocaptureClaims()
+        val screen = Any()
+        val dialog = Any()
+
+        assertTrue(claims.firstSightingOf(release(id = 0, at = 100), dialog))
+        assertFalse(claims.firstSightingOf(release(id = 0, at = 100), dialog), "a nested root in the same window")
+        assertTrue(claims.firstSightingOf(release(id = 0, at = 100), screen), "the same id and time in another window")
+        assertTrue(claims.firstSightingOf(release(id = 0, at = 200), screen), "the next gesture reuses the id")
+        assertTrue(claims.firstSightingOf(release(id = 1, at = 200), screen), "a second finger released at once")
+    }
+
+    /** The claims outlive a dismissed dialog; its view must not stay referenced as the last window. */
+    @Test
+    fun anObserverLeavingForgetsOnlyItsOwnWindow() {
+        val claims = AutocaptureClaims()
+        val screen = Any()
+        val dialog = Any()
+        claims.firstSightingOf(release(id = 0, at = 100), dialog)
+
+        claims.forgetSightingsIn(screen)
+        assertFalse(claims.firstSightingOf(release(id = 0, at = 100), dialog), "another window leaving keeps the record")
+
+        claims.forgetSightingsIn(dialog)
+        assertTrue(claims.firstSightingOf(release(id = 0, at = 100), dialog), "the record named the dialog")
     }
 }
 
@@ -397,3 +434,14 @@ class AutocaptureClaimDisposalTest {
         assertTrue(boundsAfterMove != boundsBeforeMove, "expected the stored bounds to reflect the new position")
     }
 }
+
+private fun release(id: Long, at: Long) = PointerInputChange(
+    id = PointerId(id),
+    uptimeMillis = at,
+    position = Offset(5f, 5f),
+    pressed = false,
+    previousUptimeMillis = at - 10,
+    previousPosition = Offset(5f, 5f),
+    previousPressed = true,
+    isInitiallyConsumed = true,
+)

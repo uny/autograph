@@ -18,13 +18,16 @@ import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.Lifecycle
 import dev.ynagai.autograph.Tracker
 import dev.ynagai.autograph.AutographInternalApi
+import dev.ynagai.autograph.RESERVED_METADATA_KEY
 import dev.ynagai.autograph.asJsonObject
 import dev.ynagai.autograph.context.ScopeStack
 import dev.ynagai.autograph.context.autographScopeOrigin
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -44,6 +47,169 @@ class PlainActivity : Activity()
 class SecondPlainActivity : Activity()
 
 class EmptyFragmentActivity : FragmentActivity()
+
+/** Replaces its content in every onResume — the re-creation discards the restored fragment there. */
+class ReplaceOnEveryResumeActivity : FragmentActivity() {
+    override fun onResume() {
+        super.onResume()
+        supportFragmentManager.beginTransaction().replace(android.R.id.content, DetailFragment()).commitNow()
+    }
+}
+
+/** A pane whose layout hosts a tagged [DetailFragment] in a container id that every pane reuses. */
+class DetailPaneFragment : Fragment() {
+    override fun onCreateView(
+        inflater: LayoutInflater,
+        container: ViewGroup?,
+        savedInstanceState: Bundle?,
+    ): View = FrameLayout(requireContext()).apply { id = DETAIL_CONTAINER_ID }
+
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        if (savedInstanceState != null) return
+        childFragmentManager.beginTransaction().add(DETAIL_CONTAINER_ID, DetailFragment(), "detail").commitNow()
+    }
+
+    private companion object { const val DETAIL_CONTAINER_ID = 4545 }
+}
+
+/** Two [DetailPaneFragment]s side by side, so their children share class, container id and tag. */
+class TwoPaneActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        setContentView(
+            android.widget.LinearLayout(this).apply {
+                addView(FrameLayout(context).apply { id = START_PANE_ID })
+                addView(FrameLayout(context).apply { id = END_PANE_ID })
+            },
+        )
+        if (savedInstanceState != null) return
+        supportFragmentManager.beginTransaction()
+            .add(START_PANE_ID, DetailPaneFragment(), "start")
+            .add(END_PANE_ID, DetailPaneFragment(), "end")
+            .commitNow()
+    }
+
+    private companion object {
+        const val START_PANE_ID = 4601
+        const val END_PANE_ID = 4602
+    }
+}
+
+class ReplaceOnEveryCreateActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        supportFragmentManager.beginTransaction().replace(android.R.id.content, DetailFragment()).commitNow()
+    }
+}
+
+/** Rebuilds its content on every create under a tag it has not used before (#242). */
+class ReplaceUnderNewTagActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        supportFragmentManager.beginTransaction()
+            .replace(android.R.id.content, DetailFragment(), "d${counter++}")
+            .commitNow()
+    }
+
+    companion object {
+        var counter = 0
+    }
+}
+
+/** Rebuilds its content on every resume with an asynchronous commit, so the restored fragment resumes first. */
+class ReplaceOnEveryResumeAsyncActivity : FragmentActivity() {
+    override fun onResume() {
+        super.onResume()
+        supportFragmentManager.beginTransaction().replace(android.R.id.content, DetailFragment()).commit()
+    }
+}
+
+/** Two untagged [DetailFragment]s in one container, added once. */
+class UntaggedSiblingsActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (savedInstanceState != null) return
+        supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment())
+            .add(android.R.id.content, DetailFragment())
+            .commitNow()
+    }
+}
+
+/** Adds a [DetailFragment] once, and holds the restored one at [held] whenever it is re-created. */
+open class HoldRestoredActivity(private val held: Lifecycle.State = Lifecycle.State.STARTED) : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val fm = supportFragmentManager
+        if (savedInstanceState == null) {
+            fm.beginTransaction().add(android.R.id.content, DetailFragment()).commitNow()
+        } else {
+            val restored = fm.fragments.single { it is DetailFragment }
+            fm.beginTransaction().setMaxLifecycle(restored, held).commitNow()
+        }
+    }
+}
+
+/**
+ * Shows a [DetailFragment] beside a second one held at STARTED, and on re-creation removes the shown
+ * one and brings the held one up in its place — the swap a pager makes when the app selects another page.
+ */
+class SwapToHeldPageActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val fm = supportFragmentManager
+        if (savedInstanceState == null) {
+            val held = DetailFragment()
+            fm.beginTransaction()
+                .add(android.R.id.content, DetailFragment(), "shown")
+                .add(android.R.id.content, held, "held")
+                .setMaxLifecycle(held, Lifecycle.State.STARTED)
+                .commitNow()
+        } else {
+            fm.beginTransaction()
+                .remove(fm.findFragmentByTag("shown")!!)
+                .setMaxLifecycle(fm.findFragmentByTag("held")!!, Lifecycle.State.RESUMED)
+                .commitNow()
+        }
+    }
+}
+
+/**
+ * [SwapToHeldPageActivity] whose held page is a retained instance: the same object comes back after a
+ * re-creation, without being restored from saved state.
+ */
+class SwapToRetainedPageActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val fm = supportFragmentManager
+        if (savedInstanceState == null) {
+            @Suppress("DEPRECATION")
+            val held = DetailFragment().apply { retainInstance = true }
+            fm.beginTransaction()
+                .add(android.R.id.content, DetailFragment(), "shown")
+                .add(android.R.id.content, held, "held")
+                .setMaxLifecycle(held, Lifecycle.State.STARTED)
+                .commitNow()
+        } else {
+            fm.beginTransaction()
+                .remove(fm.findFragmentByTag("shown")!!)
+                .setMaxLifecycle(fm.findFragmentByTag("held")!!, Lifecycle.State.RESUMED)
+                .commitNow()
+        }
+    }
+}
+
+/** Shows a [DetailFragment], and on re-creation discards the restored one for a [SecondFragment]. */
+class ReplaceWithAnotherScreenActivity : FragmentActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val content = if (savedInstanceState == null) DetailFragment() else SecondFragment()
+        supportFragmentManager.beginTransaction().replace(android.R.id.content, content).commitNow()
+    }
+}
+
+/** [HoldRestoredActivity] holding the restored fragment at CREATED, where it does not stop with its host. */
+class HoldRestoredCreatedActivity : HoldRestoredActivity(Lifecycle.State.CREATED)
 
 /** A fragment-based Compose app's Activity: its only content is a Compose-hosting fragment. */
 class ComposeFragmentShellActivity : FragmentActivity() {
@@ -257,16 +423,22 @@ class AndroidScreenCaptureTest {
 
     /**
      * Records each `Screen Viewed` as "name:previous" (previous = "(none)" when absent), and keeps the
-     * full properties in [screenProperties] for the scope assertions (#238).
+     * full properties in [screenProperties] for the scope assertions (#238) — without the visit id
+     * under the reserved key, which goes to [visits] (#242).
      */
     private class RecordingTracker : Tracker {
         val screens = mutableListOf<String>()
         val screenProperties = mutableListOf<JsonObject>()
+        val visits = mutableListOf<String?>()
         override fun track(name: String, properties: Map<String, JsonElement>, target: String?) = Unit
         override fun screen(name: String, properties: Map<String, JsonElement>) {
             val previous = (properties.asJsonObject()["previous_screen"] as? JsonPrimitive)?.content ?: "(none)"
             screens += "$name:$previous"
-            screenProperties += properties.asJsonObject()
+            screenProperties += JsonObject(properties - RESERVED_METADATA_KEY)
+            visits += properties[RESERVED_METADATA_KEY]?.let { raw ->
+                (Json.parseToJsonElement((raw as JsonPrimitive).content) as JsonObject)["screen_view_id"]
+                    ?.let { (it as JsonPrimitive).content }
+            }
         }
         override fun identify(userId: String, traits: Map<String, JsonElement>) = Unit
     }
@@ -1063,6 +1235,410 @@ class AndroidScreenCaptureTest {
     }
 
     @Test
+    fun anActivityThatReplacesItsContentOnEveryResumeDoesNotReEmitAcrossARotation() {
+        // Fresh fragments created once the re-created host is already resumed still stand for the view
+        // the rotation interrupted — which is why a fresh instance cannot be what drops a marker.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryResumeActivity::class.java).setup()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+        assertEquals(
+            listOf("ReplaceOnEveryResumeActivity:(none)", "DetailFragment:ReplaceOnEveryResumeActivity"),
+            before,
+        )
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before, tracker.screens)
+    }
+
+    @Test
+    fun anActivityThatReplacesItsContentOnEveryCreateDoesNotReEmitAcrossARotation() {
+        // Its re-created fragment is a fresh instance, not a restored one. It still stands for the view
+        // the rotation interrupted, so the marker has to survive its creation.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryCreateActivity::class.java).setup()
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun twoResumedFragmentsOfOneClassDoNotReEmitAcrossARotation() {
+        // Two panes of one class, both RESUMED, told apart by their tags. A marker per class was
+        // consumed by whichever re-created pane resumed first, and the other reported a second view.
+        install()
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "second")
+            .commitNow()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+        assertEquals(2, before.size)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before, tracker.screens)
+    }
+
+    @Test
+    fun theSameChildInTwoPanesDoesNotReEmitAcrossARotation() {
+        // Each pane's layout reuses one container id and tags its child alike, so class, container and
+        // tag alone leave both children one marker, and the second to resume reported a view again.
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailPaneFragment) null else it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(TwoPaneActivity::class.java).setup()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+        assertEquals(2, before.size)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before, tracker.screens)
+    }
+
+    @Test
+    fun aFragmentNamedOnlyAfterARotationReportsItsFirstView() {
+        // Unnamed when the rotation stopped it, it had no view in progress — so the re-created one's
+        // first named resume is its first view, not a continuation to skip.
+        var title: String? = null
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailFragment) title else it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        drainMainLooper()
+        assertEquals(emptyList<String>(), tracker.screens)
+
+        title = "Detail"
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("Detail:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun aPageThatNeverResumedReportsItsFirstViewAfterARotation() {
+        // FragmentStateAdapter holds off-screen pages at STARTED. One rotated while off screen has had
+        // no view yet, so its first resume afterwards is a first view — but the marker its stop left
+        // outlived the rotation and swallowed it.
+        install()
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        val off = SecondFragment()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, off, "page")
+            .setMaxLifecycle(off, Lifecycle.State.STARTED)
+            .commitNow()
+        drainMainLooper()
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+
+        controller.recreate()
+        drainMainLooper()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().setMaxLifecycle(fm.findFragmentByTag("page")!!, Lifecycle.State.RESUMED).commitNow()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)", "SecondFragment:DetailFragment"), tracker.screens)
+    }
+
+    // --- Visits carried across a configuration change (#242) -------------------------------------------
+
+    @Test
+    fun aRotatedFragmentStaysInTheVisitItWasIn() {
+        install()
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+        val visit = checkNotNull(tracker.visits.single())
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+        assertEquals(visit, scopeStack.current().screenViewId)
+        assertEquals(visit, scopeStack.current(controller.get().fragmentOrigin("detail")).screenViewId)
+    }
+
+    @Test
+    fun aRotatedActivityStaysInTheVisitItWasIn() {
+        install()
+        val controller = Robolectric.buildActivity(PlainActivity::class.java).setup()
+        val visit = checkNotNull(tracker.visits.single())
+
+        controller.recreate()
+        drainMainLooper()
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("PlainActivity:(none)"), tracker.screens)
+        assertEquals(visit, scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun twoUntaggedFragmentsOfOneClassEachKeepTheirOwnViewAndVisitAcrossARotation() {
+        // One container, one class, no tags: nothing but the instance tells them apart, so a key
+        // built from what they share gave both one marker, and the second to resume reported again.
+        install()
+        val controller = Robolectric.buildActivity(UntaggedSiblingsActivity::class.java).setup()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+        val visits = controller.get().detailVisits()
+        assertEquals(2, visits.filterNotNull().toSet().size)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before, tracker.screens)
+        assertEquals(visits, controller.get().detailVisits())
+    }
+
+    @Test
+    fun aReplacementUnderANewTagDoesNotReEmitAcrossARotationAndIsNotGivenTheVisit() {
+        // The restored fragment is discarded in onCreate and rebuilt under another tag. It stands for
+        // the interrupted view, so no second Screen Viewed — but nothing proves which fresh fragment
+        // replaced which, so it starts no visit and borrows none.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceUnderNewTagActivity::class.java).setup()
+        checkNotNull(tracker.visits.single())
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+        assertEquals("DetailFragment", scopeStack.current().screen)
+        assertNull(scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aReplacementBuiltOnEveryCreateIsNotGivenTheVisit() {
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryCreateActivity::class.java).setup()
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+        assertNull(scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aReplacementBuiltOnEveryCreateDoesNotReEmitAcrossASecondRotation() {
+        // The carry outlives the first re-creation in the replacement's place, so the second rotation
+        // re-opens the window a replacement can stand in during.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryCreateActivity::class.java).setup()
+
+        controller.recreate()
+        drainMainLooper()
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+    }
+
+    @Test
+    fun anAsynchronousRebuildOnEveryResumeReportsTheRebuiltContent() {
+        // Unlike commitNow, a commit runs after the restored fragment has resumed: it is the
+        // re-creation and takes the carry, and the fragment the app then puts in its place is a new
+        // view like on any other resume of this app.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceOnEveryResumeAsyncActivity::class.java).setup()
+        drainMainLooper()
+        val before = tracker.screens.toList()
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(before + "DetailFragment:(none)", tracker.screens)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aRestoredFragmentRemovedAfterTheRotationLeavesNothingForItsReplacement() {
+        // Held unresumed and then replaced well after its host's re-creation: that is the app moving
+        // on, not a rebuild standing in for the interrupted view, so the replacement is a new view.
+        // A marker that lived until something under its key resumed swallowed it.
+        install()
+        val controller = Robolectric.buildActivity(HoldRestoredActivity::class.java).setup()
+        controller.recreate()
+        drainMainLooper()
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+
+        controller.get().supportFragmentManager.beginTransaction()
+            .replace(android.R.id.content, DetailFragment())
+            .commitNow()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)", "DetailFragment:(none)"), tracker.screens)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+        assertNotEquals(tracker.visits.first(), tracker.visits.last())
+    }
+
+    @Test
+    fun aRestoredFragmentThatResumesLateContinuesTheViewEvenThroughASecondRotation() {
+        // Restored but held at STARTED, it is still the surface the interrupted view was re-created
+        // into — a pager page can resume after its host does — and rotating again before it resumes
+        // must not lose that.
+        install()
+        val controller = Robolectric.buildActivity(HoldRestoredActivity::class.java).setup()
+        val visit = checkNotNull(tracker.visits.single())
+        controller.recreate()
+        drainMainLooper()
+        controller.recreate()
+        drainMainLooper()
+
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().setMaxLifecycle(fm.fragments.single(), Lifecycle.State.RESUMED).commitNow()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+        assertEquals(visit, scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aRestoredFragmentResumedOnlyAfterItsHostWasLeftReportsANewView() {
+        // Held at CREATED it does not stop with its host, so the host's stop is what ends the view the
+        // rotation interrupted; resuming afterwards is a return to the screen, and a new view.
+        install()
+        val controller = Robolectric.buildActivity(HoldRestoredCreatedActivity::class.java).setup()
+        controller.recreate()
+        drainMainLooper()
+        controller.pause().stop()
+        controller.start().resume()
+        drainMainLooper()
+
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().setMaxLifecycle(fm.fragments.single(), Lifecycle.State.RESUMED).commitNow()
+        drainMainLooper()
+
+        // Without a view it is no content of its host, which reports itself meanwhile.
+        assertEquals(2, tracker.screens.count { it.startsWith("DetailFragment:") })
+        assertEquals("DetailFragment:HoldRestoredCreatedActivity", tracker.screens.last())
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aRestoredPageBroughtUpInPlaceOfTheRemovedOneReportsItsFirstView() {
+        // The held page is of the removed one's class and parent, but it was restored, not built to
+        // replace it, and it had no view yet: bringing it up is its first view.
+        install()
+        val controller = Robolectric.buildActivity(SwapToHeldPageActivity::class.java).setup()
+        drainMainLooper()
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)", "DetailFragment:(none)"), tracker.screens)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aFragmentRenamedAcrossARotationReportsANewView() {
+        var title = "Before"
+        installAutographNativeScreenCapture(
+            application = RuntimeEnvironment.getApplication(),
+            tracker = tracker,
+            scopeStack = scopeStack,
+            activityScreenName = { it.javaClass.simpleName },
+            fragmentScreenName = { if (it is DetailFragment) title else it.javaClass.simpleName },
+        )
+        val controller = Robolectric.buildActivity(FragmentHostActivity::class.java).setup()
+
+        title = "After"
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("Before:(none)", "After:Before"), tracker.screens)
+        assertEquals(2, tracker.visits.toSet().size)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aRetainedPageBroughtUpInPlaceOfTheRemovedOneReportsItsFirstView() {
+        // As for a restored page: a retained instance is not one the app built to replace the removed
+        // owner, so it does not stand for that owner's view.
+        install()
+        val controller = Robolectric.buildActivity(SwapToRetainedPageActivity::class.java).setup()
+        drainMainLooper()
+        assertEquals(listOf("DetailFragment:(none)"), tracker.screens)
+
+        controller.recreate()
+        drainMainLooper()
+
+        assertEquals(listOf("DetailFragment:(none)", "DetailFragment:(none)"), tracker.screens)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aRestoredFragmentResumedOnlyAfterAnotherScreenWasViewedReportsANewView() {
+        // Its host only paused under the other screen, so it did not stop — but the other screen's
+        // view ended the one the rotation interrupted.
+        install()
+        val controller = Robolectric.buildActivity(HoldRestoredActivity::class.java).setup()
+        val visit = checkNotNull(tracker.visits.single())
+        controller.recreate()
+        drainMainLooper()
+
+        controller.pause()
+        val other = Robolectric.buildActivity(SecondPlainActivity::class.java).setup()
+        drainMainLooper()
+        other.pause()
+        controller.resume()
+        drainMainLooper()
+        val fm = controller.get().supportFragmentManager
+        fm.beginTransaction().setMaxLifecycle(fm.fragments.single(), Lifecycle.State.RESUMED).commitNow()
+        drainMainLooper()
+
+        assertEquals("DetailFragment:SecondPlainActivity", tracker.screens.last())
+        assertNotEquals(visit, scopeStack.current().screenViewId)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aReplacementsWindowClosesAfterOneTurnOfTheMainLooper() {
+        // Nothing of the removed owner's class stood in for it during the re-creation, so one added
+        // after it has settled is the app moving on: a new view, not the interrupted one.
+        install()
+        val controller = Robolectric.buildActivity(ReplaceWithAnotherScreenActivity::class.java).setup()
+        controller.recreate()
+        drainMainLooper()
+
+        controller.get().supportFragmentManager.beginTransaction()
+            .replace(android.R.id.content, DetailFragment())
+            .commitNow()
+        drainMainLooper()
+
+        assertEquals(
+            listOf("DetailFragment:(none)", "SecondFragment:DetailFragment", "DetailFragment:SecondFragment"),
+            tracker.screens,
+        )
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aFinishedActivityLeavesNothingForTheNextInstanceOfItsClass() {
+        install()
+        val first = Robolectric.buildActivity(PlainActivity::class.java).setup()
+        first.pause().stop().destroy()
+
+        Robolectric.buildActivity(PlainActivity::class.java).setup()
+
+        assertEquals(listOf("PlainActivity:(none)", "PlainActivity:(none)"), tracker.screens)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
     fun aNestedHostKeepsItsChildsScreenAcrossAStopAndRestart() {
         install()
         // A stop destroys nothing — the fragment keeps its view, its children keep their frames, and
@@ -1316,6 +1892,68 @@ class AndroidScreenCaptureTest {
             tracker.screens,
         )
     }
+
+    // --- The visit id (#242) -----------------------------------------------------------------------
+
+    @Test
+    fun aScreenViewsVisitIdIsWhatTheStackAnswersForItsSurface() {
+        install()
+        val activity = Robolectric.buildActivity(PlainActivity::class.java).setup().get()
+
+        val id = checkNotNull(tracker.visits.single())
+        assertEquals(id, scopeStack.current().screenViewId)
+        assertEquals(id, scopeStack.current(activity.contentOrigin()).screenViewId)
+    }
+
+    @Test
+    fun aPauseAndResumeWithoutANewViewKeepsTheVisit() {
+        install()
+        // A dialog or a permission prompt: no new view, so the same visit.
+        Robolectric.buildActivity(PlainActivity::class.java).setup().pause().resume()
+
+        assertEquals(tracker.visits.single(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun aReturnAfterAnotherScreenIsANewVisitOnTheSameFrame() {
+        install()
+        val underneath = Robolectric.buildActivity(PlainActivity::class.java).setup().pause()
+        Robolectric.buildActivity(SecondPlainActivity::class.java).setup().pause().stop().destroy()
+        underneath.resume()
+
+        assertEquals(3, tracker.visits.size)
+        assertEquals(3, tracker.visits.toSet().size)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    @Test
+    fun anActivityYieldingItsReturnToAFragmentDoesNotHandOutTheFinishedVisit() {
+        install()
+        // The return is the fragment's to report; the Activity's frame still names its settled
+        // screen and comes back on display without a screen view of its own. A tap on the Activity's
+        // own views must not carry the visit that ended when the other screen was reported.
+        val controller = Robolectric.buildActivity(EmptyFragmentActivity::class.java).setup()
+        controller.get().supportFragmentManager.beginTransaction()
+            .add(android.R.id.content, DetailFragment(), "content").commitNow()
+        val activityVisit = tracker.visits.first()
+
+        visitAnotherActivityWithoutStopping(controller)
+
+        val onActivity = scopeStack.current(controller.get().contentOrigin())
+        assertEquals("EmptyFragmentActivity", onActivity.screen)
+        assertNotEquals(activityVisit, onActivity.screenViewId)
+        assertNull(onActivity.screenViewId)
+        assertEquals(tracker.visits.last(), scopeStack.current().screenViewId)
+    }
+
+    private fun FragmentActivity.fragmentOrigin(tag: String) =
+        checkNotNull(supportFragmentManager.findFragmentByTag(tag)!!.requireView().autographScopeOrigin())
+
+    /** The visit each [DetailFragment] of this Activity is in, in the manager's order. */
+    private fun FragmentActivity.detailVisits() = supportFragmentManager.fragments.filterIsInstance<DetailFragment>()
+        .map { scopeStack.current(checkNotNull(it.requireView().autographScopeOrigin())).screenViewId }
+
+    private fun Activity.contentOrigin() = checkNotNull(findViewById<View>(android.R.id.content).autographScopeOrigin())
 
     @Test
     fun anActivityWithAnExcludedFragmentBesideItsContentStillReportsItsReturn() {
