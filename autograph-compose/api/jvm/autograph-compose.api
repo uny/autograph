@@ -9,6 +9,10 @@ public final class dev/ynagai/autograph/compose/AutocaptureKt {
 	public static synthetic fun Autocapture$default (Lkotlin/jvm/functions/Function1;ILjava/lang/Object;)Ldev/ynagai/autograph/compose/AutocaptureConfig;
 }
 
+public final class dev/ynagai/autograph/compose/AutocaptureRootKt {
+	public static final fun autographAutocaptureRoot (Landroidx/compose/ui/Modifier;)Landroidx/compose/ui/Modifier;
+}
+
 public final class dev/ynagai/autograph/compose/AutocaptureScopeKt {
 	public static final fun autocaptureScope (Landroidx/compose/ui/Modifier;Lkotlinx/serialization/json/JsonObject;)Landroidx/compose/ui/Modifier;
 	public static final fun autocaptureScope (Landroidx/compose/ui/Modifier;[Lkotlin/Pair;)Landroidx/compose/ui/Modifier;

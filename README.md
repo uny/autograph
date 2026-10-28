@@ -343,6 +343,27 @@ multi-touch exception, described below — `Modifier.autographIgnore()` excludes
 and [`AutographElementScope { … }`](#scoped-context) attaches per-element properties to the taps
 under it.
 
+**Dialogs, popups and bottom sheets are separate roots.** Their content composes into a window of its
+own, outside the observer `AutographProvider` installs, so a tap inside one is delivered and consumed
+but never seen — no event and no warning
+([#210](https://github.com/uny/autograph/issues/210)). Put `Modifier.autographAutocaptureRoot()` on
+the outermost node of the content, on Android and iOS:
+
+```kotlin
+ModalBottomSheet(onDismissRequest = onDismiss) {
+    Column(Modifier.autographAutocaptureRoot()) { FilterChips(...) }
+}
+```
+
+It attaches the provider's observer to that node and nothing else, so the sheet keeps its own size
+(a second `AutographProvider` there would stretch it to the window), and its taps carry the screen,
+section and scope declared around the sheet. It warns once and does nothing outside a provider with
+autocapture, in the provider's own window (which is already observed), and on the JVM. On iOS a tap
+inside the root resolves through Compose Multiplatform's accessibility tree, like every Compose tap
+there, so it needs no accessibility client (see *What is and isn't captured* below). Taps inside a
+`Dialog` and a `ModalBottomSheet` were reported in a cold process on a fresh iOS 26.4 simulator
+(CMP 1.12.1); that has not yet been checked on a physical device.
+
 `trackImpression` deliberately does **not** suppress autocapture: it reports a visibility event and
 never a click, so a tap on the element it marks is one autocapture owns. Use `autographIgnore()` for
 an element that should report neither.
@@ -374,8 +395,8 @@ table is the whole picture, because a gap here produces **no event at all** — 
 
 | Surface | Taps | Screen views |
 |:--|:--|:--|
-| Compose — Android | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
-| Compose — iOS | ✅ `AutocaptureConfig` | ✅ `TrackedScreen` / navigation-compose |
+| Compose — Android | ✅ `AutocaptureConfig`; **inside a `Dialog` / `Popup` / `ModalBottomSheet` only with `Modifier.autographAutocaptureRoot()`, see below** | ✅ `TrackedScreen` / navigation-compose |
+| Compose — iOS | ✅ `AutocaptureConfig`; **inside a `Dialog` / `Popup` / sheet only with `Modifier.autographAutocaptureRoot()`, see below** | ✅ `TrackedScreen` / navigation-compose |
 | Compose — JVM/desktop | ❌ not captured | ✅ `TrackedScreen` |
 | iOS native — UIKit | ✅ `installAutographNativeTapCapture` — for identified controls; **cell selection is not covered, see below** | ✅ `installAutographNativeScreenCapture` |
 | iOS native — SwiftUI | ❌ **not captured — instrument explicitly with [`AutographButton`](#ios-swiftui-clicks-with-autographbutton)** | ✅ [`.autographScreen`](#ios-swiftui-screens-with-autographscreen) |

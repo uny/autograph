@@ -321,6 +321,51 @@ final class iosAppUITests: XCTestCase {
         XCTAssertEqual(lastEventLabel(app), beforeTap)
     }
 
+    /// A Compose `Dialog` is a root of its own, outside the provider's observer, so a tap inside it is
+    /// reported only under `Modifier.autographAutocaptureRoot()` (#210). The unobserved button is the
+    /// control: it is tapped between two observed taps, and the ordered log shows nothing between
+    /// them. The observed tap carries the screen, section and scope declared around the dialog.
+    ///
+    /// Also pins the premise of the modifier's same-window guard on iOS: if the dialog's content
+    /// shared the provider's `LocalUIView`, the guard would make the modifier a no-op here and
+    /// `dialog_observed` would never be reported.
+    func testTapsInsideADialogAreCapturedOnlyUnderTheModifier() {
+        let app = launchSettled()
+        app.buttons["open_dialog"].tap()
+        // Not a wait on `last_event_label`: while the dialog is up, the screen behind it is out of the
+        // accessibility tree, so that label cannot be read until the dialog closes.
+        XCTAssertTrue(app.buttons["dialog_observed"].waitForExistence(timeout: 15), "the dialog did not open")
+
+        app.buttons["dialog_observed"].tap()
+        app.buttons["dialog_unobserved"].tap()
+        app.buttons["dialog_close"].tap()
+        // The close tap is the last one the modifier observes, so waiting for it means every earlier
+        // tap has had its chance to be reported.
+        waitForLastEventTarget(app, "dialog_close")
+
+        let log = app.staticTexts["track_log_label"].label
+        XCTAssertTrue(
+            log.hasSuffix("Element Clicked:open_dialog|Element Clicked:dialog_observed|Element Clicked:dialog_close"),
+            "expected the observed taps and nothing from the unobserved one at the end of: \(log)"
+        )
+        XCTAssertFalse(log.contains("dialog_unobserved"), "a tap outside the modifier was reported: \(log)")
+    }
+
+    /// A Compose `Dialog`'s observed tap is attributed like any other: screen, section and scope.
+    func testATapInsideADialogCarriesTheScreenSectionAndScopeAroundIt() {
+        let app = launchSettled()
+        app.buttons["open_dialog"].tap()
+        XCTAssertTrue(app.buttons["dialog_observed"].waitForExistence(timeout: 15), "the dialog did not open")
+        app.buttons["dialog_observed"].tap()
+        app.buttons["dialog_close"].tap()
+        waitForLastEventTarget(app, "dialog_close")
+
+        let props = lastEventProps(app)
+        XCTAssertTrue(props.contains("\"screen\":\"Sample\""), "screen missing from props: \(props)")
+        XCTAssertTrue(props.contains("\"section\":\"Main\""), "section missing from props: \(props)")
+        XCTAssertTrue(props.contains("\"article_id\":\"42\""), "scope missing from props: \(props)")
+    }
+
     /// A disabled clickable swallows the tap and fires nothing, so reporting a click would invent an
     /// event (#134, the iOS counterpart of #128).
     ///
