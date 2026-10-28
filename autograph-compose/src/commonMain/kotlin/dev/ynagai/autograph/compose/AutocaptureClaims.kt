@@ -7,6 +7,8 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 
@@ -42,8 +44,48 @@ import androidx.compose.ui.layout.onGloballyPositioned
  *   whether [trackClick]'s handler ran.
  */
 internal class AutocaptureClaims {
-    /** Window-space bounds of live [autographIgnore] subtrees, keyed per call-site instance. */
-    val ignored = mutableStateMapOf<Any, Rect>()
+    /**
+     * Window-space bounds of live [autographIgnore] subtrees, keyed per call-site instance by an
+     * [IgnoredBoundsKey] naming the window each subtree draws in; read them through [ignoredBoundsApply].
+     */
+    val ignored = mutableStateMapOf<IgnoredBoundsKey, Rect>()
+
+    /**
+     * The pointer release an observer last reported from, so that nested
+     * [autographAutocaptureRoot]s, which all see the same release, report it once (#210). Its window,
+     * id and time together: an id alone is reused by the next gesture, and each window numbers its
+     * pointers on its own, so the first taps in a dialog and in the screen behind it share an id.
+     */
+    private var lastReportedWindow: Any? = null
+    private var lastReportedPointer: PointerId? = null
+    private var lastReportedUptime = 0L
+
+    /**
+     * Whether [change], released in [window] ([currentAutocaptureWindow]), is the first sighting of its
+     * release by any observer sharing these claims, and records it. One observer sees each release
+     * once, so only observers nested in one window ever get `false`.
+     */
+    fun firstSightingOf(change: PointerInputChange, window: Any?): Boolean {
+        val seen = window == lastReportedWindow && change.id == lastReportedPointer &&
+            change.uptimeMillis == lastReportedUptime
+        if (seen) return false
+        lastReportedWindow = window
+        lastReportedPointer = change.id
+        lastReportedUptime = change.uptimeMillis
+        return true
+    }
+
+    /**
+     * Drops the record of [window]'s last release, so that these claims, which live as long as the
+     * provider, do not hold a dismissed dialog's view. Called as an observer leaves; a nested root
+     * leaving clears its outer's record too, which costs nothing, since that release was reported.
+     */
+    fun forgetSightingsIn(window: Any?) {
+        if (window != lastReportedWindow) return
+        lastReportedWindow = null
+        lastReportedPointer = null
+        lastReportedUptime = 0L
+    }
 
     // --- Execution-based deduplication (read only by ElementResolver.ios.kt) ---
     //
@@ -106,6 +148,22 @@ internal class AutocaptureClaims {
     fun instrumentedClickExecutedThisGeneration(): Boolean = instrumentedClickExecuted
 }
 
+/**
+ * The key of a [registerIgnoredBounds] entry: one per call-site instance, carrying the window its
+ * bounds were measured in ([currentAutocaptureWindow]). Bounds from two windows share a coordinate
+ * space without sharing a surface, so an [autographIgnore]d element on the screen behind a `Dialog`
+ * would otherwise veto the dialog's taps at the same position (#210) — on iOS, whose resolver reads
+ * these bounds; Android's reads the semantics tree instead.
+ */
+internal class IgnoredBoundsKey(val window: Any?)
+
+/**
+ * Whether the [AutocaptureClaims.ignored] entry under [key] applies to a tap resolved in [window]:
+ * when both name a window, only the same one. A key that names none applies everywhere.
+ */
+internal fun ignoredBoundsApply(key: IgnoredBoundsKey, window: Any?): Boolean =
+    key.window == null || window == null || key.window == window
+
 /** The ambient [AutocaptureClaims], or null outside [AutographProvider] / when autocapture is disabled. */
 internal val LocalAutocaptureClaims = staticCompositionLocalOf<AutocaptureClaims?> { null }
 
@@ -120,7 +178,8 @@ internal val LocalAutocaptureClaims = staticCompositionLocalOf<AutocaptureClaims
 @Composable
 internal fun Modifier.registerIgnoredBounds(): Modifier {
     val claims = LocalAutocaptureClaims.current ?: return this
-    val key = remember { Any() }
+    val window = currentAutocaptureWindow()
+    val key = remember(window) { IgnoredBoundsKey(window) }
     DisposableEffect(claims, key) { onDispose { claims.ignored.remove(key) } }
     return onGloballyPositioned { claims.ignored[key] = it.boundsInWindow() }
 }

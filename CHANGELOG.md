@@ -10,6 +10,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- **`Modifier.autographAutocaptureRoot()` captures taps inside a `Dialog`, `Popup` or
+  `ModalBottomSheet`** ([#210]). Their content composes into a window of its own, so the provider's
+  tap observer never saw it: every tap inside a bottom sheet went unreported, with no warning.
+  Applied to the outermost node of that content, the modifier attaches the enclosing provider's
+  observer there, with its tracker, config and scope stack, so the taps carry the screen, section and
+  scope declared around the sheet. It sizes nothing, unlike a nested `AutographProvider`, which
+  stretched a wrap-content sheet to the window. Android and iOS (on iOS through the accessibility tree
+  like every Compose tap there, which needs no accessibility client; taps inside a `Dialog` and a
+  `ModalBottomSheet` were reported in a cold process on a fresh iOS 26.4 simulator, not yet checked on
+  a physical device). Outside a provider with autocapture, in the
+  provider's own window, and on the JVM it does nothing and prints one warning.
+
 - **`View.isAutographEmbedded` lets an Activity keep its own screen while a fragment sits beside
   its content** ([#281]). The Android native screen capture cannot tell a mini-player, banner or
   widget fragment added beside an Activity's content from a fragment that replaces the content, so
@@ -1887,6 +1899,7 @@ Initial release.
 [#197]: https://github.com/uny/autograph/issues/197
 [#205]: https://github.com/uny/autograph/issues/205
 [#208]: https://github.com/uny/autograph/issues/208
+[#210]: https://github.com/uny/autograph/issues/210
 [#216]: https://github.com/uny/autograph/issues/216
 [#217]: https://github.com/uny/autograph/pull/217
 [#224]: https://github.com/uny/autograph/issues/224
