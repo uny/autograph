@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -27,10 +28,12 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import dev.ynagai.autograph.compose.Autocapture
 import dev.ynagai.autograph.compose.AutographProvider
 import dev.ynagai.autograph.compose.AutographScope
 import dev.ynagai.autograph.compose.TrackedScreen
+import dev.ynagai.autograph.compose.autographAutocaptureRoot
 import dev.ynagai.autograph.compose.autographIgnore
 import dev.ynagai.autograph.compose.trackClick
 import dev.ynagai.autograph.compose.trackImpression
@@ -77,6 +80,32 @@ public fun App() {
                     TrackedScreen("Sample", section = "Main") {
                         DemoScreen(lastTarget, lastProps, screenLog, trackLog)
                     }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * A Dialog composes into a root of its own, outside the observer `AutographProvider` installs, so its
+ * taps are reported only under `Modifier.autographAutocaptureRoot()` (#210). One button inside the
+ * modifier, one outside it (the control: tapped, and reported by nobody), and a close button inside
+ * it, so the ordered track log shows both what was and what was not reported.
+ */
+@Composable
+private fun DialogOpener() {
+    var open by remember { mutableStateOf(false) }
+    Button(onClick = { open = true }, modifier = Modifier.testTag("open_dialog").height(56.dp)) { Text("Dialog") }
+    if (open) {
+        Dialog(onDismissRequest = { open = false }) {
+            Column(
+                Modifier.background(MaterialTheme.colorScheme.surface).padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(onClick = {}, modifier = Modifier.testTag("dialog_unobserved")) { Text("Outside the modifier") }
+                Column(Modifier.autographAutocaptureRoot(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Button(onClick = {}, modifier = Modifier.testTag("dialog_observed")) { Text("Inside the modifier") }
+                    Button(onClick = { open = false }, modifier = Modifier.testTag("dialog_close")) { Text("Close") }
                 }
             }
         }
@@ -262,21 +291,26 @@ private fun DemoScreen(lastTarget: String, lastProps: String, screenLog: String,
                 .trackClick("Recipe Saved", target = "scaled_tracked_small") {},
         )
 
-        // Modifier.autographIgnore excludes a subtree from autocapture entirely.
-        Box(
-            modifier = Modifier
-                .testTag("ignored_button")
-                .fillMaxWidth()
-                .height(56.dp)
-                .background(Color.Gray)
-                .autographIgnore()
-                .clickable {},
-        ) {
-            Text(
-                "Not captured (Modifier.autographIgnore)",
-                color = Color.White,
-                modifier = Modifier.padding(16.dp),
-            )
+        // Shares a row with the dialog opener below: the Column does not scroll, so a new fixture
+        // costs height only if it takes a row of its own.
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Modifier.autographIgnore excludes a subtree from autocapture entirely.
+            Box(
+                modifier = Modifier
+                    .testTag("ignored_button")
+                    .weight(1f)
+                    .height(56.dp)
+                    .background(Color.Gray)
+                    .autographIgnore()
+                    .clickable {},
+            ) {
+                Text(
+                    "Not captured (autographIgnore)",
+                    color = Color.White,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+            DialogOpener()
         }
 
         // A disabled clickable swallows the tap and fires nothing, so autocapture reports nothing —
