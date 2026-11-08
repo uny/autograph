@@ -55,19 +55,14 @@ public class DebugTransport(
         if (delegate is MetadataAwareTransport) {
             delegate.track(name, props.deliverableTo(delegate), envelope, metadata)
         } else {
-            // The tracker does not route here for such a delegate (see [metadataReachesDelegate]); a direct
+            // The tracker does not route here for such a delegate (see [innermost]); a direct
             // caller gets the same outcome it would: the event, without the metadata.
             delegate.track(name, props.deliverableTo(delegate), envelope)
         }
     }
 
-    /** Whether metadata handed to this wrapper reaches a transport that can use it, through any nesting. */
-    internal val metadataReachesDelegate: Boolean
-        get() = innermostDelegate is MetadataAwareTransport
-
-    /** The first transport under this wrapper, through any nesting, that is not itself a [DebugTransport]. */
-    internal val innermostDelegate: Transport
-        get() = (delegate as? DebugTransport)?.innermostDelegate ?: delegate
+    /** The transport this one wraps, for [innermost]. */
+    internal val wrapped: Transport get() = delegate
 
     override fun screen(name: String, properties: Map<String, JsonElement>, envelope: Envelope?) {
         val props = properties.asJsonObject()

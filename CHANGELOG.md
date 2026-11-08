@@ -10,6 +10,27 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ### Added
 
+- **`Transport.intercept { event -> … }` replaces a hand-written transport wrapper** ([#302]). The
+  transform sees each `track`, `screen` and `identify` call once as a `TransportEvent` (its `type`,
+  one of `TransportEventTypes`, its `name`, the user id for `identify`, and its `properties`), and
+  returns it with new properties or `null` to drop it. The returned transport forwards
+  `stampsInPipeline`, `connect`, `flush` and `reset`, transforms both delivery routes of an event
+  that carries metadata exactly once, keeps the metadata wherever the transport underneath can take
+  it (a core-stamped transport, or a pipeline transport that implements `MetadataAwareTransport`),
+  implements `MetadataAwareTransport` exactly when the transport underneath does, and hands a delegate written in Swift nested values as
+  JSON text ([#299]). The tracker's metadata warning looks through it and names the transport
+  underneath, as it already did through `DebugTransport`. Kotlin only: it is hidden from Swift,
+  because a Swift closure would receive the properties as a `[String: JsonElement]` dictionary and
+  crash on a nested value. A dropped event leaves a gap in `seq` on a transport the core stamps for
+  (`SegmentTransport` on iOS), and none on a pipeline transport (`SegmentTransport` on Android).
+  Through the tracker, an identity transform changes nothing a transport receives: a reserved
+  `__autograph` key the transform adds to a track or screen event is removed, and identify traits
+  are passed on as returned. A transform that throws counts in `CloseResult.failedHandOffs`; a
+  `null` drop does not. `DebugTransport(transport).intercept(...)` logs what is sent, and
+  `DebugTransport(transport.intercept(...))` logs it before the transform. ADR 0001 §2g records how a
+  declaration hidden from Swift is covered. The README's "Wrapping a transport" section now leads
+  with it.
+
 - **`Modifier.autographAutocaptureRoot()` captures taps inside a `Dialog`, `Popup` or
   `ModalBottomSheet`** ([#210]). Their content composes into a window of its own, so the provider's
   tap observer never saw it: every tap inside a bottom sheet went unreported, with no warning.
@@ -21,6 +42,18 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   `ModalBottomSheet` were reported in a cold process on a fresh iOS 26.4 simulator, not yet checked on
   a physical device). Outside a provider with autocapture, in the
   provider's own window, and on the JVM it does nothing and prints one warning.
+
+- **`View.isAutographEmbedded` lets an Activity keep its own screen while a fragment sits beside
+  its content** ([#281]). The Android native screen capture cannot tell a mini-player, banner or
+  widget fragment added beside an Activity's content from a fragment that replaces the content, so
+  it took the Activity for a fragment shell: its own taps carried no screen and it reported no
+  `Screen Viewed` for itself, from its first resume or the first resume after a stop. Mark the
+  container the fragment is added into, or the fragment's root view, and the Activity stays a screen
+  of its own. A Compose view inside a marked subtree also no longer makes the Activity, or a
+  fragment containing the mark, a Compose host. The marked fragment itself is classified as
+  before: an excluded one beside an Activity still masks its own taps. Mark the slot, not a view
+  above the content, or the Activity's real content fragment counts as embedded too. Without the mark
+  nothing changes.
 
 - **`Fragment.autographScope` and `ComponentActivity.autographScope` scope properties to one native
   Android surface** ([#239]), the counterpart of Compose's `AutographScope`. Called from `onCreate`,
