@@ -1039,8 +1039,14 @@ internal class AndroidScreenCapture(
         // first resume a shell for good — measured, while the mask was still one-way, it then reported
         // no screen at all, permanently; even now it would mask until its next stop, because the
         // decision is settled once per mounting.
+        //
+        // Nor is a fragment the app marked as sitting beside the content (View.isAutographEmbedded):
+        // the structure cannot tell a mini-player beside the content from a Compose fragment replacing
+        // it, so without the mark both count (#281).
         if (activity is FragmentActivity &&
-            activity.supportFragmentManager.fragments.any { it.view != null && !it.isShownAsDialog() }
+            activity.supportFragmentManager.fragments.any { f ->
+                f.view?.let { !isInEmbeddedSubtree(it) } == true && !f.isShownAsDialog()
+            }
         ) {
             return false
         }
@@ -1063,11 +1069,20 @@ internal class AndroidScreenCapture(
         return viewSubtreeContains(root, composeClass)
     }
 
+    /**
+     * Whether [root]'s subtree holds an instance of [klass], not counting what is under a descendant
+     * marked [isAutographEmbedded]: a Compose mini-player beside the content does not make the
+     * surface around it a Compose host (#281). The root itself is checked whether or not it is marked,
+     * so a marked fragment asked about its own view is still a Compose host when it is one, and still
+     * masks its own taps.
+     */
     private fun viewSubtreeContains(root: View, klass: Class<*>): Boolean {
         if (klass.isInstance(root)) return true
         if (root is ViewGroup) {
             for (i in 0 until root.childCount) {
-                if (viewSubtreeContains(root.getChildAt(i), klass)) return true
+                val child = root.getChildAt(i)
+                if (child.isAutographEmbedded) continue
+                if (viewSubtreeContains(child, klass)) return true
             }
         }
         return false
