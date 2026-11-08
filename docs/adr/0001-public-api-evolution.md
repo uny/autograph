@@ -90,7 +90,7 @@ exception.
 
 #### 2a. Library-produced value types — construction is frozen
 
-`Envelope`, `SessionInfo`, `EventMetadata`, `CloseResult`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
+`Envelope`, `SessionInfo`, `EventMetadata`, `CloseResult`, `TransportEvent`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
 
 The library creates these; callers only read them. They are declared
 
@@ -142,7 +142,7 @@ Four consequences we accept knowingly:
   behavior change without a compile error. New properties go at the end of the parameter
   list, and the changelog says so explicitly.
 
-`ScopeHandle` and `AmbientContext` are in this category by the same test — the library
+`ScopeHandle`, `AmbientContext` and `TransportEvent` are in this category by the same test — the library
 produces them, callers only read them — but are plain classes with an `internal`
 constructor rather than the `data class` shape above, so they never had `copy` or
 `componentN` to lose and gain properties freely. A library-produced type that does *not*
@@ -291,9 +291,21 @@ argument they may later need is therefore either given a default at a call site 
 controls, or moved onto `AutographConfig`.
 
 Stateless entry points — the `Autograph { }` builder function, `EventId`, `EmptyJsonObject`,
-`platformSeqStore()`, and the constants `RESERVED_METADATA_KEY` and `EventKinds` — carry no construction contract at all. Adding a new top-level
+`platformSeqStore()`, the `Transport.intercept` extension, and the constants `RESERVED_METADATA_KEY`, `EventKinds` and `TransportEventTypes` — carry no construction contract at all. Adding a new top-level
 function or `object` member beside them is additive; changing an existing signature is a
 break, with no rule beyond that.
+
+#### 2g. Declarations hidden from Swift
+
+`Transport.intercept`, `TransportEvent` and `TransportEventTypes` carry `@HiddenFromObjC`, the first
+use of it in this project. Kotlin-only for 0.13.0 was the owner's decision (2026-10-25, #302): a
+Swift closure would receive `TransportEvent.properties` as a `[String: JsonElement]` dictionary and
+trap on a nested value (#299). A hidden declaration is still in the JVM and klib dumps, so it is
+frozen for Kotlin/JVM and Kotlin/Native consumers exactly as its category above says. It is absent
+from the Objective-C header, so the Swift source-compatibility promise does not cover it. Swift
+support, if it comes, is a separate Swift-safe entry point added beside it, not the annotation
+removed: removing it would export the same trap. Revisit this when the 1.0 Swift protocol that
+#299 left open is designed.
 
 ### 3. The wire format is versioned separately from the ABI
 
