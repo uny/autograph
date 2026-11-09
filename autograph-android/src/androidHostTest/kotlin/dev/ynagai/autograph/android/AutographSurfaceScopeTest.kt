@@ -266,6 +266,21 @@ class AutographSurfaceScopeTest {
     }
 
     @Test
+    fun aCompositionInAWindowNoSurfaceClaimsDoesNotSeeTheScope() {
+        // A Dialog's or Popup's composition sits under no claimed view, so its provider frame (pushed
+        // as ProviderFrame does, not a boundary) has no host to link to. A claimed surface's frame
+        // beside it is absent there, never borrowed: even a fragment alone and resumed, whose scope
+        // the ambient read does hold, does not reach it.
+        val activity = launch(OwnHostActivity::class.java).get()
+        val scoped = ScopedButtonFragment()
+        activity.supportFragmentManager.beginTransaction().add(activity.containerA, scoped).commitNow()
+        val dialogProvider = scopeStack.push()
+
+        assertEquals("42", scopeStack.current().scope.string("item_id"))
+        assertNull(scopeStack.current(dialogProvider).scope.string("item_id"))
+    }
+
+    @Test
     fun updateRevisesTheScopeOfALiveSurfaceAtOnce() {
         val activity = launch(OwnHostActivity::class.java).get()
         val scoped = ScopedButtonFragment()

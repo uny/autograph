@@ -34,11 +34,11 @@ import java.lang.ref.WeakReference
  * property the capture sets itself and the reserved `screen` / `section`. Explicit `Tracker.track`
  * calls are untouched — this feeds autocapture only.
  *
- * One read has no surface to go by: a tap on a window no surface claims — a `PopupWindow`, an
- * `AlertDialog` the app builds itself — is resolved from the ambient `ScopeStack.current()`, which
- * holds the scope of every resumed surface. Alone, a resumed fragment's scope reaches such a tap; two
- * scoped siblings resumed at once are ambiguous there and both drop. A screen name behaves the same
- * way. Show such a window as a `DialogFragment` to keep it to its own surface.
+ * Not a window no surface claims either — a `Dialog` or `PopupWindow` the app shows itself. The native
+ * tap capture does not see those windows at all, and Compose content in one (with
+ * `Modifier.autographAutocaptureRoot`) resolves from its own unlinked frame, where a surface's scope
+ * is absent, never borrowed — even from a fragment that is alone and resumed. Show such a window as a
+ * `DialogFragment` to give it a surface of its own, and declare its scope there.
  *
  * ## Lifetime: the fragment's, not the call site's
  *
