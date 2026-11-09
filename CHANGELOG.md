@@ -60,11 +60,10 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   they put the properties on the frame `installAutographNativeScreenCapture` keeps for that
   Activity or Fragment, so they reach the taps captured in it, in the Compose content and child
   fragments nested in it (the inner value winning a key clash), and its own `Screen Viewed`, but not
-  a sibling surface's events, nor a `Dialog` or `PopupWindow` the app shows itself. The returned
-  `AutographScopeHandle.update` revises them in place. The declaration is bound to the surface's
-  lifecycle and survives a view re-creation; a second call on the same `ScopeStack` replaces it.
-  Values are strings. Without the native screen capture on the same `ScopeStack` the scope is
-  absent, never app-wide. Android only; the UIKit counterpart needs a per-controller
+  a sibling surface's events. The returned `AutographScopeHandle.update` revises them in place. The
+  declaration is bound to the surface's lifecycle and survives a view re-creation; a second call on
+  the same `ScopeStack` replaces it. Values are strings. Without the native screen capture on the
+  same `ScopeStack` the scope is absent, never app-wide. Android only; the UIKit counterpart needs a per-controller
   boundary first.
 
 ### Fixed

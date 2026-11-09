@@ -947,9 +947,8 @@ class DetailFragment : Fragment() {
 
 The properties go on the frame the screen capture keeps for that surface, so they reach the taps
 captured in it, in the Compose content and child fragments inside it (whose own scope wins a key
-clash), and its own `Screen Viewed` — never a sibling fragment's taps or the Activity's own, and never
-a `Dialog` or `PopupWindow` the app shows itself: no surface claims that window, so Compose content in
-it sees no surface's scope (show it as a `DialogFragment` and declare one there). They rank
+clash), and its own `Screen Viewed`. A fragment's scope never reaches a sibling fragment's taps or the
+Activity's own views. They rank
 above a default property and below everything else, feed autocapture only (an explicit `track` call
 does not see them, nor does a hosted composition's `TrackedScreen` or `trackClick`), and are bound to the
 surface's lifecycle: they survive a view re-creation and go away when the surface is destroyed. A

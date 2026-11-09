@@ -34,11 +34,10 @@ import java.lang.ref.WeakReference
  * property the capture sets itself and the reserved `screen` / `section`. Explicit `Tracker.track`
  * calls are untouched — this feeds autocapture only.
  *
- * Not a window no surface claims either — a `Dialog` or `PopupWindow` the app shows itself. The native
- * tap capture does not see those windows at all, and Compose content in one (with
- * `Modifier.autographAutocaptureRoot`) resolves from its own unlinked frame, where a surface's scope
- * is absent, never borrowed — even from a fragment that is alone and resumed. Show such a window as a
- * `DialogFragment` to give it a surface of its own, and declare its scope there.
+ * Compose content in a `Dialog`, `Popup` or sheet captured through `Modifier.autographAutocaptureRoot`
+ * resolves from the enclosing provider's origin, so this scope reaches it as it reaches the content
+ * beside it. Native views in such a window are outside the native tap capture (see
+ * [installAutographNativeTapCapture]).
  *
  * ## Lifetime: the fragment's, not the call site's
  *
