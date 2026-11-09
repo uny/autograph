@@ -55,6 +55,17 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   above the content, or the Activity's real content fragment counts as embedded too. Without the mark
   nothing changes.
 
+- **`Fragment.autographScope` and `ComponentActivity.autographScope` scope properties to one native
+  Android surface** ([#239]), the counterpart of Compose's `AutographScope`. Called from `onCreate`,
+  they put the properties on the frame `installAutographNativeScreenCapture` keeps for that
+  Activity or Fragment, so they reach the taps captured in it, in the Compose content and child
+  fragments nested in it (the inner value winning a key clash), and its own `Screen Viewed`, but not
+  a sibling surface's events. The returned `AutographScopeHandle.update` revises them in place. The
+  declaration is bound to the surface's lifecycle and survives a view re-creation; a second call on
+  the same `ScopeStack` replaces it. Values are strings. Without the native screen capture on the
+  same `ScopeStack` the scope is absent, never app-wide. Android only; the UIKit counterpart needs a per-controller
+  boundary first.
+
 ### Fixed
 
 - **A `Tracker` or `Transport` implemented in Swift no longer crashes on an event with a nested
@@ -1927,6 +1938,7 @@ Initial release.
 [#228]: https://github.com/uny/autograph/issues/228
 [#237]: https://github.com/uny/autograph/issues/237
 [#238]: https://github.com/uny/autograph/issues/238
+[#239]: https://github.com/uny/autograph/issues/239
 [#240]: https://github.com/uny/autograph/issues/240
 [#242]: https://github.com/uny/autograph/issues/242
 [#243]: https://github.com/uny/autograph/issues/243

@@ -63,6 +63,10 @@ import dev.ynagai.autograph.context.screenViewIdOf
  * frame under the surface hosting it, so a mask raised by an unnamed fragment added straight into a
  * named Activity blanks the taps inside that fragment and leaves the Activity's own taps naming the
  * Activity (#216 S2). Insertion order alone had the mask, being later, win for both.
+ *
+ * The same frame carries the scope a surface declares about itself ([autographScope], #239), for the
+ * same reason: it then reaches the surface's own events and those of everything nested in it — a
+ * child fragment, a composition — along the lineage, and nobody else's.
  */
 internal class AndroidScreenCapture(
     private val tracker: Tracker,
@@ -103,6 +107,26 @@ internal class AndroidScreenCapture(
 
     private val handler = Handler(Looper.getMainLooper())
 
+    /** Revises a live frame when its surface declares or updates a scope; see [SurfaceScopes]. */
+    private val onScopeDeclared: (Any, ScopeStack) -> Unit = { owner, stack ->
+        if (active && stack === scopeStack) stateOf(owner)?.let { writeFrame(it, owner) }
+    }
+
+    init {
+        SurfaceScopes.addListener(onScopeDeclared)
+    }
+
+    private fun stateOf(owner: Any): SurfaceState? = when (owner) {
+        is Activity -> activityStates[owner]
+        is Fragment -> owner.activity?.let(fragmentRegistrations::get)?.callbacks?.stateOf(owner)
+        else -> null
+    }
+
+    /** Writes [state]'s frame: the screen it last named, and the scope [owner] declares now. */
+    private fun writeFrame(state: SurfaceState, owner: Any) {
+        scopeStack.update(state.handle, scope = SurfaceScopes.scopeOf(owner, scopeStack), screen = state.screen)
+    }
+
     /**
      * What this capture knows about one surface. The [handle] is reserved for the life of one
      * **mounting** and replaced by [endMounting] when the next begins, so never cache it — the frame
@@ -138,6 +162,12 @@ internal class AndroidScreenCapture(
 
         /** Our belief about the frame's active bit, so a no-op toggle costs no snapshot. */
         var selected = false
+
+        /**
+         * The screen last written to the current frame, so a scope the surface declares later
+         * ([autographScope]) can revise the frame without changing what it names. Reset with the frame.
+         */
+        var screen: String? = null
 
         /** A `Screen Viewed` stands for the view of this screen that is currently in progress. */
         var emitted = false
@@ -285,6 +315,7 @@ internal class AndroidScreenCapture(
         activity.decorView()?.let { claim(it, state) }
         onSurfaceResumed(
             state = state,
+            owner = activity,
             takeCarry = { carries[state.identity]?.let { host -> host.activity.also { host.activity = null } } },
             capturable = isCapturableActivity(activity),
             // An Activity covers its window — but only while it is the one Activity on display. Under
@@ -466,6 +497,8 @@ internal class AndroidScreenCapture(
          */
         private val fragmentStates = java.util.WeakHashMap<Fragment, SurfaceState>()
 
+        fun stateOf(fragment: Fragment): SurfaceState? = fragmentStates[fragment]
+
         /**
          * Reserves frames for fragments that attached before these callbacks were registered.
          * Depth-first and parent-before-child, which is the order [reserveFrame] needs.
@@ -580,8 +613,24 @@ internal class AndroidScreenCapture(
                 newFragmentSurface(f).also { late -> f.view?.let { claim(it, late) } }
             }
             state.pausedWithHost = false
+            // A child resumes inside its parent's performResume, before the parent's own callback
+            // (measured), so a parent frame would still be off when the child reports its first
+            // `Screen Viewed`, and the scope the parent declares (#239) would be missing from it. The
+            // parent already reads `isResumed` here, so its frame is switched on now, carrying its
+            // declared scope: after a remount the frame is a fresh, empty one (endMounting) and the
+            // parent's onCreate does not run again to re-declare. Nothing else: whether it names or
+            // masks is settled at the parent's own resume, which follows.
+            generateSequence(f.parentFragment) { it.parentFragment }
+                .filter { it.isResumed }
+                .forEach { ancestor ->
+                    fragmentStates[ancestor]?.let {
+                        writeFrame(it, ancestor)
+                        select(it)
+                    }
+                }
             onSurfaceResumed(
                 state = state,
+                owner = f,
                 takeCarry = { takeCarry(f, state) },
                 capturable = isCapturableFragment(f),
                 // Two things must hold before an unnamed surface may blank the screen underneath.
@@ -834,6 +883,7 @@ internal class AndroidScreenCapture(
      */
     private inline fun onSurfaceResumed(
         state: SurfaceState,
+        owner: Any,
         takeCarry: () -> Carry?,
         capturable: Boolean,
         covers: Boolean,
@@ -874,8 +924,10 @@ internal class AndroidScreenCapture(
         // frame and never lets the screen underneath show through (see ScopeStack.setScreenMasked).
         if (masks == true) scopeStack.setScreenMasked(state.handle, true)
         // `update` revises what the frame says and keeps its parent link, which [reparent] owns
-        // (onFragmentViewCreated).
-        scopeStack.update(state.handle, screen = screen)
+        // (onFragmentViewCreated). The scope the surface declares about itself rides along, read
+        // again here because a fresh mounting's frame starts empty.
+        state.screen = screen
+        writeFrame(state, owner)
         if (masks == false) scopeStack.setScreenMasked(state.handle, false)
 
         // A view that has ended takes its visit id with it before the frame answers again (#242).
@@ -985,6 +1037,7 @@ internal class AndroidScreenCapture(
     private fun endMounting(state: SurfaceState) {
         scopeStack.remove(state.handle)
         state.handle = reserveFrame(state.parent)
+        state.screen = null
         state.decided = false
         state.selected = false
     }
@@ -1004,6 +1057,7 @@ internal class AndroidScreenCapture(
     /** Removes every frame this capture pushed and stops it reporting. Idempotent. */
     fun tearDown() {
         active = false
+        SurfaceScopes.removeListener(onScopeDeclared)
         handler.removeCallbacksAndMessages(null)
         activityStates.forEach { (activity, state) -> release(state, activity.decorView()) }
         activityStates.clear()
