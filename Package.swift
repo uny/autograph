@@ -38,8 +38,8 @@ private let localXCFrameworkAbsolutePath = URL(fileURLWithPath: #filePath)
 // That main-side sync is a freshness fix, not an endorsement of `branch: "main"` as a way to
 // consume this package: Sources/ would come from main's HEAD while this binary target is the last
 // *released* Kotlin build, so the Swift and Kotlin halves can be out of step. Depend on a version.
-private let releaseVersion = "0.12.0"
-private let releaseChecksum = "c93f7e8b04c08b9155a3810080819c96833f58f13ef88d33081d7887390373bd"
+private let releaseVersion = "0.13.0"
+private let releaseChecksum = "4a45bd8b623aa74ad4d04f6e22f54f4a8b44824aaa6df107b78cb43353bbfaee"
 
 private let autographTarget: Target = FileManager.default.fileExists(atPath: localXCFrameworkAbsolutePath)
     ? .binaryTarget(name: "Autograph", path: localXCFrameworkPath)
