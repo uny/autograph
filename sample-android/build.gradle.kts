@@ -24,6 +24,11 @@ android {
         unitTests {
             // Robolectric needs the merged Android resources/manifest on the unit-test classpath.
             isIncludeAndroidResources = true
+            all {
+                // Robolectric 4.17 on SDK 36+ reaches jdk.internal.access reflectively; see the same
+                // flag in autograph-android/build.gradle.kts.
+                it.jvmArgs("--add-opens", "java.base/jdk.internal.access=ALL-UNNAMED")
+            }
         }
     }
 }
