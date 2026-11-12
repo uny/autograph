@@ -8,6 +8,8 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-11-12
+
 ### Added
 
 - **`Transport.intercept { event -> … }` replaces a hand-written transport wrapper** ([#302]). The
@@ -1840,7 +1842,8 @@ Initial release.
   ([#27]).
 - Maven Central publishing ([#31]).
 
-[Unreleased]: https://github.com/uny/autograph/compare/v0.12.0...HEAD
+[Unreleased]: https://github.com/uny/autograph/compare/v0.13.0...HEAD
+[0.13.0]: https://github.com/uny/autograph/compare/v0.12.0...v0.13.0
 [0.12.0]: https://github.com/uny/autograph/compare/v0.11.1...v0.12.0
 [0.11.1]: https://github.com/uny/autograph/compare/v0.11.0...v0.11.1
 [0.11.0]: https://github.com/uny/autograph/compare/v0.10.0...v0.11.0
