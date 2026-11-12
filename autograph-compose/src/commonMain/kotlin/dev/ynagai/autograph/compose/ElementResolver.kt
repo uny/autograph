@@ -6,8 +6,8 @@ import androidx.compose.ui.layout.LayoutCoordinates
 
 /**
  * Resolves a tap at [position] (in [root]'s local coordinate space) to an autocapture target — its
- * identifier and the [AutographElementScope] its ancestry declared — or null if the tap didn't land on a
- * clickable, non-ignored element.
+ * identifier and the [AutographElementScope] its ancestry declared — or null if the tap didn't land
+ * on a clickable, non-ignored element.
  *
  * Implemented per-platform: Android hit-tests the semantics tree via `RootForTest`; iOS hit-tests
  * the UIKit accessibility bridge (`UIView.accessibilityElements`) instead, since there's no

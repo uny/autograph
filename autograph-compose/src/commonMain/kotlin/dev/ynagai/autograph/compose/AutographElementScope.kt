@@ -23,6 +23,11 @@ import kotlinx.serialization.json.JsonPrimitive
  * frames enclosing the element contribute underneath both. Screen and section from [TrackedScreen]
  * still win over all of them, so don't name a scope key `screen` or `section`.
  *
+ * **Autocapture only**, unlike [AutographScope], which reaches every event emitted from its content.
+ * The scope is a marker on the layout tree, not a `CompositionLocal`, so `Modifier.trackClick` /
+ * `trackImpression` and plain `LocalTracker.current.track(...)` calls inside [content] do *not* pick
+ * these properties up; pass them explicitly, or wrap the content in [AutographScope] as well.
+ *
  * **A wrapper, not a modifier, and that is load-bearing on iOS.** The scope has to occupy a layout
  * node of its own: iOS carries it in the element's accessibility identifier, the same slot the tap's
  * own `target` comes from, and Compose collapses two `testTag`s on one layout node to the first. Put

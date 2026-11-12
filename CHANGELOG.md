@@ -104,9 +104,9 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   iOS, where the modifier contributed nothing, the scope starts to arrive, and it travels in the
   wrapper's accessibility identifier: any accessibility client on the device can read its keys and
   values, so don't put anything in a scope you wouldn't put in a `testTag`. The wrapper is a real
-  layout node: a `Modifier.weight` or `alignByBaseline` on the moved element stops compiling, and an
-  `align` or `matchParentSize` quietly rebinds to the wrapper (see `AutographElementScope`'s kdoc). Removed
-  with no deprecation window beyond the one already given, per ADR 0001 §5's pre-1.0 rule.
+  layout node: a `Modifier.weight` or `alignByBaseline` on the moved element stops compiling, and
+  an `align` or `matchParentSize` quietly rebinds to the wrapper (see `AutographElementScope`'s
+  kdoc). Removed under ADR 0001 §5's pre-1.0 rule, which named this deprecation explicitly.
 
 ## [0.12.0] - 2026-10-19
 
