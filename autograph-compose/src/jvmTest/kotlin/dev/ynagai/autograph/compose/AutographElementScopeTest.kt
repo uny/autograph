@@ -27,8 +27,9 @@ import kotlin.test.assertNotNull
 
 /**
  * Covers [AutographElementScope] on the semantics half — the Android/JVM actual, which writes the
- * same node [autocaptureScope] does, so what is pinned here is that wrapping produces the attribution
- * the modifier did plus the shapes the modifier could not express.
+ * same node ([AutocaptureScopeElement]) the removed `Modifier.autocaptureScope` did, so what is pinned
+ * here is that wrapping produces the attribution the modifier did plus the shapes the modifier could
+ * not express.
  *
  * **In `jvmTest`, not `commonTest`, and that is the honest placement rather than a build detail.**
  * The iOS actual deliberately writes something else — a traversal group and a reserved `testTag` —

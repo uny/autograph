@@ -110,8 +110,8 @@ internal actual fun Modifier.autographElementScopeMarker(properties: JsonObject)
 }
 
 /**
- * A value-equal element rather than `Modifier.semantics {}`, for the reason [autocaptureScope]'s own
- * node documents: a `semantics` lambda capturing the scope compares unequal on every recomposition
+ * A value-equal element rather than `Modifier.semantics {}`, for the reason [AutocaptureScopeElement]
+ * documents: a `semantics` lambda capturing the scope compares unequal on every recomposition
  * and re-applies its config each time. [identifier] is a [String], so re-emitting an unchanged scope
  * is a no-op here.
  */

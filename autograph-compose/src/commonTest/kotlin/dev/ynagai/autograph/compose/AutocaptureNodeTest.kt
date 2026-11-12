@@ -303,7 +303,7 @@ class AutocaptureNodeTest {
 
     @Test
     fun resolveAutocaptureTargetMergesScopesAlongTheChainInnerWinningAClash() {
-        // The chain is a single ancestry path, so nested autocaptureScope()s are never ambiguous the
+        // The chain is a single ancestry path, so nested scope markers are never ambiguous the
         // way simultaneously-mounted AutographScope siblings are: they compose outer -> inner, and the
         // inner value wins a shared key — the same rule nested scopes follow everywhere else.
         val chain = sequenceOf(
@@ -335,7 +335,7 @@ class AutocaptureNodeTest {
 
     @Test
     fun resolveAutocaptureTargetCollectsAScopeDeclaredBelowTheReportedClickable() {
-        // autocaptureScope is subtree-wide like autographIgnore: "taps under here carry this". A
+        // A scope marker is subtree-wide like autographIgnore: "taps under here carry this". A
         // scope on a non-clickable leaf inside a clickable row therefore still contributes, rather
         // than being silently lost because the reported element sits above it.
         val chain = sequenceOf(

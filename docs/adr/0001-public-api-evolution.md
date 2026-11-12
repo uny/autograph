@@ -380,9 +380,9 @@ once 1.0 ships:
 - The CHANGELOG entry that introduces a deprecation states the release the removal is planned for.
   Moving that target later is fine; moving it earlier is not.
 - Before 1.0 this does not apply — the README's stability banner says so, and
-  `Modifier.autocaptureScope` is deprecated for removal at 1.0 under the pre-1.0 rule, with no
-  window. It is grandfathered rather than retro-fitted: applying the rule above to it would hold a
-  superseded API past the release that is meant to be the clean line.
+  `Modifier.autocaptureScope` was deprecated for removal at 1.0 under the pre-1.0 rule, with no
+  window, and removed by #283. It was grandfathered rather than retro-fitted: applying the rule
+  above to it would have held a superseded API past the release that is meant to be the clean line.
 - `@AutographInternalApi` declarations are exempt, as they are from every other rule here.
 
 ## Consequences

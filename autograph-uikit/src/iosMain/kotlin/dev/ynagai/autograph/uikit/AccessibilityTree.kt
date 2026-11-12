@@ -291,7 +291,7 @@ private fun deepestAccessibilityHitPath(
     // An Autograph scope container is exempt, and only it — see [AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX].
     // It is a marker this library asked the app to place, carrying no content of its own, so it is
     // never the answer to "what was tapped"; without the exemption it would prune its own subtree
-    // whenever a child is drawn outside it, which is the shape `autocaptureScope`'s kdoc promises
+    // whenever a child is drawn outside it, which is the shape `AutographElementScope`'s kdoc promises
     // works. The exemption is withheld from a *clickable* marker, since exempting one would let it
     // claim a tap that landed outside it — a drop traded for a misattribution, the wrong direction.
     // Ordered so the exemption's identifier read happens only where it can change the answer: it is a
@@ -478,8 +478,8 @@ public fun List<Any>.nearestAccessibilityClickable(): Any? =
  * host app chose. Everything after it is the scope's payload.
  *
  * The identifier slot is the only bridged accessibility property that is both identity-bearing and
- * never read out to a VoiceOver user, which is why the scope travels in it — see `autocaptureScope`'s
- * kdoc in `autograph-compose` for the other three channels and why each is unusable. Compose
+ * never read out to a VoiceOver user, which is why the scope travels in it — see `AutocaptureScopeElement`'s
+ * kdoc in `autograph-compose` for the other channels and why each is unusable. Compose
  * Multiplatform collapses two `testTag`s on one layout node to the first, so a scope can never share a
  * node with the element's own tag; it always arrives on a wrapper, one level above.
  *
