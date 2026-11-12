@@ -144,7 +144,7 @@ internal data class AutocaptureNode(
 
 /**
  * What a resolved tap is reported as: the element's [identifier], plus the [scope] the tapped
- * element's own ancestry declared through [autocaptureScope].
+ * element's own ancestry declared through [AutographElementScope].
  *
  * The two travel together because they must come from the *same* hit test — deriving the scope
  * separately (from mount order, or from a positional registry consulted after the fact) is what
@@ -179,7 +179,7 @@ internal data class AutocaptureTarget(
  * fire and is dropped here. That is the divergence from Compose this introduces, and the direction
  * to err in — the alternative reports taps that never happened.
  *
- * [AutocaptureNode.scope] is subtree-wide like [ignored], and for the same reason: [autocaptureScope]
+ * [AutocaptureNode.scope] is subtree-wide like [ignored], and for the same reason: a scope
  * says "taps under here carry this", so every node on the chain contributes, including one *below*
  * the clickable that gets reported. Because the chain is a single ancestry path, its scopes are never
  * ambiguous the way simultaneously-mounted `AutographScope` siblings are — they nest by construction,

@@ -84,6 +84,30 @@ the `context.instrumentation` envelope is already semver-stable (see the README)
   tracker, transport or validator still receives the objects and arrays themselves. Other Kotlin
   code that calls a Swift tracker or transport directly is not covered.
 
+### Removed
+
+- **`Modifier.autocaptureScope(...)`**, both overloads ([#283]). It was deprecated in 0.6.0 in
+  favour of `AutographElementScope`, with removal planned for 1.0 ([#185]). Wrap the element instead
+  of modifying it:
+
+  ```kotlin
+  // before
+  Row(Modifier.autocaptureScope("article_id" to article.id).clickable { open(article) }) { … }
+
+  // after
+  AutographElementScope("article_id" to article.id) {
+      Row(Modifier.clickable { open(article) }) { … }
+  }
+  ```
+
+  On Android the wrapper applies the same semantics node, so taps report the same properties. On
+  iOS, where the modifier contributed nothing, the scope starts to arrive, and it travels in the
+  wrapper's accessibility identifier: any accessibility client on the device can read its keys and
+  values, so don't put anything in a scope you wouldn't put in a `testTag`. The wrapper is a real
+  layout node: a `Modifier.weight` or `alignByBaseline` on the moved element stops compiling, and an
+  `align` or `matchParentSize` quietly rebinds to the wrapper (see `AutographElementScope`'s kdoc). Removed
+  with no deprecation window beyond the one already given, per ADR 0001 §5's pre-1.0 rule.
+
 ## [0.12.0] - 2026-10-19
 
 ### Added

@@ -262,9 +262,9 @@ There's a `JsonObject` overload for non-string values. Notes:
   It **wraps** the element rather than modifying it, and that shape is load-bearing rather than
   stylistic: on iOS the scope travels in the element's accessibility identifier, the same slot the
   tap's `target` comes from, and Compose collapses two `testTag`s on one layout node to the first —
-  so the scope needs a layout node of its own. This supersedes `Modifier.autocaptureScope`, which is
-  deprecated and removed at 1.0; on Android it applies the very same node, so switching changes
-  nothing there.
+  so the scope needs a layout node of its own. It replaced `Modifier.autocaptureScope`, which was
+  removed before 1.0; on Android it applies the very same node, so migrating changes nothing
+  there.
 
   The wrapper is a `Box` that propagates its constraints and clips nothing, so it is layout-neutral
   with two exceptions worth knowing when you migrate, both of which follow from it being a real layout

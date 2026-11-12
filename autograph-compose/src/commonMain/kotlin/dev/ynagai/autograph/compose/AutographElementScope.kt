@@ -28,7 +28,8 @@ import kotlinx.serialization.json.JsonPrimitive
  * own `target` comes from, and Compose collapses two `testTag`s on one layout node to the first. Put
  * on the clickable's own chain the two would fight, and the element would lose either its scope or
  * its name. This API's shape is what makes that impossible rather than documented-against — which is
- * why it replaces [autocaptureScope], whose kdoc endorsed exactly the usage iOS cannot support.
+ * why it replaced `Modifier.autocaptureScope`, removed before 1.0, whose kdoc endorsed exactly the
+ * usage iOS cannot support.
  *
  * The wrapper is a [Box]: it adds one layout node, propagates its constraints — minimums included,
  * which is why it passes `propagateMinConstraints = true` — and clips nothing, so a `clickable` drawn
@@ -126,7 +127,7 @@ public fun AutographElementScope(
  * than a `semantics {}` lambda: `Modifier.semantics` compares its lambda by reference, and one
  * capturing the scope is a fresh instance every call, so an unchanged scope would invalidate its
  * layout node's semantics on every recomposition. This API is aimed squarely at list rows, where that
- * difference lands — see [autocaptureScope] for the measurement.
+ * difference lands — see [AutocaptureScopeElement] for the measurement.
  *
  * `@Composable` for the sake of iOS, the one platform that has work to do here beyond handing the
  * scope to a node: it encodes the payload and checks it against a ceiling, and `remember` is what

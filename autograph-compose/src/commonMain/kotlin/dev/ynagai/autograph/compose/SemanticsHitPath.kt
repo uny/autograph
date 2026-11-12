@@ -27,7 +27,7 @@ internal fun SemanticsNode.selfAndAncestors(): Sequence<SemanticsNode> = generat
  *    reaches — through its own bounds or through its expanded minimum touch target — by the rules
  *    observed from Compose's own hit test.
  * 2. [findDeepestHit] runs from *that* element to find how far below it the point still lands, so
- *    that an [autocaptureScope] or [autographIgnore] declared on a leaf inside the reported element
+ *    that a scope marker ([AutocaptureScopeElement]) or [autographIgnore] declared on a leaf inside the reported element
  *    keeps contributing (it is subtree-wide by design — see [resolveAutocaptureTarget]).
  *
  * The chain [resolveAutocaptureTarget] then walks therefore has the reported element in the middle:

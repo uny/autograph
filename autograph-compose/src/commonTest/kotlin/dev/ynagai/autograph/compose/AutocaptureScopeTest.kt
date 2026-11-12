@@ -85,17 +85,17 @@ private fun ComposeUiTest.semanticsRoot(): SemanticsNode = onRoot(useUnmergedTre
  * what Compose itself routed the pointer to. That is the bar this hit test is held to: agreeing with
  * Compose, not merely being self-consistent.
  */
-// The modifier under test is deprecated in favour of AutographElementScope but keeps its behaviour
-// until removal at 1.0, so these tests stay exactly as they are — and say so here rather than emitting
-// ~40 deprecation warnings across four target compilations, which would bury the next real one.
-@Suppress("DEPRECATION")
+// These tests apply the scope marker directly through the test-only [scopeMarker], often on the
+// clickable's own chain. That shape is no longer public (`Modifier.autocaptureScope` was removed before
+// 1.0, #283), but it is the node `AutographElementScope` applies on Android, so the hit test and
+// resolution pinned here are still what the public API relies on there.
 @OptIn(ExperimentalTestApi::class)
 class AutocaptureScopeTest {
 
     @Test
     fun theModifierWritesItsPropertiesIntoTheSemanticsTree() = runComposeUiTest {
         setContent {
-            Box(Modifier.testTag("row").size(10.dp).autocaptureScope("article_id" to "42"))
+            Box(Modifier.testTag("row").size(10.dp).scopeMarker("article_id" to "42"))
         }
         waitForIdle()
 
@@ -106,7 +106,7 @@ class AutocaptureScopeTest {
     @Test
     fun aBlankModifierCallContributesNothing() = runComposeUiTest {
         setContent {
-            Box(Modifier.testTag("row").size(10.dp).autocaptureScope().clickable {})
+            Box(Modifier.testTag("row").size(10.dp).scopeMarker().clickable {})
         }
         waitForIdle()
 
@@ -157,8 +157,8 @@ class AutocaptureScopeTest {
         setContent {
             Box {
                 // Declared first, drawn on top: declaration order and visual order disagree here.
-                Box(Modifier.testTag("over").size(20.dp).zIndex(1f).autocaptureScope("card" to "over").clickable {})
-                Box(Modifier.testTag("under").size(20.dp).autocaptureScope("card" to "under").clickable {})
+                Box(Modifier.testTag("over").size(20.dp).zIndex(1f).scopeMarker("card" to "over").clickable {})
+                Box(Modifier.testTag("under").size(20.dp).scopeMarker("card" to "under").clickable {})
             }
         }
         waitForIdle()
@@ -169,7 +169,7 @@ class AutocaptureScopeTest {
     }
 
     /**
-     * Nested `autocaptureScope`s compose the way nested [AutographScope]s do. This is the case a
+     * Nested scope markers compose the way nested [AutographScope]s do. This is the case a
      * `CompositionLocal`-carried lineage could not have expressed — two modifiers in the same
      * composable read the same enclosing frame, so the stack would see them as siblings and drop both.
      * Read off the layout ancestry, the nesting is simply true.
@@ -177,12 +177,12 @@ class AutocaptureScopeTest {
     @Test
     fun nestedScopesMergeWithTheInnerOneWinningAClash() = runComposeUiTest {
         setContent {
-            Column(Modifier.autocaptureScope("section" to "for_you", "surface" to "list")) {
+            Column(Modifier.scopeMarker("section" to "for_you", "surface" to "list")) {
                 Box(
                     Modifier
                         .testTag("row")
                         .size(10.dp)
-                        .autocaptureScope("article_id" to "42", "surface" to "row")
+                        .scopeMarker("article_id" to "42", "surface" to "row")
                         .clickable {},
                 )
             }
@@ -198,7 +198,7 @@ class AutocaptureScopeTest {
     @Test
     fun aScopeOnAnAncestorReachesAClickableDescendant() = runComposeUiTest {
         setContent {
-            Column(Modifier.autocaptureScope("article_id" to "42")) {
+            Column(Modifier.scopeMarker("article_id" to "42")) {
                 Box(Modifier.testTag("share").size(10.dp).clickable {})
             }
         }
@@ -224,8 +224,8 @@ class AutocaptureScopeTest {
                 Modifier
                     .testTag("row")
                     .size(10.dp)
-                    .autocaptureScope("outer" to "1", "shared" to "outer")
-                    .autocaptureScope("inner" to "2", "shared" to "inner")
+                    .scopeMarker("outer" to "1", "shared" to "outer")
+                    .scopeMarker("inner" to "2", "shared" to "inner")
                     .clickable {},
             )
         }
@@ -252,7 +252,7 @@ class AutocaptureScopeTest {
         var clicks = 0
         setContent {
             Box(Modifier.size(100.dp)) {
-                Box(Modifier.size(10.dp).autocaptureScope("row" to "1")) {
+                Box(Modifier.size(10.dp).scopeMarker("row" to "1")) {
                     Box(Modifier.offset(x = 40.dp).testTag("badge").size(10.dp).clickable { clicks++ })
                 }
             }
@@ -298,7 +298,7 @@ class AutocaptureScopeTest {
      * The counterpart, and the reason the walk cannot simply descend everywhere: an overhanging
      * decoration inside `row2` visually covers part of `row1`, and Compose fires **row1**. The
      * decoration is not clickable, so it never becomes the reported element and never drags `row2`
-     * up with it — a wrong target carrying `row2`'s scope, exactly the failure [autocaptureScope]
+     * up with it — a wrong target carrying `row2`'s scope, exactly the failure [AutocaptureScopeElement]
      * exists to make impossible. (A plain deepest-node walk that then resolved *up* to a clickable
      * would report `row2` here; that was measured, and is why the first stage requires the element
      * itself to be clickable and to contain the point.)
@@ -308,8 +308,8 @@ class AutocaptureScopeTest {
         var row1Clicks = 0
         setContent {
             Column(Modifier.size(200.dp)) {
-                Box(Modifier.testTag("row1").size(200.dp, 100.dp).autocaptureScope("row" to "1").clickable { row1Clicks++ })
-                Box(Modifier.testTag("row2").size(200.dp, 100.dp).autocaptureScope("row" to "2").clickable {}) {
+                Box(Modifier.testTag("row1").size(200.dp, 100.dp).scopeMarker("row" to "1").clickable { row1Clicks++ })
+                Box(Modifier.testTag("row2").size(200.dp, 100.dp).scopeMarker("row" to "2").clickable {}) {
                     Box(Modifier.offset(y = (-60).dp).testTag("avatar").size(40.dp))
                 }
             }
@@ -343,11 +343,11 @@ class AutocaptureScopeTest {
             Column(Modifier.size(200.dp)) {
                 Box(
                     Modifier.testTag("row1").size(200.dp, 100.dp)
-                        .autocaptureScope("row" to "1").clickable { fired = "row1" },
+                        .scopeMarker("row" to "1").clickable { fired = "row1" },
                 )
                 Box(
                     Modifier.testTag("row2").size(200.dp, 100.dp)
-                        .autocaptureScope("row" to "2").clickable { fired = "row2" },
+                        .scopeMarker("row" to "2").clickable { fired = "row2" },
                 ) {
                     Box(Modifier.offset(y = (-60).dp).testTag("badge").size(40.dp).clickable { fired = "badge" })
                 }
@@ -378,7 +378,7 @@ class AutocaptureScopeTest {
             Box(Modifier.size(100.dp)) {
                 Box(Modifier.testTag("button").size(50.dp).clickable { clicks++ })
                 // Declared second, so drawn on top, and it carries semantics of its own.
-                Box(Modifier.testTag("overlay").size(50.dp).autocaptureScope("overlay" to "yes"))
+                Box(Modifier.testTag("overlay").size(50.dp).scopeMarker("overlay" to "yes"))
             }
         }
         waitForIdle()
@@ -402,8 +402,8 @@ class AutocaptureScopeTest {
     @Test
     fun aScopeOnALeafInsideTheReportedElementContributesOnlyWhereTheTapLands() = runComposeUiTest {
         setContent {
-            Box(Modifier.testTag("row").size(100.dp).autocaptureScope("row" to "1").clickable {}) {
-                Box(Modifier.testTag("part").size(20.dp).autocaptureScope("part" to "avatar"))
+            Box(Modifier.testTag("row").size(100.dp).scopeMarker("row" to "1").clickable {}) {
+                Box(Modifier.testTag("part").size(20.dp).scopeMarker("part" to "avatar"))
             }
         }
         waitForIdle()
@@ -432,11 +432,11 @@ class AutocaptureScopeTest {
         setContent {
             Box(
                 Modifier.testTag("sheet").size(200.dp)
-                    .autocaptureScope("sheet" to "s").clickable { fired = "sheet" },
+                    .scopeMarker("sheet" to "s").clickable { fired = "sheet" },
             ) {
                 Box(
                     Modifier.offset(x = 50.dp, y = 50.dp).testTag("icon").size(16.dp)
-                        .autocaptureScope("icon" to "i").clickable { fired = "icon" },
+                        .scopeMarker("icon" to "i").clickable { fired = "icon" },
                 )
             }
         }
@@ -785,7 +785,7 @@ class AutocaptureScopeTest {
                 // Declared second, so drawn on top: it covers the enabled button entirely.
                 Box(
                     Modifier.testTag("disabled").size(50.dp)
-                        .autocaptureScope("disabled" to "yes")
+                        .scopeMarker("disabled" to "yes")
                         .clickable(enabled = false) { fired = "disabled" },
                 )
             }
@@ -868,7 +868,7 @@ class AutocaptureScopeTest {
                 Box(Modifier.testTag("row1").size(200.dp, 100.dp).clickable { fired = "row1" })
                 Box(
                     Modifier.testTag("row2").size(200.dp, 100.dp)
-                        .autocaptureScope("row" to "2").clickable { fired = "row2" },
+                        .scopeMarker("row" to "2").clickable { fired = "row2" },
                 ) {
                     Box(
                         Modifier.offset(y = (-60).dp).testTag("badge").requiredSize(40.dp)
@@ -928,21 +928,21 @@ class AutocaptureScopeTest {
      * Re-emitting the same scope must produce an *equal* modifier, so a recomposition that changes
      * nothing costs nothing. `Modifier.semantics {}` cannot do this: it compares its lambda by
      * reference, and a lambda capturing the properties is a fresh instance every call, so each
-     * recomposition would invalidate the row's semantics config. This is why [autocaptureScope]
-     * carries its own element — see its private kdoc.
+     * recomposition would invalidate the row's semantics config. This is why
+     * [AutocaptureScopeElement] is an element of its own — see its kdoc.
      */
     @Test
     fun rebuildingTheSameScopeProducesAnEqualModifier() {
         val json = JsonObject(mapOf("article_id" to JsonPrimitive("42")))
-        assertEquals(Modifier.autocaptureScope(json), Modifier.autocaptureScope(json))
+        assertEquals(Modifier.scopeMarker(json), Modifier.scopeMarker(json))
         // ...including through the vararg overload, which assembles a fresh JsonObject each call.
         assertEquals(
-            Modifier.autocaptureScope("article_id" to "42"),
-            Modifier.autocaptureScope("article_id" to "42"),
+            Modifier.scopeMarker("article_id" to "42"),
+            Modifier.scopeMarker("article_id" to "42"),
         )
         assertNotEquals(
-            Modifier.autocaptureScope("article_id" to "42"),
-            Modifier.autocaptureScope("article_id" to "43"),
+            Modifier.scopeMarker("article_id" to "42"),
+            Modifier.scopeMarker("article_id" to "43"),
             "a genuinely different scope must still compare unequal, or an update would be skipped",
         )
     }
@@ -956,7 +956,7 @@ class AutocaptureScopeTest {
     fun aChangedScopeReachesTheSemanticsTreeOnRecomposition() = runComposeUiTest {
         val id = mutableStateOf("42")
         setContent {
-            Box(Modifier.testTag("row").size(10.dp).autocaptureScope("article_id" to id.value).clickable {})
+            Box(Modifier.testTag("row").size(10.dp).scopeMarker("article_id" to id.value).clickable {})
         }
         waitForIdle()
         assertEquals("42", semanticsRoot().resolveTapAt(centreOf("row"))?.scope?.str("article_id"))
@@ -971,7 +971,7 @@ class AutocaptureScopeTest {
         // A scope must not leak out of a subtree the caller excluded from autocapture entirely.
         setContent {
             Column(Modifier.autographIgnore()) {
-                Box(Modifier.testTag("row").size(10.dp).autocaptureScope("article_id" to "42").clickable {})
+                Box(Modifier.testTag("row").size(10.dp).scopeMarker("article_id" to "42").clickable {})
             }
         }
         waitForIdle()
@@ -1020,7 +1020,7 @@ private fun ScopedRow(id: String) {
         Modifier
             .testTag(id)
             .size(10.dp)
-            .autocaptureScope("article_id" to id)
+            .scopeMarker("article_id" to id)
             .clickable {},
     )
 }

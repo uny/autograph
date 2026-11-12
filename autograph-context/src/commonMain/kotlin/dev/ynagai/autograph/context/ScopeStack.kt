@@ -676,9 +676,8 @@ public class ScopeStack {
      * scope is reported (#66). Resolving which sibling a tap actually hit needs the tap position,
      * which this framework-independent stack does not have; that is a separate, additive layer —
      * `AutographElementScope` in `autograph-compose`, which reads a marker off the tapped element's
-     * own ancestry, on Android and on iOS (#185); the deprecated `Modifier.autocaptureScope` places
-     * the same marker, on Android only. For a tap with no such marker on its ancestry, the drop
-     * above is all it gets (#68).
+     * own ancestry, on Android and on iOS (#185). For a tap with no such marker on its ancestry, the
+     * drop above is all it gets (#68).
      *
      * That includes a root pushed by hand beside a provider's root: the two are roots of different
      * trees, incomparable, and both drop (#237). App-wide context is not a frame on this stack but
