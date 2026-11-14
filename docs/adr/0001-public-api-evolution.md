@@ -6,6 +6,8 @@
 - **Amended:** 2026-10-03 — §2c/§2d freeze the member set of every caller-implemented
   interface, because a default body does not keep a Swift conformer compiling
   ([#283](https://github.com/uny/autograph/issues/283#issuecomment-5920254763))
+- **Amended:** 2026-11-15. §2 now covers both stable tiers, and §2h classifies every public
+  declaration as the 1.0 baseline ([#283](https://github.com/uny/autograph/issues/283))
 
 ## Context
 
@@ -76,21 +78,34 @@ here rather than hidden — it is the resolution of
 - `autograph-segment`'s **Android-specific** surface has the same gap for the same reason: it
   keeps `abiValidation()` because its klib dump legitimately covers the common/iOS API, but with no
   `jvm()` target its Android `SegmentTransport` face is not dumped, and is review-enforced.
+- `autograph-core`'s Android source set has one public class, `AutographInitializer`, the
+  `androidx.startup` initializer that captures the application `Context` for `platformSeqStore()`.
+  The JVM dump is built from `jvm()`, not from `androidMain`, so it does not list this class, and the
+  class is review-enforced. `autograph-context`'s Android source set has only
+  `@AutographInternalApi` declarations (`View.autographScopeOwner` and its listeners), which are
+  outside every tier anyway.
 
-The common root cause — a JVM/Android ABI dump requires a `jvm()` target — is why the modules that
-*are* fully dump-covered (`autograph-core`, `-context`, `-compose`) all declare `jvm()`.
+The common root cause — a JVM/Android ABI dump requires a `jvm()` target — is why the modules whose
+common surface *is* dump-covered (`autograph-core`, `-context`, `-compose`) all declare `jvm()`.
 
 ### 2. Public types are classified by *who constructs* and *who implements* them
 
 That question, not the type's shape, determines what can be added to it later. The
-categories below are exhaustive over the public surface of the ABI-stable tier — every
-public declaration in `autograph-core` and `autograph-context` falls under exactly one, and
-a new one that fits none is the signal that this ADR needs another category rather than an
-exception.
+categories below are exhaustive over the public surface of both stable tiers of §1, the
+SemVer ABI tier and the stable-API tier. Every public declaration in `autograph-core`,
+`autograph-context`, `autograph-compose`, `autograph-uikit`, `autograph-android` and
+`autograph-segment` falls under exactly one of them, or is `@AutographInternalApi` and outside
+every tier. §2h lists each declaration with its category. A new declaration that fits no category
+is the signal that this ADR needs another category, not an exception.
 
 #### 2a. Library-produced value types — construction is frozen
 
 `Envelope`, `SessionInfo`, `EventMetadata`, `CloseResult`, `TransportEvent`; and, in `autograph-context`, `ScopeHandle` and `AmbientContext`.
+The handles that the native capture entry points return belong here too: in `autograph-uikit`,
+`AutographNativeTapCapture`, `AutographNativeScreenCapture`, `AutographScreenView`,
+`AutographIgnoredBoundsRegistration` and `AutographIgnoredViewRegistration`; in
+`autograph-android`, `AutographNativeTapCapture`, `AutographNativeScreenCapture` and
+`AutographScopeHandle`.
 
 The library creates these; callers only read them. They are declared
 
@@ -142,8 +157,9 @@ Four consequences we accept knowingly:
   behavior change without a compile error. New properties go at the end of the parameter
   list, and the changelog says so explicitly.
 
-`ScopeHandle`, `AmbientContext` and `TransportEvent` are in this category by the same test — the library
-produces them, callers only read them — but are plain classes with an `internal`
+`ScopeHandle`, `AmbientContext`, `TransportEvent` and the capture handles are in this category by
+the same test — the library produces them, callers only read them or call them — but are plain
+classes with an `internal`
 constructor rather than the `data class` shape above, so they never had `copy` or
 `componentN` to lose and gain properties freely. A library-produced type that does *not*
 need value equality should prefer that plainer shape; `@ConsistentCopyVisibility` is only
@@ -155,14 +171,16 @@ needed to keep `data class` from re-exposing construction through `copy`.
 the `Autograph { }` DSL lambda. A new knob is a new `var` — no ABI break, ever. (`transport`
 is the exception that proves the shape: it is a `public fun` rather than a `var` so the
 backing field can stay `internal`. A new member function is equally additive.)
+`AutocaptureConfig` in `autograph-compose` has the same shape since #257: `internal constructor`,
+knobs as `var`s, built by the `Autocapture { }` builder.
 
 **New configuration knobs go on `AutographConfig`.** A knob is not given its own
 `data class` unless it has enough internal structure to justify one, because a `data class`
 constructor cannot gain a parameter without breaking ABI: adding a defaulted parameter
 changes the synthetic `DefaultConstructorMarker` bridge.
 
-The existing caller-constructed carriers — `SessionConfig`, `SeqPersistence.Chunked`,
-`ScreenContext`, `AutocaptureConfig` — are **frozen at their current shape**. In
+The existing caller-constructed carriers — `SessionConfig`, `SeqPersistence.Chunked` and
+`ScreenContext` — are **frozen at their current shape**. In
 particular `SessionConfig` keeps its single `backgroundTimeout` parameter; a future
 session knob (foreground timeout, maximum session length, new-session-on-launch) is added
 to `AutographConfig`, not to `SessionConfig`.
@@ -280,7 +298,14 @@ anything callers are expected to `when` over.
 
 #### 2f. Caller-constructed concrete classes — members may be added, constructors may not
 
-`ScopeStack`, `ScreenHistory` (in `autograph-context`), `DebugTransport`, `DefaultProperties`.
+`ScopeStack`, `ScreenHistory` (in `autograph-context`), `DebugTransport`, `DefaultProperties`,
+`InMemorySeqStore`; `SegmentTransport` (in `autograph-segment`, one constructor per platform);
+`AutographScreenCapture` and `AutographElementCapture` (in `autograph-uikit`).
+
+`AutographInitializer` (in `autograph-core`'s Android source set) is here too, with one
+difference: `androidx.startup` constructs it from the manifest, not the app. Its public no-argument
+constructor is what `androidx.startup` calls, so that constructor is frozen in the same way. Apps
+only name the class, to disable or reorder it in their manifest, so its name is frozen as well.
 
 The caller both constructs these and calls them, but unlike 2b they carry behavior rather
 than configuration, and unlike 2a they are not values. Because they are `final` classes
@@ -291,7 +316,11 @@ argument they may later need is therefore either given a default at a call site 
 controls, or moved onto `AutographConfig`.
 
 Stateless entry points — the `Autograph { }` builder function, `EventId`, `EmptyJsonObject`,
-`platformSeqStore()`, the `Transport.intercept` extension, and the constants `RESERVED_METADATA_KEY`, `EventKinds` and `TransportEventTypes` — carry no construction contract at all. Adding a new top-level
+`platformSeqStore()`, the `Transport.intercept`, `Tracker.closeAndAwait` and `asJsonObject`
+extensions, the constants `RESERVED_METADATA_KEY`, `EventKinds`, `TransportEventTypes` and
+`DEFAULT_AUTOCAPTURE_EVENT_NAME`, and in the stable-API tier every composable, `Modifier`
+extension, `CompositionLocal`, `install…`/`register…` function and `View` extension property
+listed in §2h — carry no construction contract at all. Adding a new top-level
 function or `object` member beside them is additive; changing an existing signature is a
 break, with no rule beyond that.
 
@@ -306,6 +335,174 @@ from the Objective-C header, so the Swift source-compatibility promise does not 
 support, if it comes, is a separate Swift-safe entry point added beside it, not the annotation
 removed: removing it would export the same trap. Revisit this when the 1.0 Swift protocol that
 #299 left open is designed.
+
+#### 2h. Every public declaration, by artifact
+
+This is the 1.0 baseline, taken from `main` after 0.13.0. A row names a top-level declaration, or
+a nested type with its parent's name. Members are not listed: a member follows its type's category.
+An overloaded function or a function declared once per platform has one row. In the category
+column, *entry* means the stateless entry points at the end of §2f, and *internal* means
+`@AutographInternalApi`, which is outside every tier (§1). *Undumped* marks a declaration that no
+ABI dump covers, so review enforces it (§1).
+
+**`autograph-core`**
+
+| Declaration | Category |
+|:--|:--|
+| `Autograph` | entry |
+| `AutographConfig` | 2b |
+| `AutographInitializer` | 2f, framework-constructed; Android only, undumped |
+| `AutographInternalApi` | the opt-in marker itself (§1) |
+| `AutographLogger` | 2c |
+| `AwaitableCloseTracker` | 2c |
+| `CloseResult` | 2a |
+| `DebugTransport` | 2f |
+| `DefaultProperties` | 2f |
+| `EmptyJsonObject` | entry |
+| `Envelope` | 2a |
+| `EnvelopeSource` | 2d |
+| `EventId` | entry |
+| `EventIdGenerator` | 2c |
+| `EventKinds` | entry |
+| `EventMetadata` | 2a |
+| `EventValidator` | 2c |
+| `InMemorySeqStore` | 2f |
+| `MetadataAwareTransport` | 2c |
+| `RESERVED_METADATA_KEY` | entry |
+| `SeqPersistence` | 2e |
+| `SeqPersistence.Chunked` | 2e; also a frozen 2b carrier |
+| `SeqPersistence.EveryEvent` | 2e |
+| `SeqStore` | 2c |
+| `SequenceMode` | 2e |
+| `SessionConfig` | 2b, frozen carrier |
+| `SessionInfo` | 2a |
+| `Tracker` | 2d |
+| `Transport` | 2c |
+| `TransportEvent` | 2a; hidden from Swift (2g) |
+| `TransportEventTypes` | entry; hidden from Swift (2g) |
+| `asJsonObject` | entry |
+| `callableFromKotlin` | internal |
+| `closeAndAwait` | entry |
+| `createEnvelope` | internal |
+| `createEventMetadata` | internal |
+| `deliverableTo` | internal |
+| `intercept` | entry; hidden from Swift (2g) |
+| `platformSeqStore` | entry |
+| `withEventMetadata` | internal |
+
+**`autograph-context`**
+
+| Declaration | Category |
+|:--|:--|
+| `AmbientContext` | 2a |
+| `DEFAULT_AUTOCAPTURE_EVENT_NAME` | entry |
+| `ScopeHandle` | 2a |
+| `ScopeStack` | 2f |
+| `ScreenHistory` | 2f |
+| `continueScreenVisit` | internal |
+| `emitScreenView` | internal |
+| `endScreenVisit` | internal |
+| `screenViewIdOf` | internal |
+| `startScreenVisit` | internal |
+| `autographScopeOwner` | internal; Android only, undumped |
+| `autographScopeOrigin` | internal; Android only, undumped |
+| `addAutographScopeOwnerListener` | internal; Android only, undumped |
+| `removeAutographScopeOwnerListener` | internal; Android only, undumped |
+| `notifyAutographScopeOwnerChanged` | internal; Android only, undumped |
+
+**`autograph-compose`**
+
+| Declaration | Category |
+|:--|:--|
+| `Autocapture` | entry |
+| `AutocaptureConfig` | 2b |
+| `AutographElementScope` | entry |
+| `AutographProvider` | entry |
+| `AutographScope` | entry |
+| `ImpressionScope` | entry |
+| `LocalScreenContext` | entry |
+| `LocalTracker` | entry |
+| `ScreenContext` | 2b, frozen carrier |
+| `TrackScreenView` | entry |
+| `TrackScreenViews` | entry |
+| `TrackedScreen` | entry |
+| `autographAutocaptureRoot` | entry |
+| `autographIgnore` | entry |
+| `trackClick` | entry |
+| `trackImpression` | entry |
+
+**`autograph-uikit`**
+
+| Declaration | Category |
+|:--|:--|
+| `AutographElementCapture` | 2f |
+| `AutographIgnoredBoundsRegistration` | 2a |
+| `AutographIgnoredViewRegistration` | 2a |
+| `AutographNativeScreenCapture` | 2a |
+| `AutographNativeTapCapture` | 2a |
+| `AutographScreenCapture` | 2f |
+| `AutographScreenView` | 2a |
+| `defaultScreenName` | entry |
+| `installAutographNativeScreenCapture` | entry |
+| `installAutographNativeTapCapture` | entry |
+| `registerAutographIgnoredBounds` | entry |
+| `registerAutographIgnoredView` | entry |
+| `AUTOGRAPH_SCOPE_IDENTIFIER_PREFIX` | internal |
+| `AutographComposeHosts` | internal |
+| `AxPoint` | internal |
+| `AxRect` | internal |
+| `accessibilityBoundsInWindowPx` | internal |
+| `accessibilityChildren` | internal |
+| `accessibilityIdentifierOrNull` | internal |
+| `anyAccessibilityDescendant` | internal |
+| `deepestAccessibilityHitPath` | internal |
+| `isAccessibilityButton` | internal |
+| `isAccessibilityDisabled` | internal |
+| `isAutographScopeContainer` | internal |
+| `isCapturableWindow` | internal |
+| `nearestAccessibilityClickable` | internal |
+| `resolveNativeTapTarget` | internal |
+
+**`autograph-android`** (no dump, by decision: every row is undumped)
+
+| Declaration | Category |
+|:--|:--|
+| `AutographNativeScreenCapture` | 2a |
+| `AutographNativeTapCapture` | 2a |
+| `AutographScopeHandle` | 2a |
+| `autographScope` | entry |
+| `installAutographNativeScreenCapture` | entry |
+| `installAutographNativeTapCapture` | entry |
+| `isAutographEmbedded` | entry |
+| `isAutographIgnored` | entry |
+
+**`autograph-segment`**
+
+| Declaration | Category |
+|:--|:--|
+| `SegmentBridge` | 2c; iOS only |
+| `SegmentTransport` | 2f; its Android face is undumped |
+
+**Not classified here: the Swift package's own targets.** `AutographUI` (`AutographButton`,
+`AutographTracking` and the `View` extensions) and `AutographSegmentSwift`
+(`AutographSegmentBridge`) are Swift source in `Sources/`, not Kotlin artifacts. §1's table gives
+them no tier, and none of this ADR's checks covers them. Which guarantee they carry at 1.0 is a
+separate decision.
+
+To re-check this list against the dumps and sources, every printed name must have a row above:
+
+```sh
+{ for m in core context compose uikit segment; do
+    grep -E '^ *(final |abstract |open |sealed )+' autograph-$m/api/autograph-$m.klib.api |
+      grep -v stableprop | sed -E 's/.*\/\/ [^/]*\/([^|@]+)[|@].*/\1/'
+  done
+  grep -rhE '^public ' autograph-android/src/androidMain autograph-core/src/androidMain \
+      autograph-context/src/androidMain |
+    sed -E 's/^public ((data|sealed|enum|abstract|fun|annotation|const) )*(class|interface|object|fun|val|var) +([A-Za-z]+\.)?`?([A-Za-z_]+).*/\5/'
+} | sort -u | while read -r n; do
+  grep -qF "| \`$n\` |" docs/adr/0001-public-api-evolution.md || echo "unclassified: $n"
+done
+```
 
 ### 3. The wire format is versioned separately from the ABI
 
