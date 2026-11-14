@@ -19,7 +19,7 @@ import kotlinx.serialization.json.putJsonObject
  * `screen` event, before [AutographConfig.validator] runs, so it never reaches a validator or a
  * transport's `track`/`screen` properties — even when its value is malformed. Only the fields listed
  * on [EventMetadata] are read from it; anything else is discarded. `identify` traits are not read for
- * it: a trait under this key is handed to the transport unchanged and carries no metadata.
+ * it: a trait under this key is not removed, and it carries no metadata.
  * The value is a JSON object **encoded as a string**:
  *
  * ```json
