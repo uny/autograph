@@ -491,13 +491,13 @@ separate decision.
 
 To re-check this list against the dumps and sources, every printed name must have a row above:
 
-```sh
+```bash
 { for m in core context compose uikit segment; do
-    grep -E '^ *(final |abstract |open |sealed )+' autograph-$m/api/autograph-$m.klib.api |
+    grep -E '^(final |abstract |open |sealed )|^    [a-z ]*(class|interface|object) ' \
+        autograph-$m/api/autograph-$m.klib.api |
       grep -v stableprop | sed -E 's/.*\/\/ [^/]*\/([^|@]+)[|@].*/\1/'
   done
-  grep -rhE '^public ' autograph-android/src/androidMain autograph-core/src/androidMain \
-      autograph-context/src/androidMain |
+  grep -rhE '^public ' autograph-{android,core,context,compose,segment}/src/androidMain |
     sed -E 's/^public ((data|sealed|enum|abstract|fun|annotation|const) )*(class|interface|object|fun|val|var) +([A-Za-z]+\.)?`?([A-Za-z_]+).*/\5/'
 } | sort -u | while read -r n; do
   grep -qF "| \`$n\` |" docs/adr/0001-public-api-evolution.md || echo "unclassified: $n"
