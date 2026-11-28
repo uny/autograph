@@ -96,7 +96,9 @@ clean="No breaking changes detected in AutographSegmentSwift
 No breaking changes detected in AutographUI"
 breakage_ui="1 breaking change detected in AutographUI:
   💔 API breakage: func View.autographIgnore() has been renamed to func autographIgnored()"
-breakage="No breaking changes detected in AutographSegmentSwift
+benign="warning: 'analytics-swift': skipping cache due to an error: The file 'maintenance.lock' does not exist."
+breakage="$benign
+No breaking changes detected in AutographSegmentSwift
 
 $breakage_ui"
 
@@ -125,6 +127,10 @@ SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage" AUTOGRA
 
 SWIFT_STUB_TAG=v1.2.0 SWIFT_STUB_FLOOR=16 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage" \
   expect "a break from 1.0 on fails, at the manifest's floor" 1 "::error::the Swift package products break" "$subject" "$post"
+
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage
+/w/Sources/AutographUI/AutographButton.swift:103:14: error: no exact matches in call to initializer" \
+  expect "a located compile error beside a breakage fails" 1 "did not run to a result" "$subject" "$pre"
 
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="error: Build failed" \
   expect "a digester that did not finish fails even before 1.0" 1 "did not run to a result" "$subject" "$pre"

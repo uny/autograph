@@ -98,7 +98,10 @@ fi
 # long build log, and the pipeline would read as no match.
 # A build error anywhere means at least one module was not compared, even when another reported a
 # breakage, so it is checked first.
-if grep -qE '(^|[[:space:]:])error:|fatalError' <<<"$output"; then
+# Anchored so that a benign SwiftPM warning that merely contains the word ("skipping cache due to an
+# error: ...", seen on the runner) does not count: an error line starts with `error:` or follows a
+# `file:line:col: ` location.
+if grep -qE '(^|: )error:|fatalError' <<<"$output"; then
   echo "::error::the API digester did not run to a result (exit $status); see the output above" >&2
   exit 1
 fi
