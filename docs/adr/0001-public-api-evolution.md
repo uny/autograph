@@ -8,9 +8,13 @@
   ([#283](https://github.com/uny/autograph/issues/283#issuecomment-5920254763))
 - **Amended:** 2026-11-15. §2 now covers both stable tiers, and §2h classifies every public
   declaration as the 1.0 baseline ([#283](https://github.com/uny/autograph/issues/283))
-- **Amended:** 2026-11-28. **Proposed, pending the owner's decision:** §1 gives the Swift
-  package's products a tier, and §2h classifies their declarations
-  ([#339](https://github.com/uny/autograph/issues/339))
+- **Amended:** 2026-11-28. §1 gives the Swift package's products a tier (stable API, Swift source
+  only), and §2h classifies their declarations
+  ([#339](https://github.com/uny/autograph/issues/339)). The tier was decided by the owner on
+  2026-11-28. Reason: the README documents these products as the only SwiftUI instrumentation
+  path, so §1's own test puts them in a tier, and SwiftPM reads a `1.0.0` tag as a promise for
+  every product. Revisit if the products stop being a documented entry point, or if the API
+  digester can no longer check them.
 
 ## Context
 
@@ -124,7 +128,7 @@ SemVer ABI tier and the stable-API tier. Every public declaration in `autograph-
 `autograph-context`, `autograph-compose`, `autograph-uikit`, `autograph-android` and
 `autograph-segment` falls under exactly one of them, or is `@AutographInternalApi` and outside
 every tier. The Swift package's products, `AutographUI` and `AutographSegmentSwift`, are classified the
-same way (proposed, #339). §2h lists each declaration with its category. A new declaration that fits no category
+same way (#339). §2h lists each declaration with its category. A new declaration that fits no category
 is the signal that this ADR needs another category, not an exception.
 
 #### 2a. Library-produced value types — construction is frozen
