@@ -28,7 +28,8 @@
 #
 # Usage:  check-swift-api.sh [path/to/Package.swift]
 #
-# Needs `swift`, `xcrun` and `git`. Tested by check-swift-api.test.sh, which stubs all three.
+# Needs `swift`, `xcrun` and `git` (`xcodebuild` only to print its version). Tested by
+# check-swift-api.test.sh, which stubs all four.
 
 set -euo pipefail
 
@@ -59,6 +60,10 @@ if [ "${version%%.*}" -ge 1 ] || [ "${AUTOGRAPH_SWIFT_API_ENFORCE:-0}" = "1" ]; 
   enforce=1
 fi
 
+# The digester's behaviour has differed between toolchains (#341), so say which one ran.
+swift --version 2>&1 | head -n 1 || true
+xcodebuild -version 2>/dev/null | head -n 1 || true
+
 sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
 set +e
 output=$(swift package --triple "arm64-apple-ios$floor.0-simulator" --sdk "$sdk" \
@@ -67,7 +72,20 @@ status=$?
 set -e
 printf '%s\n' "$output"
 
+# Every product must have reached a verdict. An exit code of 0 alone is not proof that anything was
+# compared.
+products="AutographUI AutographSegmentSwift"
+missing=""
+for product in $products; do
+  grep -qE "(No breaking changes detected|breaking changes? detected) in $product" <<<"$output" ||
+    missing="$missing $product"
+done
+
 if [ "$status" -eq 0 ]; then
+  if [ -n "$missing" ]; then
+    echo "::error::the API digester exited 0 but reported no verdict for:$missing" >&2
+    exit 1
+  fi
   echo "No Swift API break against $tag."
   exit 0
 fi
@@ -80,6 +98,10 @@ if grep -qE '(^|[[:space:]:])error:|fatalError' <<<"$output"; then
   exit 1
 fi
 if grep -q 'API breakage:' <<<"$output"; then
+  if [ -n "$missing" ]; then
+    echo "::error::the API digester reported a breakage but no verdict for:$missing" >&2
+    exit 1
+  fi
   if [ "$enforce" -eq 1 ]; then
     echo "::error::the Swift package products break their API against $tag (ADR 0001 §1)" >&2
     exit 1

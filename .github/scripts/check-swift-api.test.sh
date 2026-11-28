@@ -7,7 +7,7 @@
 # macOS, and cover how the script reads the manifest and turns the digester's result into an exit
 # code.
 #
-# `swift`, `xcrun` and `git` are stubbed by putting fakes first on PATH, so the script's real
+# `swift`, `xcrun`, `xcodebuild` and `git` are stubbed by putting fakes first on PATH, so the script's real
 # invocations are what run. Each stub refuses any argv other than the one the script is expected to
 # use, so a typo fails here rather than only on a macOS runner. The `swift` stub prints what
 # $SWIFT_STUB_OUTPUT holds, then the file $SWIFT_STUB_OUTPUT_FILE names (if any), and exits with
@@ -33,6 +33,7 @@ echo /stub/iPhoneSimulator.sdk
 EOF
 cat >"$stub_dir/swift" <<'EOF'
 #!/usr/bin/env bash
+[ "$*" = "--version" ] && { echo "Apple Swift version 0.0 (stub)"; exit 0; }
 expected="package --triple arm64-apple-ios${SWIFT_STUB_FLOOR:-15}.0-simulator --sdk /stub/iPhoneSimulator.sdk diagnose-api-breaking-changes ${SWIFT_STUB_TAG:?}"
 [ "$*" = "$expected" ] || { echo "swift stub: unexpected argv: $*" >&2; exit 64; }
 printf '%s\n' "${SWIFT_STUB_OUTPUT:-}"
@@ -54,7 +55,12 @@ case "$*" in
 esac
 echo "git stub: unexpected argv: $*" >&2; exit 64
 EOF
-chmod +x "$stub_dir/xcrun" "$stub_dir/swift" "$stub_dir/git"
+cat >"$stub_dir/xcodebuild" <<'EOF'
+#!/usr/bin/env bash
+[ "$*" = "-version" ] || { echo "xcodebuild stub: unexpected argv: $*" >&2; exit 64; }
+echo "Xcode 0.0 (stub)"
+EOF
+chmod +x "$stub_dir/xcrun" "$stub_dir/swift" "$stub_dir/git" "$stub_dir/xcodebuild"
 export PATH="$stub_dir:$PATH"
 export GIT_STUB_LOG="$workdir/fetches"
 
@@ -78,26 +84,41 @@ expect() {
     echo "FAIL $name: exit $got, want $want"; printf '%s\n' "$out" | sed 's/^/    /'
     failures=$((failures + 1)); return
   fi
-  if [ -n "$needle" ] && ! printf '%s\n' "$out" | grep -qF -- "$needle"; then
+  if [ -n "$needle" ] && ! grep -qF -- "$needle" <<<"$out"; then
     echo "FAIL $name: output lacks '$needle'"; printf '%s\n' "$out" | sed 's/^/    /'
     failures=$((failures + 1)); return
   fi
   echo "ok   $name"
 }
 
-breakage="1 breaking change detected in AutographUI:
+clean="No breaking changes detected in AutographSegmentSwift
+
+No breaking changes detected in AutographUI"
+breakage_ui="1 breaking change detected in AutographUI:
   💔 API breakage: func View.autographIgnore() has been renamed to func autographIgnored()"
+breakage="No breaking changes detected in AutographSegmentSwift
+
+$breakage_ui"
 
 pre="$workdir/pre/Package.swift"; mkdir -p "${pre%/*}"; write_manifest "$pre" 0.13.0 15
 post="$workdir/post/Package.swift"; mkdir -p "${post%/*}"; write_manifest "$post" 1.2.0 16
 
 export GIT_STUB_TAGS="v0.13.0 v1.2.0"
 
-SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected in AutographUI" \
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="$clean" \
   expect "no break passes" 0 "No Swift API break against v0.13.0" "$subject" "$pre"
 
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage" \
   expect "a break before 1.0 warns and passes" 0 "::warning::" "$subject" "$pre"
+
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected in AutographUI" \
+  expect "exit 0 with a verdict for only one product fails" 1 "no verdict for: AutographSegmentSwift" "$subject" "$pre"
+
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage_ui" \
+  expect "a breakage with no verdict for the other product fails" 1 "no verdict for: AutographSegmentSwift" "$subject" "$pre"
+
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="" \
+  expect "exit 0 with no output fails" 1 "no verdict for: AutographUI AutographSegmentSwift" "$subject" "$pre"
 
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage" AUTOGRAPH_SWIFT_API_ENFORCE=1 \
   expect "a break before 1.0 fails when enforced" 1 "::error::the Swift package products break" "$subject" "$pre"
@@ -119,11 +140,11 @@ for i in $(seq 1 4000); do echo "[$i/4000] Compiling Something.swift with a long
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage" SWIFT_STUB_OUTPUT_FILE="$long_log" \
   expect "a breakage early in a long log is still a breakage" 0 "::warning::" "$subject" "$pre"
 
-SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected" \
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="$clean" \
   expect "a tag already present is not fetched" 0 "" "$subject" "$pre"
 if [ -s "$GIT_STUB_LOG" ]; then echo "FAIL a tag already present is not fetched: fetched $(cat "$GIT_STUB_LOG")"; failures=$((failures + 1)); fi
 
-GIT_STUB_TAGS="" GIT_STUB_REMOTE_TAGS="v0.13.0" SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected" \
+GIT_STUB_TAGS="" GIT_STUB_REMOTE_TAGS="v0.13.0" SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="$clean" \
   expect "a missing tag is fetched" 0 "No Swift API break" "$subject" "$pre"
 if [ "$(cat "$GIT_STUB_LOG")" != "v0.13.0" ]; then echo "FAIL a missing tag is fetched: fetch log '$(cat "$GIT_STUB_LOG")'"; failures=$((failures + 1)); fi
 

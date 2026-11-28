@@ -188,8 +188,8 @@ jobs:
       # ADR 0001 §1 (#341): the Swift package products keep source compatibility within a major
       # version. Compares their API against the release Package.swift names, using the framework
       # built above. Before 1.0 a break only warns; from a 1.x baseline on it fails the job.
-      # It downloads the baseline release's asset and resolves analytics-swift, so a red step with
-      # "did not run to a result" is a network or GitHub problem first, an API problem second.
+      # "did not run to a result" means no comparison finished: read the log for the toolchain, the
+      # build, the release-asset download or the dependency resolution before suspecting the API.
       - name: Check the Swift package API against the last release
         run: .github/scripts/check-swift-api.sh
 
