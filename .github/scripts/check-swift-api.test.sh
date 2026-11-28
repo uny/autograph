@@ -42,6 +42,7 @@ exit "${SWIFT_STUB_STATUS:-0}"
 EOF
 cat >"$stub_dir/git" <<'EOF'
 #!/usr/bin/env bash
+[ -z "${GIT_STUB_PWD_LOG:-}" ] || pwd >>"$GIT_STUB_PWD_LOG"
 case "$*" in
   "rev-parse -q --verify refs/tags/"*)
     tag=${4#refs/tags/}
@@ -118,6 +119,19 @@ SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected in Autogr
 
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage_ui" \
   expect "a breakage with no verdict for the other product fails" 1 "no verdict for: AutographSegmentSwift" "$subject" "$pre"
+
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected in AutographUIV2
+No breaking changes detected in AutographSegmentSwift" \
+  expect "a verdict for a longer module name does not count" 1 "no verdict for: AutographUI" "$subject" "$pre"
+
+pwd_log="$workdir/pwd.log"; : >"$pwd_log"
+cd "$workdir"
+GIT_STUB_PWD_LOG="$pwd_log" SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="$clean" \
+  expect "git runs in the manifest's directory" 0 "" "$subject" "$pre"
+cd - >/dev/null
+if [ "$(sort -u "$pwd_log")" != "$(cd "${pre%/*}" && pwd)" ]; then
+  echo "FAIL git runs in the manifest's directory: ran in '$(sort -u "$pwd_log" | tr '\n' ' ')'"; failures=$((failures + 1))
+fi
 
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="" \
   expect "exit 0 with no output fails" 1 "no verdict for: AutographUI AutographSegmentSwift" "$subject" "$pre"

@@ -52,6 +52,9 @@ if [ -z "$version" ] || [ -z "$floor" ]; then
 fi
 tag="v$version"
 
+# git and swift act on the package that owns the manifest, not on whatever directory this ran from.
+cd "$(dirname "$manifest")"
+
 # actions/checkout fetches one commit and no tags.
 if ! git rev-parse -q --verify "refs/tags/$tag" >/dev/null; then
   if ! git fetch --no-tags --depth=1 origin "refs/tags/$tag:refs/tags/$tag"; then
@@ -82,7 +85,7 @@ printf '%s\n' "$output"
 products="AutographUI AutographSegmentSwift"
 missing=""
 for product in $products; do
-  grep -qE "(No breaking changes detected|breaking changes? detected) in $product" <<<"$output" ||
+  grep -qE "(No breaking changes detected|breaking changes? detected) in $product:?[[:space:]]*\$" <<<"$output" ||
     missing="$missing $product"
 done
 
