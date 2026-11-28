@@ -10,7 +10,8 @@
 # `swift`, `xcrun` and `git` are stubbed by putting fakes first on PATH, so the script's real
 # invocations are what run. Each stub refuses any argv other than the one the script is expected to
 # use, so a typo fails here rather than only on a macOS runner. The `swift` stub prints what
-# $SWIFT_STUB_OUTPUT holds and exits with $SWIFT_STUB_STATUS. The `git` stub knows the tags listed
+# $SWIFT_STUB_OUTPUT holds, then the file $SWIFT_STUB_OUTPUT_FILE names (if any), and exits with
+# $SWIFT_STUB_STATUS. The `git` stub knows the tags listed
 # in $GIT_STUB_TAGS, fetches only $GIT_STUB_REMOTE_TAGS, and logs each fetch to $GIT_STUB_LOG.
 #
 # Usage: .github/scripts/check-swift-api.test.sh
@@ -35,6 +36,7 @@ cat >"$stub_dir/swift" <<'EOF'
 expected="package --triple arm64-apple-ios${SWIFT_STUB_FLOOR:-15}.0-simulator --sdk /stub/iPhoneSimulator.sdk diagnose-api-breaking-changes ${SWIFT_STUB_TAG:?}"
 [ "$*" = "$expected" ] || { echo "swift stub: unexpected argv: $*" >&2; exit 64; }
 printf '%s\n' "${SWIFT_STUB_OUTPUT:-}"
+[ -z "${SWIFT_STUB_OUTPUT_FILE:-}" ] || cat "$SWIFT_STUB_OUTPUT_FILE"
 exit "${SWIFT_STUB_STATUS:-0}"
 EOF
 cat >"$stub_dir/git" <<'EOF'
@@ -111,9 +113,10 @@ error: Build failed
 error: fatalError" \
   expect "a breakage beside a build failure fails even before 1.0" 1 "did not run to a result" "$subject" "$pre"
 
-long_log=$(for i in $(seq 1 4000); do echo "[$i/4000] Compiling Something.swift with a long enough line"; done)
-SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage
-$long_log" \
+# Larger than a pipe buffer, and passed through a file: Linux caps one environment string at 128 KiB.
+long_log="$workdir/long.log"
+for i in $(seq 1 4000); do echo "[$i/4000] Compiling Something.swift with a long enough line"; done >"$long_log"
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage" SWIFT_STUB_OUTPUT_FILE="$long_log" \
   expect "a breakage early in a long log is still a breakage" 0 "::warning::" "$subject" "$pre"
 
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected" \
