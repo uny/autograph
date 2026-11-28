@@ -577,34 +577,39 @@ To re-check this list against the dumps and sources, every printed name must hav
 done
 ```
 
-To re-check the Swift tables against `Sources/`, every printed name must have a row in the Swift
-tables above (not in a Kotlin table, which already has `autographScope` and `autographIgnore`):
+To re-check the Swift tables against `Sources/`, every printed name must have a row in its own
+product's table above (not in a Kotlin table, which already has `autographScope` and
+`autographIgnore`, nor in the other product's table):
 
 ```bash
-sed -n '/^\*\*The Swift package.s products\*\*/,/^Three judgement calls/p' \
-    docs/adr/0001-public-api-evolution.md > /tmp/adr-swift-rows
 for t in AutographUI AutographSegmentSwift; do
-  awk 'FNR == NR {
-         if ($0 ~ /^ *(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) /) {
-           n = $0; sub(/^ *(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) +/, "", n)
-           sub(/[^A-Za-z_].*/, "", n); if ($0 !~ /^ /) own[n] = 1 }
+  sed -nE "/^\*\*\`$t\`\*\*/,/^(\*\*|Three judgement calls)/p" \
+      docs/adr/0001-public-api-evolution.md > /tmp/adr-swift-rows
+  awk 'pass != 2 {
+         if ($0 ~ /^(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias) /) {
+           n = $0; sub(/^(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias) +/, "", n)
+           sub(/[^A-Za-z0-9_].*/, "", n); own[n] = 1 }
          next }
        /^(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) / {
          n = $0; sub(/^(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) +/, "", n)
-         sub(/[^A-Za-z_].*/, "", n); print n }
+         sub(/[^A-Za-z0-9_].*/, "", n); print n }
        /^(public +)?extension / {
-         ext = $0; sub(/^(public +)?extension +/, "", ext); sub(/[^A-Za-z_.].*/, "", ext)
+         ext = $0; sub(/^(public +)?extension +/, "", ext); sub(/[^A-Za-z0-9_.].*/, "", ext)
          pub = ($0 ~ /^public/); inext = !(ext in own); next }
        /^}/ { inext = 0 }
        inext && /^    / && (pub || /^    (@[A-Za-z]+ +)*(public|open) /) &&
-         /^    (@[A-Za-z]+ +)*((public|open|internal\(set\)|static|nonisolated) +)*(func|var|let|subscript) / {
-         n = $0; sub(/^    (@[A-Za-z]+ +)*((public|open|internal\(set\)|static|nonisolated) +)*(func|var|let|subscript) +/, "", n)
-         sub(/[^A-Za-z_].*/, "", n); print n }
-  ' Sources/$t/*.swift Sources/$t/*.swift
-done | sort -u | while read -r n; do
-  grep -qF "| \`$n\` |" /tmp/adr-swift-rows || echo "unclassified: $n"
+         /^    (@[A-Za-z]+ +)*((public|open|internal\(set\)|static|nonisolated) +)*(func +|var +|let +|subscript *[(<])/ {
+         n = $0; sub(/^    (@[A-Za-z]+ +)*((public|open|internal\(set\)|static|nonisolated) +)*(func|var|let) +/, "", n)
+         sub(/[^A-Za-z0-9_].*/, "", n); if (n == "") n = "subscript"; print n }
+  ' Sources/$t/*.swift pass=2 Sources/$t/*.swift |
+    sort -u | while read -r n; do
+      grep -qF "| \`$n\` |" /tmp/adr-swift-rows || echo "unclassified in $t: $n"
+    done
 done
 ```
+
+The `pass=2` argument splits the two readings of the same files: the first collects the package's own
+types from every file, the second classifies.
 
 It prints nothing when every name has a row. It reads declarations line by line, so a public
 declaration split across lines before its name, or a `public` member inside a non-public extension of
