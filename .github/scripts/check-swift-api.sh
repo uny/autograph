@@ -12,6 +12,11 @@
 # The digester builds for the host by default, and Autograph.xcframework has only iOS slices, so
 # that run fails. It runs only with an iOS simulator triple and SDK, at the manifest's iOS floor.
 #
+# `--build-system swiftbuild` is required, not a preference. Measured on the macos-26 runner (Xcode
+# 26.6, Swift 6.3.3, #341): SwiftPM's default native build system builds both trees and then writes
+# empty API baselines, so the comparison dies with "Unable to parse empty data". Swift Build writes
+# real ones, and reports a deliberate rename. Swift 6.4 already defaults to Swift Build.
+#
 # Outcomes:
 # - no breakage: exit 0.
 # - breakage, baseline 1.0.0 or later: exit 1. ADR 0001 forbids it within a major version.
@@ -66,7 +71,7 @@ xcodebuild -version 2>/dev/null | head -n 1 || true
 
 sdk=$(xcrun --sdk iphonesimulator --show-sdk-path)
 set +e
-output=$(swift package --triple "arm64-apple-ios$floor.0-simulator" --sdk "$sdk" \
+output=$(swift package --build-system swiftbuild --triple "arm64-apple-ios$floor.0-simulator" --sdk "$sdk" \
   diagnose-api-breaking-changes "$tag" 2>&1)
 status=$?
 set -e

@@ -100,7 +100,7 @@ here rather than hidden — it is the resolution of
   they are Swift. SwiftPM's API digester covers them instead:
 
   ```bash
-  swift package --triple arm64-apple-ios15.0-simulator \
+  swift package --build-system swiftbuild --triple arm64-apple-ios15.0-simulator \
       --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
       diagnose-api-breaking-changes <previous release tag>
   ```
@@ -109,6 +109,12 @@ here rather than hidden — it is the resolution of
   (`./gradlew :autograph-apple:assembleAutographReleaseXCFramework`), by hand as well as in CI.
   Without it, `Package.swift` silently compiles against a framework left over in
   `autograph-apple/build`, or downloads the last release when none is there.
+
+  `--build-system swiftbuild` is required on Swift 6.3. On the macos-26 runner (Xcode 26.6 / Swift
+  6.3.3), SwiftPM's default native build system builds both trees and then writes empty API
+  baselines, so the comparison fails with "Unable to parse empty data". With Swift Build the same
+  run reports no break on `main` and reports a deliberate rename. Swift 6.4 uses Swift Build by
+  default.
 
   This was measured on 2026-11-28 with Xcode 27.1 / Swift 6.4, against `v0.13.0`. Without `--triple`
   and `--sdk` the command fails: it builds for the macOS host, and `Autograph.xcframework` has only

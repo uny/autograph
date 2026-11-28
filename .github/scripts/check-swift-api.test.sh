@@ -34,7 +34,7 @@ EOF
 cat >"$stub_dir/swift" <<'EOF'
 #!/usr/bin/env bash
 [ "$*" = "--version" ] && { echo "Apple Swift version 0.0 (stub)"; exit 0; }
-expected="package --triple arm64-apple-ios${SWIFT_STUB_FLOOR:-15}.0-simulator --sdk /stub/iPhoneSimulator.sdk diagnose-api-breaking-changes ${SWIFT_STUB_TAG:?}"
+expected="package --build-system swiftbuild --triple arm64-apple-ios${SWIFT_STUB_FLOOR:-15}.0-simulator --sdk /stub/iPhoneSimulator.sdk diagnose-api-breaking-changes ${SWIFT_STUB_TAG:?}"
 [ "$*" = "$expected" ] || { echo "swift stub: unexpected argv: $*" >&2; exit 64; }
 printf '%s\n' "${SWIFT_STUB_OUTPUT:-}"
 [ -z "${SWIFT_STUB_OUTPUT_FILE:-}" ] || cat "$SWIFT_STUB_OUTPUT_FILE"
