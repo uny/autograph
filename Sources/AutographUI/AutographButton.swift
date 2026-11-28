@@ -63,6 +63,7 @@ public struct AutographButton<Label: View>: View {
         event: String,
         properties: [String: String] = [:],
         target: String? = nil,
+        haptic: Bool = false,
         action: @escaping () -> Void,
         @ViewBuilder label: () -> Label
     ) {

@@ -191,6 +191,8 @@ jobs:
       # "did not run to a result" means no comparison finished: read the log for the toolchain, the
       # build, the release-asset download or the dependency resolution before suspecting the API.
       - name: Check the Swift package API against the last release
+        env:
+          AUTOGRAPH_SWIFT_API_ENFORCE: "1"
         run: .github/scripts/check-swift-api.sh
 
   # Skipped only when `changes` succeeded and reported `ios=false` — a PR whose diff provably cannot
