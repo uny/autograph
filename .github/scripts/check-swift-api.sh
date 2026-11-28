@@ -71,7 +71,15 @@ if [ "$status" -eq 0 ]; then
   echo "No Swift API break against $tag."
   exit 0
 fi
-if printf '%s\n' "$output" | grep -q 'API breakage:'; then
+# Here-strings, not `printf | grep -q`: under pipefail an early match kills printf with SIGPIPE on a
+# long build log, and the pipeline would read as no match.
+# A build error anywhere means at least one module was not compared, even when another reported a
+# breakage, so it is checked first.
+if grep -qE '(^|[[:space:]:])error:|fatalError' <<<"$output"; then
+  echo "::error::the API digester did not run to a result (exit $status); see the output above" >&2
+  exit 1
+fi
+if grep -q 'API breakage:' <<<"$output"; then
   if [ "$enforce" -eq 1 ]; then
     echo "::error::the Swift package products break their API against $tag (ADR 0001 §1)" >&2
     exit 1

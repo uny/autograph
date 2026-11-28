@@ -106,6 +106,16 @@ SWIFT_STUB_TAG=v1.2.0 SWIFT_STUB_FLOOR=16 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT=
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="error: Build failed" \
   expect "a digester that did not finish fails even before 1.0" 1 "did not run to a result" "$subject" "$pre"
 
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage
+error: Build failed
+error: fatalError" \
+  expect "a breakage beside a build failure fails even before 1.0" 1 "did not run to a result" "$subject" "$pre"
+
+long_log=$(for i in $(seq 1 4000); do echo "[$i/4000] Compiling Something.swift with a long enough line"; done)
+SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_STATUS=1 SWIFT_STUB_OUTPUT="$breakage
+$long_log" \
+  expect "a breakage early in a long log is still a breakage" 0 "::warning::" "$subject" "$pre"
+
 SWIFT_STUB_TAG=v0.13.0 SWIFT_STUB_OUTPUT="No breaking changes detected" \
   expect "a tag already present is not fetched" 0 "" "$subject" "$pre"
 if [ -s "$GIT_STUB_LOG" ]; then echo "FAIL a tag already present is not fetched: fetched $(cat "$GIT_STUB_LOG")"; failures=$((failures + 1)); fi
