@@ -45,7 +45,7 @@ Two facts shaped the answer:
 |:--|:--|
 | `autograph-core`, `autograph-context` | **SemVer ABI stable.** Binary-compatible within a major version; this ADR's rules apply in full. |
 | `autograph-compose`, `autograph-uikit`, `autograph-android`, `autograph-segment` | **Stable API, constrained toolchain.** The same source and binary rules apply, but each is bounded by a dependency it does not control (the Compose compiler, the iOS SDK / Xcode, the Android SDK and AGP, the Segment SDK — one each, respectively). A major bump in one of those may force a break that is not ours to schedule. |
-| `AutographUI`, `AutographSegmentSwift` (Swift package products) | **Stable API, constrained toolchain, for Swift source only.** SwiftPM compiles these from source inside the app, so there is no binary to keep compatible: the promise is that Swift code which compiles against one minor version compiles against the next. `AutographUI` is bounded by SwiftUI and Xcode, and `AutographSegmentSwift` by analytics-swift within the major version `Package.swift` allows (1.x today). The Kotlin types in their signatures (`AutographScreenCapture`, `AutographElementCapture`, `SegmentBridge`) keep the tier of the artifact that declares them. |
+| `AutographUI`, `AutographSegmentSwift` (Swift package products) | **Stable API, constrained toolchain, for Swift source only.** SwiftPM compiles these two targets from source inside the app, and no prebuilt binary of them is distributed, so there is no binary of theirs to keep compatible: the promise is that Swift code which compiles against one minor version compiles against the next. `AutographUI` is bounded by SwiftUI and Xcode, and `AutographSegmentSwift` by analytics-swift within the major version `Package.swift` allows (1.x today). The Kotlin types in their signatures (`AutographScreenCapture`, `AutographElementCapture`, `SegmentBridge`) keep the tier of the artifact that declares them. |
 | `autograph-test`, `autograph-schema` | **Source-compatible on a best-effort basis; no ABI guarantee.** These are development-time helpers — a test transport and a code generator. They are not on an app's release-critical path, so freezing them would buy safety nobody is asking for. `autograph-schema` therefore does not run `abiValidation()`, and that is deliberate rather than an oversight. |
 
 The guarantee covers Swift *source* compatibility for the Kotlin/Native artifacts as well as
@@ -102,6 +102,11 @@ here rather than hidden — it is the resolution of
       diagnose-api-breaking-changes <previous release tag>
   ```
 
+  Build the framework from the current tree first
+  (`./gradlew :autograph-apple:assembleAutographReleaseXCFramework`), by hand as well as in CI.
+  Without it, `Package.swift` silently compiles against a framework left over in
+  `autograph-apple/build`, or downloads the last release when none is there.
+
   This was measured on 2026-11-28 with Xcode 27.1 / Swift 6.4, against `v0.13.0`. Without `--triple`
   and `--sdk` the command fails: it builds for the macOS host, and `Autograph.xcframework` has only
   iOS slices. With them it reported no break on `main`. It reported each of three deliberate breaks:
@@ -109,10 +114,15 @@ here rather than hidden — it is the resolution of
   initializer, and a relabelled `AutographSegmentBridge.init(analytics:)`. Its limits:
   - The baseline is checked out without a local framework, so it takes `Package.swift`'s download
     branch. The baseline has to be a release tag that has an asset, and the run needs the network.
-  - The current tree compiles against whatever framework `autograph-apple/build` holds, so a CI job
-    must build it first, as the `swift-package` job already does.
+  - The current tree compiles against whatever framework `autograph-apple/build` holds, hence the
+    build step above. The measurement itself ran against a local framework from 2026-10-24, older
+    than `v0.13.0`. That does not change its result, because only the two Swift modules are compared.
+  - It compares only `AutographUI` and `AutographSegmentSwift`. The `Autograph` umbrella's
+    Swift-facing surface is covered by the klib dumps and §2, not by this command. A Kotlin change
+    shows up here only where it changes a type named in these modules' signatures.
   - It compares declarations only. It does not see an added overload that makes an existing call
-    ambiguous, a manifest change, or behaviour.
+    ambiguous, a manifest change, or behaviour. It also does not report a new public declaration
+    (adding one is compatible), so it cannot catch a declaration §2h forgot to classify.
 
   **The command is not wired into CI.** Until it is, these products are enforced by review plus
   running this command by hand, the same boundary as `autograph-android`.
@@ -544,27 +554,38 @@ their type, as above.
 Three judgement calls in these tables, each reversible before 1.0:
 
 - **`AutographButton` is *entry*, not 2f.** It is a SwiftUI `View`, the Swift counterpart of a
-  composable, and nobody holds one or calls a member on it, which is what 2f's freedom to add
-  members is for. Under *entry* its existing initializers are frozen signatures, which is what 2f
-  would freeze too. Adding a defaulted parameter to an existing initializer counts as a break, even
+  composable: its use is to be constructed in a `body`, not held and called, which is what 2f's
+  freedom to add members is for. Under *entry* its existing initializers are frozen signatures, which
+  is what 2f would freeze too. So are the rest of its declared shape: the `Label: View` parameter,
+  the `Label == Text` extension, the `View` conformance and the public `body`. Adding a defaulted parameter to an existing initializer counts as a break, even
   though most call sites would still compile: the digester reports it as a removed initializer
   (measured), and a call that names the initializer as a value with its full labels would stop compiling. A new initializer
   beside the existing ones is additive only when no existing call becomes ambiguous. The
   `LocalizedStringKey` / `StringProtocol` pair is that case: a string literal still resolves to the
   localized overload. The digester does not check ambiguity, so review does.
 - **`AutographTracking` is 2a.** It has no public initializer, the library puts it in the
-  environment, and callers only call `track`. New methods are additive.
-- **`AutographSegmentBridge` is 2f.** The app constructs it with `init(analytics:)`, which is frozen.
-  Its member set is not free the way 2f's usually is, because it is exactly `SegmentBridge`'s
-  requirements, which 2c freezes for the major version. So the bridge's own tier cannot be weaker
-  than `SegmentBridge`'s on the Kotlin side: a bridge that stopped compiling against the protocol
-  would break every app that uses the product. The `init()` the API digester lists is the implicit
-  `NSObject` override. Swift cannot call it, and it is outside the guarantee.
+  environment, and callers only call `track`. A new method is additive only when no existing call
+  becomes ambiguous, which matters because `track` already has two overloads (`properties:` and
+  `propertiesJson:`).
+- **`AutographSegmentBridge` is 2f.** The app constructs it with `init(analytics:)`, which is frozen,
+  and passes it on as a `SegmentBridge`. So its `NSObject` superclass and its `SegmentBridge`
+  conformance are frozen too, along with the existing members that satisfy that protocol. A new
+  member of its own is additive, as in 2f. Those members are exactly `SegmentBridge`'s requirements,
+  which 2c freezes for the major version, so the bridge never has to grow to keep conforming. That
+  is also why its own tier cannot be weaker than `SegmentBridge`'s: a bridge that stopped
+  conforming would break every app that uses the product. The `init()` the API digester lists is
+  the implicit `NSObject` override. Swift cannot call it (measured: `AutographSegmentBridge()` is
+  a compile error), and it is outside the guarantee.
 
-The manifest is part of the contract only where an app names it: the product names `AutographUI` and
-`AutographSegmentSwift`, and the module names they import. The iOS floor (`platforms`) and the
-analytics-swift range follow §1's toolchain bound. A change to either is a breaking change in the
-CHANGELOG, not one this tier forbids. `swift-tools-version` is not part of the contract.
+The manifest is part of the contract where an app names it: the product names `AutographUI` and
+`AutographSegmentSwift`, and the module names an app imports, `AutographUI`, `AutographSegmentSwift`
+and the umbrella `Autograph`. Three more values decide whether an app can build at all: the iOS floor
+(`platforms`), the analytics-swift range and `swift-tools-version`, which sets the oldest Xcode that
+can resolve the package. They follow §1's toolchain bound, as the Kotlin artifacts' floors do. One
+moves within a major version only when a dependency this project does not control forces it
+(Kotlin/Native, Xcode or analytics-swift), and the CHANGELOG lists that move under its breaking
+changes. Otherwise it waits for a major release. SwiftPM does not fall back to an older release
+because of `platforms`, so an app that pins `from: "1.0.0"` and targets the old floor stops building.
 
 To re-check this list against the dumps and sources, every printed name must have a row above:
 
@@ -617,8 +638,8 @@ types from every file, the second classifies.
 
 It prints nothing when every name has a row. It reads declarations line by line, so a public
 declaration split across lines before its name, or a `public` member inside a non-public extension of
-a type declared elsewhere, is caught only if it matches those patterns. The API digester (§1) sees the
-whole module and is the backstop.
+a type declared elsewhere, is caught only if it matches those patterns. Review is the backstop: the
+API digester (§1) does not report a new declaration.
 
 ### 3. The wire format is versioned separately from the ABI
 
@@ -696,6 +717,10 @@ once 1.0 ships:
   `Modifier.autocaptureScope` was deprecated for removal at 1.0 under the pre-1.0 rule, with no
   window, and removed by #283. It was grandfathered rather than retro-fitted: applying the rule
   above to it would have held a superseded API past the release that is meant to be the clean line.
+- The Swift package's products use `@available(*, deprecated, renamed:, message:)` for the same
+  two minors, and the removal waits for a major release in the same way. They have no `ERROR` step:
+  `@available(*, unavailable)` makes existing code stop compiling, which their source-only tier
+  (§1) forbids within a major version.
 - `@AutographInternalApi` declarations are exempt, as they are from every other rule here.
 
 ## Consequences
