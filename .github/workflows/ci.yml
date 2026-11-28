@@ -112,6 +112,9 @@ jobs:
       - name: Test the iOS floor check
         run: .github/scripts/check-ios-floor.test.sh
 
+      - name: Test the Swift API check
+        run: .github/scripts/check-swift-api.test.sh
+
   library:
     name: library
     runs-on: macos-latest
@@ -181,6 +184,14 @@ jobs:
         run: |
           device=$(xcrun simctl list devices available -j | jq -r '.devices | to_entries | map(.value[] | select(.name | startswith("iPhone"))) | .[0].name')
           xcodebuild test -scheme Autograph-Package -destination "platform=iOS Simulator,name=$device"
+
+      # ADR 0001 §1 (#341): the Swift package products keep source compatibility within a major
+      # version. Compares their API against the release Package.swift names, using the framework
+      # built above. Before 1.0 a break only warns; from a 1.x baseline on it fails the job.
+      # "did not run to a result" means no comparison finished: read the log for the toolchain, the
+      # build, the release-asset download or the dependency resolution before suspecting the API.
+      - name: Check the Swift package API against the last release
+        run: .github/scripts/check-swift-api.sh
 
   # Skipped only when `changes` succeeded and reported `ios=false` — a PR whose diff provably cannot
   # reach the app. Anything else runs: push and workflow_dispatch (no output), a failed `changes`,

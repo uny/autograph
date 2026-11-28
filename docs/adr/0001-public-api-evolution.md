@@ -15,6 +15,9 @@
   path, so §1's own test puts them in a tier, and SwiftPM reads a `1.0.0` tag as a promise for
   every product. Revisit if the products stop being a documented entry point, or if the API
   digester can no longer check them.
+- **Amended:** 2026-11-28. §1: CI runs the Swift API digester on every PR
+  ([#341](https://github.com/uny/autograph/issues/341)). The owner decided that this gates 1.0
+  ([#283](https://github.com/uny/autograph/issues/283#issuecomment-7237435102))
 
 ## Context
 
@@ -97,7 +100,7 @@ here rather than hidden — it is the resolution of
   they are Swift. SwiftPM's API digester covers them instead:
 
   ```bash
-  swift package --triple arm64-apple-ios15.0-simulator \
+  swift package --build-system swiftbuild --triple arm64-apple-ios15.0-simulator \
       --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
       diagnose-api-breaking-changes <previous release tag>
   ```
@@ -106,6 +109,12 @@ here rather than hidden — it is the resolution of
   (`./gradlew :autograph-apple:assembleAutographReleaseXCFramework`), by hand as well as in CI.
   Without it, `Package.swift` silently compiles against a framework left over in
   `autograph-apple/build`, or downloads the last release when none is there.
+
+  `--build-system swiftbuild` is required on Swift 6.3. On the macos-26 runner (Xcode 26.6 / Swift
+  6.3.3), SwiftPM's default native build system builds both trees and then writes empty API
+  baselines, so the comparison fails with "Unable to parse empty data". With Swift Build the same
+  run reports no break on `main` and reports a deliberate rename. Swift 6.4 uses Swift Build by
+  default.
 
   This was measured on 2026-11-28 with Xcode 27.1 / Swift 6.4, against `v0.13.0`. Without `--triple`
   and `--sdk` the command fails: it builds for the macOS host, and `Autograph.xcframework` has only
@@ -124,8 +133,14 @@ here rather than hidden — it is the resolution of
     ambiguous, a manifest change, or behaviour. It also does not report a new public declaration
     (adding one is compatible), so it cannot catch a declaration §2h forgot to classify.
 
-  **The command is not wired into CI.** Until it is, these products are enforced by review plus
-  running this command by hand, the same boundary as `autograph-android`.
+  **CI runs it on every PR** ([#341](https://github.com/uny/autograph/issues/341)), in the
+  `swift-package` job after the framework build, through `.github/scripts/check-swift-api.sh`. The
+  script takes the baseline from `Package.swift`'s `releaseVersion`, fetches that tag (the checkout
+  has none), and runs the command above at the manifest's iOS floor. A break fails the job once the
+  baseline is 1.0.0 or later. Before that it only warns, since a pre-1.0 break is allowed with a
+  CHANGELOG entry. A run that does not reach a result fails the job either way.
+  `check-swift-api.test.sh` covers these outcomes on every PR. The limits above still apply, so
+  review still covers what the command cannot see.
 
 The common root cause — a JVM/Android ABI dump requires a `jvm()` target — is why the modules whose
 common surface *is* dump-covered (`autograph-core`, `-context`, `-compose`) all declare `jvm()`.
