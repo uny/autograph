@@ -20,6 +20,12 @@
 # - anything else (the build failed, the tag could not be fetched): exit 1, always. A check that
 #   cannot run must not read as a pass.
 #
+# An intended break in a major release goes through SwiftPM's own allowlist: pass
+# `--breakage-allowlist-path` in the invocation below for that release, and remove it afterwards.
+#
+# A local run uses a tag already present as is. cd.yml moves a release tag after creating it, so a
+# tag fetched before that move is stale: delete it (`git tag -d vX.Y.Z`) before running by hand.
+#
 # Usage:  check-swift-api.sh [path/to/Package.swift]
 #
 # Needs `swift`, `xcrun` and `git`. Tested by check-swift-api.test.sh, which stubs all three.

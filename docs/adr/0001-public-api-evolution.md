@@ -15,6 +15,9 @@
   path, so §1's own test puts them in a tier, and SwiftPM reads a `1.0.0` tag as a promise for
   every product. Revisit if the products stop being a documented entry point, or if the API
   digester can no longer check them.
+- **Amended:** 2026-11-28. §1: CI runs the Swift API digester on every PR
+  ([#341](https://github.com/uny/autograph/issues/341)). The owner decided that this gates 1.0
+  ([#283](https://github.com/uny/autograph/issues/283#issuecomment-7237435102))
 
 ## Context
 
