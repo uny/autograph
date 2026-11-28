@@ -124,8 +124,14 @@ here rather than hidden — it is the resolution of
     ambiguous, a manifest change, or behaviour. It also does not report a new public declaration
     (adding one is compatible), so it cannot catch a declaration §2h forgot to classify.
 
-  **The command is not wired into CI.** Until it is, these products are enforced by review plus
-  running this command by hand, the same boundary as `autograph-android`.
+  **CI runs it on every PR** ([#341](https://github.com/uny/autograph/issues/341)), in the
+  `swift-package` job after the framework build, through `.github/scripts/check-swift-api.sh`. The
+  script takes the baseline from `Package.swift`'s `releaseVersion`, fetches that tag (the checkout
+  has none), and runs the command above at the manifest's iOS floor. A break fails the job once the
+  baseline is 1.0.0 or later. Before that it only warns, since a pre-1.0 break is allowed with a
+  CHANGELOG entry. A run that does not reach a result fails the job either way.
+  `check-swift-api.test.sh` covers these outcomes on every PR. The limits above still apply, so
+  review still covers what the command cannot see.
 
 The common root cause — a JVM/Android ABI dump requires a `jvm()` target — is why the modules whose
 common surface *is* dump-covered (`autograph-core`, `-context`, `-compose`) all declare `jvm()`.
