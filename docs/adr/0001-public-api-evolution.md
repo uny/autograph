@@ -8,6 +8,9 @@
   ([#283](https://github.com/uny/autograph/issues/283#issuecomment-5920254763))
 - **Amended:** 2026-11-15. §2 now covers both stable tiers, and §2h classifies every public
   declaration as the 1.0 baseline ([#283](https://github.com/uny/autograph/issues/283))
+- **Amended:** 2026-11-28. **Proposed, pending the owner's decision:** §1 gives the Swift
+  package's products a tier, and §2h classifies their declarations
+  ([#339](https://github.com/uny/autograph/issues/339))
 
 ## Context
 
@@ -38,6 +41,7 @@ Two facts shaped the answer:
 |:--|:--|
 | `autograph-core`, `autograph-context` | **SemVer ABI stable.** Binary-compatible within a major version; this ADR's rules apply in full. |
 | `autograph-compose`, `autograph-uikit`, `autograph-android`, `autograph-segment` | **Stable API, constrained toolchain.** The same source and binary rules apply, but each is bounded by a dependency it does not control (the Compose compiler, the iOS SDK / Xcode, the Android SDK and AGP, the Segment SDK — one each, respectively). A major bump in one of those may force a break that is not ours to schedule. |
+| `AutographUI`, `AutographSegmentSwift` (Swift package products) | **Stable API, constrained toolchain, for Swift source only.** SwiftPM compiles these from source inside the app, so there is no binary to keep compatible: the promise is that Swift code which compiles against one minor version compiles against the next. `AutographUI` is bounded by SwiftUI and Xcode, and `AutographSegmentSwift` by analytics-swift within the major version `Package.swift` allows (1.x today). The Kotlin types in their signatures (`AutographScreenCapture`, `AutographElementCapture`, `SegmentBridge`) keep the tier of the artifact that declares them. |
 | `autograph-test`, `autograph-schema` | **Source-compatible on a best-effort basis; no ABI guarantee.** These are development-time helpers — a test transport and a code generator. They are not on an app's release-critical path, so freezing them would buy safety nobody is asking for. `autograph-schema` therefore does not run `abiValidation()`, and that is deliberate rather than an oversight. |
 
 The guarantee covers Swift *source* compatibility for the Kotlin/Native artifacts as well as
@@ -85,6 +89,30 @@ here rather than hidden — it is the resolution of
   `@AutographInternalApi` declarations (`View.autographScopeOwner` and its listeners), which are
   outside every tier anyway.
 
+- The Swift package's products (`AutographUI`, `AutographSegmentSwift`) have no Kotlin dump, because
+  they are Swift. SwiftPM's API digester covers them instead:
+
+  ```bash
+  swift package --triple arm64-apple-ios15.0-simulator \
+      --sdk "$(xcrun --sdk iphonesimulator --show-sdk-path)" \
+      diagnose-api-breaking-changes <previous release tag>
+  ```
+
+  This was measured on 2026-11-28 with Xcode 27.1 / Swift 6.4, against `v0.13.0`. Without `--triple`
+  and `--sdk` the command fails: it builds for the macOS host, and `Autograph.xcframework` has only
+  iOS slices. With them it reported no break on `main`. It reported each of three deliberate breaks:
+  a renamed `View.autographIgnore()`, a defaulted parameter added to `AutographButton`'s primary
+  initializer, and a relabelled `AutographSegmentBridge.init(analytics:)`. Its limits:
+  - The baseline is checked out without a local framework, so it takes `Package.swift`'s download
+    branch. The baseline has to be a release tag that has an asset, and the run needs the network.
+  - The current tree compiles against whatever framework `autograph-apple/build` holds, so a CI job
+    must build it first, as the `swift-package` job already does.
+  - It compares declarations only. It does not see an added overload that makes an existing call
+    ambiguous, a manifest change, or behaviour.
+
+  **The command is not wired into CI.** Until it is, these products are enforced by review plus
+  running this command by hand, the same boundary as `autograph-android`.
+
 The common root cause — a JVM/Android ABI dump requires a `jvm()` target — is why the modules whose
 common surface *is* dump-covered (`autograph-core`, `-context`, `-compose`) all declare `jvm()`.
 
@@ -95,7 +123,8 @@ categories below are exhaustive over the public surface of both stable tiers of 
 SemVer ABI tier and the stable-API tier. Every public declaration in `autograph-core`,
 `autograph-context`, `autograph-compose`, `autograph-uikit`, `autograph-android` and
 `autograph-segment` falls under exactly one of them, or is `@AutographInternalApi` and outside
-every tier. §2h lists each declaration with its category. A new declaration that fits no category
+every tier. The Swift package's products, `AutographUI` and `AutographSegmentSwift`, are classified the
+same way (proposed, #339). §2h lists each declaration with its category. A new declaration that fits no category
 is the signal that this ADR needs another category, not an exception.
 
 #### 2a. Library-produced value types — construction is frozen
@@ -483,11 +512,55 @@ ABI dump covers, so review enforces it (§1).
 | `SegmentBridge` | 2c; iOS only |
 | `SegmentTransport` | 2f; its Android face is undumped |
 
-**Not classified here: the Swift package's own targets.** `AutographUI` (`AutographButton`,
-`AutographTracking` and the `View` extensions) and `AutographSegmentSwift`
-(`AutographSegmentBridge`) are Swift source in `Sources/`, not Kotlin artifacts. §1's table gives
-them no tier, and none of this ADR's checks covers them. Which guarantee they carry at 1.0 is a
-separate decision.
+**The Swift package's products** (`Sources/`). Swift has no klib or JVM dump, so these tables are
+checked by the second command below and by the API digester (§1's Swift-package bullet). A row names a
+top-level type, or an extension member on a type this package does not declare (`View`,
+`EnvironmentValues`), since that member is the entry point. Members of the package's own types follow
+their type, as above.
+
+**`AutographUI`**
+
+| Declaration | Category |
+|:--|:--|
+| `AutographButton` | entry |
+| `AutographTracking` | 2a |
+| `autograph` | entry; `EnvironmentValues`, get-only outside the module |
+| `autographElementCapture` | entry; `View` |
+| `autographIgnore` | entry; `View` |
+| `autographScope` | entry; `View` |
+| `autographScreen` | entry; `View` |
+| `autographScreenCapture` | entry; `View` |
+
+**`AutographSegmentSwift`**
+
+| Declaration | Category |
+|:--|:--|
+| `AutographSegmentBridge` | 2f; its member set is `SegmentBridge`'s (2c) |
+
+Three judgement calls in these tables, each reversible before 1.0:
+
+- **`AutographButton` is *entry*, not 2f.** It is a SwiftUI `View`, the Swift counterpart of a
+  composable, and nobody holds one or calls a member on it, which is what 2f's freedom to add
+  members is for. Under *entry* its existing initializers are frozen signatures, which is what 2f
+  would freeze too. Adding a defaulted parameter to an existing initializer counts as a break, even
+  though most call sites would still compile: the digester reports it as a removed initializer
+  (measured), and a call that names the initializer as a value with its full labels would stop compiling. A new initializer
+  beside the existing ones is additive only when no existing call becomes ambiguous. The
+  `LocalizedStringKey` / `StringProtocol` pair is that case: a string literal still resolves to the
+  localized overload. The digester does not check ambiguity, so review does.
+- **`AutographTracking` is 2a.** It has no public initializer, the library puts it in the
+  environment, and callers only call `track`. New methods are additive.
+- **`AutographSegmentBridge` is 2f.** The app constructs it with `init(analytics:)`, which is frozen.
+  Its member set is not free the way 2f's usually is, because it is exactly `SegmentBridge`'s
+  requirements, which 2c freezes for the major version. So the bridge's own tier cannot be weaker
+  than `SegmentBridge`'s on the Kotlin side: a bridge that stopped compiling against the protocol
+  would break every app that uses the product. The `init()` the API digester lists is the implicit
+  `NSObject` override. Swift cannot call it, and it is outside the guarantee.
+
+The manifest is part of the contract only where an app names it: the product names `AutographUI` and
+`AutographSegmentSwift`, and the module names they import. The iOS floor (`platforms`) and the
+analytics-swift range follow §1's toolchain bound. A change to either is a breaking change in the
+CHANGELOG, not one this tier forbids. `swift-tools-version` is not part of the contract.
 
 To re-check this list against the dumps and sources, every printed name must have a row above:
 
@@ -503,6 +576,40 @@ To re-check this list against the dumps and sources, every printed name must hav
   grep -qF "| \`$n\` |" docs/adr/0001-public-api-evolution.md || echo "unclassified: $n"
 done
 ```
+
+To re-check the Swift tables against `Sources/`, every printed name must have a row in the Swift
+tables above (not in a Kotlin table, which already has `autographScope` and `autographIgnore`):
+
+```bash
+sed -n '/^\*\*The Swift package.s products\*\*/,/^Three judgement calls/p' \
+    docs/adr/0001-public-api-evolution.md > /tmp/adr-swift-rows
+for t in AutographUI AutographSegmentSwift; do
+  awk 'FNR == NR {
+         if ($0 ~ /^ *(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) /) {
+           n = $0; sub(/^ *(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) +/, "", n)
+           sub(/[^A-Za-z_].*/, "", n); if ($0 !~ /^ /) own[n] = 1 }
+         next }
+       /^(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) / {
+         n = $0; sub(/^(@[A-Za-z]+ +)*(public|open) +(final +)?(struct|class|enum|protocol|actor|typealias|func|var|let) +/, "", n)
+         sub(/[^A-Za-z_].*/, "", n); print n }
+       /^(public +)?extension / {
+         ext = $0; sub(/^(public +)?extension +/, "", ext); sub(/[^A-Za-z_.].*/, "", ext)
+         pub = ($0 ~ /^public/); inext = !(ext in own); next }
+       /^}/ { inext = 0 }
+       inext && /^    / && (pub || /^    (@[A-Za-z]+ +)*(public|open) /) &&
+         /^    (@[A-Za-z]+ +)*((public|open|internal\(set\)|static|nonisolated) +)*(func|var|let|subscript) / {
+         n = $0; sub(/^    (@[A-Za-z]+ +)*((public|open|internal\(set\)|static|nonisolated) +)*(func|var|let|subscript) +/, "", n)
+         sub(/[^A-Za-z_].*/, "", n); print n }
+  ' Sources/$t/*.swift Sources/$t/*.swift
+done | sort -u | while read -r n; do
+  grep -qF "| \`$n\` |" /tmp/adr-swift-rows || echo "unclassified: $n"
+done
+```
+
+It prints nothing when every name has a row. It reads declarations line by line, so a public
+declaration split across lines before its name, or a `public` member inside a non-public extension of
+a type declared elsewhere, is caught only if it matches those patterns. The API digester (§1) sees the
+whole module and is the backstop.
 
 ### 3. The wire format is versioned separately from the ABI
 
